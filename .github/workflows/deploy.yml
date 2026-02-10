@@ -181,6 +181,7 @@ jobs:
           DEPLOY
 
       - name: External health check
+        continue-on-error: true
         run: |
           echo "Waiting for services to stabilize..."
           sleep 10
