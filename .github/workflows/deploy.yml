@@ -172,8 +172,11 @@ jobs:
           echo "=== Running migrations ==="
           docker compose run --rm migrate
 
+          echo "=== Stopping old containers ==="
+          docker compose down server worker frontend || true
+
           echo "=== Starting services ==="
-          docker compose up -d postgres redis waha server worker frontend
+          docker compose up -d --force-recreate --remove-orphans postgres redis waha server worker frontend
 
           echo "=== Waiting for health ==="
           sleep 5
