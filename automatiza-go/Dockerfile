@@ -26,7 +26,7 @@ FROM alpine:3.20
 WORKDIR /app
 
 # Install ca-certificates, timezone data, psql client (migrations), and curl (healthcheck)
-RUN apk --no-cache add ca-certificates tzdata postgresql16-client curl
+RUN apk --no-cache add ca-certificates tzdata postgresql16-client curl bash
 
 # Create non-root user
 RUN addgroup -g 1001 -S appgroup && \
