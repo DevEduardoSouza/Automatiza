@@ -24,16 +24,16 @@ export function GroupNameForm({
   const defaultGroupName = t('pages.jobs.form.newNamePreviewDefault');
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 xs:space-y-4">
       <label
         htmlFor="auto-number-job"
-        className="flex items-center justify-between space-x-2 rounded-lg border p-4 cursor-pointer"
+        className="flex items-center justify-between space-x-2 rounded-lg border p-3 xs:p-4 cursor-pointer"
       >
         <div className="flex items-start space-x-3 flex-1">
-          <Hash className="h-5 w-5 mt-0.5 text-primary" />
+          <Hash className="h-4 w-4 xs:h-5 xs:w-5 mt-0.5 text-primary" />
           <div className="space-y-0.5">
-            <span className="font-medium text-sm">{t('pages.jobs.form.autoNumber')}</span>
-            <p className="text-sm text-muted-foreground">{t('pages.jobs.form.autoNumberHint')}</p>
+            <span className="font-medium text-xs xs:text-sm">{t('pages.jobs.form.autoNumber')}</span>
+            <p className="text-xs xs:text-sm text-muted-foreground">{t('pages.jobs.form.autoNumberHint')}</p>
           </div>
         </div>
         <Switch

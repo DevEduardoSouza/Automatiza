@@ -27,6 +27,11 @@ type GroupHistoryPublisher interface {
 	PublishHistoryChange(userID, historyID, status string)
 }
 
+// SyncProgressReader reads sync job progress from a persistent store (e.g. Redis).
+type SyncProgressReader interface {
+	GetSyncProgress(ctx context.Context, jobID string) (map[string]any, error)
+}
+
 // GroupsHandler implements the groupsv1connect.GroupsServiceHandler interface.
 type GroupsHandler struct {
 	groupRepo         repository.GroupRepository
@@ -37,6 +42,7 @@ type GroupsHandler struct {
 	asynqInspector    *asynq.Inspector
 	eventPublisher    GroupEventPublisher
 	historyPublisher  GroupHistoryPublisher
+	progressReader    SyncProgressReader
 }
 
 // NewGroupsHandler creates a new groups handler.
@@ -80,6 +86,20 @@ func WithGroupActionHistoryRepo(repo repository.ActionHistoryRepository) GroupsH
 func WithGroupHistoryPublisher(pub GroupHistoryPublisher) GroupsHandlerOption {
 	return func(h *GroupsHandler) {
 		h.historyPublisher = pub
+	}
+}
+
+// WithAsynqInspector sets the asynq inspector for checking job status.
+func WithAsynqInspector(inspector *asynq.Inspector) GroupsHandlerOption {
+	return func(h *GroupsHandler) {
+		h.asynqInspector = inspector
+	}
+}
+
+// WithSyncProgressReader sets the progress reader for real-time sync progress from Redis.
+func WithSyncProgressReader(reader SyncProgressReader) GroupsHandlerOption {
+	return func(h *GroupsHandler) {
+		h.progressReader = reader
 	}
 }
 
@@ -614,7 +634,36 @@ func (h *GroupsHandler) GetSyncStatus(
 
 	jobID := req.Msg.GetJobId()
 
-	// If we have an asynq inspector, use it to check job status
+	// 1. Try to read real-time progress from Redis (persisted by the worker)
+	if h.progressReader != nil {
+		progressData, err := h.progressReader.GetSyncProgress(ctx, jobID)
+		if err == nil && progressData != nil {
+			progress := int32(0)
+			if p, ok := progressData["progress"].(float64); ok {
+				progress = int32(p)
+			}
+			status := "active"
+			if s, ok := progressData["status"].(string); ok && s != "" {
+				status = s
+			}
+			total := int32(0)
+			if t, ok := progressData["total"].(float64); ok {
+				total = int32(t)
+			}
+			synced := int32(0)
+			if c, ok := progressData["current"].(float64); ok {
+				synced = int32(c)
+			}
+			return connect.NewResponse(&groupsv1.GetSyncStatusResponse{
+				Status:       status,
+				Progress:     progress,
+				TotalGroups:  &total,
+				GroupsSynced: synced,
+			}), nil
+		}
+	}
+
+	// 2. Fallback: use asynq inspector (no detailed progress)
 	if h.asynqInspector != nil {
 		info, err := h.asynqInspector.GetTaskInfo("default", jobID)
 		if err != nil {
@@ -635,11 +684,11 @@ func (h *GroupsHandler) GetSyncStatus(
 
 		return connect.NewResponse(&groupsv1.GetSyncStatusResponse{
 			Status:   status,
-			Progress: 0, // We don't track detailed progress yet
+			Progress: 0,
 		}), nil
 	}
 
-	// Without inspector, return unknown status
+	// Without inspector or progress reader, return unknown status
 	return connect.NewResponse(&groupsv1.GetSyncStatusResponse{
 		Status:   "unknown",
 		Progress: 0,

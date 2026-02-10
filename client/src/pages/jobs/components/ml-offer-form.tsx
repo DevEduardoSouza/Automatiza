@@ -27,7 +27,7 @@ export function MlOfferForm({
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 xs:space-y-4">
       <div className="space-y-2">
         <Label htmlFor="ml-url" className="cursor-pointer">
           {t('pages.jobs.form.mlUrl')}
@@ -44,11 +44,11 @@ export function MlOfferForm({
 
       <label
         htmlFor="ml-include-image"
-        className="flex items-center justify-between space-x-2 rounded-lg border p-4 cursor-pointer"
+        className="flex items-center justify-between space-x-2 rounded-lg border p-3 xs:p-4 cursor-pointer"
       >
         <div className="space-y-0.5">
-          <span className="font-medium text-sm">{t('pages.jobs.form.sendImage')}</span>
-          <p className="text-sm text-muted-foreground">{t('pages.jobs.form.sendImageHint')}</p>
+          <span className="font-medium text-xs xs:text-sm">{t('pages.jobs.form.sendImage')}</span>
+          <p className="text-xs xs:text-sm text-muted-foreground">{t('pages.jobs.form.sendImageHint')}</p>
         </div>
         <Switch
           id="ml-include-image"
@@ -67,8 +67,8 @@ export function MlOfferForm({
           placeholder={t('pages.jobs.form.dispatchTextPlaceholder')}
           value={payload}
           onChange={(e) => onPayloadChange(e.target.value)}
-          rows={5}
-          className="cursor-text"
+          rows={3}
+          className="cursor-text min-h-[70px] xs:min-h-[80px] lg:min-h-[130px] xl:min-h-[150px]"
         />
         <p className="text-xs text-muted-foreground">
           {t('pages.jobs.form.dispatchTextVariables')}

@@ -127,19 +127,19 @@ export function JobFormDialog({
           <span className="sm:hidden">{t('pages.jobs.newJobShort')}</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[85vh] xs:max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100vw-1rem)] xs:max-w-[calc(100vw-2rem)] sm:max-w-2xl xl:max-w-3xl 2xl:max-w-4xl max-h-[85vh] xs:max-h-[90vh] overflow-y-auto p-4 xs:p-5 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="text-lg md:text-xl">
+          <DialogTitle className="text-base xs:text-lg md:text-xl">
             {editingJobId ? t('pages.jobs.dialog.editTitle') : t('pages.jobs.dialog.createTitle')}
           </DialogTitle>
-          <DialogDescription className="text-sm">
+          <DialogDescription className="text-xs xs:text-sm">
             {editingJobId
               ? t('pages.jobs.dialog.editDescription')
               : t('pages.jobs.dialog.createDescription')}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
+        <div className="space-y-3 xs:space-y-4">
+          <div className="space-y-1.5 xs:space-y-2">
             <Label htmlFor="action-type" className="cursor-pointer">
               {t('pages.jobs.form.actionType')}
             </Label>
@@ -185,8 +185,8 @@ export function JobFormDialog({
             onToggleGroup={onToggleGroup}
           />
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+          <div className="grid gap-3 xs:gap-4 xs:grid-cols-2">
+            <div className="space-y-1.5 xs:space-y-2">
               <Label htmlFor="date" className="cursor-pointer">
                 {t('pages.jobs.form.date')}
               </Label>
@@ -198,7 +198,7 @@ export function JobFormDialog({
                 className="cursor-pointer"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5 xs:space-y-2">
               <Label htmlFor="time" className="cursor-pointer">
                 {t('pages.jobs.form.time')}
               </Label>
@@ -249,7 +249,7 @@ export function JobFormDialog({
           )}
 
           {actionType === 'update_description' && (
-            <div className="space-y-2">
+            <div className="space-y-1.5 xs:space-y-2">
               <Label htmlFor="payload" className="cursor-pointer">
                 {t('pages.jobs.form.newDescription')}
               </Label>
@@ -258,8 +258,8 @@ export function JobFormDialog({
                 placeholder={t('pages.jobs.form.newDescriptionPlaceholder')}
                 value={payload}
                 onChange={(e) => onPayloadChange(e.target.value)}
-                rows={4}
-                className="cursor-text"
+                rows={3}
+                className="cursor-text min-h-[70px] xs:min-h-[80px] lg:min-h-[120px]"
               />
             </div>
           )}
@@ -274,7 +274,7 @@ export function JobFormDialog({
           )}
 
           {actionType === 'change_group_photo' && (
-            <div className="space-y-2">
+            <div className="space-y-1.5 xs:space-y-2">
               <Label htmlFor="group-photo" className="cursor-pointer">
                 {t('pages.jobs.form.newPhoto')}
               </Label>
@@ -286,15 +286,15 @@ export function JobFormDialog({
                 className="cursor-pointer"
               />
               {mediaFile && (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs xs:text-sm text-muted-foreground truncate">
                   {t('pages.jobs.form.fileSelected')} {mediaFile.name}
                 </p>
               )}
             </div>
           )}
 
-          <Button onClick={onSubmit} className="w-full" disabled={isPending}>
-            <Calendar className="mr-2 h-4 w-4" />
+          <Button onClick={onSubmit} className="w-full h-9 xs:h-10 lg:h-11 text-sm lg:text-base" disabled={isPending}>
+            <Calendar className="mr-1.5 xs:mr-2 h-3.5 w-3.5 xs:h-4 xs:w-4" />
             {editingJobId
               ? isPending
                 ? t('pages.jobs.form.saving')

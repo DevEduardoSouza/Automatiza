@@ -817,13 +817,18 @@
         "execute": "Executar",
         "executing": "Executando...",
         "mention": "Mencionar",
-        "mentionAll": "Mencionar todos"
+        "mentionAll": "Mencionar todos",
+        "mentionSpecific": "Mencionar por número"
       },
       "form": {
         "message": "Mensagem",
         "searchMention": "Buscar menção...",
         "noOptionFound": "Nenhuma opção encontrada.",
         "mentionOptions": "Opções de Menção",
+        "mentionByNumber": "Mencionar por número",
+        "phonePlaceholder": "Ex: 5511999999999",
+        "addMention": "Adicionar",
+        "invalidPhone": "Digite um número válido (8-15 dígitos)",
         "messagePlaceholder": "Digite sua mensagem... Use @todos para mencionar todos"
       },
       "history": {
@@ -950,6 +955,8 @@
           "description": "Envie uma mensagem para os grupos selecionados",
           "mentionDetected": "Menção @todos detectada!",
           "mentionDescription": "Os participantes de cada grupo serão buscados dinamicamente no momento do envio. Certifique-se de que você tem permissão para visualizar os membros dos grupos.",
+          "individualMentionDetected": "Menções individuais detectadas!",
+          "individualMentionDescription": "Os números mencionados serão notificados em cada grupo onde estiverem presentes.",
           "enhancing": "Melhorando...",
           "enhanceWithAI": "Melhorar com IA",
           "attachMedia": "Anexar Mídia (Imagem/Vídeo)",
@@ -1785,6 +1792,8 @@
         "mention": "Mencionar",
         "mentionDetected": "Menção @todos detectada!",
         "mentionHint": "Os participantes de cada grupo serão buscados automaticamente no momento do envio. Certifique-se de que você tem permissão para visualizar os membros dos grupos.",
+        "individualMentionDetected": "Menções individuais detectadas!",
+        "individualMentionHint": "Os números mencionados serão notificados em cada grupo onde estiverem presentes.",
         "enhanceWithAI": "Melhorar com IA",
         "enhancing": "Melhorando...",
         "attachMedia": "Anexar Imagem/Vídeo (opcional)",

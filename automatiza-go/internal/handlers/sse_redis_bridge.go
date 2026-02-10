@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -232,6 +233,8 @@ func NewRedisJobProgressPublisher(bridge *SSERedisBridge, logger *zap.Logger) *R
 
 // PublishJobProgress implements workers.JobProgressPublisher.
 // Publishes job progress events to Redis so the server process can forward them via SSE.
+// Also persists the latest progress in a Redis key so the polling endpoint (GetSyncStatus)
+// can read real-time progress without relying on fire-and-forget Pub/Sub alone.
 func (p *RedisJobProgressPublisher) PublishJobProgress(userID string, data map[string]any) {
 	event := SSEEvent{
 		Type:   SSEEventJobStatus,
@@ -244,4 +247,43 @@ func (p *RedisJobProgressPublisher) PublishJobProgress(userID string, data map[s
 			zap.String("userID", userID),
 			zap.Error(err))
 	}
+
+	// Persist latest progress in a Redis key for polling (GetSyncStatus)
+	if jobID, ok := data["jobId"].(string); ok && jobID != "" {
+		progressJSON, err := json.Marshal(data)
+		if err == nil {
+			key := "sync_progress:" + jobID
+			p.bridge.redisClient.Set(context.Background(), key, progressJSON, 5*time.Minute)
+		}
+	}
+}
+
+// =============================================================================
+// RedisSyncProgressReader — server-side sync progress reader
+// =============================================================================
+
+// RedisSyncProgressReader reads sync job progress from Redis keys
+// persisted by RedisJobProgressPublisher. Used by the GetSyncStatus RPC
+// to return real-time progress data to the frontend polling endpoint.
+type RedisSyncProgressReader struct {
+	redisClient *redis.Client
+}
+
+// NewRedisSyncProgressReader creates a new Redis-backed sync progress reader.
+func NewRedisSyncProgressReader(redisClient *redis.Client) *RedisSyncProgressReader {
+	return &RedisSyncProgressReader{redisClient: redisClient}
+}
+
+// GetSyncProgress reads the latest progress data for a sync job from Redis.
+func (r *RedisSyncProgressReader) GetSyncProgress(ctx context.Context, jobID string) (map[string]any, error) {
+	key := "sync_progress:" + jobID
+	data, err := r.redisClient.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }

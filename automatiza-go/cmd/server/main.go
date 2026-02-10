@@ -533,8 +533,24 @@ func main() {
 	)
 	connectServer.RegisterService(dashboardPath, dashboardHTTPHandler)
 
+	// Create asynq inspector for GetSyncStatus polling endpoint
+	asynqInspectorServer := asynq.NewInspector(asynq.RedisClientOpt{Addr: redisAddr})
+	defer func() { _ = asynqInspectorServer.Close() }()
+
+	// Create sync progress reader for real-time progress from Redis
+	var syncProgressReader *handlers.RedisSyncProgressReader
+	if redisClient != nil {
+		syncProgressReader = handlers.NewRedisSyncProgressReader(redisClient.Client)
+	}
+
 	// Register groups service handler (requires auth)
-	groupsHandler := connectrpc.NewGroupsHandler(groupRepo, instanceRepo, wahaAdapter, queueClient, connectrpc.WithGroupEventPublisher(sseHub), connectrpc.WithGroupActionHistoryRepo(actionHistoryRepo), connectrpc.WithGroupHistoryPublisher(sseHub))
+	groupsHandler := connectrpc.NewGroupsHandler(groupRepo, instanceRepo, wahaAdapter, queueClient,
+		connectrpc.WithGroupEventPublisher(sseHub),
+		connectrpc.WithGroupActionHistoryRepo(actionHistoryRepo),
+		connectrpc.WithGroupHistoryPublisher(sseHub),
+		connectrpc.WithAsynqInspector(asynqInspectorServer),
+		connectrpc.WithSyncProgressReader(syncProgressReader),
+	)
 	groupsPath, groupsHTTPHandler := groupsv1connect.NewGroupsServiceHandler(
 		groupsHandler,
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),

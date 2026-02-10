@@ -28,7 +28,7 @@ export function PollOptionsForm({
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 xs:space-y-4">
       <div className="space-y-2">
         <Label htmlFor="poll-question" className="cursor-pointer">
           {t('pages.jobs.form.pollQuestion')}
@@ -38,15 +38,15 @@ export function PollOptionsForm({
           placeholder={t('pages.jobs.form.pollQuestionPlaceholder')}
           value={pollQuestion}
           onChange={(e) => onQuestionChange(e.target.value)}
-          rows={3}
-          className="cursor-text"
+          rows={2}
+          className="cursor-text min-h-[56px] xs:min-h-[70px] lg:min-h-[90px]"
         />
       </div>
 
       <div className="space-y-2">
         <Label className="cursor-default">{t('pages.jobs.form.pollOptions')}</Label>
         {pollOptions.map((option, index) => (
-          <div key={index} className="flex gap-2">
+          <div key={index} className="flex gap-1.5 xs:gap-2">
             <Input
               placeholder={t('pages.jobs.form.pollOptionPlaceholder', {
                 index: index + 1,
@@ -73,7 +73,7 @@ export function PollOptionsForm({
             type="button"
             variant="outline"
             onClick={onAddOption}
-            className="w-full cursor-pointer"
+            className="w-full cursor-pointer text-xs xs:text-sm h-8 xs:h-10"
           >
             <Plus className="mr-2 h-4 w-4" />
             {t('pages.jobs.form.addOption')}

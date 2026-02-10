@@ -19,8 +19,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
-import { AtSign, MessageSquare, Sparkles, Upload } from 'lucide-react';
-import type { ChangeEvent } from 'react';
+import { AtSign, MessageSquare, Plus, Sparkles, Upload } from 'lucide-react';
+import { type ChangeEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface GroupMessageDialogProps {
@@ -62,6 +62,15 @@ export function GroupMessageDialog({
   onNoGroupsSelected,
 }: GroupMessageDialogProps) {
   const { t } = useTranslation();
+  const [phoneInput, setPhoneInput] = useState('');
+
+  const handleAddPhoneMention = () => {
+    const cleaned = phoneInput.replace(/\D/g, '');
+    if (cleaned.length >= 8 && cleaned.length <= 15) {
+      onInsertMention(`@${cleaned} `);
+      setPhoneInput('');
+    }
+  };
 
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen && selectedGroupsCount === 0) {
@@ -96,7 +105,7 @@ export function GroupMessageDialog({
                     {t('pages.groups.actions.mention')}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[200px] p-0" align="end">
+                <PopoverContent className="w-[260px] p-0" align="end">
                   <Command>
                     <CommandInput placeholder={t('pages.groups.form.searchMention')} />
                     <CommandEmpty>{t('pages.groups.form.noOptionFound')}</CommandEmpty>
@@ -110,6 +119,35 @@ export function GroupMessageDialog({
                       </CommandItem>
                     </CommandGroup>
                   </Command>
+                  <div className="border-t p-3 space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {t('pages.groups.form.mentionByNumber')}
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        value={phoneInput}
+                        onChange={(e) => setPhoneInput(e.target.value)}
+                        placeholder={t('pages.groups.form.phonePlaceholder')}
+                        className="h-8 text-sm"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddPhoneMention();
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2 shrink-0"
+                        onClick={handleAddPhoneMention}
+                        disabled={phoneInput.replace(/\D/g, '').length < 8}
+                      >
+                        <Plus className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </div>
                 </PopoverContent>
               </Popover>
             </div>
@@ -127,6 +165,16 @@ export function GroupMessageDialog({
                 <AlertDescription className="text-blue-800">
                   <strong>{t('pages.groups.dialogs.sendMessage.mentionDetected')}</strong>{' '}
                   {t('pages.groups.dialogs.sendMessage.mentionDescription')}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {!message.includes('@todos') && /@\d{8,15}/.test(message) && (
+              <Alert className="bg-blue-50 border-blue-200">
+                <AtSign className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                <AlertDescription className="text-blue-800">
+                  <strong>{t('pages.groups.dialogs.sendMessage.individualMentionDetected')}</strong>{' '}
+                  {t('pages.groups.dialogs.sendMessage.individualMentionDescription')}
                 </AlertDescription>
               </Alert>
             )}

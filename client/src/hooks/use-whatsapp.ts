@@ -365,7 +365,7 @@ export function useWhatsApp(): UseWhatsAppReturn {
         data: {
           jobType?: string;
           jobId?: string;
-          group?: { id: string; name: string };
+          group?: { id: string; name: string; isAdmin?: boolean };
           progress?: number;
           current?: number;
           total?: number;

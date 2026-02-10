@@ -198,7 +198,7 @@ No card *Total de Membros* na pagina dashboard, coloque o seguinte icone: <svg x
 
 
 
-Sem quebrar nenhum breakpoint do tailwind, apenas adicionando novos. Ajuste a pagina */groups* para ficar extremamente responsiva, principalmente em dispositivos moveis e em telas grandes
+Sem quebrar nenhum breakpoint do tailwind, apenas adicionando novos. Ajuste o modal *Agendar Nova Ação* da página */jobs* para ficar extremamente responsiva, principalmente em dispositivos moveis e em telas grandes
 
 Melhore ainda mais a responsividade da pagina */dashboard*, ainda está quebrando em alguns tamanhos de tela, como muito pegueno e tamanhos medios
 

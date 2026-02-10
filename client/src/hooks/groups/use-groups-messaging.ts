@@ -169,6 +169,13 @@ export function useGroupsMessaging({
     const processedMessage = message;
     const hasMentionAll = message.includes('@todos');
 
+    // Detect individual @number mentions (e.g. @5511999999999)
+    const individualMentionMatches = message.match(/@(\d{8,15})/g);
+    const individualMentions = individualMentionMatches
+      ? individualMentionMatches.map((m) => m.slice(1))
+      : [];
+    const hasIndividualMentions = individualMentions.length > 0;
+
     let imageBase64: string | undefined = undefined;
     if (mediaFile) {
       try {
@@ -229,6 +236,9 @@ export function useGroupsMessaging({
             errorCount++;
             continue;
           }
+        } else if (hasIndividualMentions) {
+          // Build JIDs from individual phone numbers
+          mentions = individualMentions.map((num) => `${num}@s.whatsapp.net`);
         }
 
         // Use GroupsService for sending messages

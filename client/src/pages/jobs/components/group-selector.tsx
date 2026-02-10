@@ -78,7 +78,7 @@ export function GroupSelector({
           className="cursor-pointer"
         />
         <Label
-          className="text-sm font-normal cursor-pointer flex items-center gap-2 flex-1"
+          className="text-xs xs:text-sm font-normal cursor-pointer flex items-center gap-1.5 xs:gap-2 flex-1"
         >
           {group.is_favorite && <Star className="h-3 w-3 fill-[#8D2D53] text-[#8D2D53]" />}
           <span className={isSelectedButFiltered ? 'text-muted-foreground' : ''}>{group.name}</span>
@@ -104,7 +104,7 @@ export function GroupSelector({
           className="pl-9 cursor-text"
         />
       </div>
-      <div ref={parentRef} className="border rounded-lg p-3 xs:p-4 space-y-2 max-h-40 xs:max-h-48 lg:max-h-64 overflow-y-auto">
+      <div ref={parentRef} className="border rounded-lg p-2 xs:p-3 sm:p-4 space-y-1.5 xs:space-y-2 max-h-36 xs:max-h-44 sm:max-h-48 lg:max-h-64 xl:max-h-72 2xl:max-h-80 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-4">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />

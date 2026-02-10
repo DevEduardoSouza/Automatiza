@@ -316,8 +316,8 @@ func (r *jobRepository) Create(ctx context.Context, job *models.StandaloneJob) (
 	}
 
 	query := `
-		INSERT INTO jobs (id, user_id, action_type, scheduled_for, status, payload, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO jobs (id, user_id, type, action_type, scheduled_for, status, payload, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -326,6 +326,7 @@ func (r *jobRepository) Create(ctx context.Context, job *models.StandaloneJob) (
 	err := r.db.QueryRow(ctx, query,
 		job.ID,
 		job.UserID,
+		job.ActionType,
 		job.ActionType,
 		scheduledFor,
 		job.Status,
