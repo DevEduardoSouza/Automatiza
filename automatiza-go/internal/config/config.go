@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -172,6 +173,10 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("RATE_LIMIT_WINDOW_SEC", 60)
 	viper.SetDefault("RATE_LIMIT_BLOCK_SEC", 300) // 5 minutes
 
+	// Bind all struct fields to env vars so Unmarshal picks them up
+	// even when no .env file exists (e.g. Docker env_file)
+	bindStructEnvVars(Config{})
+
 	// Try to read config file (optional)
 	_ = viper.ReadInConfig()
 
@@ -186,6 +191,18 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// bindStructEnvVars registers all mapstructure-tagged fields with viper.BindEnv
+// so that Unmarshal reads OS environment variables even without a .env file.
+func bindStructEnvVars(s interface{}) {
+	t := reflect.TypeOf(s)
+	for i := 0; i < t.NumField(); i++ {
+		tag := t.Field(i).Tag.Get("mapstructure")
+		if tag != "" {
+			_ = viper.BindEnv(tag)
+		}
+	}
 }
 
 func validateConfig(cfg *Config) error {
