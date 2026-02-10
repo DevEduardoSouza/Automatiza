@@ -10,6 +10,7 @@ function Toaster({ ...props }: ToasterProps) {
 
   return (
     <Sonner
+      duration={5000}
       theme={theme as ToasterProps['theme']}
       className="toaster group"
       toastOptions={{

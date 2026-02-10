@@ -227,9 +227,82 @@ class="base xs:larger sm:even-larger md:desktop"
 
 ---
 
-## 7. Botões (shadcn/ui)
+## 7. Inputs
 
-### 7.1 Variantes
+### 7.1 Input com Ícone (Light Mode)
+
+```tsx
+<div>
+  <label
+    htmlFor="input-id"
+    className="mb-1.5 block text-xs lg:text-sm font-medium pl-2.5 text-gray-700"
+  >
+    {label}
+  </label>
+  <div className="relative">
+    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+      <Icon className="h-4 w-4" />
+    </div>
+    <input
+      id="input-id"
+      type="text"
+      placeholder="Placeholder..."
+      className="w-full py-2 pl-9 pr-3 text-xs xs:py-2.5 xs:pl-10 xs:pr-4 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none rounded-2xl !border-2 !border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30"
+    />
+  </div>
+</div>
+```
+
+### 7.2 Input com Ícone (Dark Mode)
+
+```tsx
+<input
+  className="w-full py-2 pl-9 pr-3 text-xs xs:py-2.5 xs:pl-10 xs:pr-4 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none rounded-lg bg-gray-900/50 text-gray-100 placeholder-gray-500 ring-1 ring-gray-600/30 focus:ring-2 focus:ring-gray-400/50"
+/>
+```
+
+### 7.3 Input com Toggle de Visibilidade (Password)
+
+```tsx
+<div className="relative">
+  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+    <LockIcon className="h-4 w-4" />
+  </div>
+  <input
+    type={showPassword ? 'text' : 'password'}
+    className="w-full py-2 pl-9 pr-10 text-xs xs:py-2.5 xs:pl-10 xs:pr-11 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none rounded-2xl !border-2 !border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30"
+  />
+  <button
+    type="button"
+    onClick={togglePasswordVisibility}
+    className="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 transition text-gray-400 hover:text-[#520B27]"
+  >
+    {showPassword ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+  </button>
+</div>
+```
+
+### 7.4 Especificações do Input
+
+| Propriedade | Light Mode | Dark Mode |
+|-------------|------------|-----------|
+| Border radius | `rounded-2xl` | `rounded-lg` |
+| Border | `!border-2 !border-gray-300` | `ring-1 ring-gray-600/30` |
+| Background | `bg-gray-50` | `bg-gray-900/50` |
+| Texto | `text-gray-900` | `text-gray-100` |
+| Placeholder | `placeholder-gray-400` | `placeholder-gray-500` |
+| Hover | `hover:!border-[#520B27]` | — |
+| Focus | `focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30` | `focus:ring-2 focus:ring-gray-400/50` |
+| Padding (base) | `py-2 pl-9 pr-3` | `py-2 pl-9 pr-3` |
+| Padding (xs) | `xs:py-2.5 xs:pl-10 xs:pr-4` | `xs:py-2.5 xs:pl-10 xs:pr-4` |
+| Padding (lg) | `lg:py-3` | `lg:py-3` |
+| Font size | `text-xs xs:text-sm lg:text-base` | `text-xs xs:text-sm lg:text-base` |
+
+---
+
+## 8. Botões
+
+### 8.1 Variantes (shadcn/ui)
 
 | Variante | Uso | Classes |
 |----------|-----|---------|
@@ -238,7 +311,7 @@ class="base xs:larger sm:even-larger md:desktop"
 | ghost | Ação terciária | `hover:bg-[#8D2D53] hover:text-white` |
 | destructive | Ação perigosa | `bg-destructive text-destructive-foreground` |
 
-### 7.2 Tamanhos
+### 8.2 Tamanhos (shadcn/ui)
 
 | Tamanho | Classes |
 |---------|---------|
@@ -247,9 +320,126 @@ class="base xs:larger sm:even-larger md:desktop"
 | lg | `h-11 rounded-md px-8` |
 | icon | `h-10 w-10` |
 
+### 8.3 Botão Primário com Animação Glow (Auth)
+
+Botão full-width com fundo escuro e efeito de glow animado no hover. Usado como CTA principal em páginas de autenticação.
+
+```tsx
+<button
+  type="submit"
+  disabled={loading}
+  aria-busy={loading}
+  className="auth-btn-glow relative mt-6 inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+>
+  <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+    <div className="auth-btn-glow__glow absolute inset-0" />
+  </div>
+  <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+    <Icon className="h-4 w-4" />
+    {label}
+  </span>
+</button>
+```
+
+#### CSS necessário (`index.css`)
+
+```css
+@keyframes auth-glow-move {
+  0%   { transform: translate(-55%); }
+  100% { transform: translate(55%); }
+}
+
+@keyframes auth-glow-pulse {
+  0%, 100% { opacity: 0; }
+  15%      { opacity: 1; }
+  65%      { opacity: 0; }
+}
+
+.auth-btn-glow {
+  background: linear-gradient(135deg, rgb(26, 26, 26) 0%, rgb(10, 10, 10) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.auth-btn-glow:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 0 0 2px rgba(244, 63, 94, 0.3);
+}
+
+.auth-btn-glow__loader {
+  mask: repeating-linear-gradient(90deg, transparent 0, transparent 6px, black 7px, black 8px);
+}
+
+.auth-btn-glow__glow {
+  background-image:
+    radial-gradient(circle at 50% 50%, #f43f5e 0%, transparent 50%),
+    radial-gradient(circle at 45% 45%, #ef4444 0%, transparent 45%),
+    radial-gradient(circle at 55% 55%, #fb7185 0%, transparent 45%),
+    radial-gradient(circle at 45% 55%, #f87171 0%, transparent 45%),
+    radial-gradient(circle at 55% 45%, #dc2626 0%, transparent 45%);
+  mask: radial-gradient(circle at 50% 50%, transparent 0%, transparent 10%, black 25%);
+  opacity: 0;
+}
+
+.auth-btn-glow:hover .auth-btn-glow__glow {
+  opacity: 1;
+  animation:
+    auth-glow-move 2s infinite alternate cubic-bezier(0.6, 0.8, 0.5, 1),
+    auth-glow-pulse 4s infinite cubic-bezier(0.6, 0.8, 0.5, 1);
+  filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.6));
+}
+```
+
+### 8.4 Botão Secundário (Auth)
+
+Botão outline full-width com elevação no hover. Usado como ação alternativa (ex: "Entrar com Magic Link", "Voltar").
+
+```tsx
+{/* Light Mode */}
+<button
+  type="button"
+  className="inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold transition-all !border !border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:!border-gray-400 hover:shadow-md"
+>
+  <Icon className="h-4 w-4" />
+  {label}
+</button>
+
+{/* Dark Mode — reutiliza a classe auth-btn-glow */}
+<button
+  type="button"
+  className="auth-btn-glow inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all"
+>
+  <Icon className="h-4 w-4" />
+  {label}
+</button>
+```
+
+### 8.5 Especificações dos Botões Auth
+
+| Propriedade | Primário (Glow) | Secundário (Light) | Secundário (Dark) |
+|-------------|-----------------|---------------------|---------------------|
+| Border radius | `rounded-full` | `rounded-full` | `rounded-full` |
+| Background | Gradient escuro | `bg-white` | Gradient escuro (via `auth-btn-glow`) |
+| Texto | `text-white` | `text-[#520B27]` | `text-white` |
+| Border | `rgba(255,255,255,0.1)` | `!border-gray-300` | `rgba(255,255,255,0.1)` |
+| Hover | `translateY(-2px)` + glow | `translateY(-0.5)` + shadow | `translateY(-2px)` + glow |
+| Padding (base) | `px-4 py-2` | `px-4 py-2` | `px-4 py-2` |
+| Padding (xs) | `xs:px-5 xs:py-2.5` | `xs:px-5 xs:py-2.5` | `xs:px-5 xs:py-2.5` |
+| Padding (lg) | `lg:py-3` | `lg:py-3` | `lg:py-3` |
+| Font | `font-semibold text-xs xs:text-sm lg:text-base` | Idem | Idem |
+| Disabled | `disabled:cursor-not-allowed disabled:opacity-50` | — | — |
+
 ---
 
-## 8. Badges
+## 9. Badges
 
 ```html
 <!-- Success -->
@@ -264,7 +454,7 @@ class="base xs:larger sm:even-larger md:desktop"
 
 ---
 
-## 9. Period Selector (Tab Style)
+## 10. Period Selector (Tab Style)
 
 ```html
 <div
@@ -288,9 +478,9 @@ class="base xs:larger sm:even-larger md:desktop"
 
 ---
 
-## 10. Ícones SVG Customizados
+## 11. Ícones SVG Customizados
 
-### 10.1 Padrão de Ícone
+### 11.1 Padrão de Ícone
 
 ```tsx
 const CustomIcon: LucideIcon = ({ className, ...props }) => (
@@ -314,9 +504,9 @@ const CustomIcon: LucideIcon = ({ className, ...props }) => (
 
 ---
 
-## 11. Dark Mode
+## 12. Dark Mode
 
-### 11.1 Variáveis CSS para Dark Mode
+### 12.1 Variáveis CSS para Dark Mode
 
 - Background muda para `336 78% 18%`
 - Primary muda para orange `34 94% 51%`
@@ -324,9 +514,9 @@ const CustomIcon: LucideIcon = ({ className, ...props }) => (
 
 ---
 
-## 12. Animações
+## 13. Animações
 
-### 12.1 Animações Definidas
+### 13.1 Animações Definidas
 
 | Nome | Duração | Uso |
 |------|---------|-----|
@@ -337,7 +527,7 @@ const CustomIcon: LucideIcon = ({ className, ...props }) => (
 
 ---
 
-## 13. Checklist para Novas Páginas
+## 14. Checklist para Novas Páginas
 
 - [ ] Usar container principal com border e rounded-xl
 - [ ] Aplicar paleta wine para cards de estatísticas

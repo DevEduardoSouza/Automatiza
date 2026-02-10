@@ -7,7 +7,7 @@
 .PHONY: help dev dev-client dev-go dev-worker build lint format test clean \
         sonar-up sonar-down sonar-logs sonar-clean \
         proto-generate proto-lint proto-breaking proto-deps install \
-        db-up db-down db-reset db-migrate db-shell db-logs \
+        db-up db-down db-reset db-migrate db-shell db-logs db-wait \
         waha-up waha-down waha-logs \
         deploy deploy-status deploy-logs deploy-rollback
 
@@ -51,7 +51,7 @@ help: ## Show this help message
 # Development
 # =============================================================================
 
-dev: db-up waha-up ## Start all services (DB + WAHA + Backend + Worker + Frontend)
+dev: db-up db-wait waha-up ## Start all services (DB + WAHA + Backend + Worker + Frontend)
 	@echo "$(GREEN)Starting backend...$(RESET)"
 	@cd automatiza-go && go run ./cmd/server/main.go &
 	@sleep 2
@@ -90,6 +90,14 @@ dev-all: db-up waha-up ## Start everything (DB + WAHA + Backend + Worker + Front
 db-up: ## Start PostgreSQL + Redis
 	@echo "$(GREEN)Starting database services...$(RESET)"
 	@cd automatiza-go && docker compose up -d postgres redis
+
+db-wait: ## Wait for PostgreSQL to accept connections
+	@printf "$(YELLOW)Waiting for PostgreSQL..."
+	@until cd automatiza-go && docker compose exec -T postgres pg_isready -U $${POSTGRES_USER:-automatiza} -d $${POSTGRES_DB:-automatiza} > /dev/null 2>&1; do \
+		printf "."; \
+		sleep 1; \
+	done
+	@echo " ready!$(RESET)"
 
 db-down: ## Stop PostgreSQL + Redis
 	@echo "$(YELLOW)Stopping database services...$(RESET)"

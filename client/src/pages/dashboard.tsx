@@ -307,14 +307,14 @@ export default function Dashboard() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col w-full h-full">
+      <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         {/* Main Dashboard Card */}
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
           {/* Header */}
-          <div className="flex items-center mb-5 xs:mb-6 sm:mb-8">
+          <div className="flex items-center mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
             <div className="flex items-center gap-2 xs:gap-3">
               <div
                 className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
@@ -323,7 +323,7 @@ export default function Dashboard() {
                 <DashboardIcon className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
               </div>
               <h2
-                className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight"
+                className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
                 style={{ color: '#18181b' }}
               >
                 {t('pages.dashboard.title')}
@@ -334,7 +334,7 @@ export default function Dashboard() {
           {/* Announcement */}
           {announcement.enabled && (
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 mb-5 xs:mb-6 sm:mb-8"
+              className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8 mb-5 xs:mb-6 sm:mb-8 lg:mb-10"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
               <div className="flex items-center gap-2 xs:gap-3 mb-2 xs:mb-3">
@@ -367,12 +367,12 @@ export default function Dashboard() {
           )}
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 xs:gap-4 sm:gap-6 md:gap-8 mb-5 xs:mb-6 sm:mb-8">
+          <div className="grid grid-cols-1 xs:grid-cols-2 xl:grid-cols-4 gap-3 xs:gap-4 sm:gap-6 md:gap-8 xl:gap-6 mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
             {isLoading ? (
               Array.from({ length: 4 }).map((_, index) => (
                 <div
                   key={`skeleton-${index}`}
-                  className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+                  className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6"
                   style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
                 >
                   <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
@@ -387,7 +387,7 @@ export default function Dashboard() {
               <>
                 {/* Total Groups */}
                 <div
-                  className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 transition-all cursor-default group"
+                  className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 transition-all cursor-default group"
                   style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = colors.wineBgHover;
@@ -437,7 +437,7 @@ export default function Dashboard() {
 
                 {/* Full Groups */}
                 <div
-                  className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 transition-all cursor-default"
+                  className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 transition-all cursor-default"
                   style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = colors.wineBgHover;
@@ -487,7 +487,7 @@ export default function Dashboard() {
 
                 {/* Total Members */}
                 <div
-                  className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 transition-all cursor-default"
+                  className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 transition-all cursor-default"
                   style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = colors.wineBgHover;
@@ -537,7 +537,7 @@ export default function Dashboard() {
 
                 {/* Active Links */}
                 <div
-                  className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 transition-all cursor-default"
+                  className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 transition-all cursor-default"
                   style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = colors.wineBgHover;
@@ -599,10 +599,10 @@ export default function Dashboard() {
 
           {/* Welcome Panel */}
           <div
-            className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 transition-all"
+            className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8 transition-all"
             style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
           >
-            <div className="flex items-center gap-2 xs:gap-3 mb-4 xs:mb-5 sm:mb-6">
+            <div className="flex items-center gap-2 xs:gap-3 mb-4 xs:mb-5 sm:mb-6 lg:mb-8">
               <div
                 className="p-1.5 xs:p-2 rounded-lg border"
                 style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
@@ -626,13 +626,13 @@ export default function Dashboard() {
             </div>
 
             <div
-              className="h-px mb-4 xs:mb-5 sm:mb-6"
+              className="h-px mb-4 xs:mb-5 sm:mb-6 lg:mb-8"
               style={{ backgroundColor: colors.wineBorder }}
             />
 
-            <div className="grid gap-3 xs:gap-4 grid-cols-1 xs:grid-cols-2 md:grid-cols-3">
+            <div className="grid gap-3 xs:gap-4 lg:gap-6 grid-cols-1 xs:grid-cols-2 md:grid-cols-3">
               <div
-                className="p-3 xs:p-4 rounded-lg xs:rounded-xl border transition-all hover:opacity-90"
+                className="p-3 xs:p-4 lg:p-6 rounded-lg xs:rounded-xl lg:rounded-2xl border transition-all hover:opacity-90"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
                 <div className="flex items-start justify-between mb-1.5 xs:mb-2">
@@ -651,7 +651,7 @@ export default function Dashboard() {
                 </p>
               </div>
               <div
-                className="p-3 xs:p-4 rounded-lg xs:rounded-xl border transition-all hover:opacity-90"
+                className="p-3 xs:p-4 lg:p-6 rounded-lg xs:rounded-xl lg:rounded-2xl border transition-all hover:opacity-90"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
                 <div className="flex items-start justify-between mb-1.5 xs:mb-2">
@@ -673,7 +673,7 @@ export default function Dashboard() {
                 </p>
               </div>
               <div
-                className="p-3 xs:p-4 rounded-lg xs:rounded-xl border transition-all hover:opacity-90 xs:col-span-2 md:col-span-1"
+                className="p-3 xs:p-4 lg:p-6 rounded-lg xs:rounded-xl lg:rounded-2xl border transition-all hover:opacity-90 xs:col-span-2 md:col-span-1"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
                 <div className="flex items-start justify-between mb-1.5 xs:mb-2">
@@ -699,11 +699,11 @@ export default function Dashboard() {
 
           {/* Growth Chart */}
           <div
-            className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 mt-5 xs:mt-6 sm:mt-8"
+            className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8 mt-5 xs:mt-6 sm:mt-8 lg:mt-10"
             style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
           >
             {/* Chart Header */}
-            <div className="flex flex-col gap-3 xs:gap-4 mb-4 xs:mb-5 sm:mb-6">
+            <div className="flex flex-col gap-3 xs:gap-4 lg:gap-5 mb-4 xs:mb-5 sm:mb-6 lg:mb-8">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 xs:gap-3">
                   <div
@@ -763,7 +763,7 @@ export default function Dashboard() {
                       key={period}
                       type="button"
                       onClick={() => setChartPeriod(period)}
-                      className="flex-1 xs:flex-none px-2.5 xs:px-4 py-1 xs:py-1.5 rounded-md xs:rounded-lg text-xs xs:text-sm font-medium transition-all"
+                      className="flex-1 xs:flex-none px-2.5 xs:px-4 lg:px-5 py-1 xs:py-1.5 lg:py-2 rounded-md xs:rounded-lg lg:rounded-xl text-xs xs:text-sm lg:text-base font-medium transition-all"
                       style={{
                         backgroundColor: chartPeriod === period ? colors.wine : 'transparent',
                         color: chartPeriod === period ? '#ffffff' : colors.wineTextMuted,
@@ -792,7 +792,7 @@ export default function Dashboard() {
             </div>
 
             {/* Chart */}
-            <div className="h-[200px] xs:h-[250px] sm:h-[300px] w-full [&_.recharts-wrapper]:outline-none [&_.recharts-surface]:outline-none">
+            <div className="h-[200px] xs:h-[250px] sm:h-[300px] lg:h-[350px] xl:h-[400px] 2xl:h-[450px] w-full [&_.recharts-wrapper]:outline-none [&_.recharts-surface]:outline-none">
               {historyLoading ? (
                 <div className="h-full flex items-center justify-center">
                   <div className="text-sm" style={{ color: colors.wineTextMuted }}>
@@ -885,41 +885,41 @@ export default function Dashboard() {
 
             {/* Chart Footer Stats */}
             <div
-              className="h-px my-4 xs:my-5 sm:my-6"
+              className="h-px my-4 xs:my-5 sm:my-6 lg:my-8"
               style={{ backgroundColor: colors.wineBorder }}
             />
-            <div className="grid grid-cols-3 gap-2 xs:gap-3 sm:gap-4">
+            <div className="grid grid-cols-3 gap-2 xs:gap-3 sm:gap-4 lg:gap-6">
               <div className="text-center">
                 <div
-                  className="text-lg xs:text-xl sm:text-2xl font-semibold"
+                  className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-semibold"
                   style={{ color: '#18181b' }}
                 >
                   {chartStats.growthRate >= 0 ? '+' : ''}
                   {chartStats.growthRate}%
                 </div>
-                <div className="text-[10px] xs:text-xs" style={{ color: colors.wineTextMuted }}>
+                <div className="text-[10px] xs:text-xs sm:text-sm" style={{ color: colors.wineTextMuted }}>
                   {t('pages.dashboard.chart.growthRate')}
                 </div>
               </div>
               <div className="text-center">
                 <div
-                  className="text-lg xs:text-xl sm:text-2xl font-semibold"
+                  className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-semibold"
                   style={{ color: '#18181b' }}
                 >
                   {chartStats.peakMembers.toLocaleString()}
                 </div>
-                <div className="text-[10px] xs:text-xs" style={{ color: colors.wineTextMuted }}>
+                <div className="text-[10px] xs:text-xs sm:text-sm" style={{ color: colors.wineTextMuted }}>
                   {t('pages.dashboard.chart.peakMembers')}
                 </div>
               </div>
               <div className="text-center">
                 <div
-                  className="text-lg xs:text-xl sm:text-2xl font-semibold"
+                  className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-semibold"
                   style={{ color: '#18181b' }}
                 >
                   {chartStats.activeGroups.toLocaleString()}
                 </div>
-                <div className="text-[10px] xs:text-xs" style={{ color: colors.wineTextMuted }}>
+                <div className="text-[10px] xs:text-xs sm:text-sm" style={{ color: colors.wineTextMuted }}>
                   {t('pages.dashboard.chart.activeGroups')}
                 </div>
               </div>
