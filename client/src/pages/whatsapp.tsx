@@ -1,8 +1,5 @@
 import { ErrorBoundary } from '@/components/error-boundary';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { useWhatsApp } from '@/hooks/use-whatsapp';
@@ -18,6 +15,23 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const colors = {
+  wine: '#8D2D53',
+  wineBg: 'rgba(141, 45, 83, 0.08)',
+  wineBgHover: 'rgba(141, 45, 83, 0.12)',
+  wineBorder: 'rgba(141, 45, 83, 0.2)',
+  wineText: '#8D2D53',
+  wineTextLight: 'rgba(141, 45, 83, 0.7)',
+  wineTextMuted: 'rgba(141, 45, 83, 0.6)',
+  iconBg: 'rgba(141, 45, 83, 0.1)',
+  iconBgHover: 'rgba(141, 45, 83, 0.15)',
+};
+
+const statusColors = {
+  connected: { iconBg: 'rgba(34,197,94,0.1)', iconBorder: 'rgba(34,197,94,0.2)', icon: '#22c55e' },
+  error: { iconBg: 'rgba(239,68,68,0.1)', iconBorder: 'rgba(239,68,68,0.2)', icon: '#ef4444' },
+};
 
 type ConnectionState =
   | 'disconnected'
@@ -79,38 +93,93 @@ export default function WhatsApp() {
 
   return (
     <ErrorBoundary>
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-4xl font-bold">{t('pages.whatsapp.title')}</h1>
-          <p className="text-muted-foreground mt-2">{t('pages.whatsapp.subtitle')}</p>
+      <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
+        <div
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10"
+          style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
+        >
+          {/* Header */}
+          <div className="flex items-center mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
+            <div className="flex items-center gap-2 xs:gap-3">
+              <div
+                className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
+                style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
+              >
+                <Smartphone className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
+              </div>
+              <div>
+                <h2
+                  className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight"
+                  style={{ color: '#18181b' }}
+                >
+                  {t('pages.whatsapp.title')}
+                </h2>
+                <p
+                  className="text-xs xs:text-sm tracking-tight"
+                  style={{ color: colors.wineTextMuted }}
+                >
+                  {t('pages.whatsapp.subtitle')}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Warning Alert */}
+          <div
+            className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 mb-5 xs:mb-6 sm:mb-8 lg:mb-10"
+            style={{
+              backgroundColor: 'rgba(234, 179, 8, 0.06)',
+              borderColor: 'rgba(234, 179, 8, 0.2)',
+            }}
+          >
+            <div className="flex items-center gap-2 xs:gap-3 mb-2 xs:mb-3">
+              <div
+                className="p-1.5 xs:p-2 rounded-lg"
+                style={{ backgroundColor: 'rgba(234, 179, 8, 0.1)' }}
+              >
+                <AlertCircle
+                  className="w-4 h-4 xs:w-5 xs:h-5"
+                  style={{ color: '#ca8a04' }}
+                />
+              </div>
+              <span
+                className="text-base xs:text-lg font-semibold tracking-tight"
+                style={{ color: '#18181b' }}
+              >
+                {t('pages.whatsapp.warning.title')}
+              </span>
+            </div>
+            <p
+              className="text-xs xs:text-sm leading-relaxed"
+              style={{ color: '#71717a' }}
+            >
+              {t('pages.whatsapp.warning.message')}
+            </p>
+          </div>
+
+          {/* Connection Card */}
+          <div className="flex justify-center mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
+            <ConnectionCard
+              state={connectionState}
+              qrCode={qrCode}
+              qrCountdown={qrCountdown}
+              importing={importing}
+              importProgress={importProgress}
+              importedGroups={importedGroups}
+              autoSync={autoSync}
+              lastSync={lastSync}
+              onConnect={handleConnect}
+              onDisconnect={disconnectInstance}
+              onReconnect={refreshQrCode}
+              onRefreshQr={refreshQrCode}
+              onImportGroups={() => handleImportGroups(false)}
+              onAutoSyncToggle={handleAutoSyncToggle}
+            />
+          </div>
+
+          {/* How It Works */}
+          <HowItWorksCard />
         </div>
-
-        <Alert variant="warning">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>{t('pages.whatsapp.warning.title')}</AlertTitle>
-          <AlertDescription>{t('pages.whatsapp.warning.message')}</AlertDescription>
-        </Alert>
-
-        <div className="flex justify-center">
-          <ConnectionCard
-            state={connectionState}
-            qrCode={qrCode}
-            qrCountdown={qrCountdown}
-            importing={importing}
-            importProgress={importProgress}
-            importedGroups={importedGroups}
-            autoSync={autoSync}
-            lastSync={lastSync}
-            onConnect={handleConnect}
-            onDisconnect={disconnectInstance}
-            onReconnect={refreshQrCode}
-            onRefreshQr={refreshQrCode}
-            onImportGroups={() => handleImportGroups(false)}
-            onAutoSyncToggle={handleAutoSyncToggle}
-          />
-        </div>
-
-        <HowItWorksCard />
       </div>
     </ErrorBoundary>
   );
@@ -152,22 +221,34 @@ function ConnectionCard({
   const { t } = useTranslation();
 
   return (
-    <Card className="shadow-card border-0 w-full max-w-lg">
-      <CardHeader className="pb-2">
-        <div className="flex items-center gap-4 mb-2">
-          <StatusIcon state={state} />
-          <div>
-            <CardTitle className="text-xl">
-              <StatusTitle state={state} />
-            </CardTitle>
-            <CardDescription>
-              <StatusDescription state={state} />
-            </CardDescription>
+    <div
+      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 w-full max-w-lg"
+      style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-3 xs:gap-4 mb-3 xs:mb-4">
+        <StatusIcon state={state} />
+        <div>
+          <div
+            className="text-base xs:text-lg font-semibold tracking-tight"
+            style={{ color: '#18181b' }}
+          >
+            <StatusTitle state={state} />
+          </div>
+          <div
+            className="text-xs xs:text-sm tracking-tight"
+            style={{ color: colors.wineTextMuted }}
+          >
+            <StatusDescription state={state} />
           </div>
         </div>
-      </CardHeader>
+      </div>
 
-      <CardContent className="space-y-6">
+      {/* Divider */}
+      <div className="h-px mb-4 xs:mb-5" style={{ backgroundColor: colors.wineBorder }} />
+
+      {/* Content */}
+      <div className="space-y-4 xs:space-y-5 sm:space-y-6">
         {state === 'disconnecting' && <DisconnectingContent />}
 
         {state === 'verifying' && <VerifyingContent onDisconnect={onDisconnect} />}
@@ -196,55 +277,112 @@ function ConnectionCard({
             onDisconnect={onDisconnect}
           />
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
 function StatusIcon({ state }: { state: ConnectionState }) {
-  const iconWrapperClass = 'p-3 rounded-lg';
+  const baseClass = 'p-2 xs:p-2.5 rounded-lg xs:rounded-xl border';
 
   switch (state) {
     case 'connected':
       return (
-        <div className={`${iconWrapperClass} bg-green-500/10`}>
-          <CheckCircle2 className="h-8 w-8 text-green-500" />
+        <div
+          className={baseClass}
+          style={{
+            backgroundColor: statusColors.connected.iconBg,
+            borderColor: statusColors.connected.iconBorder,
+          }}
+        >
+          <CheckCircle2
+            className="h-6 w-6 xs:h-7 xs:w-7 sm:h-8 sm:w-8"
+            style={{ color: statusColors.connected.icon }}
+          />
         </div>
       );
     case 'connecting':
       return (
-        <div className={`${iconWrapperClass} bg-primary/10`}>
-          <Smartphone className="h-8 w-8 text-primary" />
+        <div
+          className={baseClass}
+          style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
+        >
+          <Smartphone
+            className="h-6 w-6 xs:h-7 xs:w-7 sm:h-8 sm:w-8"
+            style={{ color: colors.wine }}
+          />
         </div>
       );
     case 'verifying':
       return (
-        <div className={`${iconWrapperClass} bg-muted relative`}>
-          <Wifi className="h-8 w-8 text-muted-foreground" />
-          <div className="absolute -bottom-1 -right-1 rounded-full bg-background p-0.5">
-            <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
+        <div
+          className={`${baseClass} relative`}
+          style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
+        >
+          <Wifi
+            className="h-6 w-6 xs:h-7 xs:w-7 sm:h-8 sm:w-8"
+            style={{ color: colors.wineTextMuted }}
+          />
+          <div
+            className="absolute -bottom-1 -right-1 rounded-full p-0.5"
+            style={{ backgroundColor: '#ffffff' }}
+          >
+            <Loader2
+              className="h-4 w-4 animate-spin"
+              style={{ color: colors.wineTextMuted }}
+            />
           </div>
         </div>
       );
     case 'disconnecting':
       return (
-        <div className={`${iconWrapperClass} bg-destructive/10 relative`}>
-          <Unplug className="h-8 w-8 text-destructive" />
-          <div className="absolute -bottom-1 -right-1 rounded-full bg-background p-0.5">
-            <Loader2 className="h-4 w-4 text-destructive animate-spin" />
+        <div
+          className={`${baseClass} relative`}
+          style={{
+            backgroundColor: statusColors.error.iconBg,
+            borderColor: statusColors.error.iconBorder,
+          }}
+        >
+          <Unplug
+            className="h-6 w-6 xs:h-7 xs:w-7 sm:h-8 sm:w-8"
+            style={{ color: statusColors.error.icon }}
+          />
+          <div
+            className="absolute -bottom-1 -right-1 rounded-full p-0.5"
+            style={{ backgroundColor: '#ffffff' }}
+          >
+            <Loader2
+              className="h-4 w-4 animate-spin"
+              style={{ color: statusColors.error.icon }}
+            />
           </div>
         </div>
       );
     case 'error':
       return (
-        <div className={`${iconWrapperClass} bg-destructive/10`}>
-          <XCircle className="h-8 w-8 text-destructive" />
+        <div
+          className={baseClass}
+          style={{
+            backgroundColor: statusColors.error.iconBg,
+            borderColor: statusColors.error.iconBorder,
+          }}
+        >
+          <XCircle
+            className="h-6 w-6 xs:h-7 xs:w-7 sm:h-8 sm:w-8"
+            style={{ color: statusColors.error.icon }}
+          />
         </div>
       );
     default:
       return (
-        <div className={`${iconWrapperClass} bg-muted`}>
-          <WifiOff className="h-8 w-8 text-muted-foreground" />
+        <div
+          className={baseClass}
+          style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
+        >
+          <WifiOff
+            className="h-6 w-6 xs:h-7 xs:w-7 sm:h-8 sm:w-8"
+            style={{ color: colors.wineTextMuted }}
+          />
         </div>
       );
   }
@@ -292,9 +430,12 @@ function DisconnectingContent() {
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-col items-center py-8">
-      <Loader2 className="h-12 w-12 text-destructive animate-spin mb-4" />
-      <p className="text-sm text-muted-foreground">
+    <div className="flex flex-col items-center py-6 xs:py-8">
+      <Loader2
+        className="h-12 w-12 animate-spin mb-4"
+        style={{ color: colors.wine }}
+      />
+      <p className="text-xs xs:text-sm tracking-tight" style={{ color: colors.wineTextMuted }}>
         {t('pages.whatsapp.disconnecting.message', 'Desconectando...')}
       </p>
     </div>
@@ -310,9 +451,12 @@ function VerifyingContent({ onDisconnect }: VerifyingContentProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col items-center py-8">
-        <Loader2 className="h-12 w-12 text-muted-foreground animate-spin mb-4" />
-        <p className="text-sm text-muted-foreground">
+      <div className="flex flex-col items-center py-6 xs:py-8">
+        <Loader2
+          className="h-12 w-12 animate-spin mb-4"
+          style={{ color: colors.wineTextMuted }}
+        />
+        <p className="text-xs xs:text-sm tracking-tight" style={{ color: colors.wineTextMuted }}>
           {t('pages.whatsapp.verifying.message', 'Verificando status da conexão...')}
         </p>
       </div>
@@ -324,7 +468,8 @@ function VerifyingContent({ onDisconnect }: VerifyingContentProps) {
           e.stopPropagation();
           onDisconnect();
         }}
-        className="w-full gap-2 cursor-pointer relative z-10 text-red-700 hover:bg-red-700 hover:text-white"
+        className="w-full gap-2 xs:gap-2.5 cursor-pointer relative z-10"
+        style={{ color: colors.wine, borderColor: colors.wineBorder }}
       >
         <Unplug className="h-4 w-4" />
         {t('pages.whatsapp.connected.disconnect')}
@@ -342,8 +487,8 @@ function DisconnectedContent({ onConnect }: DisconnectedContentProps) {
 
   return (
     <div className="space-y-4">
-      <Button onClick={onConnect} size="lg" className="w-full gap-2">
-        <Wifi className="h-5 w-5" />
+      <Button onClick={onConnect} size="lg" className="w-full gap-2 xs:gap-2.5">
+        <Wifi className="h-4 w-4 xs:h-5 xs:w-5" />
         {t('pages.whatsapp.disconnected.generateQR')}
       </Button>
     </div>
@@ -369,43 +514,64 @@ function ConnectingContent({
     <div className="space-y-4">
       {qrCode ? (
         <div className="flex flex-col items-center">
-          <div className="bg-white p-4 rounded-xl shadow-lg">
-            <img src={qrCode} alt="QR Code" className="w-64 h-64" />
+          <div
+            className="p-3 xs:p-4 rounded-xl xs:rounded-2xl border"
+            style={{
+              borderColor: colors.wineBorder,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+              backgroundColor: '#ffffff',
+            }}
+          >
+            <img src={qrCode} alt="QR Code" className="w-56 h-56 xs:w-64 xs:h-64" />
           </div>
 
           <div className="mt-4 w-full">
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-muted-foreground">
+            <div className="flex items-center justify-between text-xs xs:text-sm mb-2">
+              <span style={{ color: colors.wineTextMuted }}>
                 {t('pages.whatsapp.qrCode.expiresIn', { seconds: qrCountdown })}
               </span>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onRefreshQr}
-                className="h-8 gap-1 text-xs cursor-pointer text-red-700 hover:bg-red-700 hover:text-white"
+                className="h-8 gap-1 text-xs cursor-pointer"
+                style={{ color: colors.wine }}
               >
                 <RefreshCw className="h-3 w-3" />
                 {t('common.refresh')}
               </Button>
             </div>
-            <Progress value={(qrCountdown / 30) * 100} className="h-2 bg-muted" />
+            <Progress
+              value={(qrCountdown / 30) * 100}
+              className={`h-2 ${(qrCountdown / 30) * 100 === 0 ? '[&>div]:bg-transparent' : ''}`}
+              style={{ backgroundColor: 'rgba(141,45,83,0.1)' }}
+            />
           </div>
 
-          <p className="text-xs text-muted-foreground mt-4 text-center">
+          <p
+            className="text-[10px] xs:text-xs mt-4 text-center tracking-tight"
+            style={{ color: colors.wineTextMuted }}
+          >
             {t('pages.whatsapp.qrCode.waiting')}
           </p>
         </div>
       ) : (
-        <div className="flex flex-col items-center py-8">
-          <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
-          <p className="text-sm text-muted-foreground">{t('pages.whatsapp.qrCode.generating')}</p>
+        <div className="flex flex-col items-center py-6 xs:py-8">
+          <Loader2
+            className="h-12 w-12 animate-spin mb-4"
+            style={{ color: colors.wine }}
+          />
+          <p className="text-xs xs:text-sm tracking-tight" style={{ color: colors.wineTextMuted }}>
+            {t('pages.whatsapp.qrCode.generating')}
+          </p>
         </div>
       )}
 
       <Button
         variant="outline"
         onClick={onDisconnect}
-        className="w-full gap-2 cursor-pointer text-red-700 hover:bg-red-700 hover:text-white"
+        className="w-full gap-2 xs:gap-2.5 cursor-pointer"
+        style={{ color: colors.wine, borderColor: colors.wineBorder }}
       >
         <Unplug className="h-4 w-4" />
         {t('pages.whatsapp.connected.disconnect')}
@@ -442,12 +608,22 @@ function ConnectedContent({
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Badge className="bg-gradient-success w-full justify-center py-2">
-          <CheckCircle2 className="h-4 w-4 mr-2" />
+        <div
+          className="flex items-center justify-center gap-2 w-full py-2 rounded-full border text-xs xs:text-sm font-medium"
+          style={{
+            backgroundColor: 'rgba(34,197,94,0.1)',
+            borderColor: 'rgba(34,197,94,0.2)',
+            color: '#16a34a',
+          }}
+        >
+          <CheckCircle2 className="h-4 w-4" />
           {t('pages.whatsapp.success.connectedMessage')}
-        </Badge>
+        </div>
         {lastSync && (
-          <p className="text-xs text-muted-foreground text-center">
+          <p
+            className="text-[10px] xs:text-xs text-center tracking-tight"
+            style={{ color: colors.wineTextMuted }}
+          >
             {t('pages.whatsapp.connected.lastSync')}: {lastSync.toLocaleString()}
           </p>
         )}
@@ -458,8 +634,9 @@ function ConnectedContent({
       <Button
         onClick={onImportGroups}
         variant="outline"
-        className="w-full gap-2"
+        className="w-full gap-2 xs:gap-2.5"
         disabled={importing}
+        style={{ color: colors.wine, borderColor: colors.wineBorder }}
       >
         <RefreshCw className={`h-4 w-4 ${importing ? 'animate-spin' : ''}`} />
         {importing
@@ -469,12 +646,13 @@ function ConnectedContent({
 
       <AutoSyncToggle autoSync={autoSync} onToggle={onAutoSyncToggle} />
 
-      <div className="flex gap-2 pt-2">
+      <div className="flex gap-2 xs:gap-3 pt-2">
         <Button
           variant="outline"
           onClick={onReconnect}
           disabled={importing}
-          className="flex-1 gap-2 cursor-pointer text-red-700 hover:bg-red-700 hover:text-white"
+          className="flex-1 gap-2 xs:gap-2.5 cursor-pointer"
+          style={{ color: colors.wine, borderColor: colors.wineBorder }}
         >
           <RefreshCw className="h-4 w-4" />
           {t('pages.whatsapp.connected.reconnect')}
@@ -482,7 +660,8 @@ function ConnectedContent({
         <Button
           variant="outline"
           onClick={onDisconnect}
-          className="flex-1 gap-2 cursor-pointer text-red-700 hover:bg-red-700 hover:text-white"
+          className="flex-1 gap-2 xs:gap-2.5 cursor-pointer"
+          style={{ color: colors.wine, borderColor: colors.wineBorder }}
         >
           <Unplug className="h-4 w-4" />
           {t('pages.whatsapp.connected.disconnect')}
@@ -503,23 +682,34 @@ function ImportingProgress({ progress, importedGroups }: ImportingProgressProps)
   return (
     <div className="space-y-3">
       <div className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">{t('pages.whatsapp.connected.importing')}</span>
-          <span className="font-medium">{progress}%</span>
+        <div className="flex justify-between text-xs xs:text-sm">
+          <span style={{ color: colors.wineTextMuted }}>{t('pages.whatsapp.connected.importing')}</span>
+          <span className="font-medium" style={{ color: colors.wine }}>{progress}%</span>
         </div>
         <Progress
           value={progress}
-          className={`h-2 border border-border bg-gray-200 ${progress === 0 ? '[&>div]:bg-transparent' : ''}`}
+          className={`h-2 border ${progress === 0 ? '[&>div]:bg-transparent' : ''}`}
+          style={{ backgroundColor: 'rgba(141,45,83,0.1)', borderColor: colors.wineBorder }}
         />
       </div>
 
       {importedGroups.length > 0 && (
-        <div className="space-y-2 max-h-32 overflow-y-auto bg-muted/30 rounded-lg p-3">
-          <p className="text-xs font-medium text-muted-foreground">
+        <div
+          className="space-y-2 max-h-32 overflow-y-auto rounded-lg xs:rounded-xl border p-2.5 xs:p-3"
+          style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
+        >
+          <p
+            className="uppercase text-[10px] xs:text-xs tracking-[0.1em] font-medium"
+            style={{ color: colors.wineTextLight }}
+          >
             {t('pages.whatsapp.connected.importGroups')} ({importedGroups.length}):
           </p>
           {importedGroups.map((group) => (
-            <p key={group} className="text-xs text-muted-foreground truncate">
+            <p
+              key={group}
+              className="text-[10px] xs:text-xs truncate tracking-tight"
+              style={{ color: colors.wineTextMuted }}
+            >
               ✓ {group}
             </p>
           ))}
@@ -538,10 +728,18 @@ function AutoSyncToggle({ autoSync, onToggle }: AutoSyncToggleProps) {
   const { t } = useTranslation();
 
   return (
-    <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+    <div
+      className="flex items-center justify-between border rounded-lg xs:rounded-xl p-3 xs:p-4"
+      style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
+    >
       <div className="space-y-0.5">
-        <p className="text-sm font-medium">{t('pages.whatsapp.connected.autoSync.title')}</p>
-        <p className="text-xs text-muted-foreground">
+        <p
+          className="text-xs xs:text-sm font-semibold tracking-tight"
+          style={{ color: '#18181b' }}
+        >
+          {t('pages.whatsapp.connected.autoSync.title')}
+        </p>
+        <p className="text-[10px] xs:text-xs tracking-tight" style={{ color: colors.wineTextMuted }}>
           {autoSync
             ? t('pages.whatsapp.connected.autoSync.enabled')
             : t('pages.whatsapp.connected.autoSync.disabled')}
@@ -551,7 +749,12 @@ function AutoSyncToggle({ autoSync, onToggle }: AutoSyncToggleProps) {
         variant={autoSync ? 'default' : 'outline'}
         size="sm"
         onClick={onToggle}
-        className={`cursor-pointer hover:bg-red-700 hover:text-white ${autoSync ? 'text-white' : 'text-red-700'}`}
+        className="cursor-pointer"
+        style={
+          autoSync
+            ? { backgroundColor: colors.wine }
+            : { color: colors.wine, borderColor: colors.wineBorder }
+        }
       >
         {autoSync
           ? t('pages.whatsapp.connected.autoSync.activated')
@@ -565,24 +768,53 @@ function HowItWorksCard() {
   const { t } = useTranslation();
 
   return (
-    <Card className="shadow-card border-0 w-full">
-      <CardHeader>
-        <CardTitle>{t('pages.whatsapp.howItWorks.title')}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5, 6].map((step) => (
-            <div key={step} className="flex items-start gap-3">
-              <div className="shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
-                <span className="text-xs font-semibold text-primary">{step}</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {t(`pages.whatsapp.howItWorks.steps_${step}`)}
-              </p>
-            </div>
-          ))}
+    <div
+      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8"
+      style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
+        <div
+          className="p-1.5 xs:p-2 rounded-lg"
+          style={{ backgroundColor: colors.iconBg }}
+        >
+          <AlertCircle className="w-4 h-4 xs:w-5 xs:h-5" style={{ color: colors.wine }} />
         </div>
-      </CardContent>
-    </Card>
+        <span
+          className="text-base xs:text-lg font-semibold tracking-tight"
+          style={{ color: '#18181b' }}
+        >
+          {t('pages.whatsapp.howItWorks.title')}
+        </span>
+      </div>
+
+      {/* Divider */}
+      <div className="h-px mb-4 xs:mb-5" style={{ backgroundColor: colors.wineBorder }} />
+
+      {/* Steps */}
+      <div className="space-y-3 xs:space-y-4">
+        {[1, 2, 3, 4, 5, 6].map((step) => (
+          <div key={step} className="flex items-start gap-2.5 xs:gap-3">
+            <div
+              className="shrink-0 w-6 h-6 xs:w-7 xs:h-7 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: colors.iconBg }}
+            >
+              <span
+                className="text-[10px] xs:text-xs font-semibold"
+                style={{ color: colors.wine }}
+              >
+                {step}
+              </span>
+            </div>
+            <p
+              className="text-xs xs:text-sm tracking-tight leading-relaxed"
+              style={{ color: '#71717a' }}
+            >
+              {t(`pages.whatsapp.howItWorks.steps_${step}`)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

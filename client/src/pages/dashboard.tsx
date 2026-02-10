@@ -211,7 +211,7 @@ const TotalMembersIcon: LucideIcon = ({ className, ...props }) => (
 );
 
 import { type HistoryPeriod, useDashboardHistory } from '@/hooks/use-dashboard-connect';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Area,
@@ -250,6 +250,20 @@ export default function Dashboard() {
   // Chart period state
   const [chartPeriod, setChartPeriod] = useState<HistoryPeriod>('weekly');
   const { data: historyData, isLoading: historyLoading } = useDashboardHistory(chartPeriod);
+
+  // Responsive chart font size
+  const [chartFontSize, setChartFontSize] = useState(12);
+
+  const updateFontSize = useCallback(() => {
+    const w = window.innerWidth;
+    setChartFontSize(w < 480 ? 9 : w < 768 ? 10 : 12);
+  }, []);
+
+  useEffect(() => {
+    updateFontSize();
+    window.addEventListener('resize', updateFontSize);
+    return () => window.removeEventListener('resize', updateFontSize);
+  }, [updateFontSize]);
 
   // Transform history data for Recharts
   const chartData = useMemo(() => {
@@ -310,7 +324,7 @@ export default function Dashboard() {
       <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         {/* Main Dashboard Card */}
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
           {/* Header */}
@@ -367,7 +381,7 @@ export default function Dashboard() {
           )}
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 xs:grid-cols-2 xl:grid-cols-4 gap-3 xs:gap-4 sm:gap-6 md:gap-8 xl:gap-6 mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
+          <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 xs:gap-4 sm:gap-5 lg:gap-5 xl:gap-6 mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
             {isLoading ? (
               Array.from({ length: 4 }).map((_, index) => (
                 <div
@@ -753,7 +767,7 @@ export default function Dashboard() {
                 </div>
               </div>
               {/* Period Selector - Full width on mobile */}
-              <div className="flex items-center justify-between xs:justify-start gap-3 xs:gap-4">
+              <div className="flex flex-col xs:flex-row items-start xs:items-center gap-2 xs:gap-4">
                 <div
                   className="flex items-center p-0.5 xs:p-1 rounded-lg xs:rounded-xl w-full xs:w-auto"
                   style={{ backgroundColor: 'rgba(141, 45, 83, 0.06)' }}
@@ -827,13 +841,13 @@ export default function Dashboard() {
                       dataKey="label"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: 'rgba(141, 45, 83, 0.6)', fontSize: 12 }}
+                      tick={{ fill: 'rgba(141, 45, 83, 0.6)', fontSize: chartFontSize }}
                       dy={10}
                     />
                     <YAxis
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: 'rgba(141, 45, 83, 0.6)', fontSize: 12 }}
+                      tick={{ fill: 'rgba(141, 45, 83, 0.6)', fontSize: chartFontSize }}
                       dx={-10}
                     />
                     <Tooltip
@@ -888,7 +902,7 @@ export default function Dashboard() {
               className="h-px my-4 xs:my-5 sm:my-6 lg:my-8"
               style={{ backgroundColor: colors.wineBorder }}
             />
-            <div className="grid grid-cols-3 gap-2 xs:gap-3 sm:gap-4 lg:gap-6">
+            <div className="grid grid-cols-1 xs:grid-cols-3 gap-2 xs:gap-3 sm:gap-4 lg:gap-6">
               <div className="text-center">
                 <div
                   className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-semibold"
