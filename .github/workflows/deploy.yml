@@ -159,18 +159,21 @@ jobs:
           echo "=== Logging into GHCR ==="
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+          echo "=== Logging into Docker Hub (WAHA) ==="
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u devlikeapro --password-stdin
+
           echo "=== Setting image tags ==="
           export BACKEND_IMAGE="${{ env.IMAGE_PREFIX }}/backend:${VERSION}"
           export FRONTEND_IMAGE="${{ env.IMAGE_PREFIX }}/frontend:${VERSION}"
 
           echo "=== Pulling images ==="
-          docker compose pull
+          docker compose pull server worker frontend postgres redis waha
 
           echo "=== Running migrations ==="
           docker compose run --rm migrate
 
           echo "=== Starting services ==="
-          docker compose up -d server worker frontend
+          docker compose up -d postgres redis waha server worker frontend
 
           echo "=== Waiting for health ==="
           sleep 5

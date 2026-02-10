@@ -46,7 +46,7 @@ services:
   # WAHA Plus (WhatsApp API)
   # =============================================================================
   waha:
-    image: devlikeapro/waha-plus:latest
+    image: devlikeapro/waha-plus:gows
     container_name: automatiza-waha
     restart: unless-stopped
     environment:
@@ -75,7 +75,7 @@ services:
   # Database Migrations (run on-demand via `docker compose run migrate`)
   # =============================================================================
   migrate:
-    image: ${BACKEND_IMAGE:-ghcr.io/bruno-vilefort-tech-consulting/carlos-automatisa/backend:latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/deveduardosouza/automatiza/backend:latest}
     container_name: automatiza-migrate
     profiles: ["tools"]
     entrypoint: ["sh", "-c"]
@@ -101,7 +101,7 @@ services:
   # Backend Server
   # =============================================================================
   server:
-    image: ${BACKEND_IMAGE:-ghcr.io/bruno-vilefort-tech-consulting/carlos-automatisa/backend:latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/deveduardosouza/automatiza/backend:latest}
     container_name: automatiza-server
     restart: unless-stopped
     env_file: .env
@@ -131,7 +131,7 @@ services:
   # Background Worker
   # =============================================================================
   worker:
-    image: ${BACKEND_IMAGE:-ghcr.io/bruno-vilefort-tech-consulting/carlos-automatisa/backend:latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/deveduardosouza/automatiza/backend:latest}
     container_name: automatiza-worker
     restart: unless-stopped
     command: ["./server", "--worker"]
@@ -155,7 +155,7 @@ services:
   # Frontend (nginx SPA)
   # =============================================================================
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/bruno-vilefort-tech-consulting/carlos-automatisa/frontend:latest}
+    image: ${FRONTEND_IMAGE:-ghcr.io/deveduardosouza/automatiza/frontend:latest}
     container_name: automatiza-frontend
     restart: unless-stopped
     ports:

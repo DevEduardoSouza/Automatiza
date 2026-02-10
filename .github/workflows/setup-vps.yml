@@ -196,7 +196,10 @@ jobs:
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'DOCKER'
+          sshpass -e ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << DOCKER
+            echo "=== Logging into Docker Hub (WAHA) ==="
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u devlikeapro --password-stdin
+
             cd /opt/automatiza/docker
             docker compose up -d postgres redis waha
 
