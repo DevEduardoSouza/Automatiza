@@ -180,22 +180,23 @@ jobs:
           docker compose ps
           DEPLOY
 
-      - name: External health check
-        continue-on-error: true
+      - name: Health check via SSH
         run: |
           echo "Waiting for services to stabilize..."
           sleep 10
-          for i in {1..5}; do
-            if curl -sf https://${{ vars.DOMAIN }}/api/v1/health; then
-              echo ""
-              echo "Backend is healthy!"
-              exit 0
-            fi
-            echo "Attempt $i/5 failed, retrying in 5s..."
-            sleep 5
-          done
-          echo "Health check failed after 5 attempts"
-          exit 1
+          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+            for i in 1 2 3 4 5; do
+              if curl -sf http://localhost:3000/api/v1/health; then
+                echo ""
+                echo "Backend is healthy!"
+                exit 0
+              fi
+              echo "Attempt $i/5 failed, retrying in 5s..."
+              sleep 5
+            done
+            echo "Health check failed after 5 attempts"
+            exit 1
+          '
 
       - name: Notify on failure
         if: failure()
