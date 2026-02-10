@@ -183,18 +183,25 @@ jobs:
       - name: Health check via SSH
         run: |
           echo "Waiting for services to stabilize..."
-          sleep 10
+          sleep 15
           ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+            cd /opt/automatiza/docker
             for i in 1 2 3 4 5; do
               if curl -sf http://localhost:3000/api/v1/health; then
                 echo ""
                 echo "Backend is healthy!"
                 exit 0
               fi
-              echo "Attempt $i/5 failed, retrying in 5s..."
-              sleep 5
+              echo "Attempt $i/5 failed, retrying in 10s..."
+              sleep 10
             done
-            echo "Health check failed after 5 attempts"
+            echo "=== HEALTH CHECK FAILED - DEBUG INFO ==="
+            echo "--- Container status ---"
+            docker compose ps
+            echo "--- Server logs (last 50 lines) ---"
+            docker compose logs server --tail=50
+            echo "--- Worker logs (last 20 lines) ---"
+            docker compose logs worker --tail=20
             exit 1
           '
 
