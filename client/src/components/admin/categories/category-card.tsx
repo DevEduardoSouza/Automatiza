@@ -74,10 +74,10 @@ export function CategoryCard({
 
   return (
     <div
-      className={cn('rounded-xl border', !category.isActive && 'opacity-60')}
+      className={cn('rounded-lg xs:rounded-xl border', !category.isActive && 'opacity-60')}
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
-      <div className="p-4">
+      <div className="p-3 xs:p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {category.hasRefinements && (
@@ -143,7 +143,7 @@ export function CategoryCard({
       {/* Subcategories section */}
       {category.hasRefinements && isExpanded && (
         <div className="pt-0 pb-4 px-4">
-          <div className="space-y-3 pl-8 border-l ml-3">
+          <div className="space-y-2 xs:space-y-3 pl-6 xs:pl-8 border-l ml-2 xs:ml-3">
             {sortedGroups.map((groupName) => (
               <div key={groupName} className="space-y-1">
                 <div

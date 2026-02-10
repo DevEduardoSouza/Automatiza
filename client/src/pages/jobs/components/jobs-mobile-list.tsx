@@ -45,20 +45,20 @@ export function JobsMobileList({
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 xs:space-y-4">
       {jobs.map((job) => {
         const config = getStatusBadgeConfig(job.status);
         return (
           <div
             key={job.id}
-            className="rounded-xl xs:rounded-2xl border p-3 xs:p-4 space-y-3"
+            className="rounded-xl xs:rounded-2xl border p-3 xs:p-4 sm:p-5 space-y-3"
             style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
           >
             <div className="flex items-start justify-between">
               <div className="space-y-1 flex-1">
-                <p className="font-semibold text-base">{getActionLabel(job.action_type)}</p>
+                <p className="font-semibold text-sm xs:text-base">{getActionLabel(job.action_type)}</p>
                 <div
-                  className="flex items-center gap-2 text-sm"
+                  className="flex items-center gap-1.5 xs:gap-2 text-xs xs:text-sm"
                   style={{ color: colors.wineTextMuted }}
                 >
                   <Clock className="h-4 w-4" style={{ color: colors.wineTextMuted }} />
@@ -78,7 +78,7 @@ export function JobsMobileList({
                 )}
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col xs:flex-row gap-2">
               <Button variant="outline" size="sm" onClick={() => onEditJob(job)} className="flex-1">
                 {t('pages.jobs.table.editSchedule')}
               </Button>

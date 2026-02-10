@@ -415,7 +415,7 @@ export function CategoriesSection({
         {t('pages.offerAutomations.form.categoriesHint', { general: GENERAL_CATEGORY })}
       </p>
       <Card>
-        <CardContent className="pt-4 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+        <CardContent className="pt-4 grid grid-cols-2 xl:grid-cols-3 gap-2 lg:gap-3 max-h-40 lg:max-h-52 xl:max-h-60 overflow-y-auto">
           {categoryList.map((cat) => {
             const refinementKey = getRefinementKey(cat);
             const showRefinementToggle = hasRefinements(cat) && refinementKey;

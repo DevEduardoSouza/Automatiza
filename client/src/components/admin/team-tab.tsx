@@ -57,10 +57,10 @@ export default function TeamTab() {
   return (
     <div className="space-y-4">
       <div
-        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+        className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
         style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
       >
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-3 xs:mb-4">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-3 xs:mb-4 sm:mb-5">
           <div>
             <span
               className="text-xs xs:text-sm font-semibold uppercase tracking-[0.1em]"
@@ -117,11 +117,11 @@ export default function TeamTab() {
               {t('admin.team.noAdmins')}
             </div>
           ) : isMobile ? (
-            <div className="space-y-3">
+            <div className="space-y-2 xs:space-y-3">
               {teamMembers.map((member) => (
                 <div
                   key={member.id}
-                  className="rounded-xl border p-3 space-y-3"
+                  className="rounded-lg xs:rounded-xl border p-2.5 xs:p-3 space-y-2 xs:space-y-3"
                   style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -149,7 +149,7 @@ export default function TeamTab() {
               ))}
             </div>
           ) : (
-            <div className="border rounded-lg">
+            <div className="border rounded-lg lg:rounded-xl">
               <Table aria-label={t('admin.team.tableAriaLabel')}>
                 <TableHeader>
                   <TableRow>

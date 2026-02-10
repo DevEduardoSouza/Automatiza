@@ -30,7 +30,6 @@ func (a *webhookLogAdapter) GetRecent(ctx context.Context, source string, limit 
 			Source:    log.Source,
 			EventType: log.EventType,
 			Email:     log.Email,
-			Plan:      log.Plan,
 			Status:    log.Status,
 			CreatedAt: log.CreatedAt,
 		}

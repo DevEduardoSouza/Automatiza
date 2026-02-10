@@ -88,6 +88,15 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 		return fmt.Errorf("instance not connected: %s", sessionInfo.Status)
 	}
 
+	// Log session info for admin detection debugging
+	if sessionInfo.AuthenticatedUser != nil {
+		w.logger.Info("Session authenticated user",
+			zap.String("meID", sessionInfo.AuthenticatedUser.ID),
+			zap.String("mePhone", whatsapp.ExtractPhoneFromID(sessionInfo.AuthenticatedUser.ID)))
+	} else {
+		w.logger.Warn("Session has no AuthenticatedUser (Me is nil)")
+	}
+
 	// 3. Fetch groups from WhatsApp via WhatsAppProvider
 	groupInfos, err := w.whatsappProvider.GetGroups(ctx, data.InstanceName)
 	if err != nil {
@@ -120,28 +129,69 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 
 		// Check if user is admin in this group
 		participants, err := w.whatsappProvider.GetGroupParticipants(ctx, data.InstanceName, gi.ID)
-		if err == nil {
-			if sessionInfo.AuthenticatedUser != nil {
-				// Compare by phone number only since WAHA uses different suffixes:
-				// Me.ID = "5511999999999@c.us", participant.ID = "5511999999999@s.whatsapp.net"
-				sessionPhone := whatsapp.ExtractPhoneFromID(sessionInfo.AuthenticatedUser.ID)
-				for _, p := range participants {
-					participantPhone := whatsapp.ExtractPhoneFromID(p.ID)
-					if participantPhone == sessionPhone && (p.IsAdmin || p.IsSuperAdmin) {
-						group.IsAdmin = true
-						break
-					}
+		if err != nil {
+			w.logger.Warn("Failed to get participants",
+				zap.String("groupID", gi.ID), zap.String("groupName", gi.Subject), zap.Error(err))
+		} else {
+			w.logger.Info("Got participants for group",
+				zap.String("groupID", gi.ID), zap.String("groupName", gi.Subject),
+				zap.Int("count", len(participants)))
+			for j, p := range participants {
+				if j >= 3 {
+					break
 				}
-			} else {
-				// Fallback: check embedded participants from GetGroups response
-				for _, p := range gi.Participants {
-					if p.IsAdmin || p.IsSuperAdmin {
-						group.IsAdmin = true
-						break
-					}
-				}
+				w.logger.Debug("Participant sample",
+					zap.String("groupName", gi.Subject),
+					zap.String("pID", p.ID),
+					zap.String("pPhone", p.PhoneNumber),
+					zap.Bool("isAdmin", p.IsAdmin),
+					zap.Bool("isSuperAdmin", p.IsSuperAdmin))
 			}
 		}
+		if err == nil && sessionInfo.AuthenticatedUser != nil {
+			// WAHA GOWS returns participant IDs in @lid format (e.g. "56243167223861@lid")
+			// while Me.ID uses @c.us format (e.g. "5511999999999@c.us").
+			// The /participants/v2 endpoint resolves LIDs to phone numbers in the PhoneNumber field,
+			// so we compare using PhoneNumber (which has the actual phone) instead of ID.
+			sessionPhone := whatsapp.ExtractPhoneFromID(sessionInfo.AuthenticatedUser.ID)
+			for _, p := range participants {
+				participantPhone := p.PhoneNumber
+				if participantPhone == "" {
+					// PhoneNumber not resolved (LID mapping failed) — try extracting from ID
+					participantPhone = whatsapp.ExtractPhoneFromID(p.ID)
+				}
+				if participantPhone == sessionPhone {
+					w.logger.Info("Found session user in group",
+						zap.String("groupName", gi.Subject),
+						zap.String("participantID", p.ID),
+						zap.String("participantPhone", participantPhone),
+						zap.Bool("isAdmin", p.IsAdmin),
+						zap.Bool("isSuperAdmin", p.IsSuperAdmin))
+				}
+				if participantPhone == sessionPhone && (p.IsAdmin || p.IsSuperAdmin) {
+					group.IsAdmin = true
+					break
+				}
+			}
+		} else if err == nil {
+			// AuthenticatedUser is nil — use embedded participants from GetGroups
+			// and match by phone number extracted from participant IDs
+			for _, p := range gi.Participants {
+				if p.IsAdmin || p.IsSuperAdmin {
+					// Without session user context, we can't determine if WE are admin.
+					// Skip — is_admin stays false (safe default).
+					break
+				}
+			}
+		} else {
+			w.logger.Warn("Failed to get group participants, skipping admin check",
+				zap.String("groupID", gi.ID),
+				zap.Error(err))
+		}
+
+		w.logger.Info("Admin detection result",
+			zap.String("groupName", gi.Subject),
+			zap.Bool("isAdmin", group.IsAdmin))
 
 		groups = append(groups, group)
 
@@ -151,9 +201,10 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 			w.progressPub.PublishJobProgress(data.UserID, map[string]any{
 				"jobType": "groups_sync",
 				"jobId":   taskID,
-				"group": map[string]string{
-					"id":   gi.ID,
-					"name": gi.Subject,
+				"group": map[string]any{
+					"id":      gi.ID,
+					"name":    gi.Subject,
+					"isAdmin": group.IsAdmin,
 				},
 				"progress": progress,
 				"current":  i + 1,

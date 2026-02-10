@@ -175,7 +175,7 @@ export function SessionList() {
   if (loading) {
     return (
       <div
-        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
         style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
       >
         <span
@@ -184,7 +184,7 @@ export function SessionList() {
         >
           {t('pages.profile.sessions.title')}
         </span>
-        <div className="flex items-center justify-center py-8">
+        <div className="flex items-center justify-center py-8 lg:py-12">
           <Loader2 className="h-6 w-6 animate-spin" style={{ color: colors.wineTextMuted }} />
         </div>
       </div>
@@ -193,10 +193,10 @@ export function SessionList() {
 
   return (
     <div
-      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
-      <div className="flex items-center justify-between mb-3 xs:mb-4">
+      <div className="flex items-center justify-between mb-3 xs:mb-4 sm:mb-5">
         <div>
           <span
             className="text-xs xs:text-sm font-semibold uppercase tracking-[0.1em]"
@@ -204,7 +204,7 @@ export function SessionList() {
           >
             {t('pages.profile.sessions.title')}
           </span>
-          <p className="text-sm mt-0.5" style={{ color: colors.wineTextMuted }}>
+          <p className="text-sm xs:text-base mt-0.5" style={{ color: colors.wineTextMuted }}>
             {t('pages.profile.sessions.description', { count: sessions.length })}
           </p>
         </div>
@@ -239,7 +239,7 @@ export function SessionList() {
           </AlertDialog>
         )}
       </div>
-      <div className="space-y-3 xs:space-y-4">
+      <div className="space-y-3 xs:space-y-4 sm:space-y-5">
         {sessions.map((session) => {
           const device = getDeviceInfo(session.userAgent);
           const DeviceIcon = device.icon;
@@ -248,7 +248,7 @@ export function SessionList() {
           return (
             <div
               key={session.sessionId}
-              className="flex items-center justify-between rounded-xl xs:rounded-2xl border p-3 xs:p-4 transition-all"
+              className="flex items-center justify-between rounded-xl xs:rounded-2xl border p-3 xs:p-4 sm:p-5 transition-all"
               style={{
                 backgroundColor: colors.wineBg,
                 borderColor: colors.wineBorder,
@@ -260,7 +260,7 @@ export function SessionList() {
                 e.currentTarget.style.backgroundColor = colors.wineBg;
               }}
             >
-              <div className="flex items-center gap-3 xs:gap-4">
+              <div className="flex items-center gap-3 xs:gap-4 sm:gap-5">
                 <div
                   className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
                   style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
@@ -269,7 +269,7 @@ export function SessionList() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm xs:text-base">
+                    <span className="font-medium text-sm xs:text-base lg:text-lg">
                       {browser} - {device.label}
                     </span>
                     {session.isCurrent && (
@@ -282,7 +282,7 @@ export function SessionList() {
                     )}
                   </div>
                   <div
-                    className="flex flex-wrap gap-2 text-[10px] xs:text-xs"
+                    className="flex flex-wrap gap-2 text-[10px] xs:text-xs sm:text-sm"
                     style={{ color: colors.wineTextMuted }}
                   >
                     <span>{session.ipAddress || t('pages.profile.sessions.unknownIP')}</span>
@@ -328,7 +328,7 @@ export function SessionList() {
           );
         })}
         {sessions.length === 0 && (
-          <p className="text-center text-sm py-4" style={{ color: colors.wineTextMuted }}>
+          <p className="text-center text-sm xs:text-base py-4 lg:py-8" style={{ color: colors.wineTextMuted }}>
             {t('pages.profile.sessions.noSessions')}
           </p>
         )}

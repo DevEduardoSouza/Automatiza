@@ -97,10 +97,10 @@ export function ObservabilityCard({ data, loading, onRefresh }: ObservabilityCar
 
   return (
     <div
-      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+      className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-3 xs:mb-4">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-3 xs:mb-4 sm:mb-5">
         <div>
           <span
             className="text-xs xs:text-sm font-semibold uppercase tracking-[0.1em]"
@@ -134,7 +134,7 @@ export function ObservabilityCard({ data, loading, onRefresh }: ObservabilityCar
             </div>
 
             {/* Queue Stats */}
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <div className="grid gap-3 xs:gap-4 grid-cols-2 md:grid-cols-4">
               <div
                 className="rounded-xl border p-3 xs:p-4"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
@@ -188,7 +188,7 @@ export function ObservabilityCard({ data, loading, onRefresh }: ObservabilityCar
             </div>
 
             {/* Automation Stats */}
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <div className="grid gap-3 xs:gap-4 grid-cols-2 md:grid-cols-4">
               <div
                 className="rounded-xl border p-3 xs:p-4"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
@@ -243,7 +243,7 @@ export function ObservabilityCard({ data, loading, onRefresh }: ObservabilityCar
             </div>
 
             {/* LB Mapped */}
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <div className="grid gap-3 xs:gap-4 grid-cols-2 md:grid-cols-4">
               <div
                 className="rounded-xl border p-3 xs:p-4"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
@@ -263,7 +263,7 @@ export function ObservabilityCard({ data, loading, onRefresh }: ObservabilityCar
             </div>
 
             {/* Dispatch Logs */}
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+            <div className="grid gap-3 xs:gap-4 grid-cols-1 md:grid-cols-2">
               <div
                 className="rounded-xl border p-3 xs:p-4"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}

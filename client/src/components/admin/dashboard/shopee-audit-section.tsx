@@ -39,10 +39,10 @@ export function ShopeeAuditSection({
 
   return (
     <div
-      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+      className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-3 xs:mb-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-3 xs:mb-4 sm:mb-5">
         <div>
           <span
             className="text-xs xs:text-sm font-semibold uppercase tracking-[0.1em]"
@@ -85,7 +85,7 @@ export function ShopeeAuditSection({
           </Alert>
         ) : (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 xs:gap-3">
               <div
                 className="rounded-md border p-3"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}

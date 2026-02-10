@@ -23,7 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useDispatchTexts } from '@/hooks/use-dispatch-texts';
-import { AlertCircle, Copy, FileText, Plus } from 'lucide-react';
+import { AlertCircle, Copy, FileText, Plus, Type } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const colors = {
@@ -68,20 +68,20 @@ export default function DispatchTexts() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col w-full h-full">
-        <div className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+      <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
+        <div className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}>
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8">
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-10">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3 xs:gap-4">
             <div className="p-2 xs:p-2.5 rounded-xl" style={{ backgroundColor: colors.iconBg }}>
-              <FileText className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} aria-hidden="true" />
+              <Type className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} aria-hidden="true" />
             </div>
             <div>
-              <h1 className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight" style={{ color: '#18181b' }}>
+              <h2 className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight" style={{ color: '#18181b' }}>
                 {t('pages.dispatchTexts.title')}
-              </h1>
-              <p className="text-xs xs:text-sm md:text-base" style={{ color: colors.wineTextMuted }}>
+              </h2>
+              <p className="text-xs xs:text-sm tracking-tight" style={{ color: colors.wineTextMuted }}>
                 {t('pages.dispatchTexts.subtitle')}
               </p>
             </div>
@@ -89,12 +89,12 @@ export default function DispatchTexts() {
 
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-[#8D2D53] text-white hover:bg-[#7a2747]" onClick={openCreate}>
+              <Button className="w-full xs:w-auto bg-[#8D2D53] text-white hover:bg-[#7a2747]" onClick={openCreate}>
                 <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
                 {t('pages.dispatchTexts.newText')}
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-y-auto text-black">
+            <DialogContent className="w-[95vw] max-w-5xl max-h-[85vh] xs:max-h-[90vh] overflow-y-auto text-black">
               <DialogHeader>
                 <DialogTitle className="text-black">
                   {editing
@@ -103,7 +103,7 @@ export default function DispatchTexts() {
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 xs:gap-5 lg:gap-6">
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -136,7 +136,7 @@ export default function DispatchTexts() {
                   </div>
 
                   <div
-                    className="rounded-xl border p-3 xs:p-4"
+                    className="rounded-xl border p-3 xs:p-4 md:p-5"
                     role="alert"
                     style={{
                       backgroundColor: 'rgba(180, 120, 60, 0.08)',
@@ -159,7 +159,7 @@ export default function DispatchTexts() {
                     <Label className="text-[#8D2D53]">
                       {t('pages.dispatchTexts.form.variables')}
                     </Label>
-                    <div className="flex flex-wrap gap-2" role="list">
+                    <div className="flex flex-wrap gap-1.5 xs:gap-2" role="list">
                       {variableChips.map((v) => (
                         <span
                           key={v.key}
@@ -202,7 +202,7 @@ export default function DispatchTexts() {
                     />
                   </div>
 
-                  <div className="flex justify-end gap-2">
+                  <div className="flex flex-col-reverse xs:flex-row justify-end gap-2">
                     <Button variant="outline" onClick={closeDialog}>
                       {t('common.cancel')}
                     </Button>
@@ -214,7 +214,7 @@ export default function DispatchTexts() {
 
                 <div className="space-y-3">
                   <div
-                    className="rounded-xl border p-4 xs:p-5"
+                    className="rounded-xl border p-4 xs:p-5 sm:p-6"
                     style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
                   >
                     <div className="flex items-center gap-2 mb-3">
@@ -225,7 +225,7 @@ export default function DispatchTexts() {
                         {t('pages.dispatchTexts.preview.title')}
                       </span>
                     </div>
-                    <pre className="whitespace-pre-wrap text-sm leading-relaxed text-black">
+                    <pre className="whitespace-pre-wrap text-xs xs:text-sm leading-relaxed text-black">
                       {preview || t('pages.dispatchTexts.preview.empty')}
                     </pre>
                   </div>
@@ -236,10 +236,10 @@ export default function DispatchTexts() {
         </div>
 
         <div
-          className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+          className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
           style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
         >
-          <div className="flex items-center gap-2 xs:gap-3 mb-4 xs:mb-5">
+          <div className="flex items-center gap-2 xs:gap-3 md:gap-4 mb-4 xs:mb-5 md:mb-6">
             <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
               <FileText className="w-4 h-4 xs:w-5 xs:h-5" style={{ color: colors.wine }} aria-hidden="true" />
             </div>

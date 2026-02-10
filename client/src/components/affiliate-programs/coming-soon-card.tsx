@@ -20,14 +20,14 @@ export function ComingSoonCard({ storeName }: ComingSoonCardProps) {
 
   return (
     <div
-      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+      className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
-      <div className="mb-4">
+      <div className="mb-4 lg:mb-6">
         <div className="flex justify-between items-start">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-base font-semibold" style={{ color: '#18181b' }}>
+              <span className="text-base lg:text-lg font-semibold" style={{ color: '#18181b' }}>
                 {storeName}
               </span>
               <span
@@ -37,13 +37,13 @@ export function ComingSoonCard({ storeName }: ComingSoonCardProps) {
                 {t('pages.affiliatePrograms.comingSoon')}
               </span>
             </div>
-            <p className="mt-1 text-sm" style={{ color: colors.wineTextMuted }}>
+            <p className="mt-1 text-sm lg:text-base" style={{ color: colors.wineTextMuted }}>
               {t('pages.affiliatePrograms.comingSoonDesc', { store: storeName })}
             </p>
           </div>
         </div>
       </div>
-      <p className="text-sm" style={{ color: colors.wineTextMuted }}>
+      <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
         {t('pages.affiliatePrograms.comingSoonNote')}
       </p>
     </div>

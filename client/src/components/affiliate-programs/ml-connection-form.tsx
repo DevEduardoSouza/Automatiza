@@ -48,7 +48,7 @@ export function MlConnectionForm({
           onChange={(e) => onConnectionTokenChange(e.target.value)}
           className="min-h-[90px]"
         />
-        <Button type="button" variant="outline" onClick={onValidateToken}>
+        <Button type="button" variant="outline" onClick={onValidateToken} className="w-full xs:w-auto">
           {t('pages.affiliatePrograms.ml.validateToken')}
         </Button>
         <p className="text-xs" style={{ color: 'rgba(141, 45, 83, 0.6)' }}>

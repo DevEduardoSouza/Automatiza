@@ -152,7 +152,7 @@ export function AutomationFormDialog({
           )}
         </Tooltip>
       </TooltipProvider>
-      <DialogContent className="automation-form-dialog max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="automation-form-dialog max-w-3xl xl:max-w-4xl 2xl:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {editingId
@@ -161,7 +161,7 @@ export function AutomationFormDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 lg:space-y-5 xl:space-y-6">
           {/* Mode */}
           <ModeSection formData={formData} setFormData={setFormData} />
 
@@ -299,7 +299,7 @@ export function AutomationFormDialog({
             </Alert>
           )}
 
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 lg:gap-3 xl:gap-4">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {t('common.cancel')}
             </Button>

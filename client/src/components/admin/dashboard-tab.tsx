@@ -34,7 +34,7 @@ export default function DashboardTab({ onStatsUpdate }: DashboardTabProps) {
   } = useDashboardTab({ onStatsUpdate });
 
   return (
-    <div className="space-y-6 md:space-y-8">
+    <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 xl:space-y-10">
       <StatsCards stats={stats} />
 
       <LoadBalancerCard

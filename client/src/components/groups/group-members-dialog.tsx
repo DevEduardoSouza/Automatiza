@@ -219,7 +219,7 @@ export function GroupMembersDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+        <DialogContent className="max-w-[calc(100vw-2rem)] xs:max-w-md sm:max-w-lg md:max-w-xl max-h-[85vh] sm:max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{t('pages.groups.members.title')}</DialogTitle>
             <DialogDescription>
@@ -228,7 +228,7 @@ export function GroupMembersDialog({
           </DialogHeader>
 
           {/* Add member form */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 xs:gap-3">
             <Input
               placeholder={t('pages.groups.members.phonePlaceholder')}
               value={phoneNumberInput}
@@ -276,7 +276,7 @@ export function GroupMembersDialog({
           </p>
 
           {/* Participants list */}
-          <ScrollArea className="flex-1 min-h-0 max-h-[40vh]">
+          <ScrollArea className="flex-1 min-h-0 max-h-[40vh] sm:max-h-[45vh] md:max-h-[50vh]">
             {loading ? (
               <div className="space-y-2 p-1">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -292,7 +292,7 @@ export function GroupMembersDialog({
                 {filteredParticipants.map((participant) => (
                   <div
                     key={participant.id}
-                    className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-muted/50"
+                    className="flex items-center justify-between py-2 px-2 gap-2 xs:gap-3 xs:px-3 rounded-md hover:bg-muted/50"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm font-mono truncate">
@@ -307,7 +307,7 @@ export function GroupMembersDialog({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-7 w-7 sm:h-8 sm:w-8"
                               disabled={isProcessing}
                               onClick={() =>
                                 setConfirmAction({
@@ -324,7 +324,7 @@ export function GroupMembersDialog({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-7 w-7 sm:h-8 sm:w-8"
                               disabled={isProcessing}
                               onClick={() =>
                                 setConfirmAction({
@@ -341,7 +341,7 @@ export function GroupMembersDialog({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            className="h-7 w-7 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
                             disabled={isProcessing}
                             onClick={() =>
                               setConfirmAction({

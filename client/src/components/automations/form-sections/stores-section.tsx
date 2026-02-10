@@ -45,7 +45,7 @@ export function StoresSelector({ formData, setFormData, activeStores }: StoresSe
         </Alert>
       )}
       <Card>
-        <CardContent className="pt-4 grid grid-cols-2 gap-3">
+        <CardContent className="pt-4 grid grid-cols-2 gap-3 lg:gap-4">
           {STORES.map((store) => {
             const isActive = activeStores.includes(store.value);
             const isMonitoring = formData.mode === 'monitor';

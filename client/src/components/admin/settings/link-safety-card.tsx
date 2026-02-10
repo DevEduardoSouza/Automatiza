@@ -30,11 +30,14 @@ interface LinkSafetyCardProps {
 export function LinkSafetyCard({ settings, setSettings, t }: LinkSafetyCardProps) {
   return (
     <div
-      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+      className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
-      <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
-        <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
+      <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4 sm:mb-5">
+        <div
+          className="p-1.5 xs:p-2 sm:p-2.5 rounded-lg"
+          style={{ backgroundColor: colors.iconBg }}
+        >
           <BookOpen
             className="w-4 h-4 xs:w-5 xs:h-5"
             style={{ color: colors.wine }}
@@ -48,7 +51,7 @@ export function LinkSafetyCard({ settings, setSettings, t }: LinkSafetyCardProps
           {t('admin.settings.linkSafety.title')}
         </span>
       </div>
-      <p className="text-sm mb-3" style={{ color: colors.wineTextMuted }}>
+      <p className="text-xs xs:text-sm mb-3 xs:mb-4" style={{ color: colors.wineTextMuted }}>
         {t('admin.settings.linkSafety.description')}
       </p>
       <div className="space-y-3 xs:space-y-4">
@@ -90,7 +93,7 @@ export function LinkSafetyCard({ settings, setSettings, t }: LinkSafetyCardProps
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 xs:gap-4">
           <div className="space-y-2">
             <Label>{t('admin.settings.linkSafety.allowlist')}</Label>
             <Textarea

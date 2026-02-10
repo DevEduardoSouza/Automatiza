@@ -50,9 +50,9 @@ export function ChartsSection({ planStats, growthData }: ChartsSectionProps) {
   const { t } = useTranslation();
 
   return (
-    <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+    <div className="grid gap-3 xs:gap-4 grid-cols-1 md:grid-cols-2">
       <div
-        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+        className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
         style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
       >
         <div className="mb-3 xs:mb-4">
@@ -73,7 +73,7 @@ export function ChartsSection({ planStats, growthData }: ChartsSectionProps) {
               color: 'hsl(var(--chart-1))',
             },
           }}
-          className="h-[180px] md:h-[200px]"
+          className="h-[160px] xs:h-[180px] md:h-[200px] lg:h-[240px] xl:h-[280px]"
         >
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={growthData}>
@@ -88,7 +88,7 @@ export function ChartsSection({ planStats, growthData }: ChartsSectionProps) {
       </div>
 
       <div
-        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+        className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
         style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
       >
         <div className="mb-3 xs:mb-4">
@@ -112,7 +112,7 @@ export function ChartsSection({ planStats, growthData }: ChartsSectionProps) {
               },
             ])
           )}
-          className="h-[180px] md:h-[200px]"
+          className="h-[160px] xs:h-[180px] md:h-[200px] lg:h-[240px] xl:h-[280px]"
         >
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>

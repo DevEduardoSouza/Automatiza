@@ -1,16 +1,8 @@
 # Revisao das Telas
 
-## Dashboard
-
-- [x] O modo dark nao esta aplicado corretamente.
-
-## /whatsapp
-
-- [x] Tudo ok.
-
 ## /groups
 
-- [ ] Responsividade quebrada nos botoes da secao "Acoes em Massa"
+- [x] Responsividade quebrada nos botoes da secao "Acoes em Massa"
 - [ ] Deve exibir apenas os grupos em que o usuario e ADMIN
 
 ## /jobs
@@ -74,6 +66,3 @@ Compre aqui: {link_afiliado}
 {aviso_preco}
 ```
 
-## /profile
-
-- [ ] O modo dark nao esta funcionando corretamente

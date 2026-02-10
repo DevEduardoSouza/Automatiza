@@ -67,14 +67,14 @@ export function StoreCard({
 
   return (
     <div
-      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+      className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
-      <div className="mb-4">
+      <div className="mb-4 lg:mb-6">
         <div className="flex justify-between items-start">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-base font-semibold" style={{ color: '#18181b' }}>
+            <div className="flex items-center gap-2 xs:gap-3">
+              <span className="text-base lg:text-lg font-semibold" style={{ color: '#18181b' }}>
                 {config.name}
               </span>
               {credential?.is_active ? (
@@ -95,13 +95,13 @@ export function StoreCard({
                 </span>
               )}
             </div>
-            <p className="mt-1 text-sm" style={{ color: colors.wineTextMuted }}>
+            <p className="mt-1 text-sm lg:text-base" style={{ color: colors.wineTextMuted }}>
               {description}
             </p>
           </div>
         </div>
       </div>
-      <div className="space-y-4">
+      <div className="space-y-4 lg:space-y-5">
         {isMl && (
           <MlConnectionForm
             connectionToken={credential?.credentials?.connectionToken || ''}
@@ -143,7 +143,7 @@ export function StoreCard({
           />
         )}
 
-        <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center justify-between pt-2 lg:pt-3">
           <div className="flex items-center space-x-2">
             <Switch
               id={`${config.key}-auto`}
@@ -157,7 +157,7 @@ export function StoreCard({
           </div>
         </div>
 
-        <div className="flex gap-2 pt-2">
+        <div className="flex flex-col xs:flex-row gap-2 xs:gap-3 pt-2 lg:pt-3">
           <Button onClick={onSave} disabled={isSaving} className="flex-1">
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {t('pages.affiliatePrograms.form.save')}

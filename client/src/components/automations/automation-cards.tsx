@@ -53,7 +53,7 @@ export function AutomationCards({
         >
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-sm mb-2 break-words">{auto.name}</h3>
+              <h3 className="font-semibold text-sm xs:text-base mb-2 break-words">{auto.name}</h3>
               <div className="flex flex-wrap gap-2 text-xs">
                 <Badge variant={getModeVariant(auto.mode)} className="text-xs">
                   {t(`pages.offerAutomations.tabs.${getModeKey(auto.mode)}`)}
@@ -82,10 +82,10 @@ export function AutomationCards({
           </div>
 
           <div
-            className="flex gap-1 pt-2 border-t flex-wrap"
+            className="flex gap-1 xs:gap-2 pt-2 border-t flex-wrap"
             style={{ borderColor: colors.wineBorder }}
           >
-            <Button variant="outline" size="sm" onClick={() => onEdit(auto)} className="flex-1">
+            <Button variant="outline" size="sm" onClick={() => onEdit(auto)} className="flex-1 min-w-0 xs:min-w-[100px]">
               <Edit className="h-3 w-3 mr-1" />
               {t('pages.offerAutomations.actions.editShort')}
             </Button>
@@ -97,7 +97,7 @@ export function AutomationCards({
                     size="sm"
                     onClick={() => onPreview(auto)}
                     disabled={loadingPreview}
-                    className="flex-1"
+                    className="flex-1 min-w-0 xs:min-w-[100px]"
                   >
                     <FileText className="h-3 w-3 mr-1" />
                     {t('pages.offerAutomations.actions.previewShort')}
@@ -108,7 +108,7 @@ export function AutomationCards({
                   size="sm"
                   onClick={() => onRunNow(auto)}
                   disabled={runningId === auto.id || auto.status !== 'active'}
-                  className="flex-1"
+                  className="flex-1 min-w-0 xs:min-w-[100px]"
                 >
                   <Play
                     className={`h-3 w-3 mr-1 ${runningId === auto.id ? 'animate-pulse' : ''}`}

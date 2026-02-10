@@ -5,15 +5,71 @@ import { useToast } from '@/hooks/use-toast';
 import { useWhatsApp } from '@/hooks/use-whatsapp';
 import {
   AlertCircle,
-  CheckCircle2,
   Loader2,
   RefreshCw,
-  Smartphone,
   Unplug,
   Wifi,
   WifiOff,
   XCircle,
 } from 'lucide-react';
+
+const ConnectedIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    className={className}
+    style={style}
+  >
+    <path d="M17 3.33782C15.5291 2.48697 13.8214 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 11.3151 21.9311 10.6462 21.8 10" />
+    <path d="M8 12.5C8 12.5 9.5 12.5 11.5 16C11.5 16 17.0588 6.83333 22 5" />
+  </svg>
+);
+
+const ConnectingIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    style={style}
+  >
+    <path d="M10.5 19H10.51" />
+    <path d="M19 12.0337H12M17 9C17 9 19.0371 10.6469 19.8208 11.5533C19.9468 11.6991 20.0064 11.8627 19.9995 12.0253C19.9933 12.1711 19.9337 12.3162 19.8207 12.4468C19.0368 13.3531 17 15 17 15" />
+    <path d="M17 6C16.9855 4.29344 16.8908 3.35264 16.2702 2.73223C15.5378 2 14.3591 2 12.0016 2H9.001C6.64351 2 5.46476 2 4.73238 2.73223C4 3.46447 4 4.64298 4 7V17C4 19.357 4 20.5355 4.73238 21.2678C5.46476 22 6.64351 22 9.001 22H12.0016C14.3591 22 15.5378 22 16.2702 21.2678C16.8908 20.6473 16.9855 19.7065 17 17.9999" />
+  </svg>
+);
+
+const WhatsAppIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    style={style}
+  >
+    <path d="M12.0045 11H12.0135M8.00903 11H8.018" />
+    <path d="M12 3C10.5209 3 9.09517 3.0309 7.7562 3.08819C5.3157 3.1926 4.09545 3.24481 3.13007 4.21745C2.16469 5.19009 2.12282 6.37683 2.03909 8.7503C2.01346 9.47679 2 10.2292 2 11C2 11.7708 2.01346 12.5232 2.03909 13.2497C2.12282 15.6232 2.16469 16.8099 3.13007 17.7825C4.09545 18.7552 5.31569 18.8074 7.75619 18.9118C7.83715 18.9153 7.91842 18.9186 8 18.9219V21.2701C8 21.6732 8.32679 22 8.72991 22C8.90419 22 9.07273 21.9376 9.20503 21.8242L11.3845 19.9553C11.9325 19.4855 12.2064 19.2506 12.532 19.1266C12.8576 19.0026 13.2282 18.9955 13.9693 18.9815C14.7498 18.9667 15.5098 18.9432 16.2437 18.9118C18.6843 18.8074 19.9046 18.7552 20.8699 17.7826C21.8353 16.8099 21.8772 15.6232 21.9609 13.2497C21.9865 12.5232 22 11.7708 22 11C22 10.2292 21.9865 9.47679 21.9609 8.7503C21.9372 8.07936 21.9169 7.50325 21.8781 7" />
+    <path d="M15 5.33333C15 5.33333 16 5.33333 17 7C17 7 19.1765 2.83333 22 2" />
+  </svg>
+);
 import { useTranslation } from 'react-i18next';
 
 const colors = {
@@ -95,7 +151,7 @@ export default function WhatsApp() {
     <ErrorBoundary>
       <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
           {/* Header */}
@@ -105,11 +161,11 @@ export default function WhatsApp() {
                 className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
                 style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
               >
-                <Smartphone className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
+                <WhatsAppIcon className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
               </div>
               <div>
                 <h2
-                  className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight"
+                  className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
                   style={{ color: '#18181b' }}
                 >
                   {t('pages.whatsapp.title')}
@@ -126,32 +182,36 @@ export default function WhatsApp() {
 
           {/* Warning Alert */}
           <div
-            className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 mb-5 xs:mb-6 sm:mb-8 lg:mb-10"
+            className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8 mb-5 xs:mb-6 sm:mb-8 lg:mb-10"
+            role="alert"
             style={{
-              backgroundColor: 'rgba(234, 179, 8, 0.06)',
-              borderColor: 'rgba(234, 179, 8, 0.2)',
+              backgroundColor: 'rgba(180, 120, 60, 0.08)',
+              borderColor: 'rgba(180, 120, 60, 0.25)',
+              backdropFilter: 'blur(12px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(12px) saturate(180%)',
             }}
           >
             <div className="flex items-center gap-2 xs:gap-3 mb-2 xs:mb-3">
               <div
                 className="p-1.5 xs:p-2 rounded-lg"
-                style={{ backgroundColor: 'rgba(234, 179, 8, 0.1)' }}
+                style={{ backgroundColor: 'rgba(180, 120, 60, 0.12)' }}
               >
                 <AlertCircle
                   className="w-4 h-4 xs:w-5 xs:h-5"
-                  style={{ color: '#ca8a04' }}
+                  style={{ color: 'rgb(160, 100, 40)' }}
+                  aria-hidden="true"
                 />
               </div>
               <span
-                className="text-base xs:text-lg font-semibold tracking-tight"
-                style={{ color: '#18181b' }}
+                className="text-sm xs:text-base font-semibold tracking-tight"
+                style={{ color: 'rgb(120, 75, 30)' }}
               >
                 {t('pages.whatsapp.warning.title')}
               </span>
             </div>
             <p
               className="text-xs xs:text-sm leading-relaxed"
-              style={{ color: '#71717a' }}
+              style={{ color: 'rgba(120, 75, 30, 0.8)' }}
             >
               {t('pages.whatsapp.warning.message')}
             </p>
@@ -222,7 +282,7 @@ function ConnectionCard({
 
   return (
     <div
-      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 w-full max-w-lg"
+      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 w-full max-w-lg sm:max-w-xl"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
       {/* Header */}
@@ -295,7 +355,7 @@ function StatusIcon({ state }: { state: ConnectionState }) {
             borderColor: statusColors.connected.iconBorder,
           }}
         >
-          <CheckCircle2
+          <ConnectedIcon
             className="h-6 w-6 xs:h-7 xs:w-7 sm:h-8 sm:w-8"
             style={{ color: statusColors.connected.icon }}
           />
@@ -307,7 +367,7 @@ function StatusIcon({ state }: { state: ConnectionState }) {
           className={baseClass}
           style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
         >
-          <Smartphone
+          <ConnectingIcon
             className="h-6 w-6 xs:h-7 xs:w-7 sm:h-8 sm:w-8"
             style={{ color: colors.wine }}
           />
@@ -515,14 +575,14 @@ function ConnectingContent({
       {qrCode ? (
         <div className="flex flex-col items-center">
           <div
-            className="p-3 xs:p-4 rounded-xl xs:rounded-2xl border"
+            className="p-2.5 xs:p-3 sm:p-4 rounded-xl xs:rounded-2xl border"
             style={{
               borderColor: colors.wineBorder,
               boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
               backgroundColor: '#ffffff',
             }}
           >
-            <img src={qrCode} alt="QR Code" className="w-56 h-56 xs:w-64 xs:h-64" />
+            <img src={qrCode} alt="QR Code" className="w-48 h-48 xs:w-56 xs:h-56 sm:w-64 sm:h-64" />
           </div>
 
           <div className="mt-4 w-full">
@@ -616,7 +676,7 @@ function ConnectedContent({
             color: '#16a34a',
           }}
         >
-          <CheckCircle2 className="h-4 w-4" />
+          <ConnectedIcon className="h-4 w-4" />
           {t('pages.whatsapp.success.connectedMessage')}
         </div>
         {lastSync && (
@@ -646,7 +706,7 @@ function ConnectedContent({
 
       <AutoSyncToggle autoSync={autoSync} onToggle={onAutoSyncToggle} />
 
-      <div className="flex gap-2 xs:gap-3 pt-2">
+      <div className="flex flex-col xs:flex-row gap-2 xs:gap-3 pt-2">
         <Button
           variant="outline"
           onClick={onReconnect}
@@ -695,7 +755,7 @@ function ImportingProgress({ progress, importedGroups }: ImportingProgressProps)
 
       {importedGroups.length > 0 && (
         <div
-          className="space-y-2 max-h-32 overflow-y-auto rounded-lg xs:rounded-xl border p-2.5 xs:p-3"
+          className="space-y-2 max-h-32 lg:max-h-48 overflow-y-auto rounded-lg xs:rounded-xl border p-2.5 xs:p-3"
           style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
         >
           <p
@@ -769,7 +829,7 @@ function HowItWorksCard() {
 
   return (
     <div
-      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8"
+      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8 xl:p-10"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
       {/* Header */}
@@ -792,7 +852,7 @@ function HowItWorksCard() {
       <div className="h-px mb-4 xs:mb-5" style={{ backgroundColor: colors.wineBorder }} />
 
       {/* Steps */}
-      <div className="space-y-3 xs:space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 xs:gap-4">
         {[1, 2, 3, 4, 5, 6].map((step) => (
           <div key={step} className="flex items-start gap-2.5 xs:gap-3">
             <div

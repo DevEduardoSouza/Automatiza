@@ -57,7 +57,6 @@ type WebhookLogEntry struct {
 	Source    string
 	EventType *string
 	Email     *string
-	Plan      *string
 	Status    string
 	CreatedAt string
 }
@@ -380,6 +379,7 @@ func (h *AdminHandler) GetShopeeAffiliateAudit(
 	// Get all dispatch logs with store='shopee' in the time window
 	filters := &models.DispatchLogFilters{
 		Store: stringPtr("shopee"),
+		Since: &sinceTime,
 	}
 	logs, _, err := h.dispatchLogRepo.GetUserLogsWithFilters(ctx, "", filters, maxScan, 0)
 	if err != nil {
@@ -675,9 +675,6 @@ func (h *AdminHandler) ListWebhookLogs(
 		}
 		if log.Email != nil {
 			entry.Email = log.Email
-		}
-		if log.Plan != nil {
-			entry.Plan = log.Plan
 		}
 		protoLogs = append(protoLogs, entry)
 	}

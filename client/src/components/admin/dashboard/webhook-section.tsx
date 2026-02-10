@@ -112,7 +112,7 @@ export function WebhookSection({ webhookLogs, onSimulate }: WebhookSectionProps)
     <>
       {/* URL do Webhook */}
       <div
-        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+        className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
         style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
       >
         <div className="mb-3 xs:mb-4">
@@ -141,7 +141,7 @@ export function WebhookSection({ webhookLogs, onSimulate }: WebhookSectionProps)
 
       {/* Simulador de Webhooks */}
       <div
-        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+        className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
         style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
       >
         <div className="mb-3 xs:mb-4">
@@ -156,7 +156,7 @@ export function WebhookSection({ webhookLogs, onSimulate }: WebhookSectionProps)
           </p>
         </div>
         <div className="space-y-3 xs:space-y-4">
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-3 xs:gap-4">
             <div className="space-y-2">
               <Label htmlFor="email">{t('admin.dashboard.webhook.simulator.email')}</Label>
               <Input
@@ -234,7 +234,7 @@ export function WebhookSection({ webhookLogs, onSimulate }: WebhookSectionProps)
 
       {/* Últimos Eventos */}
       <div
-        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+        className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
         style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
       >
         <div className="mb-3 xs:mb-4">
@@ -258,7 +258,7 @@ export function WebhookSection({ webhookLogs, onSimulate }: WebhookSectionProps)
               {webhookLogs.map((log) => (
                 <div
                   key={log.id}
-                  className="rounded-xl border p-3 space-y-2"
+                  className="rounded-lg xs:rounded-xl border p-2.5 xs:p-3 space-y-2"
                   style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
                 >
                   <div className="flex items-start justify-between gap-2">

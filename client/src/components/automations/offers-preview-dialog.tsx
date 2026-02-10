@@ -26,7 +26,7 @@ export function OffersPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl xl:max-w-5xl 2xl:max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t('pages.offerAutomations.preview.title')}</DialogTitle>
         </DialogHeader>
@@ -48,7 +48,7 @@ export function OffersPreviewDialog({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 lg:gap-5 xl:gap-6 mt-4">
             {offers.map((offer, index) => (
               <Card key={index} className="overflow-hidden">
                 <div className="relative">
@@ -56,14 +56,14 @@ export function OffersPreviewDialog({
                     <img
                       src={offer.imageUrl}
                       alt={offer.title || t('pages.offerAutomations.preview.productAlt')}
-                      className="w-full h-48 object-cover"
+                      className="w-full h-48 lg:h-52 xl:h-56 object-cover"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src =
                           'https://via.placeholder.com/300x300?text=Sem+Imagem';
                       }}
                     />
                   ) : (
-                    <div className="w-full h-48 bg-muted flex items-center justify-center">
+                    <div className="w-full h-48 lg:h-52 xl:h-56 bg-muted flex items-center justify-center">
                       <FileText className="h-12 w-12 text-muted-foreground" />
                     </div>
                   )}

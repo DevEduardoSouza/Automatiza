@@ -34,10 +34,10 @@ BEGIN
         failed_attempts = 0,
         locked_until = NULL;
 
-    -- Insert admin role (one role per user, UNIQUE on user_id)
+    -- Insert admin role
     INSERT INTO user_roles (user_id, role)
     VALUES (test_user_id, 'admin')
-    ON CONFLICT (user_id, role) DO NOTHING;
+    ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role;
 
     RAISE NOTICE 'Test user created: test@example.com / Test123456';
 END
@@ -68,7 +68,7 @@ BEGIN
 
     INSERT INTO user_roles (user_id, role)
     VALUES (readonly_user_id, 'user')
-    ON CONFLICT (user_id, role) DO NOTHING;
+    ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role;
 
     RAISE NOTICE 'Read-only user created: readonly@example.com / Test123456';
 END
@@ -80,7 +80,7 @@ $$;
 DO $$
 DECLARE
     admin_user_id UUID;
-    admin_password_hash TEXT := '$argon2id$v=19$m=65536,t=3,p=2$utNFU375QcfV9FA+X0M7Bg$k4dzxUYAEt1S9UuZl9Yh5A4EXcCypiAfaOGd3OTy+u4';
+    admin_password_hash TEXT := '$argon2id$v=19$m=65536,t=3,p=2$uHM9YnhIt8oYI+VOxCpeQw$+MnNc5gy42aG71qdG0cT7etSrMmfnJ1arMXfj+trsro';
 BEGIN
     INSERT INTO profiles (id, email, display_name, email_verified, plan)
     VALUES (
@@ -105,7 +105,7 @@ BEGIN
 
     INSERT INTO user_roles (user_id, role)
     VALUES (admin_user_id, 'admin')
-    ON CONFLICT (user_id, role) DO NOTHING;
+    ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role;
 
     RAISE NOTICE 'Admin user created: bruno.clara@yahoo.com / semSenha123!';
 END

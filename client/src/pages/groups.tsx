@@ -11,8 +11,31 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGroups } from '@/hooks/use-groups';
 import { cn } from '@/lib/utils';
-import { AlertCircle, RefreshCw, Search, Users } from 'lucide-react';
+import { AlertCircle, RefreshCw, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const GroupsIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    style={style}
+  >
+    <path d="M15.5 11C15.5 9.067 13.933 7.5 12 7.5C10.067 7.5 8.5 9.067 8.5 11C8.5 12.933 10.067 14.5 12 14.5C13.933 14.5 15.5 12.933 15.5 11Z" />
+    <path d="M15.4827 11.3499C15.8047 11.4475 16.1462 11.5 16.5 11.5C18.433 11.5 20 9.933 20 8C20 6.067 18.433 4.5 16.5 4.5C14.6851 4.5 13.1928 5.8814 13.0173 7.65013" />
+    <path d="M10.9827 7.65013C10.8072 5.8814 9.31492 4.5 7.5 4.5C5.567 4.5 4 6.067 4 8C4 9.933 5.567 11.5 7.5 11.5C7.85381 11.5 8.19535 11.4475 8.51727 11.3499" />
+    <path d="M22 16.5C22 13.7386 19.5376 11.5 16.5 11.5" />
+    <path d="M17.5 19.5C17.5 16.7386 15.0376 14.5 12 14.5C8.96243 14.5 6.5 16.7386 6.5 19.5" />
+    <path d="M7.5 11.5C4.46243 11.5 2 13.7386 2 16.5" />
+  </svg>
+);
 
 // Wine/burgundy color palette based on #8D2D53
 const colors = {
@@ -124,18 +147,18 @@ export default function Groups() {
 
   if (loading) {
     return (
-      <div className="groups-page flex flex-col w-full h-full">
+      <div className="groups-page flex flex-col w-full h-full xl:max-w-[1400px] 2xl:max-w-[1600px] xl:mx-auto 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10 xl:p-12"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex items-center justify-center min-h-[300px] xs:min-h-[350px] sm:min-h-[400px]">
             <div className="text-center space-y-4">
               <div
-                className="h-12 w-12 animate-spin rounded-full border-4 border-t-transparent mx-auto"
+                className="h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
                 style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
               />
-              <p style={{ color: colors.wineTextMuted }}>{t('pages.groups.loading')}</p>
+              <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>{t('pages.groups.loading')}</p>
             </div>
           </div>
         </div>
@@ -145,30 +168,30 @@ export default function Groups() {
 
   return (
     <ErrorBoundary>
-      <div className="groups-page flex flex-col w-full h-full">
+      <div className="groups-page flex flex-col w-full h-full xl:max-w-[1400px] 2xl:max-w-[1600px] xl:mx-auto 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10 xl:p-12"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8">
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-10 xl:space-y-12">
             {/* Header */}
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-3 xs:gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2 xs:gap-3">
                 <div
                   className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
                   style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
                 >
-                  <Users className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
+                  <GroupsIcon className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
                 </div>
                 <div>
-                  <h1
-                    className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight"
+                  <h2
+                    className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
                     style={{ color: '#18181b' }}
                   >
                     {t('pages.groups.title')}
-                  </h1>
+                  </h2>
                   <p
-                    className="text-xs xs:text-sm md:text-base tracking-tight"
+                    className="text-xs xs:text-sm tracking-tight"
                     style={{ color: colors.wineTextMuted }}
                   >
                     {t('pages.groups.subtitle', { count: groups.length })}
@@ -178,10 +201,10 @@ export default function Groups() {
               <Button
                 onClick={handleSyncGroups}
                 disabled={syncing || connectionStatus !== 'connected'}
-                className="bg-[#8D2D53] text-white hover:bg-[#7a2747]"
+                className="w-full sm:w-auto bg-[#8D2D53] text-white hover:bg-[#7a2747]"
               >
                 <RefreshCw
-                  className={cn('mr-2 h-4 w-4', syncing && 'animate-spin')}
+                  className={cn('mr-2 h-3.5 w-3.5 xs:h-4 xs:w-4', syncing && 'animate-spin')}
                   aria-hidden="true"
                 />
                 {syncing ? t('pages.groups.sync.syncing') : t('pages.groups.sync.syncGroups')}
@@ -206,7 +229,7 @@ export default function Groups() {
 
             {/* Admin Actions Disclaimer - Glassmorphism */}
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+              className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8 xl:p-10"
               role="alert"
               style={{
                 backgroundColor: 'rgba(180, 120, 60, 0.08)',
@@ -215,7 +238,7 @@ export default function Groups() {
                 WebkitBackdropFilter: 'blur(12px) saturate(180%)',
               }}
             >
-              <div className="flex items-center gap-2 xs:gap-3 mb-2 xs:mb-3">
+              <div className="flex items-center gap-2 xs:gap-3 md:gap-4 mb-2 xs:mb-3">
                 <div
                   className="p-1.5 xs:p-2 rounded-lg"
                   style={{ backgroundColor: 'rgba(180, 120, 60, 0.12)' }}
@@ -227,7 +250,7 @@ export default function Groups() {
                   />
                 </div>
                 <span
-                  className="text-sm xs:text-base font-semibold tracking-tight"
+                  className="text-sm xs:text-base md:text-lg font-semibold tracking-tight"
                   style={{ color: 'rgb(120, 75, 30)' }}
                 >
                   {t('pages.groups.warnings.adminOnly')}
@@ -300,9 +323,9 @@ export default function Groups() {
             />
 
             {/* Search */}
-            <div className="relative max-w-md">
+            <div className="relative max-w-full xs:max-w-sm sm:max-w-md lg:max-w-lg xl:max-w-xl 2xl:max-w-2xl">
               <Search
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4"
+                className="absolute left-2.5 xs:left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 xs:h-4 xs:w-4"
                 style={{ color: colors.wineTextMuted }}
                 aria-hidden="true"
               />
@@ -311,7 +334,7 @@ export default function Groups() {
                 placeholder={t('pages.groups.search.placeholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="pl-8 xs:pl-10"
                 aria-label={t('pages.groups.search.label')}
               />
             </div>

@@ -184,28 +184,28 @@ export function HistoryTable({
       </div>
 
       {/* Mobile Cards */}
-      <div className="md:hidden space-y-3">
+      <div className="md:hidden space-y-2 xs:space-y-3">
         {history.map((item) => (
           <div
             key={item.id}
-            className="rounded-xl border p-4 space-y-2 overflow-hidden"
+            className="rounded-lg xs:rounded-xl border p-3 xs:p-4 space-y-2 overflow-hidden"
             style={{ backgroundColor: '#ffffff', borderColor: colors.wineBorder }}
           >
             <div className="flex items-start justify-between">
               <div>
-                <span className="font-medium">{getActionTypeLabel(item.action_type)}</span>
+                <span className="font-medium text-sm">{getActionTypeLabel(item.action_type)}</span>
                 <p className="text-xs mt-1" style={{ color: colors.wineTextMuted }}>
                   {format(new Date(item.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                 </p>
               </div>
               <HistoryStatusBadge status={item.status} />
             </div>
-            <p className="text-sm" style={{ color: colors.wineTextMuted }}>
+            <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
               {item.description}
             </p>
             {item.error_message && <p className="text-xs text-destructive">{item.error_message}</p>}
             {item.target_count > 0 && (
-              <div className="flex gap-3 text-xs">
+              <div className="flex flex-wrap gap-2 xs:gap-3 text-xs">
                 <span style={{ color: colors.wineTextMuted }}>Total: {item.target_count}</span>
                 {item.success_count > 0 && (
                   <span className="text-green-600">✓ {item.success_count}</span>
@@ -218,9 +218,9 @@ export function HistoryTable({
       </div>
 
       {/* Pagination Controls */}
-      <div className="flex items-center justify-between gap-4 mt-4">
+      <div className="flex flex-col xs:flex-row items-center justify-between gap-3 xs:gap-4 mt-4 lg:mt-6">
         {/* Page info - left side */}
-        <div className="text-sm" style={{ color: colors.wineTextMuted }}>
+        <div className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
           {totalCount > 0
             ? t('pages.history.pagination.showing', {
                 start: startItem,
@@ -232,7 +232,7 @@ export function HistoryTable({
         </div>
 
         {/* Page navigation - right side */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 xs:gap-1">
           {/* First page */}
           <Button
             variant="outline"
@@ -258,7 +258,7 @@ export function HistoryTable({
           </Button>
 
           {/* Page indicator */}
-          <span className="px-3 text-sm" style={{ color: colors.wineTextMuted }}>
+          <span className="px-2 xs:px-3 text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
             {currentPage} / {totalPages || 1}
           </span>
 

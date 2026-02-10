@@ -17,6 +17,27 @@ import { format } from 'date-fns';
 import { Download, ExternalLink, FileText, Search } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+const AutomationLogsIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    style={style}
+  >
+    <path d="M18 16L19.8398 17.5858C20.6133 18.2525 21 18.5858 21 19C21 19.4142 20.6133 19.7475 19.8398 20.4142L18 22" />
+    <path d="M14 16L12.1602 17.5858C11.3867 18.2525 11 18.5858 11 19C11 19.4142 11.3867 19.7475 12.1602 20.4142L14 22" />
+    <path d="M20 13.0032L20 7.8199C20 6.12616 20 5.27929 19.732 4.60291C19.3013 3.51555 18.3902 2.65784 17.2352 2.25228C16.5168 2 15.6173 2 13.8182 2C10.6698 2 9.09563 2 7.83836 2.44148C5.81714 3.15122 4.22281 4.6522 3.46894 6.55509C3 7.73875 3 9.22077 3 12.1848L3 14.731C3 17.8013 3 19.3364 3.8477 20.4025C4.09058 20.708 4.37862 20.9792 4.70307 21.2078C5.61506 21.8506 6.85019 21.9757 9 22" />
+    <path d="M3 12C3 10.159 4.49238 8.66667 6.33333 8.66667C6.99912 8.66667 7.78404 8.78333 8.43137 8.60988C9.00652 8.45576 9.45576 8.00652 9.60988 7.43136C9.78333 6.78404 9.66667 5.99912 9.66667 5.33333C9.66667 3.49238 11.1591 2 13 2" />
+  </svg>
+);
 import { Link } from 'react-router';
 
 const colors = {
@@ -78,7 +99,7 @@ export default function AutomationLogs() {
     const s = styles[status] || styles.queued;
     return (
       <span
-        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+        className="inline-flex items-center rounded-full px-2 py-0.5 xs:px-2.5 text-[11px] xs:text-xs font-medium"
         style={{ backgroundColor: s.bg, color: s.color }}
       >
         {labels[status] || status}
@@ -93,9 +114,9 @@ export default function AutomationLogs() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-48 xs:h-56 sm:h-64">
         <div
-          className="h-8 w-8 animate-spin rounded-full border-4 border-t-transparent"
+          className="h-6 w-6 xs:h-8 xs:w-8 animate-spin rounded-full border-4 border-t-transparent"
           style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
         />
       </div>
@@ -104,33 +125,33 @@ export default function AutomationLogs() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col w-full h-full">
+      <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8">
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 xl:space-y-10">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2 xs:gap-3">
                 <div
-                  className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
+                  className="p-1.5 xs:p-2 sm:p-2.5 rounded-lg xs:rounded-xl border"
                   style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
                 >
-                  <FileText
-                    className="w-5 h-5 xs:w-6 xs:h-6"
+                  <AutomationLogsIcon
+                    className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7"
                     style={{ color: colors.wine }}
                     aria-hidden="true"
                   />
                 </div>
                 <div>
-                  <h1
-                    className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight"
+                  <h2
+                    className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
                     style={{ color: '#18181b' }}
                   >
                     {t('pages.automationLogs.title')}
-                  </h1>
+                  </h2>
                   <p
-                    className="text-xs xs:text-sm md:text-base tracking-tight"
+                    className="text-xs xs:text-sm tracking-tight"
                     style={{ color: colors.wineTextMuted }}
                   >
                     {t('pages.automationLogs.subtitle')}
@@ -149,11 +170,11 @@ export default function AutomationLogs() {
             </div>
 
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+              className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
-              <div className="flex items-center gap-2 xs:gap-3 mb-4 xs:mb-5">
-                <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
+              <div className="flex items-center gap-2 xs:gap-3 mb-4 xs:mb-5 sm:mb-6">
+                <div className="p-1.5 xs:p-2 sm:p-2.5 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
                   <Search
                     className="w-4 h-4 xs:w-5 xs:h-5"
                     style={{ color: colors.wine }}
@@ -161,13 +182,13 @@ export default function AutomationLogs() {
                   />
                 </div>
                 <span
-                  className="text-xs xs:text-sm font-semibold uppercase tracking-[0.1em]"
+                  className="text-xs xs:text-sm font-semibold uppercase tracking-[0.1em] xs:tracking-[0.12em]"
                   style={{ color: colors.wineText }}
                 >
                   {t('pages.automationLogs.filters.title')}
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 xs:gap-4">
                 <div className="space-y-2">
                   <Label>{t('pages.automationLogs.filters.automation')}</Label>
                   <Select value={filterAutomation} onValueChange={setFilterAutomation}>
@@ -257,7 +278,7 @@ export default function AutomationLogs() {
             </div>
 
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 space-y-2 text-sm"
+              className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8 space-y-2 text-xs xs:text-sm"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -277,7 +298,7 @@ export default function AutomationLogs() {
                     </span>
                   ) : null}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button variant="outline" asChild>
                     <Link to="/whatsapp">{t('pages.automationLogs.queue.reconnect')}</Link>
                   </Button>
@@ -308,9 +329,9 @@ export default function AutomationLogs() {
             </div>
 
             {filteredLogs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12">
+              <div className="flex flex-col items-center justify-center py-8 xs:py-10 sm:py-12">
                 <FileText
-                  className="h-12 w-12 mb-4"
+                  className="h-10 w-10 xs:h-12 xs:w-12 mb-3 xs:mb-4"
                   style={{ color: colors.wineTextMuted }}
                   aria-hidden="true"
                 />
@@ -322,14 +343,14 @@ export default function AutomationLogs() {
               </div>
             ) : (
               <div
-                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+                className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
-                <div className="mb-4 xs:mb-5">
-                  <span className="text-base font-semibold" style={{ color: '#18181b' }}>
+                <div className="mb-4 xs:mb-5 sm:mb-6">
+                  <span className="text-sm xs:text-base font-semibold" style={{ color: '#18181b' }}>
                     {t('pages.automationLogs.table.title')}
                   </span>
-                  <p className="text-sm mt-1" style={{ color: colors.wineTextMuted }}>
+                  <p className="text-xs xs:text-sm mt-1" style={{ color: colors.wineTextMuted }}>
                     {t('pages.automationLogs.table.description', {
                       filtered: filteredLogs.length,
                       total: logs.length,
@@ -343,16 +364,16 @@ export default function AutomationLogs() {
                 </div>
 
                 {/* Mobile - Cards */}
-                <div className="md:hidden space-y-3">
+                <div className="md:hidden space-y-2 xs:space-y-3">
                   {mobileLogsToShow.map((log) => (
                     <div
                       key={log.id}
-                      className="rounded-xl border p-4 space-y-3 overflow-hidden"
+                      className="rounded-lg xs:rounded-xl border p-3 xs:p-4 space-y-2 xs:space-y-3 overflow-hidden"
                       style={{ backgroundColor: '#ffffff', borderColor: colors.wineBorder }}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-sm mb-1 break-words">
+                          <h3 className="font-semibold text-xs xs:text-sm mb-1 break-words">
                             {log.automation_name}
                           </h3>
                           <p className="text-xs" style={{ color: colors.wineTextMuted }}>
@@ -424,12 +445,12 @@ export default function AutomationLogs() {
                         )}
                       </div>
 
-                      <div className="pt-2 border-t">
+                      <div className="pt-1.5 xs:pt-2 border-t">
                         <a
                           href={getProductHref(log)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-2 text-xs text-primary hover:underline"
+                          className="flex items-center justify-center gap-1.5 xs:gap-2 text-xs text-primary hover:underline"
                         >
                           <ExternalLink className="h-3 w-3" />
                           {t('pages.automationLogs.table.viewProduct')}

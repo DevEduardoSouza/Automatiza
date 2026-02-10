@@ -503,6 +503,17 @@ func (a *WahaAdapter) GetGroupParticipants(ctx context.Context, sessionName, gro
 		return nil, fmt.Errorf("failed to get group participants: %w", err)
 	}
 
+	// Log raw response for debugging admin detection
+	if len(resp) < 2000 {
+		a.logger.Debug("participants/v2 raw response",
+			zap.String("groupID", groupID),
+			zap.String("body", string(resp)))
+	} else {
+		a.logger.Debug("participants/v2 raw response (truncated)",
+			zap.String("groupID", groupID),
+			zap.String("body", string(resp[:2000])))
+	}
+
 	var wahaParticipants []wahaParticipant
 	if err := json.Unmarshal(resp, &wahaParticipants); err != nil {
 		return nil, NewProviderError(ErrCodeProviderError, "failed to parse participants response", err)
@@ -529,6 +540,18 @@ func (a *WahaAdapter) GetGroupParticipants(ctx context.Context, sessionName, gro
 		}
 	}
 
+	// Log LID resolution results
+	resolved := 0
+	for i := range wahaParticipants {
+		if wahaParticipants[i].PhoneNumber != "" {
+			resolved++
+		}
+	}
+	a.logger.Debug("LID resolution complete",
+		zap.String("groupID", groupID),
+		zap.Int("total", len(wahaParticipants)),
+		zap.Int("withPhone", resolved))
+
 	return a.mapper.ParticipantInfosFromWaha(wahaParticipants), nil
 }
 
@@ -548,6 +571,10 @@ func (a *WahaAdapter) fetchLidMappings(ctx context.Context, sessionName string) 
 		a.logger.Warn("failed to parse LID mappings", zap.Error(err))
 		return nil
 	}
+
+	a.logger.Debug("LID mappings fetched",
+		zap.String("session", sessionName),
+		zap.Int("count", len(mappings)))
 
 	lidMap := make(map[string]string, len(mappings))
 	for _, m := range mappings {

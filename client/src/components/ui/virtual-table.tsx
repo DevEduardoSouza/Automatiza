@@ -84,8 +84,8 @@ export function VirtualTable<T>({
   return (
     <div
       ref={parentRef}
-      className={`overflow-auto border rounded-lg ${className ?? ''}`}
-      style={{ height: maxHeight }}
+      className={`overflow-auto border rounded-lg xs:rounded-xl lg:rounded-2xl ${className ?? ''}`}
+      style={maxHeight ? { height: maxHeight } : undefined}
     >
       <Table>
         <TableHeader className="sticky top-0 bg-background z-10">

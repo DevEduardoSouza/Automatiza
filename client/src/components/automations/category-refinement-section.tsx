@@ -110,7 +110,7 @@ export function CategoryRefinementSection({
         </div>
 
         {refineEnabled && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 xl:gap-5">
             {subcategoryGroups.map((group) => (
               <div key={group.i18nKey} className="space-y-2">
                 <Label className="text-sm">{t(group.i18nKey)}</Label>

@@ -76,11 +76,11 @@ export function UserTable({
 
   if (isMobile) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-2 xs:space-y-3">
         {users.map((user) => (
           <div
             key={user.id}
-            className="rounded-xl border p-3 space-y-3"
+            className="rounded-lg xs:rounded-xl border p-2.5 xs:p-3 space-y-2 xs:space-y-3"
             style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
           >
             <div className="flex items-start justify-between gap-2">
@@ -116,7 +116,7 @@ export function UserTable({
               </span>
             </div>
 
-            <div className="flex gap-2 pt-2 border-t">
+            <div className="flex flex-wrap gap-2 pt-1.5 xs:pt-2 border-t">
               <Button
                 size="sm"
                 variant="outline"
@@ -159,7 +159,7 @@ export function UserTable({
   }
 
   return (
-    <div className="border rounded-lg">
+    <div className="border rounded-lg lg:rounded-xl">
       <Table>
         <TableHeader>
           <TableRow>

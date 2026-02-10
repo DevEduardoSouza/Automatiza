@@ -386,8 +386,8 @@ export function useWhatsApp(): UseWhatsAppReturn {
         setImportProgress(data.progress);
       }
 
-      // Add group to imported list
-      if (data.group) {
+      // Add group to imported list (only admin groups)
+      if (data.group && data.group.isAdmin) {
         const groupName = data.group.name || data.group.id;
         setImportedGroups((prev) => {
           // Avoid duplicates

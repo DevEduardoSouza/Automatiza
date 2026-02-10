@@ -46,12 +46,11 @@ export function useGroupsData(): UseGroupsDataReturn {
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
 
   // Fetch paginated data when pagination params or search changes
-  // Always fetch all groups - admin validation is delegated to WAHA when executing actions
   const fetchPaginatedGroups = useCallback(async () => {
     setIsPaginatedLoading(true);
     try {
       const result = await listGroupsPaginated({
-        adminOnly: false, // Fetch all groups - WAHA handles admin validation on actions
+        adminOnly: true,
         page: currentPage,
         pageSize,
         search: debouncedSearchQuery || undefined,

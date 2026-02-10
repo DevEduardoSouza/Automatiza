@@ -45,6 +45,27 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+const LinkListsIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    className={className}
+    style={style}
+  >
+    <path d="M11 6L21 6" />
+    <path d="M11 12L21 12" />
+    <path d="M11 18L21 18" />
+    <path d="M3 7.39286C3 7.39286 4 8.04466 4.5 9C4.5 9 6 5.25 8 4" />
+    <path d="M3 18.3929C3 18.3929 4 19.0447 4.5 20C4.5 20 6 16.25 8 15" />
+  </svg>
+);
+
 const colors = {
   wine: '#8D2D53',
   wineBg: 'rgba(141, 45, 83, 0.08)',
@@ -112,30 +133,30 @@ export default function MlLinkLists() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col w-full h-full">
+      <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8">
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 xl:space-y-10">
             {/* Header */}
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2 xs:gap-3">
                 <div
-                  className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
+                  className="p-1.5 xs:p-2 sm:p-2.5 rounded-lg xs:rounded-xl border"
                   style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
                 >
-                  <LinkIcon className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
+                  <LinkListsIcon className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7" style={{ color: colors.wine }} />
                 </div>
                 <div>
-                  <h1
-                    className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight"
+                  <h2
+                    className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
                     style={{ color: '#18181b' }}
                   >
                     {t('pages.mlLinkLists.title')}
-                  </h1>
+                  </h2>
                   <p
-                    className="text-xs xs:text-sm md:text-base tracking-tight"
+                    className="text-xs xs:text-sm tracking-tight"
                     style={{ color: colors.wineTextMuted }}
                   >
                     {t('pages.mlLinkLists.subtitle')}
@@ -153,7 +174,7 @@ export default function MlLinkLists() {
                     {t('pages.mlLinkLists.newList')}
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="w-[95vw] max-w-2xl">
+                <DialogContent className="w-[95vw] max-w-[95vw] xs:max-w-lg sm:max-w-xl md:max-w-2xl">
                   <DialogHeader>
                     <DialogTitle>
                       {editingList
@@ -162,7 +183,7 @@ export default function MlLinkLists() {
                     </DialogTitle>
                   </DialogHeader>
 
-                  <div className="space-y-4">
+                  <div className="space-y-3 xs:space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="list-name">{t('pages.mlLinkLists.form.name')}</Label>
                       <Input
@@ -188,7 +209,7 @@ export default function MlLinkLists() {
                         placeholder={t('pages.mlLinkLists.form.descriptionPlaceholder')}
                       />
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="space-y-1">
                         <div className="font-medium">{t('pages.mlLinkLists.form.active')}</div>
                         <div className="text-xs" style={{ color: colors.wineTextMuted }}>
@@ -250,10 +271,10 @@ export default function MlLinkLists() {
 
             {/* Lists Card */}
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+              className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4 xs:mb-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4 xs:mb-5 sm:mb-6">
                 <div className="flex items-center gap-2 xs:gap-3">
                   <div
                     className="p-1.5 xs:p-2 rounded-lg"
@@ -274,16 +295,16 @@ export default function MlLinkLists() {
                 </Button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3 xs:space-y-4">
                 {loadingLists ? (
-                  <div className="flex items-center justify-center py-8">
+                  <div className="flex items-center justify-center py-6 xs:py-8">
                     <div
                       className="h-8 w-8 animate-spin rounded-full border-4 border-t-transparent"
                       style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
                     />
                   </div>
                 ) : lists.length === 0 ? (
-                  <p className="text-center py-8 text-sm" style={{ color: colors.wineTextMuted }}>
+                  <p className="text-center py-6 xs:py-8 text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
                     {t('pages.mlLinkLists.lists.empty')}
                   </p>
                 ) : (
@@ -306,7 +327,7 @@ export default function MlLinkLists() {
                       </Select>
                     </div>
                     {selectedList && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Button variant="outline" onClick={() => openEditList(selectedList)}>
                           <Edit className="h-4 w-4 mr-2" aria-hidden="true" />
                           {t('pages.mlLinkLists.lists.edit')}
@@ -327,10 +348,10 @@ export default function MlLinkLists() {
 
             {/* Items Card */}
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+              className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4 xs:mb-5">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4 xs:mb-5 sm:mb-6">
                 <div>
                   <div className="flex items-center gap-2 xs:gap-3">
                     <div
@@ -347,7 +368,7 @@ export default function MlLinkLists() {
                     </span>
                   </div>
                   {selectedList && (
-                    <div className="text-sm mt-1" style={{ color: colors.wineTextMuted }}>
+                    <div className="text-xs xs:text-sm mt-1" style={{ color: colors.wineTextMuted }}>
                       {selectedList.description || t('pages.mlLinkLists.items.noDescription')}
                     </div>
                   )}
@@ -358,14 +379,14 @@ export default function MlLinkLists() {
                 </Button>
               </div>
 
-              <div className="space-y-6">
+              <div className="space-y-4 xs:space-y-5 sm:space-y-6">
                 {!selectedListId ? (
-                  <p className="text-center py-8 text-sm" style={{ color: colors.wineTextMuted }}>
+                  <p className="text-center py-6 xs:py-8 text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
                     {t('pages.mlLinkLists.items.selectList')}
                   </p>
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 xs:gap-4 sm:gap-5 lg:gap-6">
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
                           <LinkIcon className="h-4 w-4" aria-hidden="true" />
@@ -381,7 +402,7 @@ export default function MlLinkLists() {
                             onChange={(e) => setSingleUrl(e.target.value)}
                             placeholder={t('pages.mlLinkLists.items.linkPlaceholder')}
                           />
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <Button onClick={addOneLink} disabled={!singleUrl.trim()}>
                               <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
                               {t('pages.mlLinkLists.items.add')}
@@ -401,30 +422,30 @@ export default function MlLinkLists() {
 
                         {lastPreview && (
                           <div
-                            className="rounded-lg border p-3 space-y-2"
+                            className="rounded-lg xs:rounded-xl border p-2.5 xs:p-3 sm:p-4 space-y-1.5 xs:space-y-2"
                             style={{ borderColor: colors.wineBorder }}
                           >
                             <div className="text-sm font-medium">
                               {t('pages.mlLinkLists.items.preview')}
                             </div>
-                            <div className="flex gap-3">
+                            <div className="flex gap-2 xs:gap-3">
                               {lastPreview.thumbnail ? (
                                 <img
                                   src={lastPreview.thumbnail}
                                   alt=""
-                                  className="h-16 w-16 rounded object-cover"
+                                  className="h-12 w-12 xs:h-14 xs:w-14 sm:h-16 sm:w-16 rounded object-cover"
                                 />
                               ) : (
                                 <div
-                                  className="h-16 w-16 rounded"
+                                  className="h-12 w-12 xs:h-14 xs:w-14 sm:h-16 sm:w-16 rounded"
                                   style={{ backgroundColor: colors.iconBg }}
                                 />
                               )}
                               <div className="flex-1">
-                                <div className="text-sm line-clamp-2">
+                                <div className="text-xs xs:text-sm line-clamp-2">
                                   {lastPreview.title || t('pages.mlLinkLists.items.noTitle')}
                                 </div>
-                                <div className="text-sm font-semibold">
+                                <div className="text-xs xs:text-sm font-semibold">
                                   {lastPreview.price != null && lastPreview.price > 0
                                     ? formatBRL(lastPreview.price)
                                     : ''}
@@ -461,7 +482,7 @@ export default function MlLinkLists() {
                             onChange={(e) => setBulkText(e.target.value)}
                             placeholder={t('pages.mlLinkLists.items.bulkPlaceholder')}
                           />
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <Button onClick={importBulk} disabled={importing || !bulkText.trim()}>
                               <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
                               {t('pages.mlLinkLists.items.import')}
@@ -481,8 +502,8 @@ export default function MlLinkLists() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm" style={{ color: colors.wineTextMuted }}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
                         {t('pages.mlLinkLists.items.total')}{' '}
                         <b style={{ color: colors.wine }}>
                           {totalItemCount > 0 ? totalItemCount : items.length}
@@ -493,15 +514,15 @@ export default function MlLinkLists() {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5 xs:gap-2">
                         <span
-                          className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                          className="inline-flex items-center rounded-full px-2 py-0.5 xs:px-2.5 text-[11px] xs:text-xs font-medium"
                           style={{ backgroundColor: colors.iconBg, color: colors.wine }}
                         >
                           {t('pages.mlLinkLists.items.available')} {availableCount}
                         </span>
                         <span
-                          className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                          className="inline-flex items-center rounded-full border px-2 py-0.5 xs:px-2.5 text-[11px] xs:text-xs font-medium"
                           style={{ borderColor: colors.wineBorder, color: colors.wineTextLight }}
                         >
                           {t('pages.mlLinkLists.items.sent')}{' '}
@@ -543,7 +564,7 @@ export default function MlLinkLists() {
                     )}
 
                     {loadingItems ? (
-                      <div className="flex items-center justify-center py-8">
+                      <div className="flex items-center justify-center py-6 xs:py-8">
                         <div
                           className="h-8 w-8 animate-spin rounded-full border-4 border-t-transparent"
                           style={{
@@ -553,7 +574,7 @@ export default function MlLinkLists() {
                       </div>
                     ) : items.length === 0 ? (
                       <p
-                        className="text-center py-8 text-sm"
+                        className="text-center py-6 xs:py-8 text-xs xs:text-sm"
                         style={{ color: colors.wineTextMuted }}
                       >
                         {t('pages.mlLinkLists.items.empty')}

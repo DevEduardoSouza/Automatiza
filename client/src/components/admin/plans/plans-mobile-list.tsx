@@ -20,10 +20,10 @@ export function PlansMobileList({
   t,
 }: PlansMobileListProps) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2 xs:space-y-3">
       {plans.map((plan) => (
         <Card key={plan.id} className="border">
-          <CardContent className="p-3 space-y-3">
+          <CardContent className="p-2.5 xs:p-3 space-y-2 xs:space-y-3">
             <PlanHeader plan={plan} t={t} />
             <PlanDetails plan={plan} formatStorage={formatStorage} t={t} />
             <PlanActions plan={plan} onEdit={onEdit} onDelete={onDelete} t={t} />
@@ -136,7 +136,7 @@ function PlanActions({
   t: (key: string) => string;
 }) {
   return (
-    <div className="flex gap-2 pt-2 border-t">
+    <div className="flex gap-2 pt-1.5 xs:pt-2 border-t">
       <Button size="sm" variant="outline" onClick={() => onEdit(plan)} className="flex-1">
         <Edit className="h-3 w-3 mr-1" />
         {t('common.edit')}

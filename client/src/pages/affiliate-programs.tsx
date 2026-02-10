@@ -2,8 +2,28 @@ import { ComingSoonCard, StoreCard } from '@/components/affiliate-programs';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useAffiliatePrograms } from '@/hooks';
 import { useToast } from '@/hooks/use-toast';
-import { Store } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const AffiliateIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    style={style}
+  >
+    <path d="M2 12C2 8.46252 2 6.69377 3.0528 5.5129C3.22119 5.32403 3.40678 5.14935 3.60746 4.99087C4.86213 4 6.74142 4 10.5 4H13.5C17.2586 4 19.1379 4 20.3925 4.99087C20.5932 5.14935 20.7788 5.32403 20.9472 5.5129C22 6.69377 22 8.46252 22 12C22 15.5375 22 17.3062 20.9472 18.4871C20.7788 18.676 20.5932 18.8506 20.3925 19.0091C19.1379 20 17.2586 20 13.5 20H10.5C6.74142 20 4.86213 20 3.60746 19.0091C3.40678 18.8506 3.22119 18.676 3.0528 18.4871C2 17.3062 2 15.5375 2 12Z" />
+    <path d="M10 16H11.5" strokeMiterlimit="10" />
+    <path d="M14.5 16L18 16" strokeMiterlimit="10" />
+    <path d="M2 9H22" />
+  </svg>
+);
 
 const colors = {
   wine: '#8D2D53',
@@ -66,9 +86,9 @@ export default function AffiliatePrograms() {
 
   if (loading) {
     return (
-      <div className="flex flex-col w-full h-full">
+      <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
           <div className="flex items-center justify-center py-16">
@@ -84,29 +104,29 @@ export default function AffiliatePrograms() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col w-full h-full">
+      <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8">
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-10">
             <div className="flex items-center gap-3 xs:gap-4">
               <div className="p-2 xs:p-2.5 rounded-xl" style={{ backgroundColor: colors.iconBg }}>
-                <Store
+                <AffiliateIcon
                   className="w-5 h-5 xs:w-6 xs:h-6"
                   style={{ color: colors.wine }}
                   aria-hidden="true"
                 />
               </div>
               <div>
-                <h1
-                  className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight"
+                <h2
+                  className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
                   style={{ color: '#18181b' }}
                 >
                   {t('pages.affiliatePrograms.title')}
-                </h1>
+                </h2>
                 <p
-                  className="text-xs xs:text-sm md:text-base"
+                  className="text-xs xs:text-sm tracking-tight"
                   style={{ color: colors.wineTextMuted }}
                 >
                   {t('pages.affiliatePrograms.subtitle')}
@@ -114,7 +134,7 @@ export default function AffiliatePrograms() {
               </div>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-4 xs:gap-5 sm:gap-6 lg:gap-8 md:grid-cols-2">
               {storeConfigs.map((config) => {
                 const isEnabled = enabledStores.includes(config.key);
 

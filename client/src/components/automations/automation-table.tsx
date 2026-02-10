@@ -75,7 +75,7 @@ export function AutomationTable({
                 })}
               </TableCell>
               <TableCell>{formatDelayWithI18n(auto, t)}</TableCell>
-              <TableCell className="text-xs">
+              <TableCell className="text-xs xl:text-sm">
                 {auto.start_time} - {auto.end_time}
               </TableCell>
               <TableCell>
@@ -84,7 +84,7 @@ export function AutomationTable({
                   onCheckedChange={() => onToggleStatus(auto.id, auto.status)}
                 />
               </TableCell>
-              <TableCell className="text-xs">
+              <TableCell className="text-xs xl:text-sm">
                 {auto.mode !== 'monitor' && auto.next_run_at
                   ? format(new Date(auto.next_run_at), 'dd/MM HH:mm')
                   : auto.mode === 'monitor'
@@ -92,7 +92,7 @@ export function AutomationTable({
                     : '-'}
               </TableCell>
               <TableCell>
-                <div className="flex gap-1">
+                <div className="flex gap-1 xl:gap-2">
                   <Button
                     variant="ghost"
                     size="icon"

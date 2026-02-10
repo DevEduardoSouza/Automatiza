@@ -13,8 +13,7 @@ type WebhookLog struct {
 	ID          int                    `json:"id"`
 	Source      string                 `json:"source"`
 	EventType   *string                `json:"event_type,omitempty"`
-	Email       *string                `json:"email,omitempty"`
-	Plan        *string                `json:"plan,omitempty"`
+	Email       *string                `json:"email,omitempty"` // maps to kiwify_customer_email column
 	Payload     map[string]interface{} `json:"payload,omitempty"`
 	Status      string                 `json:"status"`
 	Error       *string                `json:"error,omitempty"`
@@ -52,15 +51,15 @@ func (r *webhookLogRepository) Create(ctx context.Context, source string, eventT
 	}
 
 	query := `
-		INSERT INTO webhook_logs (source, event_type, email, plan, payload, status, created_at)
-		VALUES ($1, $2, $3, $4, $5, 'received', $6)
+		INSERT INTO webhook_logs (source, event_type, kiwify_customer_email, payload, status, created_at)
+		VALUES ($1, $2, $3, $4, 'received', $5)
 		RETURNING id, created_at
 	`
 
 	var id int
 	var createdAt time.Time
 
-	err := r.db.QueryRow(ctx, query, source, eventType, email, plan, payloadJSON, now).Scan(&id, &createdAt)
+	err := r.db.QueryRow(ctx, query, source, eventType, email, payloadJSON, now).Scan(&id, &createdAt)
 	if err != nil {
 		r.logger.Error("Failed to create webhook log",
 			zap.String("source", source),
@@ -73,7 +72,6 @@ func (r *webhookLogRepository) Create(ctx context.Context, source string, eventT
 		Source:    source,
 		EventType: eventType,
 		Email:     email,
-		Plan:      plan,
 		Payload:   payload,
 		Status:    "received",
 		CreatedAt: createdAt.Format(time.RFC3339),
@@ -107,7 +105,7 @@ func (r *webhookLogRepository) GetRecent(ctx context.Context, source string, lim
 	}
 
 	query := `
-		SELECT id, source, event_type, email, plan, payload, status, error, processed_at, created_at
+		SELECT id, source, event_type, kiwify_customer_email, payload, status, error, processed_at, created_at
 		FROM webhook_logs
 		WHERE source = $1
 		ORDER BY created_at DESC
@@ -128,7 +126,7 @@ func (r *webhookLogRepository) GetRecent(ctx context.Context, source string, lim
 		var createdAt time.Time
 
 		err := rows.Scan(
-			&log.ID, &log.Source, &log.EventType, &log.Email, &log.Plan, &payloadJSON, &log.Status, &log.Error, &processedAt, &createdAt,
+			&log.ID, &log.Source, &log.EventType, &log.Email, &payloadJSON, &log.Status, &log.Error, &processedAt, &createdAt,
 		)
 		if err != nil {
 			return nil, err

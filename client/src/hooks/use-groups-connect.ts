@@ -438,9 +438,8 @@ export function useGroupsConnect(): UseGroupsConnectReturn {
       if (!user?.id) return [];
       const client = createClient(GroupsService, transport);
 
-      // Fetch all groups - admin validation is handled by WAHA when executing actions
       const response: ListGroupsResponse = await client.listGroups(
-        create(ListGroupsRequestSchema, { adminOnly: false })
+        create(ListGroupsRequestSchema, { adminOnly: true })
       );
       return response.groups.map(fromProtoGroup);
     },

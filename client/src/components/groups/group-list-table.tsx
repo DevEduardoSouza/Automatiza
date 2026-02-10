@@ -323,7 +323,7 @@ export function GroupListTable({
 
   return (
     <div
-      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8 xl:p-10"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
       {/* Header */}
@@ -363,7 +363,7 @@ export function GroupListTable({
       {/* Desktop Table - Virtualized for large lists */}
       <div className="hidden md:block">
         {sortedGroups.length === 0 ? (
-          <div className="text-center py-8" style={{ color: colors.wineTextMuted }}>
+          <div className="text-center py-8 lg:py-12" style={{ color: colors.wineTextMuted }}>
             {searchQuery ? t('pages.groups.list.noSearchResults') : t('pages.groups.list.noGroups')}
           </div>
         ) : shouldVirtualize && !usePagination ? (
@@ -381,7 +381,7 @@ export function GroupListTable({
                 {columns.map((col) => (
                   <th
                     key={col.key}
-                    className="h-12 px-4 text-left align-middle font-medium"
+                    className="h-12 px-4 lg:h-14 lg:px-5 xl:px-6 text-left align-middle font-medium"
                     style={{ width: col.width, color: colors.wineTextMuted }}
                   >
                     {col.header}
@@ -397,7 +397,7 @@ export function GroupListTable({
                   style={{ borderBottomColor: colors.wineBorder }}
                 >
                   {columns.map((col) => (
-                    <td key={col.key} className="p-4 align-middle">
+                    <td key={col.key} className="p-4 lg:p-5 xl:p-6 align-middle">
                       {col.render(group, index)}
                     </td>
                   ))}
@@ -409,7 +409,7 @@ export function GroupListTable({
       </div>
 
       {/* Mobile Cards */}
-      <div className="md:hidden space-y-3">
+      <div className="md:hidden space-y-3 xs:space-y-4">
         {sortedGroups.length === 0 ? (
           <div className="text-center py-8 text-sm" style={{ color: colors.wineTextMuted }}>
             {searchQuery ? t('pages.groups.list.noSearchResults') : t('pages.groups.list.noGroups')}
@@ -418,10 +418,10 @@ export function GroupListTable({
           sortedGroups.map((group) => (
             <div
               key={group.id}
-              className="rounded-xl xs:rounded-2xl border p-3 xs:p-4"
+              className="rounded-xl xs:rounded-2xl border p-3 xs:p-4 sm:p-5"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
-              <div className="space-y-3">
+              <div className="space-y-3 xs:space-y-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2 flex-1">
                     <Checkbox
@@ -455,7 +455,7 @@ export function GroupListTable({
                             aria-hidden="true"
                           />
                         </Button>
-                        <h3 className="font-semibold text-sm break-words">{group.name}</h3>
+                        <h3 className="font-semibold text-sm xs:text-base break-words">{group.name}</h3>
                       </div>
                       <div
                         className="flex flex-wrap gap-2 text-xs"
@@ -471,7 +471,7 @@ export function GroupListTable({
                 </div>
 
                 <div
-                  className="pt-2 space-y-2"
+                  className="pt-2 xs:pt-3 flex flex-col xs:flex-row gap-2"
                   style={{ borderTopColor: colors.wineBorder, borderTopWidth: '1px' }}
                 >
                   {group.invite_code ? (
@@ -479,7 +479,7 @@ export function GroupListTable({
                       variant="outline"
                       size="sm"
                       onClick={() => onEditInviteCode(group)}
-                      className="w-full text-xs"
+                      className="w-full xs:w-auto flex-1 min-w-0 text-xs"
                     >
                       <Check className="mr-2 h-3 w-3 text-green-600" aria-hidden="true" />
                       {t('pages.groups.inviteCode.configured')}
@@ -488,7 +488,7 @@ export function GroupListTable({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full text-xs text-orange-600 border-orange-300"
+                      className="w-full xs:w-auto flex-1 min-w-0 text-xs text-orange-600 border-orange-300"
                       onClick={() => onEditInviteCode(group)}
                     >
                       <AlertCircle className="mr-2 h-3 w-3" aria-hidden="true" />
@@ -498,7 +498,7 @@ export function GroupListTable({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full text-xs"
+                    className="w-full xs:w-auto flex-1 min-w-0 text-xs"
                     onClick={() =>
                       onManageMembers({
                         wa_group_id: group.wa_group_id,
@@ -518,7 +518,7 @@ export function GroupListTable({
 
       {/* Pagination Controls */}
       {usePagination && (
-        <div className="flex items-center justify-between gap-3 xs:gap-4 mt-4">
+        <div className="flex flex-col xs:flex-row items-center justify-between gap-3 xs:gap-4 mt-4 lg:mt-6">
           {/* Page info - left side */}
           <div className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
             {t('pages.groups.pagination.showing', {
@@ -530,7 +530,7 @@ export function GroupListTable({
           </div>
 
           {/* Page navigation - right side */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 xs:gap-1.5">
             {/* First page */}
             <Button
               variant="outline"

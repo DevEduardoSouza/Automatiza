@@ -19,11 +19,11 @@ export function AwinBrandsSelector({
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-3 pt-4 border-t">
+    <div className="space-y-3 lg:space-y-4 pt-4 lg:pt-5 border-t">
       <Label className="text-sm font-medium">
         {t('pages.affiliatePrograms.awin.selectBrands')}
       </Label>
-      <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border rounded-md">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 lg:gap-3 max-h-48 lg:max-h-64 overflow-y-auto p-2 lg:p-3 border rounded-md lg:rounded-lg">
         {brands.map((brand) => (
           <div key={brand} className="flex items-center space-x-2">
             <input

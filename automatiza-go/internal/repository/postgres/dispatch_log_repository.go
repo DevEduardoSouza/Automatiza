@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -485,45 +486,60 @@ func (r *dispatchLogRepository) GetUserLogsWithFilters(ctx context.Context, user
 	}
 
 	// Build the WHERE clause dynamically
-	// Cast user_id to text for comparison since userID is passed as string
-	whereClause := "a.user_id::text = $1"
-	args := []interface{}{userID}
-	argIndex := 2
+	var conditions []string
+	args := []interface{}{}
+	argIndex := 1
+
+	// Only filter by user when userID is provided (empty = admin-wide query)
+	if userID != "" {
+		conditions = append(conditions, fmt.Sprintf("dl.user_id = $%d", argIndex))
+		args = append(args, userID)
+		argIndex++
+	}
 
 	// Apply optional filters
 	if filters != nil {
 		if filters.AutomationID != nil && *filters.AutomationID != "" {
-			whereClause += fmt.Sprintf(" AND dl.automation_id = $%d", argIndex)
+			conditions = append(conditions, fmt.Sprintf("dl.automation_id = $%d", argIndex))
 			args = append(args, *filters.AutomationID)
 			argIndex++
 		}
 		if filters.GroupID != nil && *filters.GroupID != "" {
-			whereClause += fmt.Sprintf(" AND dl.group_id = $%d", argIndex)
+			conditions = append(conditions, fmt.Sprintf("dl.group_id = $%d", argIndex))
 			args = append(args, *filters.GroupID)
 			argIndex++
 		}
 		if filters.Status != nil && *filters.Status != "" {
-			whereClause += fmt.Sprintf(" AND dl.status = $%d", argIndex)
+			conditions = append(conditions, fmt.Sprintf("dl.status = $%d", argIndex))
 			args = append(args, *filters.Status)
 			argIndex++
 		}
 		if filters.Store != nil && *filters.Store != "" {
-			whereClause += fmt.Sprintf(" AND dl.store = $%d", argIndex)
+			conditions = append(conditions, fmt.Sprintf("dl.store = $%d", argIndex))
 			args = append(args, *filters.Store)
 			argIndex++
 		}
 		if filters.SearchURL != nil && *filters.SearchURL != "" {
-			whereClause += fmt.Sprintf(" AND dl.product_url ILIKE $%d", argIndex)
+			conditions = append(conditions, fmt.Sprintf("dl.product_url ILIKE $%d", argIndex))
 			args = append(args, "%"+*filters.SearchURL+"%")
 			argIndex++
 		}
+		if filters.Since != nil {
+			conditions = append(conditions, fmt.Sprintf("dl.created_at >= $%d", argIndex))
+			args = append(args, *filters.Since)
+			argIndex++
+		}
+	}
+
+	whereClause := "TRUE"
+	if len(conditions) > 0 {
+		whereClause = strings.Join(conditions, " AND ")
 	}
 
 	// Get total count for pagination
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM dispatch_logs dl
-		JOIN automations a ON dl.automation_id = a.id
 		WHERE %s
 	`, whereClause)
 
@@ -549,7 +565,6 @@ func (r *dispatchLogRepository) GetUserLogsWithFilters(ctx context.Context, user
 			dl.coupon_id, dl.coupon_code, dl.coupon_applied, dl.coupon_skip_reason,
 			g.name as group_name
 		FROM dispatch_logs dl
-		JOIN automations a ON dl.automation_id = a.id
 		LEFT JOIN groups g ON dl.group_id = g.wa_group_id AND g.user_id = dl.user_id
 		WHERE %s
 		ORDER BY dl.created_at DESC

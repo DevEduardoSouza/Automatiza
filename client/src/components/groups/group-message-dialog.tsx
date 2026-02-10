@@ -74,10 +74,10 @@ export function GroupMessageDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="w-full text-xs md:text-sm">
-          <MessageSquare className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
-          <span className="hidden sm:inline">{t('pages.groups.bulkActions.sendMessage')}</span>
-          <span className="sm:hidden">{t('pages.groups.bulkActions.sendMessageShort')}</span>
+        <Button variant="outline" className="w-full min-w-0 text-xs md:text-sm">
+          <MessageSquare className="shrink-0 mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
+          <span className="hidden sm:inline truncate">{t('pages.groups.bulkActions.sendMessage')}</span>
+          <span className="sm:hidden truncate">{t('pages.groups.bulkActions.sendMessageShort')}</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">

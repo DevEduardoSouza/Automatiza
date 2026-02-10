@@ -79,12 +79,12 @@ export function ItemsVirtualTable({
       render: (item: MlLinkListItem) => (
         <div className="flex gap-3">
           {item.product_image_url ? (
-            <img src={item.product_image_url} alt="" className="h-12 w-12 rounded object-cover" />
+            <img src={item.product_image_url} alt="" className="h-10 w-10 xs:h-12 xs:w-12 rounded object-cover" />
           ) : (
-            <div className="h-12 w-12 rounded" style={{ backgroundColor: colors.iconBg }} />
+            <div className="h-10 w-10 xs:h-12 xs:w-12 rounded" style={{ backgroundColor: colors.iconBg }} />
           )}
           <div className="min-w-0">
-            <div className="text-sm font-medium line-clamp-2">
+            <div className="text-xs xs:text-sm font-medium line-clamp-2">
               {item.product_title || item.origin_url}
             </div>
             <button
@@ -104,7 +104,7 @@ export function ItemsVirtualTable({
       header: t('pages.mlLinkLists.items.table.price'),
       width: '140px',
       render: (item: MlLinkListItem) => (
-        <div className="text-sm">
+        <div className="text-xs xs:text-sm">
           {item.product_price != null && item.product_price > 0
             ? formatBRL(item.product_price)
             : ''}
@@ -164,7 +164,7 @@ export function ItemsVirtualTable({
       columns={columns}
       getRowKey={(item) => item.id}
       estimateSize={80}
-      maxHeight={600}
+      className="h-[350px] xs:h-[400px] sm:h-[450px] lg:h-[500px] xl:h-[600px]"
       onEndReached={onLoadMore}
       hasMore={hasMore}
       isLoadingMore={isLoadingMore}

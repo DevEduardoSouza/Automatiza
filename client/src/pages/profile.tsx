@@ -4,9 +4,30 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useProfilePage } from '@/hooks/use-profile-page';
-import { Eye, EyeOff, Lock, Phone, User as UserIcon } from 'lucide-react';
+import { Eye, EyeOff, Lock, Phone } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+const ProfileIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    style={style}
+  >
+    <path d="M2 12C2 8.22876 2 6.34315 3.17157 5.17157C4.34315 4 6.22876 4 10 4H14C17.7712 4 19.6569 4 20.8284 5.17157C22 6.34315 22 8.22876 22 12C22 15.7712 22 17.6569 20.8284 18.8284C19.6569 20 17.7712 20 14 20H10C6.22876 20 4.34315 20 3.17157 18.8284C2 17.6569 2 15.7712 2 12Z" />
+    <path d="M9 12.5C7.61929 12.5 6.5 11.3807 6.5 10C6.5 8.61929 7.61929 7.5 9 7.5C10.3807 7.5 11.5 8.61929 11.5 10C11.5 11.3807 10.3807 12.5 9 12.5ZM9 12.5C11.2091 12.5 13 14.2909 13 16.5M9 12.5C6.79086 12.5 5 14.2909 5 16.5" />
+    <path d="M15 9H19" />
+    <path d="M15 12H19" />
+  </svg>
+);
 
 const colors = {
   wine: '#8D2D53',
@@ -51,30 +72,30 @@ export default function Profile() {
     <ErrorBoundary>
       <div className="flex flex-col w-full h-full">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10 xl:p-12"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8">
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-9 xl:space-y-10">
             <div className="flex items-center gap-2 xs:gap-3">
               <div
                 className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
                 style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
               >
-                <UserIcon
+                <ProfileIcon
                   className="w-5 h-5 xs:w-6 xs:h-6"
                   style={{ color: colors.wine }}
                   aria-hidden="true"
                 />
               </div>
               <div>
-                <h1
-                  className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight"
+                <h2
+                  className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
                   style={{ color: '#18181b' }}
                 >
                   {t('pages.profile.title')}
-                </h1>
+                </h2>
                 <p
-                  className="text-xs xs:text-sm md:text-base tracking-tight"
+                  className="text-xs xs:text-sm tracking-tight"
                   style={{ color: colors.wineTextMuted }}
                 >
                   {t('pages.profile.subtitle')}
@@ -82,17 +103,17 @@ export default function Profile() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 xs:gap-4 sm:gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 xs:gap-4 sm:gap-6 lg:gap-8 xl:gap-10">
               <div
-                className="lg:col-span-2 rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+                className="lg:col-span-2 rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
-                <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
+                <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4 sm:mb-5">
                   <div
                     className="p-1.5 xs:p-2 rounded-lg"
                     style={{ backgroundColor: colors.iconBg }}
                   >
-                    <UserIcon
+                    <ProfileIcon
                       className="w-4 h-4 xs:w-5 xs:h-5"
                       style={{ color: colors.wine }}
                       aria-hidden="true"
@@ -105,8 +126,8 @@ export default function Profile() {
                     {t('pages.profile.accountInfo.title')}
                   </span>
                 </div>
-                <div className="space-y-3 xs:space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 xs:gap-4">
+                <div className="space-y-3 xs:space-y-4 sm:space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 xs:gap-4 sm:gap-5 lg:gap-6">
                     <div className="space-y-1">
                       <Label
                         className="text-xs xs:text-sm font-medium"
@@ -114,7 +135,7 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.email')}
                       </Label>
-                      <div className="text-sm text-black">{profile?.email || '-'}</div>
+                      <div className="text-sm xs:text-base text-black">{profile?.email || '-'}</div>
                     </div>
                     <div className="space-y-1">
                       <Label
@@ -130,7 +151,7 @@ export default function Profile() {
                         >
                           {(profile?.plan || 'free').toUpperCase()}
                         </span>
-                        <span className="text-xs" style={{ color: colors.wineTextMuted }}>
+                        <span className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
                           {automationsLimitText}
                         </span>
                       </div>
@@ -142,7 +163,7 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.nextPayment')}
                       </Label>
-                      <div className="text-sm text-black">
+                      <div className="text-sm xs:text-base text-black">
                         {formatDateBR(profile?.billing_next_payment_at ?? null)}
                       </div>
                     </div>
@@ -153,7 +174,7 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.accessUntil')}
                       </Label>
-                      <div className="text-sm text-black">
+                      <div className="text-sm xs:text-base text-black">
                         {formatDateBR(profile?.plan_access_until ?? null)}
                       </div>
                     </div>
@@ -164,7 +185,7 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.userId')}
                       </Label>
-                      <div className="text-sm text-black font-mono break-all">
+                      <div className="text-sm xs:text-base text-black font-mono break-all">
                         {profile?.id || '-'}
                       </div>
                     </div>
@@ -175,7 +196,7 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.connectedWhatsApp')}
                       </Label>
-                      <div className="text-sm text-black">
+                      <div className="text-sm xs:text-base text-black">
                         {connectedInstancesCount} {t('pages.profile.accountInfo.instances')}
                       </div>
                     </div>
@@ -186,7 +207,7 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.createdAt')}
                       </Label>
-                      <div className="text-sm text-black">{formatDateBR(profile?.created_at)}</div>
+                      <div className="text-sm xs:text-base text-black">{formatDateBR(profile?.created_at)}</div>
                     </div>
                     <div className="space-y-1">
                       <Label
@@ -195,7 +216,7 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.updatedAt')}
                       </Label>
-                      <div className="text-sm text-black">{formatDateBR(profile?.updated_at)}</div>
+                      <div className="text-sm xs:text-base text-black">{formatDateBR(profile?.updated_at)}</div>
                     </div>
                   </div>
 
@@ -208,10 +229,10 @@ export default function Profile() {
               </div>
 
               <div
-                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
-                <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
+                <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4 sm:mb-5">
                   <div
                     className="p-1.5 xs:p-2 rounded-lg"
                     style={{ backgroundColor: colors.iconBg }}
@@ -229,7 +250,7 @@ export default function Profile() {
                     {t('pages.profile.phone.title')}
                   </span>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-3 xs:space-y-4">
                   <div className="space-y-2">
                     <Label
                       htmlFor="phone_number"
@@ -257,10 +278,10 @@ export default function Profile() {
             </div>
 
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
-              <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
+              <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4 sm:mb-5">
                 <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
                   <Lock
                     className="w-4 h-4 xs:w-5 xs:h-5"
@@ -275,7 +296,7 @@ export default function Profile() {
                   {t('pages.profile.security.title')}
                 </span>
               </div>
-              <div className="space-y-3 xs:space-y-4">
+              <div className="space-y-3 xs:space-y-4 sm:space-y-5">
                 <div className="space-y-2">
                   <Label
                     htmlFor="current_password"
@@ -308,7 +329,7 @@ export default function Profile() {
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 xs:gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 xs:gap-4 sm:gap-5 lg:gap-6">
                   <div className="space-y-2">
                     <Label
                       htmlFor="new_password"

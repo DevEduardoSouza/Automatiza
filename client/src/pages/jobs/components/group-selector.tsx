@@ -69,17 +69,15 @@ export function GroupSelector({
 
     return (
       <div
-        className={`flex items-center space-x-2 cursor-pointer ${isSelectedButFiltered ? 'bg-primary/5 rounded px-2 py-1 -mx-2' : ''}`}
+        className={`flex items-center space-x-2 cursor-pointer rounded-md py-1 px-2 -mx-2 transition-colors hover:bg-accent ${isSelectedButFiltered ? 'bg-primary/5' : ''}`}
         onClick={() => onToggleGroup(group.id)}
       >
         <Checkbox
           id={`group-${group.id}`}
           checked={isSelected}
-          onCheckedChange={() => onToggleGroup(group.id)}
           className="cursor-pointer"
         />
         <Label
-          htmlFor={`group-${group.id}`}
           className="text-sm font-normal cursor-pointer flex items-center gap-2 flex-1"
         >
           {group.is_favorite && <Star className="h-3 w-3 fill-[#8D2D53] text-[#8D2D53]" />}
@@ -106,7 +104,7 @@ export function GroupSelector({
           className="pl-9 cursor-text"
         />
       </div>
-      <div ref={parentRef} className="border rounded-lg p-4 space-y-2 max-h-48 overflow-y-auto">
+      <div ref={parentRef} className="border rounded-lg p-3 xs:p-4 space-y-2 max-h-40 xs:max-h-48 lg:max-h-64 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-4">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />

@@ -9,8 +9,28 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAutomations } from '@/hooks/use-automations';
 import { useToast } from '@/hooks/use-toast';
-import { AlertCircle, FileText, List, Plus, WifiOff, Zap } from 'lucide-react';
+import { AlertCircle, FileText, List, Plus, WifiOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const AIIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinejoin="round"
+    className={className}
+    style={style}
+  >
+    <path d="M4 12C4 8.22876 4 6.34315 5.17157 5.17157C6.34315 4 8.22876 4 12 4C15.7712 4 17.6569 4 18.8284 5.17157C20 6.34315 20 8.22876 20 12C20 15.7712 20 17.6569 18.8284 18.8284C17.6569 20 15.7712 20 12 20C8.22876 20 6.34315 20 5.17157 18.8284C4 17.6569 4 15.7712 4 12Z" />
+    <path d="M7.5 15L9.34189 9.47434C9.43631 9.19107 9.7014 9 10 9C10.2986 9 10.5637 9.19107 10.6581 9.47434L12.5 15M8.5 13H11.5" />
+    <path d="M15.5 9V15" />
+    <path d="M8 2V4M16 2V4M12 2V4M8 20V22M12 20V22M16 20V22M22 16H20M4 8H2M4 16H2M4 12H2M22 8H20M22 12H20" />
+  </svg>
+);
 
 const colors = {
   wine: '#8D2D53',
@@ -85,7 +105,7 @@ export default function OfferAutomations() {
     return (
       <div className="flex flex-col w-full h-full">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10 xl:p-12"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
           <div className="flex items-center justify-center min-h-[400px]">
@@ -106,10 +126,10 @@ export default function OfferAutomations() {
     <ErrorBoundary>
       <div className="flex flex-col w-full h-full">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10 xl:p-12"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8">
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-9 xl:space-y-10">
             {/* Header */}
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2 xs:gap-3">
@@ -117,16 +137,16 @@ export default function OfferAutomations() {
                   className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
                   style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
                 >
-                  <Zap className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
+                  <AIIcon className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h1
-                      className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight"
+                    <h2
+                      className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
                       style={{ color: '#18181b' }}
                     >
                       {t('pages.offerAutomations.title')}
-                    </h1>
+                    </h2>
                     <span
                       className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
                       style={
@@ -146,7 +166,7 @@ export default function OfferAutomations() {
                     </span>
                   </div>
                   <p
-                    className="text-xs xs:text-sm md:text-base tracking-tight"
+                    className="text-xs xs:text-sm tracking-tight"
                     style={{ color: colors.wineTextMuted }}
                   >
                     {t('pages.offerAutomations.subtitle')}
@@ -184,7 +204,7 @@ export default function OfferAutomations() {
             {/* Limit Alert - Glassmorphism */}
             {(nearLimit || limitReached) && (
               <div
-                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-7 xl:p-8"
                 role="alert"
                 style={
                   limitReached
@@ -247,7 +267,7 @@ export default function OfferAutomations() {
             {/* WhatsApp Disconnected Alert - Red Glassmorphism */}
             {!whatsappConnected && (
               <div
-                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-7 xl:p-8"
                 role="alert"
                 style={{
                   backgroundColor: 'rgba(239, 68, 68, 0.06)',
@@ -280,21 +300,21 @@ export default function OfferAutomations() {
             {/* Content */}
             {automations.length === 0 ? (
               <div
-                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-7 xl:p-8"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
-                <div className="flex flex-col items-center justify-center py-8 xs:py-10 sm:py-12">
+                <div className="flex flex-col items-center justify-center py-8 xs:py-10 sm:py-12 lg:py-16 xl:py-20">
                   <div
                     className="p-3 xs:p-4 rounded-xl mb-4"
                     style={{ backgroundColor: colors.iconBg }}
                   >
                     <FileText
-                      className="h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12"
+                      className="h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 lg:h-14 lg:w-14"
                       style={{ color: colors.wine }}
                     />
                   </div>
                   <p
-                    className="text-sm xs:text-base mb-4 text-center"
+                    className="text-sm xs:text-base lg:text-lg mb-4 text-center"
                     style={{ color: colors.wineTextMuted }}
                   >
                     {t('pages.offerAutomations.noAutomations')}
@@ -324,7 +344,7 @@ export default function OfferAutomations() {
               </div>
             ) : (
               <div
-                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-7 xl:p-8"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
                 <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">

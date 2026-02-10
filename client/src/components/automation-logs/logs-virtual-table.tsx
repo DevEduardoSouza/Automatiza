@@ -62,7 +62,7 @@ export function LogsVirtualTable({ logs, getGroupName }: LogsVirtualTableProps) 
     const v = variants[status] || variants.queued;
     return (
       <span
-        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+        className="inline-flex items-center rounded-full px-2 py-0.5 xs:px-2.5 text-[11px] xs:text-xs font-medium"
         style={{ backgroundColor: v.bg, color: v.color }}
       >
         {v.label}
@@ -134,7 +134,7 @@ export function LogsVirtualTable({ logs, getGroupName }: LogsVirtualTableProps) 
         if (log.coupon_applied) {
           return (
             <span
-              className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+              className="inline-flex items-center rounded-full px-2 py-0.5 xs:px-2.5 text-[11px] xs:text-xs font-medium"
               style={{ backgroundColor: colors.iconBg, color: colors.wine }}
             >
               {log.coupon_code || t('pages.automationLogs.table.coupon')} ✓
@@ -144,7 +144,7 @@ export function LogsVirtualTable({ logs, getGroupName }: LogsVirtualTableProps) 
         return (
           <div className="space-y-1">
             <span
-              className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+              className="inline-flex items-center rounded-full px-2 py-0.5 xs:px-2.5 text-[11px] xs:text-xs font-medium"
               style={{ backgroundColor: 'rgba(141, 45, 83, 0.06)', color: colors.wineTextLight }}
             >
               {log.coupon_code || t('pages.automationLogs.table.coupon')} ✕
@@ -201,7 +201,7 @@ export function LogsVirtualTable({ logs, getGroupName }: LogsVirtualTableProps) 
       columns={columns}
       getRowKey={(log) => log.id}
       estimateSize={56}
-      maxHeight={600}
+      className="h-[350px] xs:h-[400px] sm:h-[450px] lg:h-[500px] xl:h-[600px]"
     />
   );
 }

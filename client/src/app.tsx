@@ -36,7 +36,13 @@ const RedirectLink = lazy(() => import('./pages/redirect-link/index'));
 const ResetPassword = lazy(() => import('./pages/reset-password'));
 const WhatsApp = lazy(() => import('./pages/whatsapp'));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+    },
+  },
+});
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => (
   <SidebarProvider>
@@ -44,7 +50,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => (
       <AppSidebar />
       <main className="flex-1 flex flex-col">
         <AccountSuspendedBanner />
-        <div className="flex-1 p-4 md:p-8">{children}</div>
+        <div className="flex-1 p-4 md:p-8 lg:p-10 xl:p-12">{children}</div>
       </main>
     </div>
   </SidebarProvider>

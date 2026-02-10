@@ -19,7 +19,7 @@ export function MlTestResult({ result, formatSoldQuantity }: MlTestResultProps) 
 
   return (
     <div
-      className="rounded-xl border p-3 space-y-2 text-sm"
+      className="rounded-xl border p-3 xs:p-4 lg:p-5 space-y-2 xs:space-y-3 text-sm"
       style={{ backgroundColor: 'rgba(141, 45, 83, 0.08)', borderColor: 'rgba(141, 45, 83, 0.2)' }}
     >
       <div className="font-medium">{t('pages.affiliatePrograms.ml.testResult')}</div>
@@ -28,7 +28,7 @@ export function MlTestResult({ result, formatSoldQuantity }: MlTestResultProps) 
         <img
           src={result.thumbnail}
           alt={result.title || 'Produto'}
-          className="w-24 h-24 object-cover rounded"
+          className="w-20 h-20 xs:w-24 xs:h-24 object-cover rounded lg:rounded-lg"
         />
       )}
 

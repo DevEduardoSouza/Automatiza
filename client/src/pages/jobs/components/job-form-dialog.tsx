@@ -121,13 +121,13 @@ export function JobFormDialog({
   return (
     <Dialog open={dialogOpen} onOpenChange={onDialogOpenChange}>
       <DialogTrigger asChild>
-        <Button className="flex-1 md:flex-none">
+        <Button className="w-full xs:w-auto xs:flex-1 md:flex-none">
           <Plus className="mr-2 h-4 w-4" />
           <span className="hidden sm:inline">{t('pages.jobs.newJob')}</span>
           <span className="sm:hidden">{t('pages.jobs.newJobShort')}</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[85vh] xs:max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-lg md:text-xl">
             {editingJobId ? t('pages.jobs.dialog.editTitle') : t('pages.jobs.dialog.createTitle')}

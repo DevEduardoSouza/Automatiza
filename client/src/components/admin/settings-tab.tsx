@@ -30,7 +30,7 @@ export default function SettingsTab() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 xs:space-y-4 sm:space-y-5 lg:space-y-6">
       <SMTPCard settings={settings} setSettings={setSettings} t={t} />
       <KiwifyCard settings={settings} setSettings={setSettings} t={t} />
       <WahaCard settings={settings} setSettings={setSettings} t={t} />
@@ -43,7 +43,7 @@ export default function SettingsTab() {
       <Button
         onClick={handleSaveSettings}
         disabled={saving}
-        className="w-full"
+        className="w-full lg:w-auto"
         aria-label={
           saving ? t('admin.settings.savingAriaLabel') : t('admin.settings.saveAriaLabel')
         }

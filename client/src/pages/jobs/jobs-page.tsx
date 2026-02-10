@@ -2,8 +2,29 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { ScheduleMultipleGroups } from '@/components/groups';
 import { Button } from '@/components/ui/button';
 import { useJobs } from '@/hooks/use-jobs';
-import { AlertCircle, CalendarClock, HelpCircle, List } from 'lucide-react';
+import { AlertCircle, HelpCircle, List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const SchedulesIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width="24"
+    height="24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    style={style}
+  >
+    <path d="M16 2V6M8 2V6" />
+    <path d="M13 4H11C7.22876 4 5.34315 4 4.17157 5.17157C3 6.34315 3 8.22876 3 12V14C3 17.7712 3 19.6569 4.17157 20.8284C5.34315 22 7.22876 22 11 22H13C16.7712 22 18.6569 22 19.8284 20.8284C21 19.6569 21 17.7712 21 14V12C21 8.22876 21 6.34315 19.8284 5.17157C18.6569 4 16.7712 4 13 4Z" />
+    <path d="M3 10H21" />
+    <path d="M11.9955 14H12.0045M11.9955 18H12.0045M15.991 14H16M8 14H8.00897M8 18H8.00897" />
+  </svg>
+);
 import { JobFormDialog } from './components/job-form-dialog';
 import { JobsMobileList } from './components/jobs-mobile-list';
 import { JobsTable } from './components/jobs-table';
@@ -30,12 +51,12 @@ export default function JobsPage() {
 
   return (
     <ErrorBoundary>
-      <div className="jobs-page flex flex-col w-full h-full">
+      <div className="jobs-page flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8">
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-10">
             {/* Header */}
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2 xs:gap-3">
@@ -43,17 +64,17 @@ export default function JobsPage() {
                   className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
                   style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
                 >
-                  <CalendarClock className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
+                  <SchedulesIcon className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
                 </div>
                 <div>
-                  <h1
-                    className="text-xl xs:text-2xl md:text-3xl font-semibold tracking-tight"
+                  <h2
+                    className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
                     style={{ color: '#18181b' }}
                   >
                     {t('pages.jobs.title')}
-                  </h1>
+                  </h2>
                   <p
-                    className="text-xs xs:text-sm md:text-base tracking-tight"
+                    className="text-xs xs:text-sm tracking-tight"
                     style={{ color: colors.wineTextMuted }}
                   >
                     {t('pages.jobs.subtitle')}
@@ -61,7 +82,7 @@ export default function JobsPage() {
                 </div>
               </div>
 
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex flex-col xs:flex-row gap-2 flex-wrap">
                 <JobFormDialog
                   dialogOpen={jobs.dialogOpen}
                   editingJobId={jobs.editingJobId}
@@ -109,7 +130,7 @@ export default function JobsPage() {
 
             {/* Warning Alert - Glassmorphism */}
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               role="alert"
               style={{
                 backgroundColor: 'rgba(180, 120, 60, 0.08)',
@@ -146,7 +167,7 @@ export default function JobsPage() {
 
             {/* Agendamentos Card */}
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
               <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
@@ -207,7 +228,7 @@ export default function JobsPage() {
                   </div>
 
                   <div
-                    className="flex items-center justify-between mt-4 pt-4 border-t"
+                    className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3 xs:gap-0 mt-4 pt-4 border-t"
                     style={{ borderColor: colors.wineBorder }}
                   >
                     <p className="text-sm" style={{ color: colors.wineTextMuted }}>
@@ -228,7 +249,7 @@ export default function JobsPage() {
 
             {/* Como funciona Card */}
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8 xl:p-10"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
               <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
@@ -248,11 +269,11 @@ export default function JobsPage() {
               </div>
 
               <div className="space-y-4">
-                <p className="text-sm md:text-base" style={{ color: '#71717a' }}>
+                <p className="text-sm md:text-base lg:text-lg" style={{ color: '#71717a' }}>
                   {t('pages.jobs.howItWorks.description')}
                 </p>
                 <ul
-                  className="list-disc list-inside space-y-2 text-sm md:text-base"
+                  className="list-disc list-inside space-y-2 lg:space-y-3 text-sm md:text-base lg:text-lg"
                   style={{ color: '#71717a' }}
                 >
                   <li>
@@ -280,13 +301,13 @@ export default function JobsPage() {
                   </li>
                 </ul>
                 <div
-                  className="p-3 md:p-4 rounded-lg border"
+                  className="p-3 xs:p-4 md:p-5 lg:p-6 rounded-lg xs:rounded-xl border"
                   style={{
                     backgroundColor: colors.iconBg,
                     borderColor: colors.wineBorder,
                   }}
                 >
-                  <p className="text-xs md:text-sm">
+                  <p className="text-xs md:text-sm lg:text-base">
                     <strong>{t('common.tip')}:</strong> {t('pages.jobs.howItWorks.note')}
                   </p>
                 </div>

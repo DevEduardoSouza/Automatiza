@@ -59,7 +59,7 @@ function MonitorRulePrefixSuffix({ formData, setFormData, rules }: MonitorRulePr
   const { t } = useTranslation();
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6">
       <div className="space-y-2">
         <Label>{t('pages.offerAutomations.form.prefix')}</Label>
         <Textarea
@@ -109,7 +109,7 @@ function MonitorRuleCleanup({ formData, setFormData, rules }: MonitorRuleCleanup
 
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6">
         <div className="flex items-center gap-2">
           <Checkbox
             checked={rules.limpar_arrobas}
@@ -203,7 +203,7 @@ function MonitorRuleSubstitutions({ formData, setFormData, rules }: MonitorRuleS
       </div>
 
       {rules.substituicoes.map((s, idx) => (
-        <div key={idx} className="grid grid-cols-1 md:grid-cols-5 gap-2">
+        <div key={idx} className="grid grid-cols-1 md:grid-cols-5 gap-2 lg:gap-3">
           <Input
             className="md:col-span-2"
             placeholder={t('pages.offerAutomations.form.fromPlaceholder')}

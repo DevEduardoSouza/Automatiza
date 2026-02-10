@@ -25,7 +25,7 @@ export function GroupConnectionStatus({
   if (status === 'disconnected') {
     return (
       <div
-        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8 xl:p-10"
         role="alert"
         style={{
           backgroundColor: 'rgba(239, 68, 68, 0.06)',
@@ -34,7 +34,7 @@ export function GroupConnectionStatus({
           WebkitBackdropFilter: 'blur(12px) saturate(180%)',
         }}
       >
-        <div className="flex items-center gap-2 xs:gap-3 mb-2 xs:mb-3">
+        <div className="flex items-center gap-2 xs:gap-3 md:gap-4 mb-2 xs:mb-3 lg:mb-4">
           <div
             className="p-1.5 xs:p-2 rounded-lg"
             style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
@@ -52,7 +52,7 @@ export function GroupConnectionStatus({
             {t('pages.groups.connection.disconnected')}
           </span>
         </div>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 md:gap-4 lg:gap-6">
           <p
             className="text-xs xs:text-sm leading-relaxed"
             style={{ color: 'rgba(185, 40, 40, 0.8)' }}
@@ -78,7 +78,7 @@ export function GroupConnectionStatus({
   if (status === 'connected') {
     return (
       <div
-        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8 xl:p-10"
         role="alert"
         style={{
           backgroundColor: 'rgba(34, 197, 94, 0.06)',
@@ -87,7 +87,7 @@ export function GroupConnectionStatus({
           WebkitBackdropFilter: 'blur(12px) saturate(180%)',
         }}
       >
-        <div className="flex items-center gap-2 xs:gap-3 mb-2 xs:mb-3">
+        <div className="flex items-center gap-2 xs:gap-3 md:gap-4 mb-2 xs:mb-3 lg:mb-4">
           <div
             className="p-1.5 xs:p-2 rounded-lg"
             style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)' }}

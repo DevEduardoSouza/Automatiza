@@ -164,11 +164,11 @@ export function GroupBulkActions({
 
   return (
     <div
-      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8 xl:p-10"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
+      <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4 lg:mb-5 xl:mb-6">
         <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
           <Settings2 className="w-4 h-4 xs:w-5 xs:h-5" style={{ color: colors.wine }} />
         </div>
@@ -188,16 +188,16 @@ export function GroupBulkActions({
       </div>
 
       {/* Actions Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 xs:gap-2.5 md:gap-3">
-        <Button variant="outline" onClick={handleCloseGroups} className="w-full text-xs md:text-sm">
-          <Lock className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
-          <span className="hidden sm:inline">{t('pages.groups.bulkActions.closeGroups')}</span>
-          <span className="sm:hidden">{t('pages.groups.bulkActions.closeGroupsShort')}</span>
+      <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 min-[1900px]:grid-cols-8 gap-2 xs:gap-2.5 md:gap-3 xl:gap-4">
+        <Button variant="outline" onClick={handleCloseGroups} className="w-full min-w-0 text-xs xs:text-[13px] md:text-sm">
+          <Lock className="shrink-0 mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
+          <span className="hidden sm:inline truncate">{t('pages.groups.bulkActions.closeGroups')}</span>
+          <span className="sm:hidden truncate">{t('pages.groups.bulkActions.closeGroupsShort')}</span>
         </Button>
-        <Button variant="outline" onClick={handleOpenGroups} className="w-full text-xs md:text-sm">
-          <Unlock className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
-          <span className="hidden sm:inline">{t('pages.groups.bulkActions.openGroups')}</span>
-          <span className="sm:hidden">{t('pages.groups.bulkActions.openGroupsShort')}</span>
+        <Button variant="outline" onClick={handleOpenGroups} className="w-full min-w-0 text-xs xs:text-[13px] md:text-sm">
+          <Unlock className="shrink-0 mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
+          <span className="hidden sm:inline truncate">{t('pages.groups.bulkActions.openGroups')}</span>
+          <span className="sm:hidden truncate">{t('pages.groups.bulkActions.openGroupsShort')}</span>
         </Button>
 
         <GroupNameDialog

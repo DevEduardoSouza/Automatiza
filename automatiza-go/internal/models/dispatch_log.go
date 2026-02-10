@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 // DispatchLog represents a dispatch log entry in the database
 type DispatchLog struct {
 	ID               int      `json:"id" db:"id"`
@@ -82,9 +84,10 @@ type DispatchLogQuery struct {
 
 // DispatchLogFilters represents filter parameters for querying dispatch logs
 type DispatchLogFilters struct {
-	AutomationID *string `json:"automation_id,omitempty"`
-	GroupID      *string `json:"group_id,omitempty"`
-	Status       *string `json:"status,omitempty"`
-	Store        *string `json:"store,omitempty"`
-	SearchURL    *string `json:"search_url,omitempty"`
+	AutomationID *string    `json:"automation_id,omitempty"`
+	GroupID      *string    `json:"group_id,omitempty"`
+	Status       *string    `json:"status,omitempty"`
+	Store        *string    `json:"store,omitempty"`
+	SearchURL    *string    `json:"search_url,omitempty"`
+	Since        *time.Time `json:"since,omitempty"`
 }

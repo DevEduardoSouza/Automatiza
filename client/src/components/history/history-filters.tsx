@@ -52,9 +52,9 @@ export function HistoryFilters({ filters, onFiltersChange, onClearFilters }: His
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 mb-4">
+    <div className="flex flex-wrap items-center gap-2 xs:gap-3 mb-3 xs:mb-4 lg:mb-5">
       <Select value={filters.eventType ?? 'all'} onValueChange={handleEventTypeChange}>
-        <SelectTrigger className="w-[180px]">
+        <SelectTrigger className="w-full xs:w-[180px]">
           <SelectValue placeholder={t('pages.history.filters.eventType')} />
         </SelectTrigger>
         <SelectContent>
@@ -71,7 +71,7 @@ export function HistoryFilters({ filters, onFiltersChange, onClearFilters }: His
       </Select>
 
       <Select value={filters.status ?? 'all'} onValueChange={handleStatusChange}>
-        <SelectTrigger className="w-[140px]">
+        <SelectTrigger className="w-full xs:w-[140px]">
           <SelectValue placeholder={t('pages.history.filters.status')} />
         </SelectTrigger>
         <SelectContent>

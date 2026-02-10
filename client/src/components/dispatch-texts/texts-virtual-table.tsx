@@ -42,7 +42,7 @@ export function TextsVirtualTable({ items, onEdit, onRemove }: TextsVirtualTable
       header: t('pages.dispatchTexts.table.actions'),
       width: '200px',
       render: (item: DispatchText) => (
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-1.5 xs:gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -51,8 +51,8 @@ export function TextsVirtualTable({ items, onEdit, onRemove }: TextsVirtualTable
               name: item.name,
             })}
           >
-            <Edit className="h-4 w-4 mr-1" aria-hidden="true" />
-            {t('common.edit')}
+            <Edit className="h-4 w-4 xs:mr-1" aria-hidden="true" />
+            <span className="hidden xs:inline">{t('common.edit')}</span>
           </Button>
           <Button
             variant="destructive"
@@ -62,8 +62,8 @@ export function TextsVirtualTable({ items, onEdit, onRemove }: TextsVirtualTable
               name: item.name,
             })}
           >
-            <Trash2 className="h-4 w-4 mr-1" aria-hidden="true" />
-            {t('common.delete')}
+            <Trash2 className="h-4 w-4 xs:mr-1" aria-hidden="true" />
+            <span className="hidden xs:inline">{t('common.delete')}</span>
           </Button>
         </div>
       ),
