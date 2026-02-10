@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -185,6 +187,12 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	// Belt-and-suspenders: override critical fields directly from OS env vars.
+	// Viper's Unmarshal has known edge cases where it silently ignores env vars
+	// (e.g. Docker env_file without a .env on disk). This ensures DB connection
+	// always works regardless of Viper internals.
+	applyEnvOverrides(&cfg)
+
 	// Validate required fields
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
@@ -202,6 +210,55 @@ func bindStructEnvVars(s interface{}) {
 		if tag != "" {
 			_ = viper.BindEnv(tag)
 		}
+	}
+}
+
+// applyEnvOverrides reads critical env vars directly from os.Getenv
+// as a fallback in case Viper's Unmarshal missed them.
+func applyEnvOverrides(cfg *Config) {
+	if v := os.Getenv("DB_HOST"); v != "" && cfg.DBHost == "" {
+		cfg.DBHost = v
+	}
+	if v := os.Getenv("DB_PORT"); v != "" && cfg.DBPort == "" {
+		cfg.DBPort = v
+	}
+	if v := os.Getenv("DB_USER"); v != "" && cfg.DBUser == "" {
+		cfg.DBUser = v
+	}
+	if v := os.Getenv("DB_PASSWORD"); v != "" && cfg.DBPassword == "" {
+		cfg.DBPassword = v
+	}
+	if v := os.Getenv("DB_NAME"); v != "" && cfg.DBName == "" {
+		cfg.DBName = v
+	}
+	if v := os.Getenv("DB_SSLMODE"); v != "" && cfg.DBSSLMode == "" {
+		cfg.DBSSLMode = v
+	}
+	if v := os.Getenv("DB_MAX_CONNS"); v != "" && cfg.DBMaxConns == 0 {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.DBMaxConns = n
+		}
+	}
+	if v := os.Getenv("JWT_SECRET"); v != "" && cfg.JWTSecret == "" {
+		cfg.JWTSecret = v
+	}
+	if v := os.Getenv("CACHE_REDIS_URI"); v != "" && cfg.CacheRedisURI == "" {
+		cfg.CacheRedisURI = v
+	}
+	if v := os.Getenv("NODE_ENV"); v != "" && cfg.NodeEnv == "" {
+		cfg.NodeEnv = v
+	}
+	if v := os.Getenv("PORT"); v != "" && cfg.Port == "" {
+		cfg.Port = v
+	}
+	if v := os.Getenv("CORS_ORIGIN"); v != "" && cfg.CorsOrigin == "" {
+		cfg.CorsOrigin = v
+	}
+	if v := os.Getenv("WAHA_API_URL"); v != "" && cfg.WahaAPIURL == "" {
+		cfg.WahaAPIURL = v
+	}
+	if v := os.Getenv("WAHA_API_KEY"); v != "" && cfg.WahaAPIKey == "" {
+		cfg.WahaAPIKey = v
 	}
 }
 

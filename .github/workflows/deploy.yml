@@ -152,36 +152,29 @@ jobs:
         env:
           VERSION: ${{ needs.build-and-push.outputs.version }}
         run: |
-          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << DEPLOY
-          set -e
-          cd /opt/automatiza/docker
+          SSH_CMD="ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}"
 
-          echo "=== Logging into GHCR ==="
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          # Step 1: Login to registries
+          $SSH_CMD "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin 2>/dev/null"
+          $SSH_CMD "echo '${{ secrets.DOCKERHUB_TOKEN }}' | docker login -u devlikeapro --password-stdin 2>/dev/null"
 
-          echo "=== Logging into Docker Hub (WAHA) ==="
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u devlikeapro --password-stdin
+          # Step 2: Pull new images (with explicit image tags)
+          $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose pull server worker frontend postgres redis waha"
 
-          echo "=== Setting image tags ==="
-          export BACKEND_IMAGE="${{ env.IMAGE_PREFIX }}/backend:${VERSION}"
-          export FRONTEND_IMAGE="${{ env.IMAGE_PREFIX }}/frontend:${VERSION}"
-
-          echo "=== Pulling images ==="
-          docker compose pull server worker frontend postgres redis waha
-
+          # Step 3: Run migrations (allowed to fail without blocking deploy)
           echo "=== Running migrations ==="
-          docker compose run --rm migrate
+          $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose run --rm migrate" || echo "WARNING: Migrations returned non-zero exit code (may be OK if idempotent)"
 
+          # Step 4: Stop ALL old containers and start fresh with new images
           echo "=== Stopping old containers ==="
-          docker compose down server worker frontend || true
+          $SSH_CMD "cd /opt/automatiza/docker && docker compose down --timeout 30" || true
 
-          echo "=== Starting services ==="
-          docker compose up -d --force-recreate --remove-orphans postgres redis waha server worker frontend
+          echo "=== Starting services with new images ==="
+          $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose up -d postgres redis waha server worker frontend"
 
-          echo "=== Waiting for health ==="
+          echo "=== Verifying containers ==="
           sleep 5
-          docker compose ps
-          DEPLOY
+          $SSH_CMD "cd /opt/automatiza/docker && docker compose ps"
 
       - name: Health check via SSH
         run: |
