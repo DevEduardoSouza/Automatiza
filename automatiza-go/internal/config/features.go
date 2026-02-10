@@ -1,0 +1,114 @@
+// Package config provides application configuration.
+// This file implements feature flags for gradual migration control.
+package config
+
+import (
+	"os"
+	"strconv"
+	"sync"
+
+	"go.uber.org/zap"
+)
+
+// FeatureFlags holds all feature flag configurations for the application.
+// These flags enable gradual migration from Node.js to Go and provide
+// rollback capability if issues are detected.
+type FeatureFlags struct {
+	// UseGoDispatchLogs controls whether Go creates dispatch_logs in PostgreSQL.
+	// When true (default), the Go backend creates dispatch logs.
+	// When false, dispatch log creation is skipped.
+	// Environment variable: FEATURE_USE_GO_DISPATCH_LOGS
+	UseGoDispatchLogs bool
+
+	// UseGoReconciliation controls whether Go performs message reconciliation.
+	// When true, the Go reconciliation service creates dispatch logs for missed messages.
+	// When false, reconciliation dispatch log creation is skipped.
+	// Environment variable: FEATURE_USE_GO_RECONCILIATION
+	UseGoReconciliation bool
+}
+
+var (
+	// globalFeatureFlags is the singleton instance of feature flags
+	globalFeatureFlags *FeatureFlags
+	featureFlagsOnce   sync.Once
+	featureFlagsLogger *zap.Logger
+)
+
+// SetFeatureFlagsLogger sets the logger for feature flag operations.
+// Should be called early in application startup.
+func SetFeatureFlagsLogger(logger *zap.Logger) {
+	featureFlagsLogger = logger
+}
+
+// LoadFeatureFlags loads feature flags from environment variables.
+// This function is safe to call multiple times; it will only load once.
+// Subsequent calls return the cached instance.
+func LoadFeatureFlags() *FeatureFlags {
+	featureFlagsOnce.Do(func() {
+		globalFeatureFlags = &FeatureFlags{
+			UseGoDispatchLogs:   getEnvBool("FEATURE_USE_GO_DISPATCH_LOGS", true),
+			UseGoReconciliation: getEnvBool("FEATURE_USE_GO_RECONCILIATION", true),
+		}
+
+		// Log feature flag values on load
+		if featureFlagsLogger != nil {
+			featureFlagsLogger.Info("Feature flags loaded",
+				zap.Bool("useGoDispatchLogs", globalFeatureFlags.UseGoDispatchLogs),
+				zap.Bool("useGoReconciliation", globalFeatureFlags.UseGoReconciliation))
+		}
+	})
+
+	return globalFeatureFlags
+}
+
+// GetFeatureFlags returns the current feature flags instance.
+// If LoadFeatureFlags has not been called, it will load them first.
+func GetFeatureFlags() *FeatureFlags {
+	if globalFeatureFlags == nil {
+		return LoadFeatureFlags()
+	}
+	return globalFeatureFlags
+}
+
+// ShouldCreateDispatchLog returns true if Go should create dispatch logs.
+// This is a convenience method that checks the UseGoDispatchLogs flag.
+func (f *FeatureFlags) ShouldCreateDispatchLog() bool {
+	return f.UseGoDispatchLogs
+}
+
+// ShouldReconcile returns true if Go should perform reconciliation.
+// This is a convenience method that checks the UseGoReconciliation flag.
+func (f *FeatureFlags) ShouldReconcile() bool {
+	return f.UseGoReconciliation
+}
+
+// getEnvBool reads a boolean value from an environment variable.
+// Returns the default value if the variable is not set or cannot be parsed.
+// Accepted values: "true", "false", "1", "0", "yes", "no" (case-insensitive)
+func getEnvBool(key string, defaultVal bool) bool {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultVal
+	}
+
+	b, err := strconv.ParseBool(val)
+	if err != nil {
+		// Log warning if logger is available
+		if featureFlagsLogger != nil {
+			featureFlagsLogger.Warn("Invalid boolean value for feature flag, using default",
+				zap.String("key", key),
+				zap.String("value", val),
+				zap.Bool("default", defaultVal))
+		}
+		return defaultVal
+	}
+
+	return b
+}
+
+// ResetFeatureFlags resets the global feature flags instance.
+// This is primarily useful for testing.
+func ResetFeatureFlags() {
+	globalFeatureFlags = nil
+	featureFlagsOnce = sync.Once{}
+}

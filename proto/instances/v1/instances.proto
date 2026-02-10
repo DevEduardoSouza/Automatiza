@@ -1,0 +1,187 @@
+syntax = "proto3";
+
+package instances.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/instances/v1;instancesv1";
+
+// ============================================================
+// Enums
+// ============================================================
+
+/**
+ * Status of a WhatsApp instance.
+ */
+enum InstanceStatus {
+  INSTANCE_STATUS_UNSPECIFIED = 0;
+  INSTANCE_STATUS_PENDING = 1;
+  INSTANCE_STATUS_CONNECTED = 2;
+  INSTANCE_STATUS_DISCONNECTED = 3;
+}
+
+// ============================================================
+// Messages
+// ============================================================
+
+/**
+ * Represents a WhatsApp instance connection.
+ */
+message Instance {
+  // Unique identifier
+  string id = 1;
+
+  // User who owns this instance
+  string user_id = 2;
+
+  // WAHA instance ID/name
+  string instance_id = 3;
+
+  // Connection status
+  InstanceStatus status = 4;
+
+  // Creation timestamp (ISO 8601)
+  string created_at = 5;
+
+  // Last update timestamp (ISO 8601)
+  string updated_at = 6;
+}
+
+// ============================================================
+// Get Latest Instance
+// ============================================================
+
+message GetLatestInstanceRequest {}
+
+message GetLatestInstanceResponse {
+  optional Instance instance = 1;
+}
+
+// ============================================================
+// List User Instances
+// ============================================================
+
+message ListUserInstancesRequest {
+  // Filter by status
+  optional InstanceStatus status = 1;
+}
+
+message ListUserInstancesResponse {
+  repeated Instance instances = 1;
+}
+
+// ============================================================
+// Upsert Instance Status
+// ============================================================
+
+message UpsertInstanceStatusRequest {
+  string instance_id = 1 [(buf.validate.field).string.min_len = 1];
+  InstanceStatus status = 2;
+}
+
+message UpsertInstanceStatusResponse {
+  Instance instance = 1;
+}
+
+// ============================================================
+// Cleanup Invalid Instances
+// ============================================================
+
+message CleanupInvalidInstancesRequest {}
+
+message CleanupInvalidInstancesResponse {
+  int32 deleted_count = 1;
+}
+
+// ============================================================
+// Delete Disconnected Instances
+// ============================================================
+
+message DeleteDisconnectedInstancesRequest {}
+
+message DeleteDisconnectedInstancesResponse {
+  int32 deleted_count = 1;
+}
+
+// ============================================================
+// Delete Instance
+// ============================================================
+
+message DeleteInstanceRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteInstanceResponse {}
+
+// ============================================================
+// Check Instance Status (WAHA)
+// ============================================================
+
+message CheckInstanceStatusRequest {
+  // Instance name to check (WAHA session name)
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message CheckInstanceStatusResponse {
+  // Whether the check was successful
+  bool success = 1;
+
+  // Current connection state (open, close, connecting)
+  string state = 2;
+
+  // Status description
+  string status = 3;
+}
+
+// ============================================================
+// Reconnect Instance (WAHA)
+// ============================================================
+
+message ReconnectInstanceRequest {
+  // Instance name to reconnect (WAHA session name)
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ReconnectInstanceResponse {
+  // Whether the reconnection was initiated successfully
+  bool success = 1;
+
+  // QR code as base64 image (if authentication required)
+  optional string qrcode_base64 = 2;
+
+  // Error message if failed
+  optional string error = 3;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * InstancesService provides operations for managing WhatsApp instances.
+ */
+service InstancesService {
+  // Gets the latest (most recently updated) instance for the user.
+  rpc GetLatestInstance(GetLatestInstanceRequest) returns (GetLatestInstanceResponse);
+
+  // Lists all instances for the authenticated user.
+  rpc ListUserInstances(ListUserInstancesRequest) returns (ListUserInstancesResponse);
+
+  // Creates or updates an instance's status.
+  rpc UpsertInstanceStatus(UpsertInstanceStatusRequest) returns (UpsertInstanceStatusResponse);
+
+  // Cleans up invalid connected instances (null/empty instance_id).
+  rpc CleanupInvalidInstances(CleanupInvalidInstancesRequest) returns (CleanupInvalidInstancesResponse);
+
+  // Deletes all disconnected/pending instances for the user.
+  rpc DeleteDisconnectedInstances(DeleteDisconnectedInstancesRequest) returns (DeleteDisconnectedInstancesResponse);
+
+  // Deletes a specific instance.
+  rpc DeleteInstance(DeleteInstanceRequest) returns (DeleteInstanceResponse);
+
+  // Checks the status of a WhatsApp instance connection via WAHA.
+  rpc CheckInstanceStatus(CheckInstanceStatusRequest) returns (CheckInstanceStatusResponse);
+
+  // Reconnects a WhatsApp instance, returning QR code if needed.
+  rpc ReconnectInstance(ReconnectInstanceRequest) returns (ReconnectInstanceResponse);
+}

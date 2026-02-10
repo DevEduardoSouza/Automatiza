@@ -1,0 +1,176 @@
+syntax = "proto3";
+
+package jobs.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/automatiza/proto/jobs/v1;jobsv1";
+
+// =============================================================================
+// Enums
+// =============================================================================
+
+enum JobActionType {
+  JOB_ACTION_TYPE_UNSPECIFIED = 0;
+  JOB_ACTION_TYPE_SEND_MESSAGE = 1;
+  JOB_ACTION_TYPE_SEND_POLL = 2;
+  JOB_ACTION_TYPE_SEND_ML_OFFER = 3;
+  JOB_ACTION_TYPE_UPDATE_DESCRIPTION = 4;
+  JOB_ACTION_TYPE_CLOSE_GROUPS = 5;
+  JOB_ACTION_TYPE_OPEN_GROUPS = 6;
+  JOB_ACTION_TYPE_CHANGE_GROUP_NAME = 7;
+  JOB_ACTION_TYPE_CHANGE_GROUP_PHOTO = 8;
+}
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_PENDING = 1;
+  JOB_STATUS_RUNNING = 2;
+  JOB_STATUS_DONE = 3;
+  JOB_STATUS_FAILED = 4;
+  JOB_STATUS_CANCELLED = 5;
+}
+
+// =============================================================================
+// Messages
+// =============================================================================
+
+message JobPayload {
+  repeated string groups = 1 [(buf.validate.field).repeated.min_items = 1];
+
+  // send_message
+  optional string message = 2;
+  optional string media = 3;
+  optional string media_type = 4;
+  optional string file_name = 5;
+  optional string mime_type = 6;
+
+  // send_poll
+  optional string type = 7;
+  optional string question = 8;
+  repeated string options = 9;
+  optional int32 selectable_count = 10;
+
+  // send_ml_offer
+  optional string origin_url = 11;
+  optional string text = 12;
+  optional bool include_image = 13;
+
+  // update_description
+  optional string description = 14;
+
+  // change_group_name
+  optional string name = 15;
+  optional bool auto_number = 16;
+
+  // change_group_photo
+  optional string image = 17;
+}
+
+message Job {
+  string id = 1;
+  JobActionType action_type = 2;
+  google.protobuf.Timestamp scheduled_for = 3;
+  JobStatus status = 4;
+  JobPayload payload = 5;
+  optional string error_message = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message QueueMetrics {
+  int32 waiting = 1;
+  int32 delayed = 2;
+  int32 active = 3;
+  int32 queued = 4;
+}
+
+message QueueSettings {
+  optional int32 limit_per_minute = 1;
+  optional int32 worker_concurrency = 2;
+}
+
+// =============================================================================
+// Requests & Responses
+// =============================================================================
+
+message ListJobsRequest {
+  // Maximum number of jobs to return (default: 50, max: 100).
+  int32 page_size = 1;
+  // Cursor for the next page. Opaque token returned by previous response.
+  string page_token = 2;
+}
+
+message ListJobsResponse {
+  repeated Job jobs = 1;
+  // Cursor for the next page. Empty if no more results.
+  string next_page_token = 2;
+  // Total count of jobs matching the query.
+  int32 total_count = 3;
+}
+
+message GetJobRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetJobResponse {
+  Job job = 1;
+}
+
+message CreateJobRequest {
+  JobActionType action_type = 1 [(buf.validate.field).enum = {not_in: [0]}];
+  google.protobuf.Timestamp scheduled_for = 2 [(buf.validate.field).required = true];
+  JobPayload payload = 3 [(buf.validate.field).required = true];
+}
+
+message CreateJobResponse {
+  Job job = 1;
+}
+
+message UpdateJobRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  optional JobActionType action_type = 2;
+  optional google.protobuf.Timestamp scheduled_for = 3;
+  optional JobPayload payload = 4;
+}
+
+message UpdateJobResponse {
+  Job job = 1;
+}
+
+message DeleteJobRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message DeleteJobResponse {}
+
+message ProcessScheduledJobsRequest {}
+
+message ProcessScheduledJobsResponse {
+  int32 processed = 1;
+  int32 failed = 2;
+  repeated string errors = 3;
+}
+
+message GetQueueStatusRequest {}
+
+message GetQueueStatusResponse {
+  QueueMetrics queue = 1;
+  QueueSettings settings = 2;
+  optional double estimated_minutes = 3;
+}
+
+// =============================================================================
+// Service Definition
+// =============================================================================
+
+service JobsService {
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
+  rpc CreateJob(CreateJobRequest) returns (CreateJobResponse);
+  rpc UpdateJob(UpdateJobRequest) returns (UpdateJobResponse);
+  rpc DeleteJob(DeleteJobRequest) returns (DeleteJobResponse);
+  rpc ProcessScheduledJobs(ProcessScheduledJobsRequest) returns (ProcessScheduledJobsResponse);
+  rpc GetQueueStatus(GetQueueStatusRequest) returns (GetQueueStatusResponse);
+}

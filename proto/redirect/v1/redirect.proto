@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package redirect.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/redirect/v1;redirectv1";
+
+// RedirectGroup represents a WhatsApp group that can receive redirected members.
+message RedirectGroup {
+  string id = 1;
+  string name = 2;
+  string wa_group_id = 3;
+  optional string invite_code = 4;
+  int32 members_count = 5;
+  int32 member_limit = 6;
+  optional int32 priority = 7;
+  optional int32 click_limit = 8;
+  optional bool is_favorite = 9;
+}
+
+// SavedRedirectLink represents a saved redirect link configuration.
+message SavedRedirectLink {
+  string id = 1;
+  string user_id = 2;
+  string name = 3 [(buf.validate.field).string.min_len = 1];
+  string slug = 4 [(buf.validate.field).string.pattern = "^[a-z0-9-]+$"];
+  DistributionStrategy distribution_strategy = 5;
+  repeated RedirectGroup group_priorities = 6;
+  bool is_active = 7;
+  int32 total_clicks = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+// DistributionStrategy defines how members are distributed across groups.
+enum DistributionStrategy {
+  DISTRIBUTION_STRATEGY_UNSPECIFIED = 0;
+  DISTRIBUTION_STRATEGY_MEMBER_LIMIT = 1;
+  DISTRIBUTION_STRATEGY_CLICK_LIMIT = 2;
+  DISTRIBUTION_STRATEGY_ROUND_ROBIN = 3;
+}
+
+// ListGroupsRequest is the request for listing available groups.
+message ListGroupsRequest {}
+
+// ListGroupsResponse is the response containing available groups.
+message ListGroupsResponse {
+  repeated RedirectGroup groups = 1;
+}
+
+// ListRedirectLinksRequest is the request for listing saved redirect links.
+message ListRedirectLinksRequest {}
+
+// ListRedirectLinksResponse is the response containing saved redirect links.
+message ListRedirectLinksResponse {
+  repeated SavedRedirectLink links = 1;
+}
+
+// CreateRedirectLinkRequest is the request for creating a new redirect link.
+message CreateRedirectLinkRequest {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  string slug = 2 [(buf.validate.field).string.pattern = "^[a-z0-9-]+$"];
+  DistributionStrategy distribution_strategy = 3;
+  repeated RedirectGroup group_priorities = 4;
+}
+
+// CreateRedirectLinkResponse is the response after creating a redirect link.
+message CreateRedirectLinkResponse {
+  SavedRedirectLink link = 1;
+}
+
+// UpdateRedirectLinkRequest is the request for updating an existing redirect link.
+message UpdateRedirectLinkRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  string name = 2 [(buf.validate.field).string.min_len = 1];
+  DistributionStrategy distribution_strategy = 3;
+  repeated RedirectGroup group_priorities = 4;
+}
+
+// UpdateRedirectLinkResponse is the response after updating a redirect link.
+message UpdateRedirectLinkResponse {
+  SavedRedirectLink link = 1;
+}
+
+// DeleteRedirectLinkRequest is the request for deleting a redirect link.
+message DeleteRedirectLinkRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// DeleteRedirectLinkResponse is the response after deleting a redirect link.
+message DeleteRedirectLinkResponse {}
+
+// CheckSlugAvailabilityRequest is the request for checking if a slug is available.
+message CheckSlugAvailabilityRequest {
+  string slug = 1 [(buf.validate.field).string.pattern = "^[a-z0-9-]+$"];
+}
+
+// CheckSlugAvailabilityResponse is the response indicating slug availability.
+message CheckSlugAvailabilityResponse {
+  bool available = 1;
+}
+
+// RedirectLinkService provides operations for managing redirect links.
+service RedirectLinkService {
+  // ListGroups returns all available groups for the authenticated user.
+  rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse);
+
+  // ListRedirectLinks returns all saved redirect links for the authenticated user.
+  rpc ListRedirectLinks(ListRedirectLinksRequest) returns (ListRedirectLinksResponse);
+
+  // CreateRedirectLink creates a new redirect link.
+  rpc CreateRedirectLink(CreateRedirectLinkRequest) returns (CreateRedirectLinkResponse);
+
+  // UpdateRedirectLink updates an existing redirect link.
+  rpc UpdateRedirectLink(UpdateRedirectLinkRequest) returns (UpdateRedirectLinkResponse);
+
+  // DeleteRedirectLink deletes a redirect link.
+  rpc DeleteRedirectLink(DeleteRedirectLinkRequest) returns (DeleteRedirectLinkResponse);
+
+  // CheckSlugAvailability checks if a slug is available for use.
+  rpc CheckSlugAvailability(CheckSlugAvailabilityRequest) returns (CheckSlugAvailabilityResponse);
+}

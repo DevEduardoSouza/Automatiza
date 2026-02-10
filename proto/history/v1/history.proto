@@ -1,0 +1,289 @@
+syntax = "proto3";
+
+package history.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/automatiza/proto/history/v1;historyv1";
+
+/**
+ * EventType defines the types of events that can be recorded.
+ */
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_MESSAGE_SENT = 1;
+  EVENT_TYPE_AUTOMATION_RUN = 2;
+  EVENT_TYPE_COUPON_USED = 3;
+  EVENT_TYPE_LINK_CLICKED = 4;
+  EVENT_TYPE_GROUP_SYNC = 5;
+  EVENT_TYPE_ERROR = 6;
+  // Added for group bulk actions
+  EVENT_TYPE_CLOSE_GROUPS = 7;
+  EVENT_TYPE_OPEN_GROUPS = 8;
+  EVENT_TYPE_CHANGE_NAME = 9;
+  EVENT_TYPE_CHANGE_PHOTO = 10;
+  EVENT_TYPE_CHANGE_DESCRIPTION = 11;
+  EVENT_TYPE_IMPORT_GROUPS = 12;
+  // Additional action types
+  EVENT_TYPE_SEND_CAMPAIGN = 13;
+  EVENT_TYPE_GENERATE_IMAGE = 14;
+  // Member management actions
+  EVENT_TYPE_ADD_MEMBER = 15;
+  EVENT_TYPE_REMOVE_MEMBER = 16;
+  EVENT_TYPE_PROMOTE_MEMBER = 17;
+  EVENT_TYPE_DEMOTE_MEMBER = 18;
+  EVENT_TYPE_LEAVE_GROUP = 19;
+}
+
+/**
+ * HistoryEvent represents a recorded event in the system.
+ */
+message HistoryEvent {
+  // Unique identifier
+  string id = 1;
+
+  // User who triggered the event
+  string user_id = 2;
+
+  // Type of event
+  EventType event_type = 3;
+
+  // Human-readable description
+  string description = 4;
+
+  // Additional event metadata
+  google.protobuf.Struct metadata = 5;
+
+  // Event timestamp (ISO 8601)
+  string created_at = 6;
+
+  // Status of the action (pending, running, completed, failed)
+  optional string status = 7;
+
+  // Error message if the action failed
+  optional string error_message = 8;
+
+  // When the action completed (ISO 8601)
+  optional string completed_at = 9;
+
+  // Number of targets (e.g., groups) for bulk actions
+  optional int32 target_count = 10;
+
+  // Number of successful operations
+  optional int32 success_count = 11;
+
+  // Number of failed operations
+  optional int32 error_count = 12;
+}
+
+/**
+ * HistoryStats provides aggregated statistics for history events.
+ */
+message HistoryStats {
+  // Total number of events
+  int32 total = 1;
+
+  // Number of completed events
+  int32 completed = 2;
+
+  // Number of running/pending events
+  int32 running = 3;
+
+  // Number of failed events
+  int32 failed = 4;
+}
+
+// ============================================================
+// List History
+// ============================================================
+
+message ListHistoryRequest {
+  // Maximum number of events to return (default: 50, max: 100)
+  optional int32 limit = 1;
+
+  // Filter by event type
+  optional EventType event_type = 2;
+
+  // Start timestamp for filtering (ISO 8601)
+  optional string start_time = 3;
+
+  // End timestamp for filtering (ISO 8601)
+  optional string end_time = 4;
+
+  // Filter by status (pending, running, completed, failed)
+  optional string status = 5;
+
+  // Offset for pagination (deprecated, use page instead)
+  optional int32 offset = 6;
+
+  // Page number (1-indexed, default: 1)
+  optional int32 page = 7;
+
+  // Page size (default: 20, max: 100)
+  optional int32 page_size = 8;
+}
+
+message ListHistoryResponse {
+  repeated HistoryEvent events = 1;
+
+  // Whether there are more events available
+  bool has_more = 2;
+
+  // Aggregated statistics for the events
+  optional HistoryStats stats = 3;
+
+  // Total count of events matching the filters
+  int32 total_count = 4;
+
+  // Current page number (1-indexed)
+  int32 page = 5;
+
+  // Page size used
+  int32 page_size = 6;
+
+  // Total number of pages
+  int32 total_pages = 7;
+}
+
+// ============================================================
+// Dispatch Logs
+// ============================================================
+
+/**
+ * DispatchLogStatus defines the possible statuses for a dispatch log entry.
+ */
+enum DispatchLogStatus {
+  DISPATCH_LOG_STATUS_UNSPECIFIED = 0;
+  DISPATCH_LOG_STATUS_PENDING = 1;
+  DISPATCH_LOG_STATUS_QUEUED = 2;
+  DISPATCH_LOG_STATUS_SENT = 3;
+  DISPATCH_LOG_STATUS_FAILED = 4;
+  DISPATCH_LOG_STATUS_SKIPPED = 5;
+  DISPATCH_LOG_STATUS_BLOCKED = 6;
+}
+
+/**
+ * DispatchLog represents a dispatch log entry (e.g., message sent to a group).
+ */
+message DispatchLog {
+  // Unique identifier
+  int32 id = 1;
+
+  // User who owns this log entry
+  string user_id = 2;
+
+  // Automation that triggered the dispatch (optional)
+  optional string automation_id = 3;
+
+  // Name of the automation (denormalized for display)
+  optional string automation_name = 4;
+
+  // Store/affiliate program (e.g., "shopee", "amazon")
+  optional string store = 5;
+
+  // Group ID where the message was dispatched
+  optional string group_id = 6;
+
+  // Group name (looked up from groups table)
+  optional string group_name = 7;
+
+  // Original product URL
+  optional string product_url = 8;
+
+  // Product page URL (affiliate link)
+  optional string product_page_url = 9;
+
+  // Canonical key for deduplication
+  optional string canonical_key = 10;
+
+  // Dispatch status
+  DispatchLogStatus status = 11;
+
+  // Error message if dispatch failed
+  optional string error = 12;
+
+  // Type of dispatch (e.g., "monitoring", "manual")
+  optional string type = 13;
+
+  // Timestamp when the dispatch was created (ISO 8601)
+  string created_at = 14;
+}
+
+/**
+ * Request to list dispatch logs for the authenticated user.
+ */
+message ListDispatchLogsRequest {
+  // Maximum number of logs to return (default: 50, max: 100)
+  optional int32 limit = 1;
+
+  // Offset for pagination
+  optional int32 offset = 2;
+
+  // Filter by automation ID
+  optional string automation_id = 3;
+
+  // Filter by group ID
+  optional string group_id = 4;
+
+  // Filter by status
+  optional DispatchLogStatus status = 5;
+}
+
+/**
+ * Response containing dispatch logs.
+ */
+message ListDispatchLogsResponse {
+  // List of dispatch logs
+  repeated DispatchLog logs = 1;
+
+  // Whether there are more logs available
+  bool has_more = 2;
+
+  // Total count (for pagination info)
+  optional int32 total_count = 3;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+// ============================================================
+// Clear History
+// ============================================================
+
+/**
+ * Request to clear history entries for the authenticated user.
+ */
+message ClearHistoryRequest {
+  // Optional: clear only entries before this date (ISO 8601)
+  optional string before_date = 1;
+
+  // Optional: clear only specific event types
+  repeated EventType event_types = 2;
+}
+
+/**
+ * Response containing the number of deleted entries.
+ */
+message ClearHistoryResponse {
+  // Number of entries deleted
+  int32 deleted_count = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * HistoryService provides operations for viewing event history.
+ */
+service HistoryService {
+  // Lists recent events for the authenticated user.
+  rpc ListHistory(ListHistoryRequest) returns (ListHistoryResponse);
+
+  // Lists dispatch logs for the authenticated user.
+  rpc ListDispatchLogs(ListDispatchLogsRequest) returns (ListDispatchLogsResponse);
+
+  // Clears history entries for the authenticated user.
+  rpc ClearHistory(ClearHistoryRequest) returns (ClearHistoryResponse);
+}

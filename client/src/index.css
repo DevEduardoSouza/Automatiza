@@ -1,0 +1,416 @@
+@import "tailwindcss";
+
+/* Design System - Tailwind CSS v4 @theme configuration */
+@theme {
+  /* Custom breakpoints for better mobile responsiveness */
+  --breakpoint-xs: 480px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /* Font families */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Roboto", "Helvetica Neue", "Arial", sans-serif;
+
+  /* Font sizes */
+  --font-size-title: 24px;
+  --font-size-title--line-height: 1.3;
+  --font-size-title--font-weight: 600;
+  --font-size-subtitle: 18px;
+  --font-size-subtitle--line-height: 1.4;
+  --font-size-subtitle--font-weight: 600;
+  --font-size-base: 14px;
+  --font-size-base--line-height: 1.5;
+  --font-size-base--font-weight: 400;
+  --font-size-label: 12px;
+  --font-size-label--line-height: 1.5;
+  --font-size-label--font-weight: 500;
+
+  /* Border radius */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  /* Container */
+  --container-2xl: 1400px;
+
+  /* Colors - mapped from CSS variables */
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  /* Sidebar colors */
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --color-sidebar-indicator: hsl(var(--sidebar-indicator));
+  --color-sidebar-active-border: hsl(var(--sidebar-active-border));
+  --color-sidebar-icon: hsl(var(--sidebar-icon));
+  --color-sidebar-icon-active: hsl(var(--sidebar-icon-active));
+  --color-sidebar-text-active: hsl(var(--sidebar-text-active));
+
+  /* Background images */
+  --background-image-gradient-primary: var(--gradient-primary);
+  --background-image-gradient-secondary: var(--gradient-secondary);
+  --background-image-gradient-success: var(--gradient-success);
+  --background-image-gradient-card: var(--gradient-card);
+
+  /* Box shadows */
+  --shadow-glow: var(--shadow-glow);
+  --shadow-card: var(--shadow-card);
+
+  /* Animations */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-blink: blink 2s ease-in-out infinite;
+  --animate-border-blink: border-blink 2s ease-in-out infinite;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+
+  @keyframes border-blink {
+    0%,
+    100% {
+      border-color: rgba(141, 45, 83, 0.5);
+      box-shadow: 0 0 0 0 rgba(141, 45, 83, 0.1);
+    }
+    50% {
+      border-color: rgba(141, 45, 83, 0.2);
+      box-shadow: 0 0 0 1px rgba(141, 45, 83, 0.05);
+    }
+  }
+}
+
+/* Definition of the design system CSS variables. All colors MUST be HSL. */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 336 78% 28%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 336 78% 28%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 336 78% 28%;
+
+  --primary: 336 78% 28%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 34 94% 51%;
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 220 13% 91%;
+  --muted-foreground: 220 9% 46%;
+
+  --accent: 336 52% 94%;
+  --accent-foreground: 336 52% 36%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 142 76% 36%;
+  --success-foreground: 0 0% 100%;
+
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 336 52% 36%;
+
+  --radius: 0.75rem;
+
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 220 9% 46%;
+  --sidebar-primary: 336 78% 28%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 220 33% 98%;
+  --sidebar-accent-foreground: 336 78% 28%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-ring: 336 52% 36%;
+
+  /* Sidebar indicator/active colors */
+  --sidebar-indicator: 336 78% 28%;
+  --sidebar-active-border: 336 40% 75%;
+  --sidebar-icon: 220 9% 26%;
+  --sidebar-icon-active: 336 78% 28%;
+  --sidebar-text-active: 336 78% 28%;
+
+  --gradient-primary: linear-gradient(135deg, hsl(336 78% 28%), hsl(336 78% 38%));
+  --gradient-secondary: linear-gradient(135deg, hsl(34 94% 51%), hsl(34 94% 61%));
+  --gradient-success: linear-gradient(135deg, hsl(142 76% 36%), hsl(142 76% 46%));
+  --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(220 33% 99%));
+
+  --shadow-glow: 0 0 12px hsl(34 94% 51% / 0.15);
+  --shadow-card: 0 2px 12px hsl(0 0% 0% / 0.05);
+}
+
+.dark {
+  --background: 336 78% 18%;
+  --foreground: 0 0% 100%;
+
+  --card: 336 70% 15%;
+  --card-foreground: 0 0% 100%;
+
+  --popover: 336 70% 15%;
+  --popover-foreground: 0 0% 100%;
+
+  --primary: 34 94% 51%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 336 60% 30%;
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 336 40% 25%;
+  --muted-foreground: 0 0% 85%;
+
+  --accent: 336 52% 30%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 142 76% 36%;
+  --success-foreground: 0 0% 100%;
+
+  --border: 336 40% 25%;
+  --input: 336 40% 25%;
+  --ring: 336 52% 36%;
+
+  --sidebar-background: 336 70% 15%;
+  --sidebar-foreground: 0 0% 85%;
+  --sidebar-primary: 34 94% 51%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 336 40% 25%;
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-border: 336 40% 25%;
+  --sidebar-ring: 336 52% 36%;
+
+  /* Sidebar indicator/active colors */
+  --sidebar-indicator: 34 94% 51%;
+  --sidebar-active-border: 336 50% 45%;
+  --sidebar-icon: 0 0% 100%;
+  --sidebar-icon-active: 34 94% 51%;
+  --sidebar-text-active: 0 0% 100%;
+
+  --gradient-primary: linear-gradient(135deg, hsl(336 78% 18%), hsl(336 78% 28%));
+  --gradient-secondary: linear-gradient(135deg, hsl(34 94% 51%), hsl(34 94% 61%));
+  --gradient-success: linear-gradient(135deg, hsl(142 76% 36%), hsl(142 76% 46%));
+  --gradient-card: linear-gradient(180deg, hsl(336 70% 15%), hsl(336 70% 12%));
+
+  --shadow-glow: 0 0 12px hsl(34 94% 51% / 0.15);
+  --shadow-card: 0 0 12px hsl(34 94% 51% / 0.15);
+}
+
+/* Base styles */
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground font-sans;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  @apply font-semibold;
+}
+
+h1 {
+  @apply text-2xl;
+}
+
+h2 {
+  @apply text-lg;
+}
+
+/* ============================================
+   Sidebar Navigation Item Styles
+   ============================================ */
+
+/* Base item styling */
+.sidebar-nav-item {
+  @apply flex items-center gap-3 px-3 py-2 rounded-md;
+  @apply transition-all duration-200 ease-out;
+  @apply overflow-hidden relative cursor-pointer;
+  @apply text-sm;
+}
+
+/* Hover state */
+.sidebar-nav-item:hover:not(.sidebar-nav-item-active) {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .sidebar-nav-item:hover:not(.sidebar-nav-item-active) {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Active item - glassmorphism + gradient */
+.sidebar-nav-item-active {
+  background: linear-gradient(
+    120deg,
+    hsl(var(--sidebar-indicator) / 0.15),
+    hsl(var(--sidebar-indicator) / 0.05) 50%,
+    transparent
+  );
+  border: 1px solid hsl(var(--sidebar-active-border));
+  backdrop-filter: blur(10px) saturate(180%);
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+}
+
+/* Active indicator bar (vertical line on right) */
+.sidebar-nav-item-active::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 24px;
+  background-color: hsl(var(--sidebar-indicator));
+  border-radius: 9999px 0 0 9999px;
+  box-shadow: 0 0 10px hsl(var(--sidebar-indicator)), 0 0 20px hsl(var(--sidebar-indicator) / 0.6);
+}
+
+/* Glow effect behind active item */
+.sidebar-nav-item-active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    to left,
+    hsl(var(--sidebar-indicator) / 0.2),
+    hsl(var(--sidebar-indicator) / 0.05) 50%,
+    transparent
+  );
+}
+
+/* Icon styling */
+.sidebar-nav-icon {
+  @apply h-5 w-5 shrink-0;
+  color: hsl(var(--sidebar-icon));
+  transition: color 200ms ease-out;
+}
+
+.sidebar-nav-item-active .sidebar-nav-icon {
+  color: hsl(var(--sidebar-icon-active));
+}
+
+/* Text styling */
+.sidebar-nav-text {
+  color: hsl(var(--sidebar-foreground));
+  transition: color 200ms ease-out;
+}
+
+.sidebar-nav-item-active .sidebar-nav-text {
+  color: hsl(var(--sidebar-text-active));
+  font-weight: 500;
+}
+
+/* Collapsed mode overrides */
+[data-collapsible="icon"] .sidebar-nav-item {
+  @apply !size-10 !p-2 justify-center gap-0;
+}
+
+[data-collapsible="icon"] .sidebar-nav-item-active::after,
+[data-collapsible="icon"] .sidebar-nav-item-active::before {
+  display: none;
+}
+
+/* ============================================
+   Groups Page Button Styles
+   ============================================ */
+
+.groups-page button:hover:not(:disabled) {
+  background-color: #8d2d53 !important;
+  color: white !important;
+  border-color: #8d2d53 !important;
+}
+
+/* ============================================
+   Automation Form Dialog Styles
+   ============================================ */
+
+.automation-form-dialog label {
+  color: #8d2d53 !important;
+  font-weight: 500;
+}
+
+.automation-form-dialog,
+.automation-form-dialog p,
+.automation-form-dialog span,
+.automation-form-dialog input,
+.automation-form-dialog textarea,
+.automation-form-dialog select,
+.automation-form-dialog [data-slot="select-value"] {
+  color: #000000;
+}
+
+.automation-form-dialog .text-muted-foreground {
+  color: #4a4a4a !important;
+}
+
+.automation-form-dialog h2,
+.automation-form-dialog [data-slot="dialog-title"] {
+  color: #8d2d53 !important;
+}

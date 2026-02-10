@@ -1,0 +1,268 @@
+syntax = "proto3";
+
+package profiles.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/profiles/v1;profilesv1";
+
+// ============================================================
+// Messages
+// ============================================================
+
+/**
+ * User profile information.
+ */
+message Profile {
+  // Unique identifier (same as user ID)
+  string id = 1;
+
+  // User email
+  optional string email = 2;
+
+  // Subscription plan
+  optional string plan = 3;
+
+  // Phone number
+  optional string phone_number = 4;
+
+  // Maximum automations allowed
+  optional int32 max_automations = 5;
+
+  // Next billing payment date (ISO 8601)
+  optional string billing_next_payment_at = 6;
+
+  // Plan access expiration date (ISO 8601)
+  optional string plan_access_until = 7;
+
+  // Whether the user is blocked
+  bool is_blocked = 8;
+
+  // Creation timestamp (ISO 8601)
+  string created_at = 9;
+
+  // Last update timestamp (ISO 8601)
+  string updated_at = 10;
+}
+
+/**
+ * User limits and usage counts.
+ */
+message UserLimits {
+  // Current automations count
+  int32 automations_count = 1;
+
+  // Maximum automations allowed
+  optional int32 max_automations = 2;
+
+  // Connected WhatsApp instances count
+  int32 connected_instances_count = 3;
+}
+
+// ============================================================
+// Get Profile
+// ============================================================
+
+message GetProfileRequest {}
+
+message GetProfileResponse {
+  Profile profile = 1;
+}
+
+// ============================================================
+// Update Profile
+// ============================================================
+
+message UpdateProfileRequest {
+  optional string phone_number = 1;
+}
+
+message UpdateProfileResponse {
+  Profile profile = 1;
+}
+
+// ============================================================
+// Get User Limits
+// ============================================================
+
+message GetUserLimitsRequest {}
+
+message GetUserLimitsResponse {
+  UserLimits limits = 1;
+}
+
+// ============================================================
+// Admin: List Profiles (Cursor-based pagination)
+// ============================================================
+
+message ListProfilesRequest {
+  // Cursor for pagination (opaque string from previous response)
+  optional string cursor = 1;
+  // Page size (default 20, max 100)
+  optional int32 limit = 2;
+}
+
+message ListProfilesResponse {
+  repeated Profile profiles = 1;
+  // Cursor for next page (empty if no more results)
+  optional string next_cursor = 2;
+  // Whether there are more results
+  bool has_more = 3;
+}
+
+// ============================================================
+// Admin: Search Profiles (Cursor-based pagination)
+// ============================================================
+
+message SearchProfilesRequest {
+  // Search query (email, phone, etc.)
+  string query = 1 [(buf.validate.field).string.min_len = 1];
+  // Cursor for pagination
+  optional string cursor = 2;
+  // Page size (default 20, max 100)
+  optional int32 limit = 3;
+}
+
+message SearchProfilesResponse {
+  repeated Profile profiles = 1;
+  // Cursor for next page
+  optional string next_cursor = 2;
+  // Whether there are more results
+  bool has_more = 3;
+}
+
+// ============================================================
+// Admin: Block/Unblock User
+// ============================================================
+
+message BlockUserRequest {
+  string user_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message BlockUserResponse {
+  Profile profile = 1;
+}
+
+message UnblockUserRequest {
+  string user_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message UnblockUserResponse {
+  Profile profile = 1;
+}
+
+// ============================================================
+// Admin: Update User Plan
+// ============================================================
+
+message UpdateUserPlanRequest {
+  string user_id = 1 [(buf.validate.field).string.min_len = 1];
+  optional string plan = 2;
+  optional int32 max_automations = 3;
+  optional string plan_access_until = 4;
+}
+
+message UpdateUserPlanResponse {
+  Profile profile = 1;
+}
+
+// ============================================================
+// Password Management
+// ============================================================
+
+/**
+ * Request password reset email.
+ * Always returns success (silent fail if email doesn't exist).
+ */
+message RequestPasswordResetRequest {
+  string email = 1 [(buf.validate.field).string.email = true];
+}
+
+message RequestPasswordResetResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+/**
+ * Validate a password reset token.
+ */
+message ValidateResetTokenRequest {
+  string token = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ValidateResetTokenResponse {
+  bool valid = 1;
+  // Masked email if valid (e.g., "jo***@example.com")
+  optional string email = 2;
+  // Reason if invalid: "invalid_token", "token_expired", "token_used"
+  optional string reason = 3;
+}
+
+/**
+ * Reset password using a token.
+ */
+message ResetPasswordRequest {
+  string token = 1 [(buf.validate.field).string.min_len = 1];
+  string new_password = 2 [(buf.validate.field).string.min_len = 8];
+}
+
+message ResetPasswordResponse {
+  bool success = 1;
+}
+
+/**
+ * Change password for logged-in user.
+ */
+message ChangePasswordRequest {
+  string current_password = 1 [(buf.validate.field).string.min_len = 1];
+  string new_password = 2 [(buf.validate.field).string.min_len = 8];
+}
+
+message ChangePasswordResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * ProfilesService provides operations for managing user profiles.
+ */
+service ProfilesService {
+  // Gets the current user's profile.
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+
+  // Updates the current user's profile.
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+
+  // Gets the current user's limits and usage.
+  rpc GetUserLimits(GetUserLimitsRequest) returns (GetUserLimitsResponse);
+
+  // Admin: Lists all user profiles (cursor pagination).
+  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
+
+  // Admin: Searches user profiles (cursor pagination).
+  rpc SearchProfiles(SearchProfilesRequest) returns (SearchProfilesResponse);
+
+  // Admin: Blocks a user.
+  rpc BlockUser(BlockUserRequest) returns (BlockUserResponse);
+
+  // Admin: Unblocks a user.
+  rpc UnblockUser(UnblockUserRequest) returns (UnblockUserResponse);
+
+  // Admin: Updates a user's subscription plan.
+  rpc UpdateUserPlan(UpdateUserPlanRequest) returns (UpdateUserPlanResponse);
+
+  // Request password reset (public, no auth required).
+  rpc RequestPasswordReset(RequestPasswordResetRequest) returns (RequestPasswordResetResponse);
+
+  // Validate reset token (public, no auth required).
+  rpc ValidateResetToken(ValidateResetTokenRequest) returns (ValidateResetTokenResponse);
+
+  // Reset password with token (public, no auth required).
+  rpc ResetPassword(ResetPasswordRequest) returns (ResetPasswordResponse);
+
+  // Change password (requires authentication).
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+}

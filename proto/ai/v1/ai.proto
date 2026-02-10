@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package ai.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/ai/v1;aiv1";
+
+// ============================================================
+// Analyze Engagement
+// ============================================================
+
+/**
+ * Engagement metrics for a WhatsApp group.
+ */
+message EngagementMetrics {
+  // Total number of messages analyzed
+  int32 total_messages = 1;
+
+  // Number of active members
+  int32 active_members = 2;
+
+  // Engagement rate (0-100)
+  double engagement_rate = 3;
+
+  // Best time to post for maximum engagement
+  optional string best_time_to_post = 4;
+}
+
+message AnalyzeEngagementRequest {
+  // WhatsApp group ID
+  string group_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message AnalyzeEngagementResponse {
+  // Calculated engagement metrics
+  EngagementMetrics metrics = 1;
+
+  // AI-generated summary of the engagement analysis
+  optional string summary = 2;
+}
+
+// ============================================================
+// Analyze Trends
+// ============================================================
+
+/**
+ * Trending item on a platform.
+ */
+message TrendItem {
+  // Trend name/keyword
+  string name = 1;
+
+  // Trend score (higher = more trending)
+  double score = 2;
+
+  // Optional description of the trend
+  optional string description = 3;
+}
+
+message AnalyzeTrendsRequest {
+  // Platform to analyze (e.g., "shopee", "mercadolivre")
+  string platform = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Category to analyze trends in
+  string category = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message AnalyzeTrendsResponse {
+  // List of trending items
+  repeated TrendItem trends = 1;
+
+  // AI-generated analysis of the trends
+  optional string analysis = 2;
+}
+
+// ============================================================
+// Enhance Message
+// ============================================================
+
+/**
+ * AI-enhanced promotional message.
+ */
+message EnhancedMessage {
+  // Enhanced message text
+  string message = 1;
+}
+
+message EnhanceMessageRequest {
+  // Product links to create messages for
+  string product_links = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Copy style (e.g., "casual", "formal", "urgency")
+  optional string copy_style = 2;
+
+  // Affiliate link to include in the message
+  optional string affiliate_link = 3;
+}
+
+message EnhanceMessageResponse {
+  // List of enhanced message variations
+  repeated EnhancedMessage messages = 1;
+}
+
+// ============================================================
+// Suggest Offer Text
+// ============================================================
+
+message SuggestOfferTextRequest {
+  // Product category
+  optional string category = 1;
+
+  // Store/platform name
+  optional string store = 2;
+
+  // Generation mode
+  optional string mode = 3;
+}
+
+message SuggestOfferTextResponse {
+  // List of suggested offer texts
+  repeated string texts = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * AiToolsService provides AI-powered tools for marketing automation.
+ */
+service AiToolsService {
+  // Analyzes engagement metrics for a WhatsApp group.
+  rpc AnalyzeEngagement(AnalyzeEngagementRequest) returns (AnalyzeEngagementResponse);
+
+  // Analyzes product trends on affiliate platforms.
+  rpc AnalyzeTrends(AnalyzeTrendsRequest) returns (AnalyzeTrendsResponse);
+
+  // Generates enhanced promotional messages using AI.
+  rpc EnhanceMessage(EnhanceMessageRequest) returns (EnhanceMessageResponse);
+
+  // Suggests offer text based on category and store.
+  rpc SuggestOfferText(SuggestOfferTextRequest) returns (SuggestOfferTextResponse);
+}

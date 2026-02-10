@@ -1,0 +1,240 @@
+services:
+  # =============================================================================
+  # PostgreSQL Database
+  # =============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: automatiza-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-automatiza}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-automatiza_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-automatiza}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./scripts/db/migrations:/docker-entrypoint-initdb.d/migrations:ro
+      - ./scripts/db/run-migrations.sh:/docker-entrypoint-initdb.d/02-run-migrations.sh:ro
+      - ./scripts/db/seed.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
+    networks:
+      - automatiza-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-automatiza} -d ${POSTGRES_DB:-automatiza}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =============================================================================
+  # Application Server
+  # =============================================================================
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: automatiza-server
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      # App
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=3000
+      - API_VERSION=${API_VERSION:-v1}
+
+      # Database (PostgreSQL Direct)
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-automatiza}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-automatiza_dev_password}
+      - DB_NAME=${POSTGRES_DB:-automatiza}
+      - DB_SSLMODE=disable
+      - DB_MAX_CONNS=25
+
+      # CORS & URLs
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:5173}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+      - BACKEND_PUBLIC_URL=${BACKEND_PUBLIC_URL:-http://localhost:3000}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+
+      # Redis
+      - CACHE_REDIS_URI=redis://redis:6379/0
+      - APP_CACHE_PREFIX=${APP_CACHE_PREFIX:-automatiza}
+      - DISABLE_APP_REDIS_CACHE=${DISABLE_APP_REDIS_CACHE:-false}
+
+      # WAHA
+      - WAHA_API_URL=${WAHA_API_URL:-http://waha:3000}
+      - WAHA_API_KEY=${WAHA_API_KEY}
+
+      # AI
+      - AI_API_URL=${AI_API_URL}
+      - AI_API_KEY=${AI_API_KEY}
+      - AI_MODEL=${AI_MODEL:-gpt-4o-mini}
+
+      # ML Credentials Encryption
+      - ML_CREDENTIALS_ENCRYPTION_KEY=${ML_CREDENTIALS_ENCRYPTION_KEY}
+
+      # Auth
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRATION=${JWT_EXPIRATION:-24h}
+      - COOKIE_DOMAIN=${COOKIE_DOMAIN:-localhost}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+
+      # SMTP (Gmail)
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Automatiza}
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+      # Link Safety
+      - LINK_SAFETY_MODE=${LINK_SAFETY_MODE:-off}
+      - LINK_SAFETY_BLOCKED_HOSTS=${LINK_SAFETY_BLOCKED_HOSTS}
+      - LINK_SAFETY_ALLOWED_HOSTS=${LINK_SAFETY_ALLOWED_HOSTS}
+      - LINK_SAFETY_ENFORCE_ALLOWLIST=${LINK_SAFETY_ENFORCE_ALLOWLIST:-false}
+
+      # Backpressure
+      - PRODUCER_BACKPRESSURE_DELAY_MS=${PRODUCER_BACKPRESSURE_DELAY_MS:-100}
+      - PRODUCER_USER_MAX_ENQUEUED_10MIN=${PRODUCER_USER_MAX_ENQUEUED_10MIN:-500}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - automatiza-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # =============================================================================
+  # Worker Process
+  # =============================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: automatiza-worker
+    command: ["./server", "--worker"]
+    environment:
+      # App
+      - NODE_ENV=${NODE_ENV:-production}
+
+      # Database (PostgreSQL Direct)
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-automatiza}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-automatiza_dev_password}
+      - DB_NAME=${POSTGRES_DB:-automatiza}
+      - DB_SSLMODE=disable
+      - DB_MAX_CONNS=10
+
+      # Redis
+      - CACHE_REDIS_URI=redis://redis:6379/0
+      - APP_CACHE_PREFIX=${APP_CACHE_PREFIX:-automatiza}
+      - DISABLE_APP_REDIS_CACHE=${DISABLE_APP_REDIS_CACHE:-false}
+
+      # WAHA
+      - WAHA_API_URL=${WAHA_API_URL:-http://waha:3000}
+      - WAHA_API_KEY=${WAHA_API_KEY}
+
+      # Worker
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-5}
+      - WHATSAPP_SEND_LIMIT_PER_MINUTE=${WHATSAPP_SEND_LIMIT_PER_MINUTE:-30}
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+      # Link Safety
+      - LINK_SAFETY_MODE=${LINK_SAFETY_MODE:-off}
+      - LINK_SAFETY_BLOCKED_HOSTS=${LINK_SAFETY_BLOCKED_HOSTS}
+      - LINK_SAFETY_ALLOWED_HOSTS=${LINK_SAFETY_ALLOWED_HOSTS}
+      - LINK_SAFETY_ENFORCE_ALLOWLIST=${LINK_SAFETY_ENFORCE_ALLOWLIST:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - automatiza-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # Redis (Cache & Queue)
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: automatiza-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - automatiza-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =============================================================================
+  # WAHA Plus (WhatsApp API)
+  # =============================================================================
+  waha:
+    image: devlikeapro/waha-plus:gows-arm
+    container_name: automatiza-waha
+    ports:
+      - "${WAHA_PORT:-3001}:3000"
+    environment:
+      # API Key
+      - WHATSAPP_API_KEY=${WAHA_API_KEY}
+
+      # Engine (GOWS is the recommended engine)
+      - WHATSAPP_DEFAULT_ENGINE=GOWS
+      - WAHA_WORKER_MODE=GOWS
+
+      # Session Management
+      - WHATSAPP_RESTART_ALL_SESSIONS=true
+
+      # Webhooks
+      - WHATSAPP_HOOK_URL=${BACKEND_PUBLIC_URL:-http://host.docker.internal:3000}/api/v1/webhooks/waha
+      - WHATSAPP_HOOK_EVENTS=message,message.ack,session.status,group.join,group.leave
+
+      # Dashboard
+      - WAHA_DASHBOARD_ENABLED=true
+
+      # Logging
+      - WAHA_LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - waha_data:/app/.waha
+    networks:
+      - automatiza-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  automatiza-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  waha_data:
+    driver: local

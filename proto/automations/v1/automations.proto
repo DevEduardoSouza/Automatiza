@@ -1,0 +1,476 @@
+syntax = "proto3";
+
+package automations.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/automatiza/proto/automations/v1;automationsv1";
+
+// ============================================================
+// Enums
+// ============================================================
+
+/**
+ * Mode of operation for an automation.
+ */
+enum AutomationMode {
+  AUTOMATION_MODE_UNSPECIFIED = 0;
+  AUTOMATION_MODE_SEARCH = 1;
+  AUTOMATION_MODE_MONITOR = 2;
+  AUTOMATION_MODE_LIST = 3;
+}
+
+/**
+ * Status of an automation.
+ */
+enum AutomationStatus {
+  AUTOMATION_STATUS_UNSPECIFIED = 0;
+  AUTOMATION_STATUS_ACTIVE = 1;
+  AUTOMATION_STATUS_PAUSED = 2;
+}
+
+/**
+ * Priority type for offer sorting.
+ */
+enum PriorityType {
+  PRIORITY_TYPE_UNSPECIFIED = 0;
+  PRIORITY_TYPE_DISCOUNT = 1;
+  PRIORITY_TYPE_PRICE = 2;
+  PRIORITY_TYPE_COMMISSION = 3;
+}
+
+/**
+ * Filter intensity for offers.
+ */
+enum FilterType {
+  FILTER_TYPE_UNSPECIFIED = 0;
+  FILTER_TYPE_LIGHT = 1;
+  FILTER_TYPE_HEAVY = 2;
+}
+
+/**
+ * Supported affiliate stores.
+ */
+enum Store {
+  STORE_UNSPECIFIED = 0;
+  STORE_SHOPEE = 1;
+  STORE_AMAZON = 2;
+  STORE_MAGALU = 3;
+  STORE_MERCADO_LIVRE = 4;
+  STORE_SHEIN = 5;
+  STORE_ALIEXPRESS = 6;
+  STORE_AWIN = 7;
+}
+
+// ============================================================
+// Shared Messages
+// ============================================================
+
+/**
+ * Text substitution rule for monitoring mode.
+ */
+message TextSubstitution {
+  // Text to find
+  string from = 1;
+
+  // Text to replace with
+  string to = 2;
+}
+
+/**
+ * Text processing rules for monitoring mode.
+ */
+message MonitoringTextRules {
+  // Text substitutions to apply
+  repeated TextSubstitution substitutions = 1;
+
+  // Terms to remove from text
+  repeated string remove_terms = 2;
+
+  // Prefix to add to text
+  string prefix = 3;
+
+  // Suffix to add to text
+  string suffix = 4;
+
+  // Whether to remove phone numbers
+  bool clean_phones = 5;
+
+  // Whether to remove @ mentions
+  bool clean_mentions = 6;
+}
+
+/**
+ * Automation configuration.
+ */
+message Automation {
+  // Unique identifier
+  string id = 1;
+
+  // Display name
+  string name = 2;
+
+  // Operation mode
+  AutomationMode mode = 3;
+
+  // Dispatch text template ID
+  optional string dispatch_text_id = 4;
+
+  // Text processing rules for monitoring mode
+  optional MonitoringTextRules monitoring_text_rules = 5;
+
+  // Daily start time (HH:mm format)
+  string start_time = 6;
+
+  // Daily end time (HH:mm format)
+  string end_time = 7;
+
+  // Interval between runs in minutes
+  int32 interval_minutes = 8;
+
+  // WhatsApp group IDs to send offers to
+  repeated string send_groups = 9;
+
+  // WhatsApp group IDs to monitor (for monitor mode)
+  repeated string monitor_group_ids = 10;
+
+  // Stores to search for offers
+  repeated Store stores = 11;
+
+  // Category identifiers
+  repeated string categories = 12;
+
+  // Priority for sorting offers
+  PriorityType priority = 13;
+
+  // Filter intensity
+  FilterType filter_type = 14;
+
+  // Minimum discount percentage
+  optional double min_discount = 15;
+
+  // Minimum product price
+  optional double min_price = 16;
+
+  // Maximum product price
+  optional double max_price = 17;
+
+  // Search keywords
+  repeated string texts = 18;
+
+  // Call-to-action texts
+  repeated string ctas = 19;
+
+  // Last run timestamp (ISO 8601)
+  optional string last_run_at = 20;
+
+  // Next scheduled run timestamp (ISO 8601)
+  optional string next_run_at = 21;
+
+  // Current status
+  AutomationStatus status = 22;
+
+  // Last error message if any
+  optional string last_error = 23;
+
+  // Timestamp of the last error
+  optional google.protobuf.Timestamp last_error_at = 29;
+
+  // Delay between sending messages in seconds
+  optional int32 delay_seconds = 24;
+
+  // Associated coupon ID
+  optional string coupon_id = 25;
+
+  // Mercado Livre link list ID (for list mode)
+  optional string ml_link_list_id = 26;
+
+  // Number of items to send per run (for list mode)
+  optional int32 list_items_per_run = 27;
+
+  // Whether to include product images (for list mode)
+  optional bool list_include_image = 28;
+}
+
+/**
+ * Diagnostic step result.
+ */
+message DiagnosticStep {
+  // Step name
+  string step = 1;
+
+  // Whether the step passed
+  bool ok = 2;
+
+  // Detailed description
+  string detail = 3;
+
+  // Optional message
+  optional string message = 4;
+}
+
+/**
+ * Diagnostic result for an automation.
+ */
+message DiagnosticResult {
+  // Automation ID
+  string automation_id = 1;
+
+  // Status code
+  optional string code = 2;
+
+  // Status message
+  optional string message = 3;
+
+  // Diagnostic steps
+  repeated DiagnosticStep steps = 4;
+
+  // Number of offers found during diagnosis
+  optional int32 offers_found = 5;
+
+  // Groups that would receive offers
+  repeated string sent_to = 6;
+
+  // Error message if diagnosis failed
+  optional string error = 7;
+}
+
+// ============================================================
+// List Automations
+// ============================================================
+
+message ListAutomationsRequest {}
+
+message ListAutomationsResponse {
+  repeated Automation automations = 1;
+}
+
+// ============================================================
+// Get Automation
+// ============================================================
+
+message GetAutomationRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetAutomationResponse {
+  Automation automation = 1;
+}
+
+// ============================================================
+// Create Automation
+// ============================================================
+
+message CreateAutomationRequest {
+  string name = 1 [(buf.validate.field).string = {min_len: 1, max_len: 255}];
+  AutomationMode mode = 2;
+  optional string dispatch_text_id = 3;
+  optional MonitoringTextRules monitoring_text_rules = 4;
+  string start_time = 5 [(buf.validate.field).string.min_len = 1];
+  string end_time = 6 [(buf.validate.field).string.min_len = 1];
+  int32 interval_minutes = 7 [(buf.validate.field).int32.gte = 1];
+  repeated string send_groups = 8;
+  repeated string monitor_group_ids = 9;
+  repeated Store stores = 10;
+  repeated string categories = 11;
+  PriorityType priority = 12;
+  FilterType filter_type = 13;
+  optional double min_discount = 14;
+  optional double min_price = 15;
+  optional double max_price = 16;
+  repeated string texts = 17;
+  repeated string ctas = 18;
+  AutomationStatus status = 19;
+  optional int32 delay_seconds = 20;
+  optional string coupon_id = 21;
+  optional string ml_link_list_id = 22;
+  optional int32 list_items_per_run = 23;
+  optional bool list_include_image = 24;
+}
+
+message CreateAutomationResponse {
+  Automation automation = 1;
+}
+
+// ============================================================
+// Update Automation
+// ============================================================
+
+message UpdateAutomationRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  optional string name = 2 [(buf.validate.field).string.max_len = 255];
+  optional AutomationMode mode = 3;
+  optional string dispatch_text_id = 4;
+  optional MonitoringTextRules monitoring_text_rules = 5;
+  optional string start_time = 6;
+  optional string end_time = 7;
+  optional int32 interval_minutes = 8;
+  repeated string send_groups = 9;
+  repeated string monitor_group_ids = 10;
+  repeated Store stores = 11;
+  repeated string categories = 12;
+  optional PriorityType priority = 13;
+  optional FilterType filter_type = 14;
+  optional double min_discount = 15;
+  optional double min_price = 16;
+  optional double max_price = 17;
+  repeated string texts = 18;
+  repeated string ctas = 19;
+  optional AutomationStatus status = 20;
+  optional int32 delay_seconds = 21;
+  optional string coupon_id = 22;
+  optional string ml_link_list_id = 23;
+  optional int32 list_items_per_run = 24;
+  optional bool list_include_image = 25;
+}
+
+message UpdateAutomationResponse {
+  Automation automation = 1;
+}
+
+// ============================================================
+// Delete Automation
+// ============================================================
+
+message DeleteAutomationRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteAutomationResponse {}
+
+// ============================================================
+// Diagnose Automation
+// ============================================================
+
+message DiagnoseAutomationRequest {
+  string automation_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DiagnoseAutomationResponse {
+  DiagnosticResult result = 1;
+}
+
+// ============================================================
+// Run Automation
+// ============================================================
+
+message RunAutomationRequest {
+  string automation_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message RunAutomationResponse {
+  bool success = 1;
+  optional string message = 2;
+  optional string error = 3;
+}
+
+// ============================================================
+// Reset Automation History
+// ============================================================
+
+message ResetAutomationHistoryRequest {
+  string automation_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ResetAutomationHistoryResponse {
+  bool success = 1;
+  optional string message = 2;
+}
+
+// ============================================================
+// List Dispatch Logs
+// ============================================================
+
+message ListDispatchLogsRequest {
+  // Automation ID - optional, if empty returns logs from all user's automations
+  optional string automation_id = 1;
+
+  // Pagination: number of records to return (1-500)
+  int32 limit = 2 [(buf.validate.field).int32 = {gte: 1, lte: 500}];
+
+  // Pagination: number of records to skip
+  int32 offset = 3 [(buf.validate.field).int32.gte = 0];
+
+  // Optional filters
+  // Filter by WhatsApp group ID
+  optional string group_id = 4;
+
+  // Filter by dispatch status (sent, failed, skipped)
+  optional string status = 5;
+
+  // Filter by store name
+  optional string store = 6;
+
+  // Search filter for product_url (ILIKE match)
+  optional string search_url = 7;
+}
+
+message ListDispatchLogsResponse {
+  repeated DispatchLog logs = 1;
+  int32 total_count = 2;
+  bool has_more = 3;
+}
+
+message DispatchLog {
+  string id = 1;
+  string automation_id = 2;
+  string group_id = 3;
+  string group_name = 4;
+  string canonical_key = 5;
+  string offer_title = 6;
+  optional string offer_url = 7;
+  optional double offer_price = 8;
+  string status = 9;  // sent, failed, skipped
+  optional string error_message = 10;
+  google.protobuf.Timestamp created_at = 11;
+
+  // Additional fields for full parity
+  optional string store = 12;
+  optional string product_category = 13;
+  optional double product_price = 14;
+  optional string coupon_id = 15;
+  optional string coupon_code = 16;
+  optional bool coupon_applied = 17;
+  optional string coupon_skip_reason = 18;
+  optional string product_url = 19;
+  optional string product_page_url = 20;
+  optional string affiliate_link = 21;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * AutomationsService handles offer automation management and execution.
+ */
+service AutomationsService {
+  // Lists all automations for the authenticated user.
+  rpc ListAutomations(ListAutomationsRequest) returns (ListAutomationsResponse);
+
+  // Gets a specific automation by ID.
+  rpc GetAutomation(GetAutomationRequest) returns (GetAutomationResponse);
+
+  // Creates a new automation.
+  rpc CreateAutomation(CreateAutomationRequest) returns (CreateAutomationResponse);
+
+  // Updates an existing automation.
+  rpc UpdateAutomation(UpdateAutomationRequest) returns (UpdateAutomationResponse);
+
+  // Deletes an automation.
+  rpc DeleteAutomation(DeleteAutomationRequest) returns (DeleteAutomationResponse);
+
+  // Diagnoses an automation to check if it's configured correctly.
+  // This operation may take up to 2 minutes for complex automations.
+  rpc DiagnoseAutomation(DiagnoseAutomationRequest) returns (DiagnoseAutomationResponse);
+
+  // Manually runs an automation.
+  rpc RunAutomation(RunAutomationRequest) returns (RunAutomationResponse);
+
+  // Resets the history of an automation (last 24 hours).
+  rpc ResetAutomationHistory(ResetAutomationHistoryRequest) returns (ResetAutomationHistoryResponse);
+
+  // Lists dispatch logs for an automation with pagination.
+  rpc ListDispatchLogs(ListDispatchLogsRequest) returns (ListDispatchLogsResponse);
+}

@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package settings.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/automatiza/proto/settings/v1;settingsv1";
+
+/**
+ * Setting represents a key-value configuration entry.
+ */
+message Setting {
+  // Setting key identifier
+  string key = 1;
+
+  // Setting value (can be any JSON-serializable value)
+  google.protobuf.Value value = 2;
+
+  // Last update timestamp (ISO 8601)
+  string updated_at = 3;
+}
+
+// ============================================================
+// Get Settings
+// ============================================================
+
+message GetSettingsRequest {
+  // Optional list of specific keys to retrieve.
+  // If empty, returns all settings.
+  repeated string keys = 1;
+}
+
+message GetSettingsResponse {
+  // Map of setting key to value
+  map<string, google.protobuf.Value> settings = 1;
+}
+
+// ============================================================
+// Update Setting
+// ============================================================
+
+message UpdateSettingRequest {
+  // Setting key to update
+  string key = 1 [(buf.validate.field).string.min_len = 1];
+
+  // New value for the setting
+  google.protobuf.Value value = 2;
+}
+
+message UpdateSettingResponse {
+  // The updated setting
+  Setting setting = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * SettingsService provides operations for managing user settings.
+ */
+service SettingsService {
+  // Gets settings for the authenticated user.
+  rpc GetSettings(GetSettingsRequest) returns (GetSettingsResponse);
+
+  // Updates a specific setting.
+  rpc UpdateSetting(UpdateSettingRequest) returns (UpdateSettingResponse);
+}

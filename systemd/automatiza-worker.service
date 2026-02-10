@@ -1,0 +1,33 @@
+[Unit]
+Description=Automatiza Background Worker
+Documentation=https://github.com/your-org/automatiza
+After=automatiza-server.service
+Wants=automatiza-server.service
+
+[Service]
+Type=simple
+User=automatiza
+Group=automatiza
+WorkingDirectory=/opt/automatiza/backend
+EnvironmentFile=/opt/automatiza/env.conf
+ExecStart=/opt/automatiza/backend/server --worker
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/automatiza
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=automatiza-worker
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

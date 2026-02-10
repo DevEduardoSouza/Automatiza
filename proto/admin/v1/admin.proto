@@ -1,0 +1,1055 @@
+syntax = "proto3";
+
+package admin.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/automatiza/proto/admin/v1;adminv1";
+
+// ============================================================
+// Observability Types
+// ============================================================
+
+/**
+ * Queue observability data.
+ */
+message ObservabilityQueue {
+  int32 waiting = 1;
+  int32 delayed = 2;
+  int32 active = 3;
+  int32 queued = 4;
+  optional int32 limit_per_minute = 5;
+  optional int32 worker_concurrency = 6;
+  optional double estimated_minutes = 7;
+}
+
+/**
+ * Load balancer summary in observability.
+ */
+message ObservabilityLoadBalancerSummary {
+  int32 total_servers = 1;
+  int32 total_capacity = 2;
+  int32 total_mapped = 3;
+  int32 total_available = 4;
+  double usage_percent = 5;
+  int32 waha_instances_total = 6;
+  int32 waha_instances_open = 7;
+  int32 waha_instances_connecting = 8;
+  int32 waha_instances_close = 9;
+}
+
+/**
+ * Load balancer data in observability.
+ */
+message ObservabilityLoadBalancer {
+  ObservabilityLoadBalancerSummary summary = 1;
+}
+
+/**
+ * Top error entry.
+ */
+message TopError {
+  string error = 1;
+  int32 count = 2;
+}
+
+/**
+ * Top user by dispatch activity.
+ */
+message TopDispatchUser {
+  string user_id = 1;
+  int32 sent = 2;
+  int32 error = 3;
+  int32 skipped = 4;
+  int32 queued = 5;
+}
+
+/**
+ * Dispatch logs observability data.
+ */
+message ObservabilityDispatchLogs {
+  // Time window in minutes
+  int32 window_minutes = 1;
+
+  // Total dispatches in window
+  int32 total = 2;
+
+  // Count by status (sent, error, skipped, queued)
+  map<string, int32> by_status = 3;
+
+  // Top errors
+  repeated TopError top_errors = 4;
+
+  // Top users by dispatch activity
+  repeated TopDispatchUser top_users = 5;
+}
+
+/**
+ * System totals.
+ */
+message ObservabilityTotals {
+  int32 users_with_any_automation = 1;
+  int32 users_with_active_automations = 2;
+  int32 automations_total = 3;
+  int32 automations_active = 4;
+  int32 groups_total = 5;
+  double avg_groups_per_automation = 6;
+}
+
+/**
+ * Top user by group slots.
+ */
+message TopUserByGroupSlots {
+  string user_id = 1;
+  int32 automations = 2;
+  int32 groups_slots = 3;
+}
+
+/**
+ * Top users section.
+ */
+message ObservabilityTopUsers {
+  repeated TopUserByGroupSlots by_groups_slots = 1;
+}
+
+/**
+ * Full observability data.
+ */
+message ObservabilityData {
+  // ISO 8601 timestamp when data was generated
+  string generated_at = 1;
+
+  ObservabilityQueue queue = 2;
+  ObservabilityLoadBalancer load_balancer = 3;
+  ObservabilityDispatchLogs dispatch_logs = 4;
+  ObservabilityTotals totals = 5;
+  ObservabilityTopUsers top_users = 6;
+}
+
+// ============================================================
+// Shopee Affiliate Audit Types
+// ============================================================
+
+/**
+ * Audit time window.
+ */
+message AuditWindow {
+  int32 days = 1;
+  string since_iso = 2;
+}
+
+/**
+ * Sample mismatch entry.
+ */
+message ShopeeAuditSample {
+  string user_id = 1;
+  optional string email = 2;
+  optional string phone_number = 3;
+  string expected_app_id = 4;
+  string expected_mmp_pid = 5;
+  optional string actual_mmp_pid = 6;
+  optional string actual_af_siteid = 7;
+  string created_at = 8;
+  string automation_id = 9;
+  string automation_name = 10;
+  string group_id = 11;
+  optional string group_name = 12;
+  string status = 13;
+  string url = 14;
+}
+
+/**
+ * Shopee affiliate audit data.
+ */
+message ShopeeAuditData {
+  AuditWindow window = 1;
+  int32 scanned = 2;
+  int32 with_identifier = 3;
+  int32 mismatches = 4;
+  int32 unknown = 5;
+  int32 missing_creds = 6;
+  repeated ShopeeAuditSample samples = 7;
+}
+
+// ============================================================
+// System Events Types
+// ============================================================
+
+/**
+ * Event severity level.
+ */
+enum EventLevel {
+  EVENT_LEVEL_UNSPECIFIED = 0;
+  EVENT_LEVEL_DEBUG = 1;
+  EVENT_LEVEL_INFO = 2;
+  EVENT_LEVEL_WARN = 3;
+  EVENT_LEVEL_ERROR = 4;
+}
+
+/**
+ * System event entry.
+ */
+message SystemEvent {
+  string id = 1;
+  string created_at = 2;
+  optional string user_id = 3;
+  optional string instance_id = 4;
+  EventLevel level = 5;
+  string scope = 6;
+  string message = 7;
+  google.protobuf.Struct meta = 8;
+}
+
+// ============================================================
+// Get Observability
+// ============================================================
+
+message GetObservabilityRequest {}
+
+message GetObservabilityResponse {
+  ObservabilityData data = 1;
+  bool cached = 2;
+}
+
+// ============================================================
+// Get Shopee Affiliate Audit
+// ============================================================
+
+message GetShopeeAffiliateAuditRequest {
+  // Number of days to look back (default: 7)
+  optional int32 days = 1;
+
+  // Maximum samples to return (default: 25)
+  optional int32 limit = 2;
+
+  // Maximum records to scan (default: 5000)
+  optional int32 max_scan = 3;
+}
+
+message GetShopeeAffiliateAuditResponse {
+  ShopeeAuditData data = 1;
+}
+
+// ============================================================
+// Ensure Webhooks
+// ============================================================
+
+message EnsureWebhooksRequest {
+  // Server ID to ensure webhooks for
+  int32 server_id = 1;
+
+  // Maximum instances to process (default: 500)
+  optional int32 limit = 2;
+
+  // Concurrent operations (default: 5)
+  optional int32 concurrency = 3;
+
+  // Dry run mode (no changes made)
+  optional bool dry_run = 4;
+}
+
+message EnsureWebhooksResponse {
+  // Number of webhooks successfully configured
+  int32 ok = 1;
+
+  // Total instances processed
+  int32 total = 2;
+
+  // Number of failures
+  int32 fail = 3;
+}
+
+// ============================================================
+// Get System Events
+// ============================================================
+
+message GetSystemEventsRequest {
+  // Filter by user ID
+  optional string user_id = 1;
+
+  // Filter by instance ID
+  optional string instance_id = 2;
+
+  // Maximum events to return (default: 100)
+  optional int32 limit = 3;
+
+  // Events since N minutes ago (default: 60)
+  optional int32 since_minutes = 4;
+}
+
+message GetSystemEventsResponse {
+  repeated SystemEvent events = 1;
+}
+
+// ============================================================
+// Reset User Password
+// ============================================================
+
+message ResetUserPasswordRequest {
+  // ID of the user whose password will be reset
+  string user_id = 1;
+}
+
+message ResetUserPasswordResponse {
+  // Whether the password reset was successful
+  bool success = 1;
+
+  // Email of the user whose password was reset
+  string email = 2;
+
+  // The new temporary password (if generated)
+  optional string new_password = 3;
+
+  // Message describing the result
+  string message = 4;
+}
+
+// ============================================================
+// Plans Management Types
+// ============================================================
+
+/**
+ * Plan represents a subscription plan.
+ */
+message Plan {
+  string id = 1;
+  string slug = 2;
+  string name = 3;
+  bool is_active = 4;
+  optional string kiwify_product_id_monthly = 5;
+  optional string kiwify_product_id_semester = 6;
+  optional string kiwify_product_id_annual = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  // Additional fields for plan details
+  optional string description = 10;
+  optional double price_monthly = 11;
+  optional double price_semester = 12;
+  optional double price_annual = 13;
+  int32 group_limit = 14;
+  int64 storage_limit = 15;
+  repeated string features = 16;
+}
+
+// ============================================================
+// List Plans
+// ============================================================
+
+message ListPlansRequest {
+  // If true, include inactive plans (default: false, active only)
+  optional bool include_inactive = 1;
+}
+
+message ListPlansResponse {
+  repeated Plan plans = 1;
+}
+
+// ============================================================
+// Create Plan
+// ============================================================
+
+message CreatePlanRequest {
+  string slug = 1;
+  string name = 2;
+  bool is_active = 3;
+  optional string kiwify_product_id_monthly = 4;
+  optional string kiwify_product_id_semester = 5;
+  optional string kiwify_product_id_annual = 6;
+  // Additional fields for plan details
+  optional string description = 7;
+  optional double price_monthly = 8;
+  optional double price_semester = 9;
+  optional double price_annual = 10;
+  optional int32 group_limit = 11;
+  optional int64 storage_limit = 12;
+  repeated string features = 13;
+}
+
+message CreatePlanResponse {
+  Plan plan = 1;
+}
+
+// ============================================================
+// Update Plan
+// ============================================================
+
+message UpdatePlanRequest {
+  string id = 1;
+  optional string slug = 2;
+  optional string name = 3;
+  optional bool is_active = 4;
+  optional string kiwify_product_id_monthly = 5;
+  optional string kiwify_product_id_semester = 6;
+  optional string kiwify_product_id_annual = 7;
+  // Additional fields for plan details
+  optional string description = 8;
+  optional double price_monthly = 9;
+  optional double price_semester = 10;
+  optional double price_annual = 11;
+  optional int32 group_limit = 12;
+  optional int64 storage_limit = 13;
+  repeated string features = 14;
+}
+
+message UpdatePlanResponse {
+  Plan plan = 1;
+}
+
+// ============================================================
+// Delete Plan
+// ============================================================
+
+message DeletePlanRequest {
+  string id = 1;
+}
+
+message DeletePlanResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Email Templates Management Types
+// ============================================================
+
+/**
+ * EmailTemplate represents an email template.
+ */
+message EmailTemplate {
+  string id = 1;
+  string name = 2;
+  string subject = 3;
+  string body = 4;
+  bool is_active = 5;
+  string created_at = 6;
+  string updated_at = 7;
+  optional string description = 8;
+}
+
+// ============================================================
+// List Email Templates
+// ============================================================
+
+message ListEmailTemplatesRequest {}
+
+message ListEmailTemplatesResponse {
+  repeated EmailTemplate templates = 1;
+}
+
+// ============================================================
+// Create Email Template
+// ============================================================
+
+message CreateEmailTemplateRequest {
+  string name = 1;
+  string subject = 2;
+  string body = 3;
+  bool is_active = 4;
+  optional string description = 5;
+}
+
+message CreateEmailTemplateResponse {
+  EmailTemplate template = 1;
+}
+
+// ============================================================
+// Update Email Template
+// ============================================================
+
+message UpdateEmailTemplateRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string subject = 3;
+  optional string body = 4;
+  optional bool is_active = 5;
+  optional string description = 6;
+}
+
+message UpdateEmailTemplateResponse {
+  EmailTemplate template = 1;
+}
+
+// ============================================================
+// Toggle Email Template Active
+// ============================================================
+
+message ToggleEmailTemplateActiveRequest {
+  string id = 1;
+  bool is_active = 2;
+}
+
+message ToggleEmailTemplateActiveResponse {
+  EmailTemplate template = 1;
+}
+
+// ============================================================
+// User Management Types
+// ============================================================
+
+/**
+ * User represents a system user.
+ */
+message User {
+  string id = 1;
+  string email = 2;
+  optional string display_name = 3;
+  string plan = 4;
+  optional string billing_status = 5;
+  optional string phone_number = 6;
+  string created_at = 7;
+  string updated_at = 8;
+  repeated string roles = 9;
+}
+
+// ============================================================
+// List Users
+// ============================================================
+
+message ListUsersRequest {
+  // Pagination cursor (optional)
+  optional string cursor = 1;
+
+  // Maximum users to return (default: 50, max: 100)
+  optional int32 limit = 2;
+
+  // Search query (matches email or display_name)
+  optional string search = 3;
+
+  // Filter by plan
+  optional string plan = 4;
+
+  // Filter by billing status
+  optional string billing_status = 5;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  // Next cursor for pagination (empty if no more results)
+  string next_cursor = 2;
+  // Total count of users matching filters
+  int32 total_count = 3;
+}
+
+// ============================================================
+// Create User
+// ============================================================
+
+message CreateUserRequest {
+  string email = 1;
+  optional string display_name = 2;
+  string plan = 3;
+  optional string phone_number = 4;
+  // If true, send welcome email with temporary password
+  bool send_welcome_email = 5;
+}
+
+message CreateUserResponse {
+  User user = 1;
+  // The temporary password (only returned if send_welcome_email is false)
+  optional string temporary_password = 2;
+  string message = 3;
+}
+
+// ============================================================
+// Update User Role
+// ============================================================
+
+message UpdateUserRoleRequest {
+  string user_id = 1;
+  // Role to add or remove (e.g., "admin", "moderator")
+  string role = 2;
+  // Action: "add" or "remove"
+  string action = 3;
+}
+
+message UpdateUserRoleResponse {
+  bool success = 1;
+  string message = 2;
+  // Updated list of user roles
+  repeated string roles = 3;
+}
+
+// ============================================================
+// Admin Users Management Types
+// ============================================================
+
+/**
+ * AdminUser represents a user with admin role.
+ */
+message AdminUser {
+  string user_id = 1;
+  string email = 2;
+  string role = 3;
+  string granted_at = 4;
+}
+
+// ============================================================
+// List Admin Users
+// ============================================================
+
+message ListAdminUsersRequest {}
+
+message ListAdminUsersResponse {
+  repeated AdminUser admins = 1;
+}
+
+// ============================================================
+// Grant Admin Role
+// ============================================================
+
+message GrantAdminRoleRequest {
+  string user_id = 1;
+}
+
+message GrantAdminRoleResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ============================================================
+// Revoke Admin Role
+// ============================================================
+
+message RevokeAdminRoleRequest {
+  string user_id = 1;
+}
+
+message RevokeAdminRoleResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ============================================================
+// Unlock User Account
+// ============================================================
+
+message UnlockUserAccountRequest {
+  // ID of the user account to unlock
+  string user_id = 1;
+
+  // Optional reason for unlocking (for audit trail)
+  optional string reason = 2;
+}
+
+message UnlockUserAccountResponse {
+  bool success = 1;
+  string message = 2;
+  // Previous billing status before unlock (for audit)
+  optional string previous_billing_status = 3;
+}
+
+// ============================================================
+// Webhook Logs
+// ============================================================
+
+message WebhookLogEntry {
+  string id = 1;
+  string source = 2;
+  optional string event_type = 3;
+  optional string email = 4;
+  optional string plan = 5;
+  string status = 6;
+  string created_at = 7;
+}
+
+message ListWebhookLogsRequest {
+  // Maximum logs to return (default: 10, max: 100)
+  optional int32 limit = 1;
+  // Filter by source (e.g., "kiwify")
+  optional string source = 2;
+}
+
+message ListWebhookLogsResponse {
+  repeated WebhookLogEntry logs = 1;
+}
+
+// ============================================================
+// Webhook Simulator
+// ============================================================
+
+message SimulateKiwifyWebhookRequest {
+  string email = 1;
+  string event = 2;  // assinatura_aprovada, assinatura_cancelada, etc.
+  string product = 3; // Plano Starter, Plano Pro, Plano Master
+}
+
+message SimulateKiwifyWebhookResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ============================================================
+// Admin User Investigation
+// ============================================================
+
+/**
+ * Instance info for admin user investigation.
+ */
+message AdminUserInstance {
+  string instance_id = 1;
+  string status = 2;
+  optional string updated_at = 3;
+}
+
+/**
+ * Automation info for admin user investigation.
+ */
+message AdminUserAutomation {
+  string id = 1;
+  string name = 2;
+  string status = 3;
+  optional string mode = 4;
+  optional int32 interval_minutes = 5;
+  optional string start_time = 6;
+  optional string end_time = 7;
+  repeated string stores = 8;
+  repeated string send_groups = 9;
+  repeated string categories = 10;
+  optional string last_run_at = 11;
+  optional string next_run_at = 12;
+  optional string created_at = 13;
+}
+
+message GetUserInvestigationRequest {
+  string user_id = 1;
+}
+
+message GetUserInvestigationResponse {
+  User user = 1;
+  bool is_admin = 2;
+  repeated AdminUserInstance instances = 3;
+  repeated AdminUserAutomation automations = 4;
+  int32 automations_total = 5;
+  int32 automations_active = 6;
+  int32 automations_paused = 7;
+}
+
+// ============================================================
+// Admin Bulk Automation Operations
+// ============================================================
+
+message AdminBulkUpdateAutomationStatusRequest {
+  string user_id = 1;
+  // Target status: "active" or "paused"
+  string target_status = 2;
+  // Source status to filter: "active", "paused", or empty for all
+  optional string source_status = 3;
+}
+
+message AdminBulkUpdateAutomationStatusResponse {
+  int32 updated_count = 1;
+  string message = 2;
+}
+
+message AdminSpreadAutomationScheduleRequest {
+  string user_id = 1;
+  // Minutes between each automation's next_run_at
+  int32 spread_minutes = 2;
+  // Only spread active automations
+  bool active_only = 3;
+}
+
+message AdminSpreadAutomationScheduleResponse {
+  int32 updated_count = 1;
+  string message = 2;
+}
+
+// ============================================================
+// Extended Block User
+// ============================================================
+
+message AdminBlockUserRequest {
+  string user_id = 1;
+  // Reason for blocking
+  optional string reason = 2;
+  // Type: "payment" or "manual"
+  optional string kind = 3;
+  // Also pause all active automations
+  bool pause_automations = 4;
+}
+
+message AdminBlockUserResponse {
+  User user = 1;
+  int32 paused_automations = 2;
+  string message = 3;
+}
+
+// ============================================================
+// Categories Management Types
+// ============================================================
+
+/**
+ * Category represents a product category for automation configuration.
+ */
+message Category {
+  string id = 1;
+  string slug = 2;
+  string name = 3;
+  optional string icon = 4;
+  int32 display_order = 5;
+  bool is_active = 6;
+  bool has_refinements = 7;
+  bool is_system = 8;
+  string created_at = 9;
+  string updated_at = 10;
+  repeated Subcategory subcategories = 11;
+}
+
+/**
+ * Subcategory represents a subcategory within a category.
+ */
+message Subcategory {
+  string id = 1;
+  string category_id = 2;
+  string slug = 3;
+  string name = 4;
+  string display_key = 5;
+  optional string group_name = 6;
+  int32 display_order = 7;
+  bool is_active = 8;
+  bool is_system = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+// ============================================================
+// List Categories
+// ============================================================
+
+message ListCategoriesRequest {
+  // If true, include inactive categories (default: false)
+  optional bool include_inactive = 1;
+  // If true, include subcategories in response (default: false)
+  optional bool include_subcategories = 2;
+}
+
+message ListCategoriesResponse {
+  repeated Category categories = 1;
+}
+
+// ============================================================
+// Create Category
+// ============================================================
+
+message CreateCategoryRequest {
+  string slug = 1;
+  string name = 2;
+  optional string icon = 3;
+  optional int32 display_order = 4;
+  bool has_refinements = 5;
+}
+
+message CreateCategoryResponse {
+  Category category = 1;
+}
+
+// ============================================================
+// Update Category
+// ============================================================
+
+message UpdateCategoryRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string icon = 3;
+  optional int32 display_order = 4;
+  optional bool is_active = 5;
+  optional bool has_refinements = 6;
+}
+
+message UpdateCategoryResponse {
+  Category category = 1;
+}
+
+// ============================================================
+// Delete Category
+// ============================================================
+
+message DeleteCategoryRequest {
+  string id = 1;
+}
+
+message DeleteCategoryResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Create Subcategory
+// ============================================================
+
+message CreateSubcategoryRequest {
+  string category_id = 1;
+  string slug = 2;
+  string name = 3;
+  string display_key = 4;
+  optional string group_name = 5;
+  optional int32 display_order = 6;
+}
+
+message CreateSubcategoryResponse {
+  Subcategory subcategory = 1;
+}
+
+// ============================================================
+// Update Subcategory
+// ============================================================
+
+message UpdateSubcategoryRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string display_key = 3;
+  optional string group_name = 4;
+  optional int32 display_order = 5;
+  optional bool is_active = 6;
+}
+
+message UpdateSubcategoryResponse {
+  Subcategory subcategory = 1;
+}
+
+// ============================================================
+// Delete Subcategory
+// ============================================================
+
+message DeleteSubcategoryRequest {
+  string id = 1;
+}
+
+message DeleteSubcategoryResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * AdminService provides administrative operations for system observability and management.
+ */
+service AdminService {
+  // Returns comprehensive observability data including queue, load balancer, and dispatch stats.
+  rpc GetObservability(GetObservabilityRequest) returns (GetObservabilityResponse);
+
+  // Returns Shopee affiliate link audit data to detect misconfigurations.
+  rpc GetShopeeAffiliateAudit(GetShopeeAffiliateAuditRequest) returns (GetShopeeAffiliateAuditResponse);
+
+  // Ensures webhooks are configured for all instances on a given server.
+  rpc EnsureWebhooks(EnsureWebhooksRequest) returns (EnsureWebhooksResponse);
+
+  // Returns recent webhook logs (admin only).
+  rpc ListWebhookLogs(ListWebhookLogsRequest) returns (ListWebhookLogsResponse);
+
+  // Simulates a Kiwify webhook for testing (admin only).
+  rpc SimulateKiwifyWebhook(SimulateKiwifyWebhookRequest) returns (SimulateKiwifyWebhookResponse);
+
+  // Returns system events filtered by user/instance and time window.
+  rpc GetSystemEvents(GetSystemEventsRequest) returns (GetSystemEventsResponse);
+
+  // Resets a user's password (admin only).
+  rpc ResetUserPassword(ResetUserPasswordRequest) returns (ResetUserPasswordResponse);
+
+  // ============================================================
+  // Plans Management
+  // ============================================================
+
+  // Lists all plans (admin only).
+  rpc ListPlans(ListPlansRequest) returns (ListPlansResponse);
+
+  // Creates a new plan (admin only).
+  rpc CreatePlan(CreatePlanRequest) returns (CreatePlanResponse);
+
+  // Updates an existing plan (admin only).
+  rpc UpdatePlan(UpdatePlanRequest) returns (UpdatePlanResponse);
+
+  // Deletes a plan (admin only).
+  rpc DeletePlan(DeletePlanRequest) returns (DeletePlanResponse);
+
+  // ============================================================
+  // Email Templates Management
+  // ============================================================
+
+  // Lists all email templates (admin only).
+  rpc ListEmailTemplates(ListEmailTemplatesRequest) returns (ListEmailTemplatesResponse);
+
+  // Creates a new email template (admin only).
+  rpc CreateEmailTemplate(CreateEmailTemplateRequest) returns (CreateEmailTemplateResponse);
+
+  // Updates an existing email template (admin only).
+  rpc UpdateEmailTemplate(UpdateEmailTemplateRequest) returns (UpdateEmailTemplateResponse);
+
+  // Toggles email template active status (admin only).
+  rpc ToggleEmailTemplateActive(ToggleEmailTemplateActiveRequest) returns (ToggleEmailTemplateActiveResponse);
+
+  // ============================================================
+  // User Management
+  // ============================================================
+
+  // Lists all system users with pagination and filtering (admin only).
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+
+  // Creates a new user (admin only).
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+
+  // Updates a user's role (admin only).
+  rpc UpdateUserRole(UpdateUserRoleRequest) returns (UpdateUserRoleResponse);
+
+  // ============================================================
+  // Admin Users Management
+  // ============================================================
+
+  // Lists all users with admin role (admin only).
+  rpc ListAdminUsers(ListAdminUsersRequest) returns (ListAdminUsersResponse);
+
+  // Grants admin role to a user (admin only).
+  rpc GrantAdminRole(GrantAdminRoleRequest) returns (GrantAdminRoleResponse);
+
+  // Revokes admin role from a user (admin only).
+  rpc RevokeAdminRole(RevokeAdminRoleRequest) returns (RevokeAdminRoleResponse);
+
+  // ============================================================
+  // Account Management
+  // ============================================================
+
+  // Unlocks a user account by clearing billing_status (admin only).
+  // Used to restore access after payment issues are resolved.
+  rpc UnlockUserAccount(UnlockUserAccountRequest) returns (UnlockUserAccountResponse);
+
+  // ============================================================
+  // User Investigation & Bulk Operations
+  // ============================================================
+
+  // Gets detailed user investigation data (instances, automations).
+  rpc GetUserInvestigation(GetUserInvestigationRequest) returns (GetUserInvestigationResponse);
+
+  // Bulk updates automation status for a user.
+  rpc AdminBulkUpdateAutomationStatus(AdminBulkUpdateAutomationStatusRequest) returns (AdminBulkUpdateAutomationStatusResponse);
+
+  // Spreads next_run_at across user's automations.
+  rpc AdminSpreadAutomationSchedule(AdminSpreadAutomationScheduleRequest) returns (AdminSpreadAutomationScheduleResponse);
+
+  // Blocks a user with extended options.
+  rpc AdminBlockUser(AdminBlockUserRequest) returns (AdminBlockUserResponse);
+
+  // ============================================================
+  // Categories Management
+  // ============================================================
+
+  // Lists all categories with optional subcategories (admin only).
+  rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse);
+
+  // Creates a new category (admin only).
+  rpc CreateCategory(CreateCategoryRequest) returns (CreateCategoryResponse);
+
+  // Updates an existing category (admin only).
+  rpc UpdateCategory(UpdateCategoryRequest) returns (UpdateCategoryResponse);
+
+  // Deletes a category (admin only, only non-system categories).
+  rpc DeleteCategory(DeleteCategoryRequest) returns (DeleteCategoryResponse);
+
+  // Creates a new subcategory (admin only).
+  rpc CreateSubcategory(CreateSubcategoryRequest) returns (CreateSubcategoryResponse);
+
+  // Updates an existing subcategory (admin only).
+  rpc UpdateSubcategory(UpdateSubcategoryRequest) returns (UpdateSubcategoryResponse);
+
+  // Deletes a subcategory (admin only, only non-system subcategories).
+  rpc DeleteSubcategory(DeleteSubcategoryRequest) returns (DeleteSubcategoryResponse);
+}

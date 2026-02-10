@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package images.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/images/v1;imagesv1";
+
+// ============================================================
+// Generate Offer Image
+// ============================================================
+
+message GenerateOfferImageRequest {
+  // Product title
+  string title = 1 [(buf.validate.field).string = {min_len: 1, max_len: 500}];
+
+  // Product price
+  double price = 2 [(buf.validate.field).double.gt = 0];
+
+  // Discount percentage (0-100)
+  optional double discount = 3;
+
+  // Product image URL
+  optional string image_url = 4 [(buf.validate.field).string.max_len = 2000];
+
+  // Store identifier (e.g., "shopee", "amazon")
+  optional string store = 5 [(buf.validate.field).string.max_len = 50];
+}
+
+message GenerateOfferImageResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Generated image URL
+  optional string image_url = 2;
+
+  // Generated image as base64
+  optional string image_base64 = 3;
+
+  // Error message if failed
+  optional string error = 4;
+}
+
+// ============================================================
+// Generate Offer Post Image
+// ============================================================
+
+/**
+ * Layout type for offer post images.
+ */
+enum PostImageLayout {
+  POST_IMAGE_LAYOUT_UNSPECIFIED = 0;
+  POST_IMAGE_LAYOUT_STANDARD = 1;
+  POST_IMAGE_LAYOUT_COMPACT = 2;
+  POST_IMAGE_LAYOUT_WIDE = 3;
+}
+
+/**
+ * Template for offer post images.
+ */
+enum PostImageTemplate {
+  POST_IMAGE_TEMPLATE_UNSPECIFIED = 0;
+  POST_IMAGE_TEMPLATE_DEFAULT = 1;
+  POST_IMAGE_TEMPLATE_PROMOTIONAL = 2;
+  POST_IMAGE_TEMPLATE_FLASH_SALE = 3;
+}
+
+message GenerateOfferPostImageRequest {
+  // Product image URL
+  string product_image_url = 1 [(buf.validate.field).string = {min_len: 1, max_len: 2000}];
+
+  // Text displayed at the top of the image
+  string top_text = 2 [(buf.validate.field).string = {min_len: 1, max_len: 200}];
+
+  // Text displayed at the bottom of the image
+  optional string bottom_text = 3 [(buf.validate.field).string.max_len = 200];
+
+  // Background color (hex format, e.g., "#FF5733")
+  optional string background_color = 4 [(buf.validate.field).string.max_len = 20];
+
+  // Image layout
+  optional PostImageLayout layout = 5;
+
+  // Image template
+  optional PostImageTemplate template = 6;
+}
+
+message GenerateOfferPostImageResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Generated image URL
+  optional string image_url = 2;
+
+  // Generated image as base64
+  optional string image_base64 = 3;
+
+  // Error message if failed
+  optional string error = 4;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * ImagesService provides operations for generating marketing images.
+ */
+service ImagesService {
+  // Generates an offer image with product information.
+  rpc GenerateOfferImage(GenerateOfferImageRequest) returns (GenerateOfferImageResponse);
+
+  // Generates a social media post image for an offer.
+  rpc GenerateOfferPostImage(GenerateOfferPostImageRequest) returns (GenerateOfferPostImageResponse);
+}

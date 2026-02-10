@@ -1,0 +1,717 @@
+syntax = "proto3";
+
+package groups.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/groups/v1;groupsv1";
+
+// ============================================================
+// Enums
+// ============================================================
+
+/**
+ * Status of a WhatsApp group.
+ */
+enum GroupStatus {
+  GROUP_STATUS_UNSPECIFIED = 0;
+  GROUP_STATUS_OPEN = 1;
+  GROUP_STATUS_CLOSED = 2;
+  GROUP_STATUS_FULL = 3;
+}
+
+// ============================================================
+// Messages
+// ============================================================
+
+/**
+ * Represents a WhatsApp group managed by the system.
+ */
+message Group {
+  // Unique identifier
+  string id = 1;
+
+  // User who owns this group
+  string user_id = 2;
+
+  // Instance ID this group belongs to
+  optional string instance_id = 3;
+
+  // WhatsApp group ID
+  string wa_group_id = 4;
+
+  // Display name
+  string name = 5;
+
+  // Group description
+  optional string description = 6;
+
+  // Current member count
+  int32 members_count = 7;
+
+  // Maximum members allowed
+  int32 member_limit = 8;
+
+  // Group status
+  GroupStatus status = 9;
+
+  // Invite code for joining the group
+  optional string invite_code = 10;
+
+  // Whether the user is admin of this group
+  bool is_admin = 11;
+
+  // Whether the group is marked as favorite
+  bool is_favorite = 12;
+
+  // Creation timestamp (ISO 8601)
+  string created_at = 13;
+
+  // Last update timestamp (ISO 8601)
+  string updated_at = 14;
+}
+
+// ============================================================
+// List Groups
+// ============================================================
+
+message ListGroupsRequest {
+  // Only return groups where user is admin
+  optional bool admin_only = 1;
+
+  // Page number (1-indexed, defaults to 1)
+  optional int32 page = 2;
+
+  // Items per page (defaults to 20, max 100)
+  optional int32 page_size = 3;
+
+  // Search filter for group name (server-side filtering)
+  optional string search = 4;
+}
+
+message ListGroupsResponse {
+  repeated Group groups = 1;
+
+  // Total count of groups matching the filter
+  int32 total_count = 2;
+
+  // Current page number
+  int32 page = 3;
+
+  // Items per page
+  int32 page_size = 4;
+
+  // Total number of pages
+  int32 total_pages = 5;
+
+  // Whether there are more pages
+  bool has_more = 6;
+}
+
+// ============================================================
+// Get Group
+// ============================================================
+
+message GetGroupRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetGroupResponse {
+  Group group = 1;
+}
+
+// ============================================================
+// Get Groups By IDs
+// ============================================================
+
+message GetGroupsByIdsRequest {
+  repeated string ids = 1 [(buf.validate.field).repeated.min_items = 1];
+}
+
+message GetGroupsByIdsResponse {
+  repeated Group groups = 1;
+}
+
+// ============================================================
+// Create Group
+// ============================================================
+
+message CreateGroupRequest {
+  string wa_group_id = 1 [(buf.validate.field).string.min_len = 1];
+  string name = 2 [(buf.validate.field).string = {min_len: 1, max_len: 255}];
+  optional string description = 3;
+  optional string instance_id = 4;
+  optional int32 members_count = 5;
+  optional int32 member_limit = 6;
+  optional GroupStatus status = 7;
+  optional string invite_code = 8;
+  optional bool is_admin = 9;
+}
+
+message CreateGroupResponse {
+  Group group = 1;
+}
+
+// ============================================================
+// Update Group
+// ============================================================
+
+message UpdateGroupRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  optional string name = 2 [(buf.validate.field).string.max_len = 255];
+  optional string description = 3;
+  optional int32 members_count = 4;
+  optional int32 member_limit = 5;
+  optional GroupStatus status = 6;
+  optional string invite_code = 7;
+  optional bool is_admin = 8;
+  optional bool is_favorite = 9;
+}
+
+message UpdateGroupResponse {
+  Group group = 1;
+}
+
+// ============================================================
+// Toggle Group Favorite
+// ============================================================
+
+message ToggleGroupFavoriteRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  bool is_favorite = 2;
+}
+
+message ToggleGroupFavoriteResponse {
+  Group group = 1;
+}
+
+// ============================================================
+// Sync Groups From WhatsApp
+// ============================================================
+
+message SyncGroupsRequest {
+  // Instance name to sync from
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message SyncGroupsResponse {
+  bool success = 1;
+  optional string job_id = 2;
+  optional string message = 3;
+}
+
+// ============================================================
+// Delete Group
+// ============================================================
+
+message DeleteGroupRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteGroupResponse {}
+
+// ============================================================
+// Bulk Update Groups
+// ============================================================
+
+message BulkUpdateGroupsRequest {
+  repeated string ids = 1 [(buf.validate.field).repeated.min_items = 1];
+  optional GroupStatus status = 2;
+  optional string name = 3;
+  optional bool is_favorite = 4;
+}
+
+message BulkUpdateGroupsResponse {
+  int32 updated_count = 1;
+}
+
+// ============================================================
+// Send Group Message
+// ============================================================
+
+message SendGroupMessageRequest {
+  // Instance name to send from
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // Message content
+  string message = 3 [(buf.validate.field).string = {min_len: 1, max_len: 4096}];
+
+  // Optional list of phone numbers to mention
+  repeated string mentions = 4;
+
+  // Optional list of image URLs to attach
+  repeated string images = 5;
+
+  // Optional message ID to reply to
+  optional string reply_to = 6;
+}
+
+message SendGroupMessageResponse {
+  // ID of the sent message
+  string message_id = 1;
+
+  // ID of the action history entry for tracking
+  string action_id = 2;
+}
+
+// ============================================================
+// Send Group Audio
+// ============================================================
+
+message SendGroupAudioRequest {
+  // Instance name to send from
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // Audio content as base64 or URL
+  string audio = 3 [(buf.validate.field).string.min_len = 1];
+
+  // Audio mimetype (e.g., audio/ogg, audio/mpeg)
+  optional string mimetype = 4;
+
+  // Whether to send as voice note (PTT - push to talk)
+  bool ptt = 5;
+
+  // Optional caption for the audio
+  optional string caption = 6;
+}
+
+message SendGroupAudioResponse {
+  // ID of the sent message
+  string message_id = 1;
+
+  // ID of the action history entry for tracking
+  string action_id = 2;
+}
+
+// ============================================================
+// Send Group Image
+// ============================================================
+
+message SendGroupImageRequest {
+  // Instance name to send from
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // Image content as base64 or URL
+  string image = 3 [(buf.validate.field).string.min_len = 1];
+
+  // Image mimetype (e.g., image/jpeg, image/png)
+  optional string mimetype = 4;
+
+  // Optional caption for the image
+  optional string caption = 5;
+
+  // Optional message ID to reply to
+  optional string reply_to = 6;
+}
+
+message SendGroupImageResponse {
+  // ID of the sent message
+  string message_id = 1;
+
+  // ID of the action history entry for tracking
+  string action_id = 2;
+}
+
+// ============================================================
+// Send Group Poll
+// ============================================================
+
+message SendGroupPollRequest {
+  // Instance name to send from
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // Poll question/name
+  string name = 3 [(buf.validate.field).string = {min_len: 1, max_len: 256}];
+
+  // Poll options (2-12 options allowed)
+  repeated string options = 4 [(buf.validate.field).repeated = {min_items: 2, max_items: 12}];
+
+  // Whether multiple answers are allowed
+  bool multiple_answers = 5;
+}
+
+message SendGroupPollResponse {
+  // ID of the sent message
+  string message_id = 1;
+
+  // ID of the action history entry for tracking
+  string action_id = 2;
+}
+
+// ============================================================
+// Update Group Subject (Name)
+// ============================================================
+
+message UpdateGroupSubjectRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // New group subject/name (1-100 chars)
+  string subject = 3 [(buf.validate.field).string = {min_len: 1, max_len: 100}];
+}
+
+message UpdateGroupSubjectResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Update Group Description
+// ============================================================
+
+message UpdateGroupDescriptionRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // New group description (max 2048 chars, can be empty)
+  string description = 3 [(buf.validate.field).string.max_len = 2048];
+}
+
+message UpdateGroupDescriptionResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Update Group Picture
+// ============================================================
+
+message UpdateGroupPictureRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // Picture data - either URL or base64
+  oneof picture {
+    // URL to the image
+    string url = 3;
+
+    // Base64 encoded image data
+    string base64_data = 4;
+  }
+
+  // Image mimetype (e.g., image/jpeg)
+  optional string mimetype = 5;
+}
+
+message UpdateGroupPictureResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Update Group Settings
+// ============================================================
+
+message UpdateGroupSettingsRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // Whether only admins can send messages (announcement mode)
+  bool messages_admin_only = 3;
+}
+
+message UpdateGroupSettingsResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Get Group Invite Code
+// ============================================================
+
+message GetGroupInviteCodeRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+}
+
+message GetGroupInviteCodeResponse {
+  // The invite code (without the URL prefix)
+  string invite_code = 1;
+
+  // Full invite URL (https://chat.whatsapp.com/{code})
+  string invite_url = 2;
+}
+
+// ============================================================
+// Get Sync Status
+// ============================================================
+
+message GetSyncStatusRequest {
+  // Job ID returned from SyncGroups
+  string job_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetSyncStatusResponse {
+  // Current status (pending, active, completed, failed)
+  string status = 1;
+
+  // Progress percentage (0-100)
+  int32 progress = 2;
+
+  // Error message if status is failed
+  optional string error = 3;
+
+  // Number of groups synced so far
+  int32 groups_synced = 4;
+
+  // Total groups to sync (if known)
+  optional int32 total_groups = 5;
+}
+
+// ============================================================
+// Get Group Participants
+// ============================================================
+
+message GroupParticipant {
+  // WhatsApp ID of the participant
+  string id = 1;
+
+  // Whether the participant is an admin
+  bool is_admin = 2;
+
+  // Whether the participant is a super admin (group creator)
+  bool is_super_admin = 3;
+
+  // Phone number of the participant (e.g., "5511999999999")
+  string phone_number = 4;
+}
+
+message GetGroupParticipantsRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+}
+
+message GetGroupParticipantsResponse {
+  // List of group participants
+  repeated GroupParticipant participants = 1;
+}
+
+// ============================================================
+// Add Group Member
+// ============================================================
+
+message AddGroupMemberRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // Phone numbers to add (E.164 format without +)
+  repeated string phone_numbers = 3 [(buf.validate.field).repeated = {min_items: 1, max_items: 100}];
+}
+
+message AddGroupMemberResponse {
+  // Number of members successfully added
+  int32 added_count = 1;
+
+  // Phone numbers that failed to be added
+  repeated string failed_numbers = 2;
+}
+
+// ============================================================
+// Remove Group Member
+// ============================================================
+
+message RemoveGroupMemberRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // Phone numbers to remove (E.164 format without +)
+  repeated string phone_numbers = 3 [(buf.validate.field).repeated = {min_items: 1, max_items: 100}];
+}
+
+message RemoveGroupMemberResponse {
+  // Number of members successfully removed
+  int32 removed_count = 1;
+
+  // Phone numbers that failed to be removed
+  repeated string failed_numbers = 2;
+}
+
+// ============================================================
+// Leave Group
+// ============================================================
+
+message LeaveGroupRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+}
+
+message LeaveGroupResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Promote Member to Admin
+// ============================================================
+
+message PromoteMemberRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // Phone number of the member to promote (E.164 format without +)
+  string phone_number = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message PromoteMemberResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Demote Member from Admin
+// ============================================================
+
+message DemoteMemberRequest {
+  // Instance name to use
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp group ID (format: 123456789@g.us)
+  string group_id = 2 [(buf.validate.field).string.pattern = "^[0-9]+@g\\.us$"];
+
+  // Phone number of the member to demote (E.164 format without +)
+  string phone_number = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message DemoteMemberResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * GroupsService provides operations for managing WhatsApp groups.
+ */
+service GroupsService {
+  // ============================
+  // CRUD Operations
+  // ============================
+
+  // Lists all groups for the authenticated user.
+  rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse);
+
+  // Gets a specific group by ID.
+  rpc GetGroup(GetGroupRequest) returns (GetGroupResponse);
+
+  // Gets multiple groups by their IDs.
+  rpc GetGroupsByIds(GetGroupsByIdsRequest) returns (GetGroupsByIdsResponse);
+
+  // Creates a new group record.
+  rpc CreateGroup(CreateGroupRequest) returns (CreateGroupResponse);
+
+  // Updates an existing group.
+  rpc UpdateGroup(UpdateGroupRequest) returns (UpdateGroupResponse);
+
+  // Toggles the favorite status of a group.
+  rpc ToggleGroupFavorite(ToggleGroupFavoriteRequest) returns (ToggleGroupFavoriteResponse);
+
+  // Syncs groups from WhatsApp instance.
+  rpc SyncGroups(SyncGroupsRequest) returns (SyncGroupsResponse);
+
+  // Gets the status of a sync job.
+  rpc GetSyncStatus(GetSyncStatusRequest) returns (GetSyncStatusResponse);
+
+  // Deletes a group record.
+  rpc DeleteGroup(DeleteGroupRequest) returns (DeleteGroupResponse);
+
+  // Updates multiple groups at once.
+  rpc BulkUpdateGroups(BulkUpdateGroupsRequest) returns (BulkUpdateGroupsResponse);
+
+  // ============================
+  // Messaging Operations
+  // ============================
+
+  // Sends a text message to a group.
+  rpc SendGroupMessage(SendGroupMessageRequest) returns (SendGroupMessageResponse);
+
+  // Sends an audio message to a group.
+  rpc SendGroupAudio(SendGroupAudioRequest) returns (SendGroupAudioResponse);
+
+  // Sends an image to a group.
+  rpc SendGroupImage(SendGroupImageRequest) returns (SendGroupImageResponse);
+
+  // Sends a poll to a group.
+  rpc SendGroupPoll(SendGroupPollRequest) returns (SendGroupPollResponse);
+
+  // ============================
+  // Settings Operations (Admin Only)
+  // ============================
+
+  // Updates the group subject/name.
+  rpc UpdateGroupSubject(UpdateGroupSubjectRequest) returns (UpdateGroupSubjectResponse);
+
+  // Updates the group description.
+  rpc UpdateGroupDescription(UpdateGroupDescriptionRequest) returns (UpdateGroupDescriptionResponse);
+
+  // Updates the group picture.
+  rpc UpdateGroupPicture(UpdateGroupPictureRequest) returns (UpdateGroupPictureResponse);
+
+  // Updates group settings (e.g., announcement mode).
+  rpc UpdateGroupSettings(UpdateGroupSettingsRequest) returns (UpdateGroupSettingsResponse);
+
+  // ============================
+  // Utility Operations
+  // ============================
+
+  // Gets the invite code for a group.
+  rpc GetGroupInviteCode(GetGroupInviteCodeRequest) returns (GetGroupInviteCodeResponse);
+
+  // Gets the participants of a group.
+  rpc GetGroupParticipants(GetGroupParticipantsRequest) returns (GetGroupParticipantsResponse);
+
+  // ============================
+  // Member Management Operations
+  // ============================
+
+  // Adds members to a group.
+  rpc AddGroupMember(AddGroupMemberRequest) returns (AddGroupMemberResponse);
+
+  // Removes members from a group.
+  rpc RemoveGroupMember(RemoveGroupMemberRequest) returns (RemoveGroupMemberResponse);
+
+  // Leaves a group.
+  rpc LeaveGroup(LeaveGroupRequest) returns (LeaveGroupResponse);
+
+  // Promotes a member to admin.
+  rpc PromoteMember(PromoteMemberRequest) returns (PromoteMemberResponse);
+
+  // Demotes a member from admin.
+  rpc DemoteMember(DemoteMemberRequest) returns (DemoteMemberResponse);
+}

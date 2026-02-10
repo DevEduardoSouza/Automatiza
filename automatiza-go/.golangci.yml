@@ -1,0 +1,237 @@
+# =============================================================================
+# golangci-lint configuration for automatiza-go
+# =============================================================================
+# Based on CLAUDE.md guidelines:
+# - gosec for security
+# - errcheck for error handling
+# - bodyclose for HTTP body close
+# - cyclop/gocognit for complexity limits
+# =============================================================================
+
+run:
+  timeout: 5m
+  go: "1.24"
+
+# =============================================================================
+# Linters
+# =============================================================================
+linters:
+  disable-all: true
+  enable:
+    # Security
+    - gosec
+
+    # Error handling
+    - errcheck
+    - errorlint
+
+    # HTTP body close
+    - bodyclose
+
+    # Complexity
+    - cyclop
+    - gocognit
+
+    # Style and formatting
+    - gofmt
+    - goimports
+    - misspell
+
+    # Performance
+    - prealloc
+
+    # Bug detection
+    - staticcheck
+    - govet
+    - ineffassign
+    - unused
+
+    # Code quality
+    - unconvert
+    - unparam
+    - dupl
+    - goconst
+    - revive
+
+# =============================================================================
+# Linter Settings
+# =============================================================================
+linters-settings:
+  cyclop:
+    # Maximum cyclomatic complexity
+    max-complexity: 15
+    # Ignore tests
+    skip-tests: true
+
+  gocognit:
+    # Minimum cognitive complexity to report
+    min-complexity: 20
+
+  gosec:
+    excludes:
+      # Ignore "Errors unhandled" - covered by errcheck
+      - G104
+      # Ignore potential integer overflow - handled by application logic
+      - G115
+      # Ignore hardcoded credentials false positives (template names, etc.)
+      - G101
+    config:
+      # Exclude test files from some checks
+      global:
+        audit: enabled
+
+  errcheck:
+    # Don't check for errors in these functions
+    exclude-functions:
+      - (*go.uber.org/zap.Logger).Sync
+      - (*go.uber.org/zap.SugaredLogger).Sync
+      - io.Copy
+      - (io.Closer).Close
+      - (*net.Conn).Close
+      - (*net/smtp.Client).Close
+      - (*github.com/redis/go-redis/v9.Client).Close
+      - (*github.com/jackc/pgx/v5/pgxpool.Pool).Close
+
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment # Too strict for this project
+      - shadow # Too many false positives with err shadowing in Go
+
+  revive:
+    severity: warning
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+        disabled: true # Allow missing package comments for now
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+      - name: empty-block
+      - name: superfluous-else
+      - name: unused-parameter
+        disabled: true # Allow unused parameters for interface compliance
+      - name: unreachable-code
+      - name: redefines-builtin-id
+
+  dupl:
+    # Minimum token sequence length to report as duplicate
+    threshold: 150
+
+  goconst:
+    # Minimum string length for goconst
+    min-len: 3
+    # Minimum occurrences to trigger
+    min-occurrences: 3
+
+  misspell:
+    locale: US
+
+  staticcheck:
+    checks:
+      - all
+
+# =============================================================================
+# Issues Configuration
+# =============================================================================
+issues:
+  # Maximum issues count per linter (0 = unlimited)
+  max-issues-per-linter: 50
+
+  # Maximum same issues count (0 = unlimited)
+  max-same-issues: 5
+
+  # Don't hide issues in vendor, generated, or test files
+  exclude-use-default: false
+
+  exclude-rules:
+    # Exclude test files from some linters
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+        - dupl
+        - goconst
+        - gocognit
+        - cyclop
+
+    # Exclude generated protobuf files
+    - path: ".*\\.pb\\.go$"
+      linters:
+        - all
+
+    # Exclude generated connect files
+    - path: ".*\\.connect\\.go$"
+      linters:
+        - all
+
+    # Exclude internal/gen directory (generated code)
+    - path: internal/gen/
+      linters:
+        - all
+
+    # Allow longer functions in main.go
+    - path: cmd/.*/main\.go
+      linters:
+        - gocognit
+        - cyclop
+
+    # Allow fmt.Print in scripts
+    - path: scripts/
+      linters:
+        - forbidigo
+
+  # Don't skip any directories for issue reporting
+  exclude-dirs-use-default: false
+
+  # Skip vendor and generated directories
+  exclude-dirs:
+    - vendor
+    - internal/gen
+
+  # Skip generated protobuf files
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.connect\\.go$"
+
+# =============================================================================
+# Output Configuration
+# =============================================================================
+output:
+  # Format: colored-line-number, line-number, json, tab, checkstyle, code-climate
+  formats:
+    - format: colored-line-number
+  # Print lines with issues
+  print-issued-lines: true
+  # Print linter name at the end of issue text
+  print-linter-name: true
+  # Sort results by: filepath, line, severity
+  sort-results: true
+
+# =============================================================================
+# Severity Configuration
+# =============================================================================
+severity:
+  default-severity: warning
+  case-sensitive: false
+  rules:
+    - linters:
+        - gosec
+      severity: error
+    - linters:
+        - errcheck
+      severity: error

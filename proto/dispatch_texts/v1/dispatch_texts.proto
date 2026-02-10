@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+package dispatch_texts.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/dispatch_texts/v1;dispatchtextsv1";
+
+// ============================================================
+// Messages
+// ============================================================
+
+/**
+ * Represents a dispatch text template for automation messages.
+ */
+message DispatchText {
+  // Unique identifier
+  string id = 1;
+
+  // User who owns this template
+  string user_id = 2;
+
+  // Template name
+  string name = 3;
+
+  // Template body with variables
+  string body = 4;
+
+  // Whether the template is active
+  bool is_active = 5;
+
+  // Creation timestamp (ISO 8601)
+  string created_at = 6;
+
+  // Last update timestamp (ISO 8601)
+  string updated_at = 7;
+}
+
+// ============================================================
+// List Dispatch Texts
+// ============================================================
+
+message ListDispatchTextsRequest {}
+
+message ListDispatchTextsResponse {
+  repeated DispatchText dispatch_texts = 1;
+}
+
+// ============================================================
+// Get Dispatch Text
+// ============================================================
+
+message GetDispatchTextRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetDispatchTextResponse {
+  DispatchText dispatch_text = 1;
+}
+
+// ============================================================
+// Create Dispatch Text
+// ============================================================
+
+message CreateDispatchTextRequest {
+  string name = 1 [(buf.validate.field).string = {min_len: 1, max_len: 255}];
+  string body = 2 [(buf.validate.field).string = {min_len: 1, max_len: 4000}];
+  optional bool is_active = 3;
+}
+
+message CreateDispatchTextResponse {
+  DispatchText dispatch_text = 1;
+}
+
+// ============================================================
+// Update Dispatch Text
+// ============================================================
+
+message UpdateDispatchTextRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  optional string name = 2 [(buf.validate.field).string.max_len = 255];
+  optional string body = 3 [(buf.validate.field).string.max_len = 4000];
+  optional bool is_active = 4;
+}
+
+message UpdateDispatchTextResponse {
+  DispatchText dispatch_text = 1;
+}
+
+// ============================================================
+// Delete Dispatch Text
+// ============================================================
+
+message DeleteDispatchTextRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteDispatchTextResponse {}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * DispatchTextsService provides operations for managing dispatch text templates.
+ */
+service DispatchTextsService {
+  // Lists all dispatch texts for the authenticated user.
+  rpc ListDispatchTexts(ListDispatchTextsRequest) returns (ListDispatchTextsResponse);
+
+  // Gets a specific dispatch text by ID.
+  rpc GetDispatchText(GetDispatchTextRequest) returns (GetDispatchTextResponse);
+
+  // Creates a new dispatch text template.
+  rpc CreateDispatchText(CreateDispatchTextRequest) returns (CreateDispatchTextResponse);
+
+  // Updates an existing dispatch text template.
+  rpc UpdateDispatchText(UpdateDispatchTextRequest) returns (UpdateDispatchTextResponse);
+
+  // Deletes a dispatch text template.
+  rpc DeleteDispatchText(DeleteDispatchTextRequest) returns (DeleteDispatchTextResponse);
+}

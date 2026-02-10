@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package dashboard.v1;
+
+option go_package = "github.com/automatiza/proto/dashboard/v1;dashboardv1";
+
+// ============================================================
+// Messages
+// ============================================================
+
+/**
+ * DashboardStats contains aggregated statistics for the user's dashboard.
+ */
+message DashboardStats {
+  // Total number of groups where user is admin
+  int32 total_groups = 1;
+
+  // Number of groups that are full
+  int32 full_groups = 2;
+
+  // Total members across all admin groups
+  int32 total_members = 3;
+
+  // Number of active redirect links
+  int32 active_links = 4;
+}
+
+/**
+ * Announcement represents a dashboard announcement/banner.
+ */
+message Announcement {
+  // Whether the announcement is enabled
+  bool enabled = 1;
+
+  // Announcement title
+  string title = 2;
+
+  // Announcement body/message
+  string body = 3;
+}
+
+// ============================================================
+// Get Dashboard Stats
+// ============================================================
+
+message GetDashboardStatsRequest {
+  // No parameters - user_id is extracted from auth context
+}
+
+message GetDashboardStatsResponse {
+  // Aggregated dashboard statistics
+  DashboardStats stats = 1;
+}
+
+// ============================================================
+// Get Dashboard History
+// ============================================================
+
+/**
+ * Period represents the time range for historical data.
+ */
+enum Period {
+  PERIOD_UNSPECIFIED = 0;
+  PERIOD_WEEKLY = 1;   // Last 7 days, grouped by day
+  PERIOD_MONTHLY = 2;  // Last 4 weeks, grouped by week
+  PERIOD_YEARLY = 3;   // Last 12 months, grouped by month
+}
+
+message GetDashboardHistoryRequest {
+  // Time period for the historical data
+  Period period = 1;
+}
+
+message GetDashboardHistoryResponse {
+  // Array of data points for the requested period
+  repeated HistoryDataPoint data_points = 1;
+}
+
+/**
+ * HistoryDataPoint represents a single data point in the dashboard history.
+ */
+message HistoryDataPoint {
+  // Label for the data point (e.g., "Seg", "Jan", "2024")
+  string label = 1;
+
+  // Total members at this point in time
+  int32 members = 2;
+
+  // Total groups at this point in time
+  int32 groups = 3;
+
+  // New members added in this period
+  int32 new_members = 4;
+
+  // New groups added in this period
+  int32 new_groups = 5;
+}
+
+// ============================================================
+// Get Announcement
+// ============================================================
+
+message GetAnnouncementRequest {
+  // No parameters needed
+}
+
+message GetAnnouncementResponse {
+  // Current dashboard announcement
+  Announcement announcement = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * DashboardService provides operations for retrieving dashboard data.
+ * All endpoints require authentication via auth context.
+ */
+service DashboardService {
+  // GetDashboardStats returns aggregated statistics for the user's dashboard.
+  // Includes: total groups, full groups, total members, active redirect links.
+  rpc GetDashboardStats(GetDashboardStatsRequest) returns (GetDashboardStatsResponse);
+
+  // GetDashboardHistory returns historical data for the dashboard chart.
+  // Supports weekly, monthly, and yearly periods.
+  rpc GetDashboardHistory(GetDashboardHistoryRequest) returns (GetDashboardHistoryResponse);
+
+  // GetAnnouncement returns the current dashboard announcement if enabled.
+  rpc GetAnnouncement(GetAnnouncementRequest) returns (GetAnnouncementResponse);
+}

@@ -1,0 +1,2075 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-02-01T17:49:42.066Z",
+  "stack": {
+    "primaryLanguage": "typescript",
+    "languages": [
+      "typescript",
+      "javascript",
+      "go"
+    ],
+    "frameworks": [],
+    "buildTools": [],
+    "testFrameworks": [],
+    "packageManager": null,
+    "isMonorepo": false,
+    "hasDocker": false,
+    "hasCI": false
+  },
+  "structure": {
+    "totalFiles": 33673,
+    "topDirectories": [
+      {
+        "name": "AGENTS.md",
+        "fileCount": 1
+      },
+      {
+        "name": "automatiza-go",
+        "fileCount": 363
+      },
+      {
+        "name": "claude-backup.md",
+        "fileCount": 1
+      },
+      {
+        "name": "CLAUDE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "client",
+        "fileCount": 33271
+      },
+      {
+        "name": "docker-compose.sonarqube.yml",
+        "fileCount": 1
+      },
+      {
+        "name": "Makefile",
+        "fileCount": 1
+      },
+      {
+        "name": "proto",
+        "fileCount": 32
+      },
+      {
+        "name": "README.md",
+        "fileCount": 1
+      },
+      {
+        "name": "waha-openapi.json",
+        "fileCount": 1
+      }
+    ],
+    "languageDistribution": [
+      {
+        "extension": ".js",
+        "count": 13621
+      },
+      {
+        "extension": ".ts",
+        "count": 7473
+      },
+      {
+        "extension": ".map",
+        "count": 3638
+      },
+      {
+        "extension": ".cjs",
+        "count": 2375
+      },
+      {
+        "extension": ".cts",
+        "count": 2199
+      },
+      {
+        "extension": ".json",
+        "count": 828
+      },
+      {
+        "extension": ".mjs",
+        "count": 783
+      },
+      {
+        "extension": ".md",
+        "count": 725
+      },
+      {
+        "extension": ".mts",
+        "count": 688
+      },
+      {
+        "extension": ".go",
+        "count": 299
+      }
+    ]
+  },
+  "architecture": {
+    "layers": [
+      {
+        "name": "Config",
+        "description": "Configuration and constants",
+        "directories": [
+          "client",
+          "client/src/hooks",
+          "client/src/constants",
+          "client/src/config",
+          "client/src/gen/settings/v1"
+        ],
+        "symbolCount": 9,
+        "dependsOn": []
+      },
+      {
+        "name": "Components",
+        "description": "UI components and views",
+        "directories": [
+          "client/e2e/pages",
+          "client/src/hooks",
+          "client/src/pages/redirect-link",
+          "client/src/hooks/__tests__",
+          "client/src/components/sessions",
+          "client/src/components/routing",
+          "client/src/components/ui",
+          "client/src/components/ml-link-lists",
+          "client/src/components/layout",
+          "client/src/components/history",
+          "client/src/components/groups",
+          "client/src/components/dispatch-texts",
+          "client/src/components/billing",
+          "client/src/components/automations",
+          "client/src/components/automation-logs",
+          "client/src/components/affiliate-programs",
+          "client/src/pages/redirect-link/components",
+          "client/src/components/automations/form-sections",
+          "client/src/components/admin/users",
+          "client/src/components/admin/types",
+          "client/src/components/admin/settings",
+          "client/src/components/admin/plans",
+          "client/src/components/admin/hooks",
+          "client/src/pages",
+          "client/src/components",
+          "client/src/pages/jobs",
+          "client/src/components/admin",
+          "client/src/pages/jobs/components",
+          "client/src/components/admin/dashboard"
+        ],
+        "symbolCount": 501,
+        "dependsOn": [
+          "Utils"
+        ]
+      },
+      {
+        "name": "Services",
+        "description": "Business logic and orchestration",
+        "directories": [
+          "client/src/services",
+          "client/src/gen/whatsapp/v1",
+          "client/src/gen/settings/v1",
+          "client/src/gen/webhooks/v1",
+          "client/src/gen/redirect/v1",
+          "client/src/gen/profiles/v1",
+          "client/src/gen/plans/v1",
+          "client/src/gen/ml_links/v1",
+          "client/src/gen/jobs/v1",
+          "client/src/gen/instances/v1",
+          "client/src/gen/images/v1",
+          "client/src/gen/history/v1",
+          "client/src/gen/groups/v1",
+          "client/src/gen/evolution/v1",
+          "client/src/gen/dispatch_texts/v1",
+          "client/src/gen/coupons/v1",
+          "client/src/gen/dashboard/v1",
+          "client/src/gen/contacts/v1",
+          "client/src/gen/campaigns/v1",
+          "client/src/gen/automations/v1",
+          "client/src/gen/auth/v1",
+          "client/src/gen/ai/v1",
+          "client/src/gen/affiliates/v1",
+          "client/src/gen/admin/v1"
+        ],
+        "symbolCount": 4,
+        "dependsOn": []
+      },
+      {
+        "name": "Models",
+        "description": "Data structures and domain objects",
+        "directories": [
+          "client/src/schemas",
+          "client/src/entities/whatsapp-instance",
+          "client/src/entities/ml-link-list",
+          "client/src/entities/dispatch-text",
+          "client/src/entities/whatsapp-instance/model",
+          "client/src/entities/whatsapp-instance/lib",
+          "client/src/entities/ml-link-list/model",
+          "client/src/entities/dispatch-text/model"
+        ],
+        "symbolCount": 36,
+        "dependsOn": []
+      },
+      {
+        "name": "Utils",
+        "description": "Shared utilities and helpers",
+        "directories": [
+          "client/src/lib",
+          "client/src/lib/connect",
+          "client/src/components/ui",
+          "client/src/gen/common/v1"
+        ],
+        "symbolCount": 27,
+        "dependsOn": []
+      },
+      {
+        "name": "Controllers",
+        "description": "Request handling and routing",
+        "directories": [
+          "client/src/constants",
+          "client/src/lib/connect",
+          "client/src/components/routing"
+        ],
+        "symbolCount": 12,
+        "dependsOn": []
+      },
+      {
+        "name": "Repositories",
+        "description": "Data access and persistence",
+        "directories": [
+          "client/src/hooks/groups",
+          "client/src/hooks/groups/__tests__"
+        ],
+        "symbolCount": 1,
+        "dependsOn": []
+      }
+    ],
+    "patterns": [
+      {
+        "name": "Service Layer",
+        "confidence": 0.85,
+        "description": "Encapsulates business logic in service classes",
+        "occurrences": 1
+      }
+    ],
+    "entryPoints": [
+      "client/e2e/pages/index.ts",
+      "client/e2e/fixtures/index.ts",
+      "client/src/types/index.ts",
+      "client/src/schemas/index.ts",
+      "client/src/i18n/index.ts",
+      "client/src/hooks/index.ts",
+      "client/src/contexts/index.ts",
+      "client/src/constants/index.ts",
+      "client/src/lib/connect/index.ts",
+      "client/src/hooks/groups/index.ts",
+      "client/src/entities/whatsapp-instance/index.ts",
+      "client/src/entities/ml-link-list/index.ts",
+      "client/src/entities/dispatch-text/index.ts",
+      "client/src/components/sessions/index.ts",
+      "client/src/components/routing/index.ts",
+      "client/src/components/ml-link-lists/index.ts",
+      "client/src/components/layout/index.ts",
+      "client/src/components/history/index.ts",
+      "client/src/components/groups/index.ts",
+      "client/src/components/dispatch-texts/index.ts",
+      "client/src/components/billing/index.ts",
+      "client/src/components/automations/index.ts",
+      "client/src/components/automation-logs/index.ts",
+      "client/src/components/affiliate-programs/index.ts",
+      "client/src/pages/redirect-link/components/index.ts",
+      "client/src/components/automations/form-sections/index.ts",
+      "client/src/components/admin/users/index.ts",
+      "client/src/components/admin/types/index.ts",
+      "client/src/components/admin/settings/index.ts",
+      "client/src/components/admin/plans/index.ts",
+      "client/src/components/admin/hooks/index.ts",
+      "client/src/main.tsx",
+      "client/src/app.tsx",
+      "client/src/pages/index.tsx",
+      "client/src/pages/redirect-link/index.tsx",
+      "client/src/pages/jobs/index.tsx",
+      "client/src/components/admin/index.tsx",
+      "client/src/components/admin/dashboard/index.tsx"
+    ]
+  },
+  "symbols": {
+    "classes": [
+      {
+        "name": "AdminPage",
+        "kind": "class",
+        "file": "client/e2e/pages/admin.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "AffiliateProgramsPage",
+        "kind": "class",
+        "file": "client/e2e/pages/affiliate-programs.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "AuthPage",
+        "kind": "class",
+        "file": "client/e2e/pages/auth.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "AutomationLogsPage",
+        "kind": "class",
+        "file": "client/e2e/pages/automation-logs.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "AutomationsPage",
+        "kind": "class",
+        "file": "client/e2e/pages/automations.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "CouponsPage",
+        "kind": "class",
+        "file": "client/e2e/pages/coupons.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "DashboardPage",
+        "kind": "class",
+        "file": "client/e2e/pages/dashboard.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "DispatchTextsPage",
+        "kind": "class",
+        "file": "client/e2e/pages/dispatch-texts.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "ErrorBoundary",
+        "kind": "class",
+        "file": "client/src/components/error-boundary.tsx",
+        "line": 21,
+        "exported": true
+      },
+      {
+        "name": "ForgotPasswordPage",
+        "kind": "class",
+        "file": "client/e2e/pages/forgot-password.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "GroupsPage",
+        "kind": "class",
+        "file": "client/e2e/pages/groups.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "HistoryPage",
+        "kind": "class",
+        "file": "client/e2e/pages/history.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "JobsPage",
+        "kind": "class",
+        "file": "client/e2e/pages/jobs.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "MlLinkListsPage",
+        "kind": "class",
+        "file": "client/e2e/pages/ml-link-lists.page.ts",
+        "line": 6,
+        "exported": true
+      },
+      {
+        "name": "ProfilePage",
+        "kind": "class",
+        "file": "client/e2e/pages/profile.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "ResetPasswordPage",
+        "kind": "class",
+        "file": "client/e2e/pages/reset-password.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "WhatsAppPage",
+        "kind": "class",
+        "file": "client/e2e/pages/whatsapp.page.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "ApiService",
+        "kind": "class",
+        "file": "client/src/services/api.service.ts",
+        "line": 62,
+        "exported": false,
+        "description": "Cliente HTTP configurado para endpoints públicos (sem autenticação)"
+      },
+      {
+        "name": "MockFileReader",
+        "kind": "class",
+        "file": "client/src/hooks/groups/__tests__/use-groups-messaging.test.ts",
+        "line": 668,
+        "exported": false
+      },
+      {
+        "name": "MockFileReader",
+        "kind": "class",
+        "file": "client/src/hooks/groups/__tests__/use-groups-bulk-actions.test.ts",
+        "line": 586,
+        "exported": false
+      },
+      {
+        "name": "MockFileReader",
+        "kind": "class",
+        "file": "client/src/hooks/groups/__tests__/use-groups-audio.test.ts",
+        "line": 463,
+        "exported": false
+      },
+      {
+        "name": "MockFileReader",
+        "kind": "class",
+        "file": "client/src/hooks/groups/__tests__/use-groups-audio.test.ts",
+        "line": 515,
+        "exported": false
+      },
+      {
+        "name": "MockFileReader",
+        "kind": "class",
+        "file": "client/src/hooks/groups/__tests__/use-groups-audio.test.ts",
+        "line": 572,
+        "exported": false
+      },
+      {
+        "name": "MockFileReader",
+        "kind": "class",
+        "file": "client/src/hooks/groups/__tests__/use-groups-audio.test.ts",
+        "line": 629,
+        "exported": false
+      },
+      {
+        "name": "MockFileReader",
+        "kind": "class",
+        "file": "client/src/hooks/groups/__tests__/use-groups-audio.test.ts",
+        "line": 675,
+        "exported": false
+      },
+      {
+        "name": "MockFileReader",
+        "kind": "class",
+        "file": "client/src/hooks/groups/__tests__/use-groups-audio.test.ts",
+        "line": 722,
+        "exported": false
+      },
+      {
+        "name": "MockFileReader",
+        "kind": "class",
+        "file": "client/src/hooks/groups/__tests__/use-groups-audio.test.ts",
+        "line": 768,
+        "exported": false
+      }
+    ],
+    "interfaces": [
+      {
+        "name": "ActionHistory",
+        "kind": "interface",
+        "file": "client/src/types/action-history.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "AnalyzeTrendsParams",
+        "kind": "interface",
+        "file": "client/src/hooks/use-ai-tools-connect.ts",
+        "line": 63,
+        "exported": true
+      },
+      {
+        "name": "Announcement",
+        "kind": "interface",
+        "file": "client/src/hooks/use-dashboard.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "AnnouncementData",
+        "kind": "interface",
+        "file": "client/src/hooks/use-dashboard-connect.ts",
+        "line": 16,
+        "exported": true
+      },
+      {
+        "name": "ApiError",
+        "kind": "interface",
+        "file": "client/src/components/admin/types/team.types.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "ApiError",
+        "kind": "interface",
+        "file": "client/src/components/admin/types/email-templates.types.ts",
+        "line": 17,
+        "exported": true
+      },
+      {
+        "name": "AuthError",
+        "kind": "interface",
+        "file": "client/src/contexts/auth-context.tsx",
+        "line": 72,
+        "exported": true
+      },
+      {
+        "name": "AuthUser",
+        "kind": "interface",
+        "file": "client/src/contexts/auth-context.tsx",
+        "line": 46,
+        "exported": true
+      },
+      {
+        "name": "Automation",
+        "kind": "interface",
+        "file": "client/src/types/automation.ts",
+        "line": 32,
+        "exported": true
+      },
+      {
+        "name": "AutomationCoupon",
+        "kind": "interface",
+        "file": "client/src/types/automation.ts",
+        "line": 82,
+        "exported": true
+      },
+      {
+        "name": "AutomationGroup",
+        "kind": "interface",
+        "file": "client/src/types/automation.ts",
+        "line": 65,
+        "exported": true
+      },
+      {
+        "name": "AutomationNextRunUpdate",
+        "kind": "interface",
+        "file": "client/src/components/admin/users/types.ts",
+        "line": 87,
+        "exported": true
+      },
+      {
+        "name": "AutomationPayload",
+        "kind": "interface",
+        "file": "client/src/types/automation.ts",
+        "line": 89,
+        "exported": true
+      },
+      {
+        "name": "AutomationStatusUpdate",
+        "kind": "interface",
+        "file": "client/src/components/admin/users/types.ts",
+        "line": 82,
+        "exported": true
+      },
+      {
+        "name": "CheckInstanceStatusResult",
+        "kind": "interface",
+        "file": "client/src/hooks/use-instances-connect.ts",
+        "line": 50,
+        "exported": true
+      },
+      {
+        "name": "ConnectErrorInfo",
+        "kind": "interface",
+        "file": "client/src/lib/connect-transport.ts",
+        "line": 120,
+        "exported": true
+      },
+      {
+        "name": "CreateAutomationParams",
+        "kind": "interface",
+        "file": "client/src/hooks/use-automations-connect.ts",
+        "line": 113,
+        "exported": true
+      },
+      {
+        "name": "CreateDispatchTextParams",
+        "kind": "interface",
+        "file": "client/src/hooks/use-dispatch-texts-connect.ts",
+        "line": 38,
+        "exported": true
+      },
+      {
+        "name": "CreateJobParams",
+        "kind": "interface",
+        "file": "client/src/hooks/use-jobs-connect.ts",
+        "line": 72,
+        "exported": true
+      },
+      {
+        "name": "CreateMlLinkListItemParams",
+        "kind": "interface",
+        "file": "client/src/hooks/use-ml-links-connect.ts",
+        "line": 82,
+        "exported": true
+      },
+      {
+        "name": "CreateMlLinkListParams",
+        "kind": "interface",
+        "file": "client/src/hooks/use-ml-links-connect.ts",
+        "line": 69,
+        "exported": true
+      },
+      {
+        "name": "CreateUserFormData",
+        "kind": "interface",
+        "file": "client/src/components/admin/users/types.ts",
+        "line": 99,
+        "exported": true
+      },
+      {
+        "name": "DashboardStats",
+        "kind": "interface",
+        "file": "client/src/hooks/use-dashboard.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "DashboardStats",
+        "kind": "interface",
+        "file": "client/src/components/admin/types/dashboard.types.ts",
+        "line": 6,
+        "exported": true
+      },
+      {
+        "name": "DashboardStatsData",
+        "kind": "interface",
+        "file": "client/src/hooks/use-dashboard-connect.ts",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "DashboardTabProps",
+        "kind": "interface",
+        "file": "client/src/components/admin/types/dashboard.types.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "DiagResult",
+        "kind": "interface",
+        "file": "client/src/types/automation.ts",
+        "line": 107,
+        "exported": true
+      },
+      {
+        "name": "DiagStep",
+        "kind": "interface",
+        "file": "client/src/types/automation.ts",
+        "line": 100,
+        "exported": true
+      },
+      {
+        "name": "DispatchLog",
+        "kind": "interface",
+        "file": "client/src/types/dispatch-log.ts",
+        "line": 10,
+        "exported": true
+      },
+      {
+        "name": "DispatchLogAutomation",
+        "kind": "interface",
+        "file": "client/src/types/dispatch-log.ts",
+        "line": 30,
+        "exported": true
+      },
+      {
+        "name": "DispatchLogGroup",
+        "kind": "interface",
+        "file": "client/src/types/dispatch-log.ts",
+        "line": 35,
+        "exported": true
+      },
+      {
+        "name": "DispatchText",
+        "kind": "interface",
+        "file": "client/src/entities/dispatch-text/model/types.ts",
+        "line": 5,
+        "exported": true
+      },
+      {
+        "name": "DispatchTextFormState",
+        "kind": "interface",
+        "file": "client/src/entities/dispatch-text/model/types.ts",
+        "line": 18,
+        "exported": true
+      },
+      {
+        "name": "EmailTemplate",
+        "kind": "interface",
+        "file": "client/src/components/admin/types/email-templates.types.ts",
+        "line": 6,
+        "exported": true
+      },
+      {
+        "name": "EnhanceMessageParams",
+        "kind": "interface",
+        "file": "client/src/hooks/use-ai-tools-connect.ts",
+        "line": 71,
+        "exported": true
+      },
+      {
+        "name": "ErrorHandlerResult",
+        "kind": "interface",
+        "file": "client/src/lib/connect/error-handler.ts",
+        "line": 13,
+        "exported": true
+      },
+      {
+        "name": "EvolutionCreateResponse",
+        "kind": "interface",
+        "file": "client/src/entities/whatsapp-instance/model/types.ts",
+        "line": 18,
+        "exported": true
+      },
+      {
+        "name": "EvolutionGroup",
+        "kind": "interface",
+        "file": "client/src/entities/whatsapp-instance/model/types.ts",
+        "line": 31,
+        "exported": true
+      },
+      {
+        "name": "EvolutionGroupsResponse",
+        "kind": "interface",
+        "file": "client/src/entities/whatsapp-instance/model/types.ts",
+        "line": 43,
+        "exported": true
+      },
+      {
+        "name": "EvolutionStatusResponse",
+        "kind": "interface",
+        "file": "client/src/entities/whatsapp-instance/model/types.ts",
+        "line": 5,
+        "exported": true
+      },
+      {
+        "name": "GenerateOfferImageParams",
+        "kind": "interface",
+        "file": "client/src/hooks/use-images-connect.ts",
+        "line": 27,
+        "exported": true
+      },
+      {
+        "name": "GenerateOfferPostImageParams",
+        "kind": "interface",
+        "file": "client/src/hooks/use-images-connect.ts",
+        "line": 58,
+        "exported": true
+      },
+      {
+        "name": "Group",
+        "kind": "interface",
+        "file": "client/src/types/group.ts",
+        "line": 4,
+        "exported": true
+      },
+      {
+        "name": "Group",
+        "kind": "interface",
+        "file": "client/src/pages/redirect-link/types.ts",
+        "line": 3,
+        "exported": true
+      },
+      {
+        "name": "GroupPriority",
+        "kind": "interface",
+        "file": "client/src/pages/redirect-link/types.ts",
+        "line": 15,
+        "exported": true
+      },
+      {
+        "name": "HistoryFilters",
+        "kind": "interface",
+        "file": "client/src/hooks/use-history.ts",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "HistoryStats",
+        "kind": "interface",
+        "file": "client/src/types/action-history.ts",
+        "line": 39,
+        "exported": true
+      },
+      {
+        "name": "InstanceRow",
+        "kind": "interface",
+        "file": "client/src/entities/whatsapp-instance/model/types.ts",
+        "line": 51,
+        "exported": true
+      },
+      {
+        "name": "ListForm",
+        "kind": "interface",
+        "file": "client/src/entities/ml-link-list/model/types.ts",
+        "line": 70,
+        "exported": true
+      },
+      {
+        "name": "LoadBalancerMapping",
+        "kind": "interface",
+        "file": "client/src/components/admin/users/types.ts",
+        "line": 92,
+        "exported": true
+      }
+    ],
+    "functions": [
+      {
+        "name": "AdminRoute",
+        "kind": "function",
+        "file": "client/src/components/routing/admin-route.tsx",
+        "line": 13,
+        "exported": true
+      },
+      {
+        "name": "assertNoSupabaseCalls",
+        "kind": "function",
+        "file": "client/e2e/fixtures/ml-link-lists.fixture.ts",
+        "line": 489,
+        "exported": true
+      },
+      {
+        "name": "AuthProvider",
+        "kind": "function",
+        "file": "client/src/contexts/auth-context.tsx",
+        "line": 215,
+        "exported": true
+      },
+      {
+        "name": "clearCsrfToken",
+        "kind": "function",
+        "file": "client/src/lib/connect-transport.ts",
+        "line": 27,
+        "exported": true
+      },
+      {
+        "name": "cn",
+        "kind": "function",
+        "file": "client/src/lib/utils.ts",
+        "line": 4,
+        "exported": true
+      },
+      {
+        "name": "createCustomTransport",
+        "kind": "function",
+        "file": "client/src/lib/connect-transport.ts",
+        "line": 494,
+        "exported": true
+      },
+      {
+        "name": "DashboardTab",
+        "kind": "function",
+        "file": "client/src/components/admin/dashboard-tab.tsx",
+        "line": 16,
+        "exported": true
+      },
+      {
+        "name": "extractEvolutionState",
+        "kind": "function",
+        "file": "client/src/entities/whatsapp-instance/lib/evolution-helpers.ts",
+        "line": 30,
+        "exported": true
+      },
+      {
+        "name": "extractQrCode",
+        "kind": "function",
+        "file": "client/src/entities/whatsapp-instance/lib/evolution-helpers.ts",
+        "line": 73,
+        "exported": true
+      },
+      {
+        "name": "extractRemainingMinutes",
+        "kind": "function",
+        "file": "client/src/lib/connect/error-handler.ts",
+        "line": 37,
+        "exported": true
+      },
+      {
+        "name": "formatBRL",
+        "kind": "function",
+        "file": "client/src/lib/formatters.ts",
+        "line": 10,
+        "exported": true
+      },
+      {
+        "name": "formatDateBR",
+        "kind": "function",
+        "file": "client/src/lib/formatters.ts",
+        "line": 26,
+        "exported": true
+      },
+      {
+        "name": "formatDelayCompact",
+        "kind": "function",
+        "file": "client/src/lib/automation-formatters.ts",
+        "line": 52,
+        "exported": true
+      },
+      {
+        "name": "formatDelayWithI18n",
+        "kind": "function",
+        "file": "client/src/lib/automation-formatters.ts",
+        "line": 36,
+        "exported": true
+      },
+      {
+        "name": "fromProtoPlan",
+        "kind": "function",
+        "file": "client/src/components/admin/types/plans.types.ts",
+        "line": 33,
+        "exported": true
+      },
+      {
+        "name": "getAuthErrorKey",
+        "kind": "function",
+        "file": "client/src/lib/auth-error-mapper.ts",
+        "line": 75,
+        "exported": true
+      },
+      {
+        "name": "getCsrfToken",
+        "kind": "function",
+        "file": "client/src/lib/connect-transport.ts",
+        "line": 35,
+        "exported": true
+      },
+      {
+        "name": "getErrorInfo",
+        "kind": "function",
+        "file": "client/src/lib/connect-transport.ts",
+        "line": 296,
+        "exported": true
+      },
+      {
+        "name": "getModeKey",
+        "kind": "function",
+        "file": "client/src/lib/automation-formatters.ts",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "getModeVariant",
+        "kind": "function",
+        "file": "client/src/lib/automation-formatters.ts",
+        "line": 22,
+        "exported": true
+      },
+      {
+        "name": "getMonitorRules",
+        "kind": "function",
+        "file": "client/src/types/automation.ts",
+        "line": 125,
+        "exported": true
+      },
+      {
+        "name": "handleConnectError",
+        "kind": "function",
+        "file": "client/src/lib/connect/error-handler.ts",
+        "line": 87,
+        "exported": true
+      },
+      {
+        "name": "handleGroupEvent",
+        "kind": "function",
+        "file": "client/src/hooks/groups/use-groups-realtime.ts",
+        "line": 42,
+        "exported": true
+      },
+      {
+        "name": "handleJobEvent",
+        "kind": "function",
+        "file": "client/src/hooks/use-jobs-realtime.ts",
+        "line": 25,
+        "exported": true
+      },
+      {
+        "name": "hasRealInstanceName",
+        "kind": "function",
+        "file": "client/src/entities/whatsapp-instance/lib/evolution-helpers.ts",
+        "line": 16,
+        "exported": true
+      },
+      {
+        "name": "HistoryStatusBadge",
+        "kind": "function",
+        "file": "client/src/components/history/history-status-badge.tsx",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "Index",
+        "kind": "function",
+        "file": "client/src/pages/index.tsx",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "isAutomationLockError",
+        "kind": "function",
+        "file": "client/src/lib/connect/error-handler.ts",
+        "line": 66,
+        "exported": true
+      },
+      {
+        "name": "isConnectedState",
+        "kind": "function",
+        "file": "client/src/entities/whatsapp-instance/lib/evolution-helpers.ts",
+        "line": 48,
+        "exported": true
+      },
+      {
+        "name": "isConnectError",
+        "kind": "function",
+        "file": "client/src/lib/connect-transport.ts",
+        "line": 288,
+        "exported": true
+      },
+      {
+        "name": "isConnectError",
+        "kind": "function",
+        "file": "client/src/lib/connect/error-handler.ts",
+        "line": 309,
+        "exported": true
+      },
+      {
+        "name": "isConnectingState",
+        "kind": "function",
+        "file": "client/src/entities/whatsapp-instance/lib/evolution-helpers.ts",
+        "line": 56,
+        "exported": true
+      },
+      {
+        "name": "isDisconnectedState",
+        "kind": "function",
+        "file": "client/src/entities/whatsapp-instance/lib/evolution-helpers.ts",
+        "line": 64,
+        "exported": true
+      },
+      {
+        "name": "isInstanceMissingError",
+        "kind": "function",
+        "file": "client/src/types/dispatch-log.ts",
+        "line": 81,
+        "exported": true
+      },
+      {
+        "name": "isLockConflictError",
+        "kind": "function",
+        "file": "client/src/lib/connect/error-handler.ts",
+        "line": 316,
+        "exported": true
+      },
+      {
+        "name": "LoadingSpinner",
+        "kind": "function",
+        "file": "client/src/components/ui/page-loader.tsx",
+        "line": 33,
+        "exported": true
+      },
+      {
+        "name": "loginUser",
+        "kind": "function",
+        "file": "client/e2e/fixtures/auth.fixture.ts",
+        "line": 31,
+        "exported": true
+      },
+      {
+        "name": "Logo",
+        "kind": "function",
+        "file": "client/src/components/ui/logo.tsx",
+        "line": 12,
+        "exported": true
+      },
+      {
+        "name": "logoutUser",
+        "kind": "function",
+        "file": "client/e2e/fixtures/auth.fixture.ts",
+        "line": 51,
+        "exported": true
+      },
+      {
+        "name": "LogsVirtualTable",
+        "kind": "function",
+        "file": "client/src/components/automation-logs/logs-virtual-table.tsx",
+        "line": 19,
+        "exported": true
+      },
+      {
+        "name": "mapConnectError",
+        "kind": "function",
+        "file": "client/src/lib/connect-transport.ts",
+        "line": 133,
+        "exported": true
+      },
+      {
+        "name": "mockAdminAccessDenied",
+        "kind": "function",
+        "file": "client/e2e/fixtures/admin.fixture.ts",
+        "line": 368,
+        "exported": true
+      },
+      {
+        "name": "mockAdminUsersListApi",
+        "kind": "function",
+        "file": "client/e2e/fixtures/admin.fixture.ts",
+        "line": 129,
+        "exported": true
+      },
+      {
+        "name": "mockAffiliateCredentialsApi",
+        "kind": "function",
+        "file": "client/e2e/fixtures/automations.fixture.ts",
+        "line": 542,
+        "exported": true
+      },
+      {
+        "name": "mockAllAffiliateApis",
+        "kind": "function",
+        "file": "client/e2e/fixtures/affiliate-programs.fixture.ts",
+        "line": 267,
+        "exported": true
+      },
+      {
+        "name": "mockAppShellApis",
+        "kind": "function",
+        "file": "client/e2e/fixtures/automation-logs.fixture.ts",
+        "line": 253,
+        "exported": true
+      },
+      {
+        "name": "mockAuditLogsApi",
+        "kind": "function",
+        "file": "client/e2e/fixtures/admin.fixture.ts",
+        "line": 163,
+        "exported": true
+      },
+      {
+        "name": "mockAuthApi",
+        "kind": "function",
+        "file": "client/e2e/fixtures/automation-logs.fixture.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "mockAutomationsListApi",
+        "kind": "function",
+        "file": "client/e2e/fixtures/automations.fixture.ts",
+        "line": 147,
+        "exported": true
+      },
+      {
+        "name": "mockBulkCreateItemsApi",
+        "kind": "function",
+        "file": "client/e2e/fixtures/ml-link-lists.fixture.ts",
+        "line": 296,
+        "exported": true
+      }
+    ],
+    "types": [
+      {
+        "name": "ActionHistoryStatus",
+        "kind": "type",
+        "file": "client/src/types/action-history.ts",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "ActiveStore",
+        "kind": "type",
+        "file": "client/src/gen/affiliates/v1/credentials_pb.ts",
+        "line": 93,
+        "exported": true
+      },
+      {
+        "name": "AffiliateCredential",
+        "kind": "type",
+        "file": "client/src/gen/affiliates/v1/credentials_pb.ts",
+        "line": 22,
+        "exported": true
+      },
+      {
+        "name": "AnalyzeEngagementRequest",
+        "kind": "type",
+        "file": "client/src/gen/ai/v1/ai_pb.ts",
+        "line": 62,
+        "exported": true
+      },
+      {
+        "name": "AnalyzeEngagementResponse",
+        "kind": "type",
+        "file": "client/src/gen/ai/v1/ai_pb.ts",
+        "line": 81,
+        "exported": true
+      },
+      {
+        "name": "AnalyzeTrendsRequest",
+        "kind": "type",
+        "file": "client/src/gen/ai/v1/ai_pb.ts",
+        "line": 143,
+        "exported": true
+      },
+      {
+        "name": "AnalyzeTrendsResponse",
+        "kind": "type",
+        "file": "client/src/gen/ai/v1/ai_pb.ts",
+        "line": 169,
+        "exported": true
+      },
+      {
+        "name": "Announcement",
+        "kind": "type",
+        "file": "client/src/gen/dashboard/v1/dashboard_pb.ts",
+        "line": 64,
+        "exported": true
+      },
+      {
+        "name": "AuthUser",
+        "kind": "type",
+        "file": "client/src/gen/auth/v1/auth_pb.ts",
+        "line": 24,
+        "exported": true
+      },
+      {
+        "name": "AutomationMode",
+        "kind": "type",
+        "file": "client/src/types/automation.ts",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "AutomationStatus",
+        "kind": "type",
+        "file": "client/src/types/automation.ts",
+        "line": 12,
+        "exported": true
+      },
+      {
+        "name": "AutomationStatus",
+        "kind": "type",
+        "file": "client/src/components/admin/users/types.ts",
+        "line": 5,
+        "exported": true
+      },
+      {
+        "name": "AvailableGroup",
+        "kind": "type",
+        "file": "client/src/types/group.ts",
+        "line": 19,
+        "exported": true
+      },
+      {
+        "name": "BadgeProps",
+        "kind": "type",
+        "file": "client/src/components/ui/badge.tsx",
+        "line": 6,
+        "exported": true
+      },
+      {
+        "name": "BlockUserRequest",
+        "kind": "type",
+        "file": "client/src/gen/profiles/v1/profiles_pb.ts",
+        "line": 355,
+        "exported": true
+      },
+      {
+        "name": "BlockUserResponse",
+        "kind": "type",
+        "file": "client/src/gen/profiles/v1/profiles_pb.ts",
+        "line": 372,
+        "exported": true
+      },
+      {
+        "name": "BulkActionType",
+        "kind": "type",
+        "file": "client/src/hooks/groups/types.ts",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "BulkCreateMlLinkListItemsRequest",
+        "kind": "type",
+        "file": "client/src/gen/ml_links/v1/ml_links_pb.ts",
+        "line": 502,
+        "exported": true
+      },
+      {
+        "name": "BulkCreateMlLinkListItemsResponse",
+        "kind": "type",
+        "file": "client/src/gen/ml_links/v1/ml_links_pb.ts",
+        "line": 529,
+        "exported": true
+      },
+      {
+        "name": "ButtonProps",
+        "kind": "type",
+        "file": "client/src/components/ui/button.tsx",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "CalendarProps",
+        "kind": "type",
+        "file": "client/src/components/ui/calendar.tsx",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "Campaign",
+        "kind": "type",
+        "file": "client/src/gen/campaigns/v1/campaigns_pb.ts",
+        "line": 58,
+        "exported": true
+      },
+      {
+        "name": "CampaignMessage",
+        "kind": "type",
+        "file": "client/src/gen/campaigns/v1/campaigns_pb.ts",
+        "line": 22,
+        "exported": true
+      },
+      {
+        "name": "ChangeGroupDescriptionFormData",
+        "kind": "type",
+        "file": "client/src/schemas/groups.ts",
+        "line": 30,
+        "exported": true
+      },
+      {
+        "name": "ChangeGroupNameFormData",
+        "kind": "type",
+        "file": "client/src/schemas/groups.ts",
+        "line": 17,
+        "exported": true
+      },
+      {
+        "name": "ChangePasswordRequest",
+        "kind": "type",
+        "file": "client/src/gen/profiles/v1/profiles_pb.ts",
+        "line": 611,
+        "exported": true
+      },
+      {
+        "name": "ChangePasswordRequest",
+        "kind": "type",
+        "file": "client/src/gen/auth/v1/auth_pb.ts",
+        "line": 479,
+        "exported": true
+      },
+      {
+        "name": "ChangePasswordResponse",
+        "kind": "type",
+        "file": "client/src/gen/profiles/v1/profiles_pb.ts",
+        "line": 633,
+        "exported": true
+      },
+      {
+        "name": "ChangePasswordResponse",
+        "kind": "type",
+        "file": "client/src/gen/auth/v1/auth_pb.ts",
+        "line": 503,
+        "exported": true
+      },
+      {
+        "name": "ChartConfig",
+        "kind": "type",
+        "file": "client/src/components/ui/chart.tsx",
+        "line": 11,
+        "exported": true
+      },
+      {
+        "name": "CheckInstanceStatusRequest",
+        "kind": "type",
+        "file": "client/src/gen/instances/v1/instances_pb.ts",
+        "line": 271,
+        "exported": true
+      },
+      {
+        "name": "CheckInstanceStatusResponse",
+        "kind": "type",
+        "file": "client/src/gen/instances/v1/instances_pb.ts",
+        "line": 290,
+        "exported": true
+      },
+      {
+        "name": "CheckSlugAvailabilityRequest",
+        "kind": "type",
+        "file": "client/src/gen/redirect/v1/redirect_pb.ts",
+        "line": 352,
+        "exported": true
+      },
+      {
+        "name": "CheckSlugAvailabilityResponse",
+        "kind": "type",
+        "file": "client/src/gen/redirect/v1/redirect_pb.ts",
+        "line": 371,
+        "exported": true
+      },
+      {
+        "name": "CleanupInvalidInstancesRequest",
+        "kind": "type",
+        "file": "client/src/gen/instances/v1/instances_pb.ts",
+        "line": 181,
+        "exported": true
+      },
+      {
+        "name": "CleanupInvalidInstancesResponse",
+        "kind": "type",
+        "file": "client/src/gen/instances/v1/instances_pb.ts",
+        "line": 194,
+        "exported": true
+      },
+      {
+        "name": "ClearHistoryRequest",
+        "kind": "type",
+        "file": "client/src/gen/history/v1/history_pb.ts",
+        "line": 448,
+        "exported": true
+      },
+      {
+        "name": "ClearHistoryResponse",
+        "kind": "type",
+        "file": "client/src/gen/history/v1/history_pb.ts",
+        "line": 477,
+        "exported": true
+      },
+      {
+        "name": "ConnectionStatus",
+        "kind": "type",
+        "file": "client/src/hooks/groups/types.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "Contact",
+        "kind": "type",
+        "file": "client/src/gen/contacts/v1/contacts_pb.ts",
+        "line": 22,
+        "exported": true
+      },
+      {
+        "name": "Coupon",
+        "kind": "type",
+        "file": "client/src/gen/coupons/v1/coupons_pb.ts",
+        "line": 22,
+        "exported": true
+      },
+      {
+        "name": "CouponFilter",
+        "kind": "type",
+        "file": "client/src/gen/coupons/v1/coupons_pb.ts",
+        "line": 149,
+        "exported": true
+      },
+      {
+        "name": "CouponFormData",
+        "kind": "type",
+        "file": "client/src/schemas/coupon.ts",
+        "line": 35,
+        "exported": true
+      },
+      {
+        "name": "CreateCampaignRequest",
+        "kind": "type",
+        "file": "client/src/gen/campaigns/v1/campaigns_pb.ts",
+        "line": 105,
+        "exported": true
+      },
+      {
+        "name": "CreateCampaignResponse",
+        "kind": "type",
+        "file": "client/src/gen/campaigns/v1/campaigns_pb.ts",
+        "line": 124,
+        "exported": true
+      },
+      {
+        "name": "CreateCouponRequest",
+        "kind": "type",
+        "file": "client/src/gen/coupons/v1/coupons_pb.ts",
+        "line": 252,
+        "exported": true
+      },
+      {
+        "name": "CreateCouponResponse",
+        "kind": "type",
+        "file": "client/src/gen/coupons/v1/coupons_pb.ts",
+        "line": 319,
+        "exported": true
+      },
+      {
+        "name": "CreateDispatchTextRequest",
+        "kind": "type",
+        "file": "client/src/gen/dispatch_texts/v1/dispatch_texts_pb.ts",
+        "line": 147,
+        "exported": true
+      },
+      {
+        "name": "CreateDispatchTextResponse",
+        "kind": "type",
+        "file": "client/src/gen/dispatch_texts/v1/dispatch_texts_pb.ts",
+        "line": 174,
+        "exported": true
+      },
+      {
+        "name": "CreateJobRequest",
+        "kind": "type",
+        "file": "client/src/gen/jobs/v1/jobs_pb.ts",
+        "line": 327,
+        "exported": true
+      }
+    ],
+    "enums": [
+      {
+        "name": "AffiliateStore",
+        "kind": "enum",
+        "file": "client/src/gen/affiliates/v1/credentials_pb.ts",
+        "line": 304,
+        "exported": true
+      },
+      {
+        "name": "DiscountType",
+        "kind": "enum",
+        "file": "client/src/gen/coupons/v1/coupons_pb.ts",
+        "line": 497,
+        "exported": true
+      },
+      {
+        "name": "DispatchLogStatus",
+        "kind": "enum",
+        "file": "client/src/gen/history/v1/history_pb.ts",
+        "line": 592,
+        "exported": true
+      },
+      {
+        "name": "DistributionStrategy",
+        "kind": "enum",
+        "file": "client/src/gen/redirect/v1/redirect_pb.ts",
+        "line": 390,
+        "exported": true
+      },
+      {
+        "name": "EventType",
+        "kind": "enum",
+        "file": "client/src/gen/history/v1/history_pb.ts",
+        "line": 499,
+        "exported": true
+      },
+      {
+        "name": "FilterType",
+        "kind": "enum",
+        "file": "client/src/gen/affiliates/v1/shopee_pb.ts",
+        "line": 288,
+        "exported": true
+      },
+      {
+        "name": "InstanceStatus",
+        "kind": "enum",
+        "file": "client/src/gen/instances/v1/instances_pb.ts",
+        "line": 378,
+        "exported": true
+      },
+      {
+        "name": "JobActionType",
+        "kind": "enum",
+        "file": "client/src/gen/jobs/v1/jobs_pb.ts",
+        "line": 530,
+        "exported": true
+      },
+      {
+        "name": "JobStatus",
+        "kind": "enum",
+        "file": "client/src/gen/jobs/v1/jobs_pb.ts",
+        "line": 586,
+        "exported": true
+      },
+      {
+        "name": "PostImageLayout",
+        "kind": "enum",
+        "file": "client/src/gen/images/v1/images_pb.ts",
+        "line": 203,
+        "exported": true
+      },
+      {
+        "name": "PostImageTemplate",
+        "kind": "enum",
+        "file": "client/src/gen/images/v1/images_pb.ts",
+        "line": 237,
+        "exported": true
+      },
+      {
+        "name": "SortBy",
+        "kind": "enum",
+        "file": "client/src/gen/affiliates/v1/shopee_pb.ts",
+        "line": 239,
+        "exported": true
+      },
+      {
+        "name": "Store",
+        "kind": "enum",
+        "file": "client/src/gen/coupons/v1/coupons_pb.ts",
+        "line": 526,
+        "exported": true
+      }
+    ]
+  },
+  "publicAPI": [
+    {
+      "name": "ActionHistory",
+      "kind": "interface",
+      "file": "client/src/types/action-history.ts",
+      "line": 14,
+      "exported": true
+    },
+    {
+      "name": "ActionHistoryStatus",
+      "kind": "type",
+      "file": "client/src/types/action-history.ts",
+      "line": 9,
+      "exported": true
+    },
+    {
+      "name": "ActiveStore",
+      "kind": "type",
+      "file": "client/src/gen/affiliates/v1/credentials_pb.ts",
+      "line": 93,
+      "exported": true
+    },
+    {
+      "name": "AdminPage",
+      "kind": "class",
+      "file": "client/e2e/pages/admin.page.ts",
+      "line": 7,
+      "exported": true
+    },
+    {
+      "name": "AdminRoute",
+      "kind": "function",
+      "file": "client/src/components/routing/admin-route.tsx",
+      "line": 13,
+      "exported": true
+    },
+    {
+      "name": "AffiliateCredential",
+      "kind": "type",
+      "file": "client/src/gen/affiliates/v1/credentials_pb.ts",
+      "line": 22,
+      "exported": true
+    },
+    {
+      "name": "AffiliateProgramsPage",
+      "kind": "class",
+      "file": "client/e2e/pages/affiliate-programs.page.ts",
+      "line": 7,
+      "exported": true
+    },
+    {
+      "name": "AnalyzeEngagementRequest",
+      "kind": "type",
+      "file": "client/src/gen/ai/v1/ai_pb.ts",
+      "line": 62,
+      "exported": true
+    },
+    {
+      "name": "AnalyzeEngagementResponse",
+      "kind": "type",
+      "file": "client/src/gen/ai/v1/ai_pb.ts",
+      "line": 81,
+      "exported": true
+    },
+    {
+      "name": "AnalyzeTrendsParams",
+      "kind": "interface",
+      "file": "client/src/hooks/use-ai-tools-connect.ts",
+      "line": 63,
+      "exported": true
+    },
+    {
+      "name": "AnalyzeTrendsRequest",
+      "kind": "type",
+      "file": "client/src/gen/ai/v1/ai_pb.ts",
+      "line": 143,
+      "exported": true
+    },
+    {
+      "name": "AnalyzeTrendsResponse",
+      "kind": "type",
+      "file": "client/src/gen/ai/v1/ai_pb.ts",
+      "line": 169,
+      "exported": true
+    },
+    {
+      "name": "Announcement",
+      "kind": "interface",
+      "file": "client/src/hooks/use-dashboard.ts",
+      "line": 14,
+      "exported": true
+    },
+    {
+      "name": "Announcement",
+      "kind": "type",
+      "file": "client/src/gen/dashboard/v1/dashboard_pb.ts",
+      "line": 64,
+      "exported": true
+    },
+    {
+      "name": "AnnouncementData",
+      "kind": "interface",
+      "file": "client/src/hooks/use-dashboard-connect.ts",
+      "line": 16,
+      "exported": true
+    },
+    {
+      "name": "ApiError",
+      "kind": "interface",
+      "file": "client/src/components/admin/types/team.types.ts",
+      "line": 14,
+      "exported": true
+    },
+    {
+      "name": "ApiError",
+      "kind": "interface",
+      "file": "client/src/components/admin/types/email-templates.types.ts",
+      "line": 17,
+      "exported": true
+    },
+    {
+      "name": "assertNoSupabaseCalls",
+      "kind": "function",
+      "file": "client/e2e/fixtures/ml-link-lists.fixture.ts",
+      "line": 489,
+      "exported": true
+    },
+    {
+      "name": "AuthError",
+      "kind": "interface",
+      "file": "client/src/contexts/auth-context.tsx",
+      "line": 72,
+      "exported": true
+    },
+    {
+      "name": "AuthPage",
+      "kind": "class",
+      "file": "client/e2e/pages/auth.page.ts",
+      "line": 7,
+      "exported": true
+    },
+    {
+      "name": "AuthProvider",
+      "kind": "function",
+      "file": "client/src/contexts/auth-context.tsx",
+      "line": 215,
+      "exported": true
+    },
+    {
+      "name": "AuthUser",
+      "kind": "type",
+      "file": "client/src/gen/auth/v1/auth_pb.ts",
+      "line": 24,
+      "exported": true
+    },
+    {
+      "name": "AuthUser",
+      "kind": "interface",
+      "file": "client/src/contexts/auth-context.tsx",
+      "line": 46,
+      "exported": true
+    },
+    {
+      "name": "Automation",
+      "kind": "interface",
+      "file": "client/src/types/automation.ts",
+      "line": 32,
+      "exported": true
+    },
+    {
+      "name": "AutomationCoupon",
+      "kind": "interface",
+      "file": "client/src/types/automation.ts",
+      "line": 82,
+      "exported": true
+    },
+    {
+      "name": "AutomationGroup",
+      "kind": "interface",
+      "file": "client/src/types/automation.ts",
+      "line": 65,
+      "exported": true
+    },
+    {
+      "name": "AutomationLogsPage",
+      "kind": "class",
+      "file": "client/e2e/pages/automation-logs.page.ts",
+      "line": 7,
+      "exported": true
+    },
+    {
+      "name": "AutomationMode",
+      "kind": "type",
+      "file": "client/src/types/automation.ts",
+      "line": 9,
+      "exported": true
+    },
+    {
+      "name": "AutomationNextRunUpdate",
+      "kind": "interface",
+      "file": "client/src/components/admin/users/types.ts",
+      "line": 87,
+      "exported": true
+    },
+    {
+      "name": "AutomationPayload",
+      "kind": "interface",
+      "file": "client/src/types/automation.ts",
+      "line": 89,
+      "exported": true
+    },
+    {
+      "name": "AutomationsPage",
+      "kind": "class",
+      "file": "client/e2e/pages/automations.page.ts",
+      "line": 7,
+      "exported": true
+    },
+    {
+      "name": "AutomationStatus",
+      "kind": "type",
+      "file": "client/src/types/automation.ts",
+      "line": 12,
+      "exported": true
+    },
+    {
+      "name": "AutomationStatus",
+      "kind": "type",
+      "file": "client/src/components/admin/users/types.ts",
+      "line": 5,
+      "exported": true
+    },
+    {
+      "name": "AutomationStatusUpdate",
+      "kind": "interface",
+      "file": "client/src/components/admin/users/types.ts",
+      "line": 82,
+      "exported": true
+    },
+    {
+      "name": "AvailableGroup",
+      "kind": "type",
+      "file": "client/src/types/group.ts",
+      "line": 19,
+      "exported": true
+    },
+    {
+      "name": "BadgeProps",
+      "kind": "type",
+      "file": "client/src/components/ui/badge.tsx",
+      "line": 6,
+      "exported": true
+    },
+    {
+      "name": "BlockUserRequest",
+      "kind": "type",
+      "file": "client/src/gen/profiles/v1/profiles_pb.ts",
+      "line": 355,
+      "exported": true
+    },
+    {
+      "name": "BlockUserResponse",
+      "kind": "type",
+      "file": "client/src/gen/profiles/v1/profiles_pb.ts",
+      "line": 372,
+      "exported": true
+    },
+    {
+      "name": "BulkActionType",
+      "kind": "type",
+      "file": "client/src/hooks/groups/types.ts",
+      "line": 9,
+      "exported": true
+    },
+    {
+      "name": "BulkCreateMlLinkListItemsRequest",
+      "kind": "type",
+      "file": "client/src/gen/ml_links/v1/ml_links_pb.ts",
+      "line": 502,
+      "exported": true
+    },
+    {
+      "name": "BulkCreateMlLinkListItemsResponse",
+      "kind": "type",
+      "file": "client/src/gen/ml_links/v1/ml_links_pb.ts",
+      "line": 529,
+      "exported": true
+    },
+    {
+      "name": "ButtonProps",
+      "kind": "type",
+      "file": "client/src/components/ui/button.tsx",
+      "line": 9,
+      "exported": true
+    },
+    {
+      "name": "CalendarProps",
+      "kind": "type",
+      "file": "client/src/components/ui/calendar.tsx",
+      "line": 8,
+      "exported": true
+    },
+    {
+      "name": "Campaign",
+      "kind": "type",
+      "file": "client/src/gen/campaigns/v1/campaigns_pb.ts",
+      "line": 58,
+      "exported": true
+    },
+    {
+      "name": "CampaignMessage",
+      "kind": "type",
+      "file": "client/src/gen/campaigns/v1/campaigns_pb.ts",
+      "line": 22,
+      "exported": true
+    },
+    {
+      "name": "ChangeGroupDescriptionFormData",
+      "kind": "type",
+      "file": "client/src/schemas/groups.ts",
+      "line": 30,
+      "exported": true
+    },
+    {
+      "name": "ChangeGroupNameFormData",
+      "kind": "type",
+      "file": "client/src/schemas/groups.ts",
+      "line": 17,
+      "exported": true
+    },
+    {
+      "name": "ChangePasswordRequest",
+      "kind": "type",
+      "file": "client/src/gen/profiles/v1/profiles_pb.ts",
+      "line": 611,
+      "exported": true
+    },
+    {
+      "name": "ChangePasswordRequest",
+      "kind": "type",
+      "file": "client/src/gen/auth/v1/auth_pb.ts",
+      "line": 479,
+      "exported": true
+    },
+    {
+      "name": "ChangePasswordResponse",
+      "kind": "type",
+      "file": "client/src/gen/profiles/v1/profiles_pb.ts",
+      "line": 633,
+      "exported": true
+    }
+  ],
+  "dependencies": {
+    "mostImported": [
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/hooks/use-toast.ts",
+        "importedBy": 18
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/gen/buf/validate/validate_pb.ts",
+        "importedBy": 18
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/hooks/groups/types.ts",
+        "importedBy": 10
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/components/admin/types/settings.types.ts",
+        "importedBy": 9
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/e2e/fixtures/auth.fixture.ts",
+        "importedBy": 7
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/components/admin/hooks/index.ts",
+        "importedBy": 6
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/pages/redirect-link/types.ts",
+        "importedBy": 5
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/components/admin/users/types.ts",
+        "importedBy": 4
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/components/admin/types/plans.types.ts",
+        "importedBy": 4
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/components/admin/types/dashboard.types.ts",
+        "importedBy": 3
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/e2e/fixtures/groups.fixture.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/e2e/pages/groups.page.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/e2e/fixtures/automation-logs.fixture.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/e2e/fixtures/automations.fixture.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/e2e/pages/automations.page.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/hooks/groups/use-connection-manager.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/hooks/groups/use-groups-audio.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/hooks/groups/use-groups-bulk-actions.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/hooks/groups/use-groups-data.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/brunovilefort/Desktop/automatiza/novo-projeto/client/src/hooks/groups/use-groups-members.ts",
+        "importedBy": 2
+      }
+    ]
+  },
+  "stats": {
+    "totalSymbols": 1424,
+    "exportedSymbols": 759,
+    "analysisTimeMs": 1702
+  }
+}

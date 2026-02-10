@@ -1,0 +1,186 @@
+syntax = "proto3";
+
+package plans.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/plans/v1;plansv1";
+
+/**
+ * Plan represents a subscription plan for the platform.
+ */
+message Plan {
+  // Unique identifier (UUID)
+  string id = 1;
+
+  // URL-friendly identifier
+  string slug = 2;
+
+  // Display name
+  string name = 3;
+
+  // Optional description
+  optional string description = 4;
+
+  // Maximum number of automations allowed
+  int32 max_automations = 5;
+
+  // Maximum number of groups allowed
+  int32 max_groups = 6;
+
+  // Maximum number of WhatsApp instances allowed
+  int32 max_instances = 7;
+
+  // Monthly price in BRL (cents or decimal)
+  optional double price_monthly = 8;
+
+  // Semester price in BRL
+  optional double price_semester = 9;
+
+  // Annual price in BRL
+  optional double price_annual = 10;
+
+  // List of feature flags/names enabled for this plan
+  repeated string features = 11;
+
+  // Whether the plan is active and available for new subscriptions
+  bool is_active = 12;
+
+  // Group limit (number of groups)
+  int32 group_limit = 13;
+
+  // Storage limit in bytes
+  int64 storage_limit = 14;
+
+  // Kiwify product ID for monthly billing
+  optional string kiwify_product_id_monthly = 15;
+
+  // Kiwify product ID for semester billing
+  optional string kiwify_product_id_semester = 16;
+
+  // Kiwify product ID for annual billing
+  optional string kiwify_product_id_annual = 17;
+
+  // Creation timestamp (ISO 8601)
+  string created_at = 18;
+
+  // Last update timestamp (ISO 8601)
+  string updated_at = 19;
+}
+
+// ============================================================
+// List Plans
+// ============================================================
+
+message ListPlansRequest {
+  // If true, include inactive plans (default: false, active only)
+  optional bool include_inactive = 1;
+}
+
+message ListPlansResponse {
+  repeated Plan plans = 1;
+}
+
+// ============================================================
+// Get Plan
+// ============================================================
+
+message GetPlanRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetPlanResponse {
+  Plan plan = 1;
+}
+
+// ============================================================
+// Create Plan
+// ============================================================
+
+message CreatePlanRequest {
+  string slug = 1 [(buf.validate.field).string = {min_len: 1, max_len: 50}];
+  string name = 2 [(buf.validate.field).string = {min_len: 1, max_len: 100}];
+  optional string description = 3 [(buf.validate.field).string.max_len = 500];
+  optional int32 max_automations = 4;
+  optional int32 max_groups = 5;
+  optional int32 max_instances = 6;
+  optional double price_monthly = 7;
+  optional double price_semester = 8;
+  optional double price_annual = 9;
+  repeated string features = 10;
+  bool is_active = 11;
+  optional int32 group_limit = 12;
+  optional int64 storage_limit = 13;
+  optional string kiwify_product_id_monthly = 14;
+  optional string kiwify_product_id_semester = 15;
+  optional string kiwify_product_id_annual = 16;
+}
+
+message CreatePlanResponse {
+  Plan plan = 1;
+}
+
+// ============================================================
+// Update Plan
+// ============================================================
+
+message UpdatePlanRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  optional string slug = 2 [(buf.validate.field).string.max_len = 50];
+  optional string name = 3 [(buf.validate.field).string.max_len = 100];
+  optional string description = 4 [(buf.validate.field).string.max_len = 500];
+  optional int32 max_automations = 5;
+  optional int32 max_groups = 6;
+  optional int32 max_instances = 7;
+  optional double price_monthly = 8;
+  optional double price_semester = 9;
+  optional double price_annual = 10;
+  repeated string features = 11;
+  optional bool is_active = 12;
+  optional int32 group_limit = 13;
+  optional int64 storage_limit = 14;
+  optional string kiwify_product_id_monthly = 15;
+  optional string kiwify_product_id_semester = 16;
+  optional string kiwify_product_id_annual = 17;
+}
+
+message UpdatePlanResponse {
+  Plan plan = 1;
+}
+
+// ============================================================
+// Delete Plan
+// ============================================================
+
+message DeletePlanRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeletePlanResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * PlansService provides administrative operations for managing subscription plans.
+ * All operations require admin authentication.
+ */
+service PlansService {
+  // Lists all plans. By default, returns only active plans.
+  rpc ListPlans(ListPlansRequest) returns (ListPlansResponse);
+
+  // Gets a specific plan by ID.
+  rpc GetPlan(GetPlanRequest) returns (GetPlanResponse);
+
+  // Creates a new plan.
+  rpc CreatePlan(CreatePlanRequest) returns (CreatePlanResponse);
+
+  // Updates an existing plan.
+  rpc UpdatePlan(UpdatePlanRequest) returns (UpdatePlanResponse);
+
+  // Deletes a plan.
+  rpc DeletePlan(DeletePlanRequest) returns (DeletePlanResponse);
+}

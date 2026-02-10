@@ -1,0 +1,1234 @@
+// Package whatsapp provides WhatsApp provider adapters.
+// This file implements the WahaAdapter which translates between domain-neutral
+// types and WAHA Plus API-specific formats.
+//
+// IMPORTANT: This adapter isolates all WAHA-specific details. The rest of the
+// application only interacts with the WhatsAppProvider interface.
+package whatsapp
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"go.uber.org/zap"
+)
+
+// =============================================================================
+// Configuration
+// =============================================================================
+
+// WahaAdapterConfig contains configuration for the WAHA adapter.
+type WahaAdapterConfig struct {
+	// APIURL is the base URL for the WAHA API (e.g., "http://localhost:3000").
+	APIURL string
+
+	// APIKey is the API key for authenticating with WAHA.
+	APIKey string
+
+	// WebhookBaseURL is the base URL for webhook callbacks (e.g., "https://api.example.com").
+	WebhookBaseURL string
+
+	// WebhookSecret is the HMAC secret for webhook payload validation.
+	WebhookSecret string
+
+	// HTTPTimeout is the timeout for HTTP requests. Defaults to 30 seconds.
+	HTTPTimeout time.Duration
+
+	// StatusCacheTTL is how long to cache session status. Defaults to 5 seconds.
+	StatusCacheTTL time.Duration
+}
+
+// validate checks if the configuration is valid.
+func (c *WahaAdapterConfig) validate() error {
+	if c.APIURL == "" {
+		return errors.New("APIURL is required")
+	}
+	if c.APIKey == "" {
+		return errors.New("APIKey is required")
+	}
+	return nil
+}
+
+// =============================================================================
+// WAHA Adapter Implementation
+// =============================================================================
+
+// WahaAdapter implements WhatsAppProvider for WAHA Plus API.
+type WahaAdapter struct {
+	apiURL         string
+	apiKey         string
+	webhookBaseURL string
+	webhookSecret  string
+	httpClient     *http.Client
+	logger         *zap.Logger
+	mapper         *Mapper
+
+	// Status cache to reduce API calls
+	statusCache    map[string]*statusCacheEntry
+	statusCacheMu  sync.RWMutex
+	statusCacheTTL time.Duration
+
+	// Circuit breaker for status checks
+	circuitBreaker *circuitBreaker
+}
+
+// circuitBreaker implements circuit breaker pattern for status checks.
+// After threshold consecutive failures, requests are blocked for backoffTime.
+type circuitBreaker struct {
+	mu          sync.Mutex
+	failures    int
+	lastFailure time.Time
+	threshold   int           // Number of failures before opening circuit
+	backoffTime time.Duration // How long to wait before allowing requests again
+}
+
+// newCircuitBreaker creates a new circuit breaker.
+func newCircuitBreaker(threshold int, backoffTime time.Duration) *circuitBreaker {
+	return &circuitBreaker{
+		threshold:   threshold,
+		backoffTime: backoffTime,
+	}
+}
+
+// canRequest checks if a request is allowed.
+func (cb *circuitBreaker) canRequest() bool {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	if cb.failures >= cb.threshold {
+		if time.Since(cb.lastFailure) < cb.backoffTime {
+			return false // Circuit is open
+		}
+		cb.failures = 0 // Reset after backoff period
+	}
+	return true
+}
+
+// recordFailure records a failed request.
+func (cb *circuitBreaker) recordFailure() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.failures++
+	cb.lastFailure = time.Now()
+}
+
+// recordSuccess records a successful request and resets the counter.
+func (cb *circuitBreaker) recordSuccess() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.failures = 0
+}
+
+// statusCacheEntry holds cached session status with expiration.
+type statusCacheEntry struct {
+	info      *SessionInfo
+	expiresAt time.Time
+}
+
+// NewWahaAdapter creates a new WAHA adapter with the given configuration.
+func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, error) {
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
+	httpTimeout := cfg.HTTPTimeout
+	if httpTimeout == 0 {
+		httpTimeout = 30 * time.Second
+	}
+
+	statusCacheTTL := cfg.StatusCacheTTL
+	if statusCacheTTL == 0 {
+		statusCacheTTL = 5 * time.Second
+	}
+
+	return &WahaAdapter{
+		apiURL:         cfg.APIURL,
+		apiKey:         cfg.APIKey,
+		webhookBaseURL: cfg.WebhookBaseURL,
+		webhookSecret:  cfg.WebhookSecret,
+		httpClient: &http.Client{
+			Timeout: httpTimeout,
+		},
+		logger:         logger.Named("waha-adapter"),
+		mapper:         NewMapper(),
+		statusCache:    make(map[string]*statusCacheEntry),
+		statusCacheTTL: statusCacheTTL,
+		circuitBreaker: newCircuitBreaker(3, 15*time.Second), // 3 failures = 15s backoff
+	}, nil
+}
+
+// Compile-time check that WahaAdapter implements WhatsAppProvider.
+var _ WhatsAppProvider = (*WahaAdapter)(nil)
+
+// =============================================================================
+// HTTP Helper Methods
+// =============================================================================
+
+// doRequest performs an HTTP request to the WAHA API.
+func (a *WahaAdapter) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		jsonBody, err := json.Marshal(body)
+		if err != nil {
+			return nil, NewProviderError(ErrCodeInvalidInput, "failed to marshal request body", err)
+		}
+		bodyReader = bytes.NewReader(jsonBody)
+	}
+
+	reqURL := a.apiURL + path
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, bodyReader)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to create request", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Api-Key", a.apiKey)
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, NewProviderError(ErrCodeTimeout, "request timed out", err)
+		}
+		if errors.Is(err, context.Canceled) {
+			return nil, NewProviderError(ErrCodeTimeout, "request canceled", err)
+		}
+		return nil, NewProviderError(ErrCodeNetworkError, "request failed", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to read response", err)
+	}
+
+	// Log response for all send operations
+	if strings.HasPrefix(path, "/api/send") {
+		a.logger.Info("WAHA API response OK",
+			zap.String("path", path),
+			zap.Int("statusCode", resp.StatusCode))
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, a.handleErrorResponse(resp.StatusCode, path, respBody)
+	}
+
+	return respBody, nil
+}
+
+// handleErrorResponse converts HTTP error responses to ProviderError.
+func (a *WahaAdapter) handleErrorResponse(statusCode int, path string, body []byte) *ProviderError {
+	a.logger.Warn("WAHA API error",
+		zap.Int("status", statusCode),
+		zap.String("path", path),
+		zap.String("response", string(body)))
+
+	// Try to parse WAHA error response
+	var wahaErr wahaErrorResponse
+	if err := json.Unmarshal(body, &wahaErr); err == nil && (wahaErr.Message != "" || wahaErr.Error != "") {
+		// Use HTTP status code as fallback when WAHA doesn't include code in response
+		if wahaErr.Code == 0 {
+			wahaErr.Code = statusCode
+		}
+		return a.mapper.ErrorFromWaha(&wahaErr, nil).WithDetails(map[string]any{
+			"statusCode": statusCode,
+			"path":       path,
+		})
+	}
+
+	// Generic error mapping based on HTTP status
+	switch statusCode {
+	case http.StatusNotFound:
+		return NewProviderError(ErrCodeSessionNotFound, "resource not found", nil)
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return NewProviderError(ErrCodePermissionDenied, "authentication failed", nil)
+	case http.StatusTooManyRequests:
+		return NewProviderError(ErrCodeRateLimited, "rate limited", nil)
+	case http.StatusBadRequest:
+		return NewProviderError(ErrCodeInvalidInput, "bad request", nil)
+	default:
+		return NewProviderError(ErrCodeProviderError, fmt.Sprintf("WAHA error %d: %s", statusCode, string(body)), nil)
+	}
+}
+
+// =============================================================================
+// SessionManager Implementation
+// =============================================================================
+
+// CreateSession creates a new WhatsApp session with the specified configuration.
+func (a *WahaAdapter) CreateSession(ctx context.Context, input CreateSessionInput) (*SessionInfo, error) {
+	webhookURL := input.WebhookURL
+	if webhookURL == "" && a.webhookBaseURL != "" {
+		webhookURL = a.webhookBaseURL + "/api/v1/webhooks/waha"
+	}
+
+	events := input.WebhookEvents
+	if len(events) == 0 {
+		events = []string{"message", "message.ack", "session.status"}
+	}
+
+	hmacKey := input.HMACKey
+	if hmacKey == "" {
+		hmacKey = a.webhookSecret
+	}
+
+	// Build GOWS engine storage config
+	gowsConfig := map[string]interface{}{
+		"storage": map[string]interface{}{
+			"messages": input.Engine.StorageMessages,
+			"groups":   input.Engine.StorageGroups,
+			"chats":    input.Engine.StorageChats,
+			"labels":   input.Engine.StorageLabels,
+		},
+	}
+
+	// Build webhook config
+	webhookConfig := wahaWebhookConfig{
+		URL:    webhookURL,
+		Events: events,
+	}
+	if hmacKey != "" {
+		webhookConfig.HMAC = &wahaHMACConfig{Key: hmacKey}
+	}
+
+	// Build session config with GOWS
+	sessionConfig := &wahaSessionConfig{
+		Webhooks: []wahaWebhookConfig{webhookConfig},
+	}
+
+	// Add GOWS config via a custom payload since wahaSessionConfig doesn't have GOWS field
+	payload := map[string]interface{}{
+		"name":  input.SessionName,
+		"start": true,
+		"config": map[string]interface{}{
+			"webhooks": []map[string]interface{}{
+				{
+					"url":    webhookURL,
+					"events": events,
+					"hmac": map[string]interface{}{
+						"key": hmacKey,
+					},
+				},
+			},
+			"gows": gowsConfig,
+		},
+	}
+
+	// Avoid unused variable warning
+	_ = sessionConfig
+
+	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sessions", payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	var wahaSession wahaSession
+	if err := json.Unmarshal(resp, &wahaSession); err != nil {
+		return nil, NewProviderError(ErrCodeProviderError, "failed to parse session response", err)
+	}
+
+	return a.mapper.SessionInfoFromWaha(&wahaSession), nil
+}
+
+// DeleteSession permanently removes a WhatsApp session.
+func (a *WahaAdapter) DeleteSession(ctx context.Context, sessionName string) error {
+	_, err := a.doRequest(ctx, http.MethodDelete, "/api/sessions/"+url.PathEscape(sessionName), nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete session: %w", err)
+	}
+
+	// Clear from cache
+	a.ClearStatusCache(sessionName)
+
+	return nil
+}
+
+// GetSessionStatus retrieves the current status of a WhatsApp session.
+func (a *WahaAdapter) GetSessionStatus(ctx context.Context, sessionName string) (*SessionInfo, error) {
+	// Check cache first
+	if info := a.getStatusFromCache(sessionName); info != nil {
+		return info, nil
+	}
+
+	// Check circuit breaker
+	if !a.circuitBreaker.canRequest() {
+		a.logger.Warn("circuit breaker open, blocking status check",
+			zap.String("session", sessionName))
+		return nil, NewProviderError(ErrCodeProviderError, "service temporarily unavailable (circuit breaker open)", nil)
+	}
+
+	resp, err := a.doRequest(ctx, http.MethodGet, "/api/sessions/"+url.PathEscape(sessionName), nil)
+	if err != nil {
+		a.circuitBreaker.recordFailure()
+		return nil, fmt.Errorf("failed to get session status: %w", err)
+	}
+
+	var wahaSession wahaSession
+	if err := json.Unmarshal(resp, &wahaSession); err != nil {
+		a.circuitBreaker.recordFailure()
+		return nil, NewProviderError(ErrCodeProviderError, "failed to parse session response", err)
+	}
+
+	// Success - reset circuit breaker
+	a.circuitBreaker.recordSuccess()
+
+	info := a.mapper.SessionInfoFromWaha(&wahaSession)
+
+	// Cache the status
+	a.cacheStatus(sessionName, info)
+
+	return info, nil
+}
+
+// GetQRCode retrieves the QR code for session authentication.
+// Uses format=image to get binary PNG data from WAHA, then base64-encodes it
+// into a data URI suitable for frontend <img src="..."> display.
+func (a *WahaAdapter) GetQRCode(ctx context.Context, sessionName string) (*QRCodeData, error) {
+	// Use direct HTTP call (not doRequest) because format=image returns binary PNG,
+	// not JSON. We need to base64-encode the raw bytes ourselves.
+	reqURL := a.apiURL + "/api/" + url.PathEscape(sessionName) + "/auth/qr?format=image"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to create QR request", err)
+	}
+	req.Header.Set("X-Api-Key", a.apiKey)
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get QR code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to read QR response", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		// QR not available is not an error — session might be already authenticated
+		// or still starting up
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnprocessableEntity {
+			return nil, nil
+		}
+		return nil, a.handleErrorResponse(resp.StatusCode, reqURL, body)
+	}
+
+	// Determine content type — WAHA returns image/png for format=image
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "image/png"
+	}
+
+	// Base64-encode the binary PNG into a data URI for frontend display
+	b64 := base64.StdEncoding.EncodeToString(body)
+	dataURI := "data:" + contentType + ";base64," + b64
+
+	return &QRCodeData{
+		Value:       dataURI,
+		Base64Image: dataURI,
+		Mimetype:    contentType,
+	}, nil
+}
+
+// RestartSession restarts an existing WhatsApp session.
+// Uses the dedicated /restart endpoint per WAHA OpenAPI spec for atomic restart.
+func (a *WahaAdapter) RestartSession(ctx context.Context, sessionName string) error {
+	// Use the dedicated restart endpoint (POST /api/sessions/{session}/restart)
+	// This is more reliable than stop+start as it's atomic
+	_, err := a.doRequest(ctx, http.MethodPost, "/api/sessions/"+url.PathEscape(sessionName)+"/restart", nil)
+	if err != nil {
+		return fmt.Errorf("failed to restart session: %w", err)
+	}
+
+	// Clear cache so next status check gets fresh data
+	a.ClearStatusCache(sessionName)
+
+	return nil
+}
+
+// LogoutSession logs out the WhatsApp session.
+func (a *WahaAdapter) LogoutSession(ctx context.Context, sessionName string) error {
+	_, err := a.doRequest(ctx, http.MethodPost, "/api/sessions/"+url.PathEscape(sessionName)+"/logout", nil)
+	if err != nil {
+		return fmt.Errorf("failed to logout session: %w", err)
+	}
+
+	// Clear cache
+	a.ClearStatusCache(sessionName)
+
+	return nil
+}
+
+// =============================================================================
+// GroupManager Implementation
+// =============================================================================
+
+// GetGroups retrieves all groups for a session.
+func (a *WahaAdapter) GetGroups(ctx context.Context, sessionName string) ([]GroupInfo, error) {
+	resp, err := a.doRequest(ctx, http.MethodGet, "/api/"+url.PathEscape(sessionName)+"/groups", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get groups: %w", err)
+	}
+
+	var wahaGroups []wahaGroup
+	if err := json.Unmarshal(resp, &wahaGroups); err != nil {
+		return nil, NewProviderError(ErrCodeProviderError, "failed to parse groups response", err)
+	}
+
+	return a.mapper.GroupInfosFromWaha(wahaGroups), nil
+}
+
+// GetGroupParticipants retrieves participants for a specific group.
+// Uses the v2 endpoint which returns the pn (phone number) field alongside id.
+// For participants with empty pn (common with LID-based IDs), resolves phone numbers
+// via the WAHA LID mapping endpoint.
+func (a *WahaAdapter) GetGroupParticipants(ctx context.Context, sessionName, groupID string) ([]ParticipantInfo, error) {
+	path := "/api/" + url.PathEscape(sessionName) + "/groups/" + url.PathEscape(groupID) + "/participants/v2"
+	resp, err := a.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get group participants: %w", err)
+	}
+
+	var wahaParticipants []wahaParticipant
+	if err := json.Unmarshal(resp, &wahaParticipants); err != nil {
+		return nil, NewProviderError(ErrCodeProviderError, "failed to parse participants response", err)
+	}
+
+	// Check if any participants have unresolved phone numbers (empty pn with @lid ID)
+	needsLidResolve := false
+	for i := range wahaParticipants {
+		if wahaParticipants[i].PhoneNumber == "" && strings.HasSuffix(wahaParticipants[i].ID, "@lid") {
+			needsLidResolve = true
+			break
+		}
+	}
+
+	// Resolve LIDs to phone numbers in a single batch call
+	if needsLidResolve {
+		lidMap := a.fetchLidMappings(ctx, sessionName)
+		for i := range wahaParticipants {
+			if wahaParticipants[i].PhoneNumber == "" {
+				if pn, ok := lidMap[wahaParticipants[i].ID]; ok {
+					wahaParticipants[i].PhoneNumber = pn
+				}
+			}
+		}
+	}
+
+	return a.mapper.ParticipantInfosFromWaha(wahaParticipants), nil
+}
+
+// fetchLidMappings fetches all known LID-to-phone-number mappings for a session.
+// Returns a map of LID → phone number (e.g. "56243167223861@lid" → "558191993610@c.us").
+// On error, returns an empty map (non-fatal — participants will just show the LID).
+func (a *WahaAdapter) fetchLidMappings(ctx context.Context, sessionName string) map[string]string {
+	path := "/api/" + url.PathEscape(sessionName) + "/lids?limit=10000"
+	resp, err := a.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		a.logger.Warn("failed to fetch LID mappings", zap.Error(err))
+		return nil
+	}
+
+	var mappings []wahaLidMapping
+	if err := json.Unmarshal(resp, &mappings); err != nil {
+		a.logger.Warn("failed to parse LID mappings", zap.Error(err))
+		return nil
+	}
+
+	lidMap := make(map[string]string, len(mappings))
+	for _, m := range mappings {
+		if m.PN != "" {
+			lidMap[m.LID] = m.PN
+		}
+	}
+	return lidMap
+}
+
+// UpdateGroupSubject updates the group name/subject.
+func (a *WahaAdapter) UpdateGroupSubject(ctx context.Context, input UpdateGroupSubjectInput) error {
+	payload := a.mapper.UpdateGroupSubjectToWaha(&input)
+
+	path := "/api/" + url.PathEscape(input.SessionName) + "/groups/" + url.PathEscape(input.GroupID) + "/subject"
+	_, err := a.doRequest(ctx, http.MethodPut, path, payload)
+	if err != nil {
+		return fmt.Errorf("failed to update group subject: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateGroupDescription updates the group description.
+func (a *WahaAdapter) UpdateGroupDescription(ctx context.Context, input UpdateGroupDescriptionInput) error {
+	payload := a.mapper.UpdateGroupDescriptionToWaha(&input)
+
+	path := "/api/" + url.PathEscape(input.SessionName) + "/groups/" + url.PathEscape(input.GroupID) + "/description"
+	_, err := a.doRequest(ctx, http.MethodPut, path, payload)
+	if err != nil {
+		return fmt.Errorf("failed to update group description: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateGroupPicture updates the group profile picture.
+func (a *WahaAdapter) UpdateGroupPicture(ctx context.Context, input UpdateGroupPictureInput) error {
+	payload := a.mapper.UpdateGroupPictureToWaha(&input)
+
+	path := "/api/" + url.PathEscape(input.SessionName) + "/groups/" + url.PathEscape(input.GroupID) + "/picture"
+	_, err := a.doRequest(ctx, http.MethodPut, path, payload)
+	if err != nil {
+		return fmt.Errorf("failed to update group picture: %w", err)
+	}
+
+	return nil
+}
+
+// SetGroupAnnouncement toggles announcement mode (admin-only messages).
+func (a *WahaAdapter) SetGroupAnnouncement(ctx context.Context, input SetGroupAnnouncementInput) error {
+	payload := a.mapper.SetGroupAnnouncementToWaha(&input)
+
+	path := "/api/" + url.PathEscape(input.SessionName) + "/groups/" + url.PathEscape(input.GroupID) + "/settings/security/messages-admin-only"
+	_, err := a.doRequest(ctx, http.MethodPut, path, payload)
+	if err != nil {
+		return fmt.Errorf("failed to set group announcement: %w", err)
+	}
+
+	return nil
+}
+
+// GetGroupInviteCode retrieves the invite code for a specific group.
+func (a *WahaAdapter) GetGroupInviteCode(ctx context.Context, sessionName, groupID string) (string, error) {
+	path := "/api/" + url.PathEscape(sessionName) + "/groups/" + url.PathEscape(groupID) + "/invite-code"
+	resp, err := a.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get group invite code: %w", err)
+	}
+
+	// WAHA can return either JSON {"inviteCode": "..."} or plain text URL "https://chat.whatsapp.com/..."
+	respStr := strings.TrimSpace(string(resp))
+
+	// Try to parse as JSON first
+	var wahaResp wahaInviteCodeResponse
+	if err := json.Unmarshal(resp, &wahaResp); err == nil && wahaResp.InviteCode != "" {
+		return wahaResp.InviteCode, nil
+	}
+
+	// If not JSON, try to extract invite code from URL
+	// Format: https://chat.whatsapp.com/INVITE_CODE
+	if strings.Contains(respStr, "chat.whatsapp.com/") {
+		parts := strings.Split(respStr, "chat.whatsapp.com/")
+		if len(parts) >= 2 {
+			inviteCode := strings.TrimSpace(parts[1])
+			// Remove any trailing characters like quotes or whitespace
+			inviteCode = strings.Trim(inviteCode, "\"' \n\r\t")
+			if inviteCode != "" {
+				return inviteCode, nil
+			}
+		}
+	}
+
+	// If response looks like a plain invite code (alphanumeric)
+	if len(respStr) > 0 && len(respStr) < 50 {
+		// Clean up the response
+		inviteCode := strings.Trim(respStr, "\"' \n\r\t")
+		if inviteCode != "" {
+			return inviteCode, nil
+		}
+	}
+
+	return "", NewProviderError(ErrCodeProviderError, "failed to parse invite code response", nil)
+}
+
+// AddGroupMembers adds one or more members to a group.
+func (a *WahaAdapter) AddGroupMembers(ctx context.Context, input AddGroupMembersInput) (*MemberOperationResult, error) {
+	participants := make([]map[string]string, len(input.PhoneNumbers))
+	for i, phone := range input.PhoneNumbers {
+		participants[i] = map[string]string{"id": EnsureParticipantID(phone)}
+	}
+
+	payload := map[string]any{
+		"participants": participants,
+	}
+
+	path := "/api/" + url.PathEscape(input.SessionName) + "/groups/" + url.PathEscape(input.GroupID) + "/participants/add"
+	resp, err := a.doRequest(ctx, http.MethodPost, path, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add group members: %w", err)
+	}
+
+	return a.parseMemberOperationResult(resp, input.PhoneNumbers)
+}
+
+// RemoveGroupMembers removes one or more members from a group.
+func (a *WahaAdapter) RemoveGroupMembers(ctx context.Context, input RemoveGroupMembersInput) (*MemberOperationResult, error) {
+	participants := make([]map[string]string, len(input.PhoneNumbers))
+	for i, phone := range input.PhoneNumbers {
+		participants[i] = map[string]string{"id": EnsureParticipantID(phone)}
+	}
+
+	payload := map[string]any{
+		"participants": participants,
+	}
+
+	path := "/api/" + url.PathEscape(input.SessionName) + "/groups/" + url.PathEscape(input.GroupID) + "/participants/remove"
+	resp, err := a.doRequest(ctx, http.MethodPost, path, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to remove group members: %w", err)
+	}
+
+	return a.parseMemberOperationResult(resp, input.PhoneNumbers)
+}
+
+// LeaveGroup makes the authenticated user leave a group.
+func (a *WahaAdapter) LeaveGroup(ctx context.Context, input LeaveGroupInput) error {
+	path := "/api/" + url.PathEscape(input.SessionName) + "/groups/" + url.PathEscape(input.GroupID) + "/leave"
+	_, err := a.doRequest(ctx, http.MethodPost, path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to leave group: %w", err)
+	}
+
+	return nil
+}
+
+// PromoteMember promotes a group member to admin.
+func (a *WahaAdapter) PromoteMember(ctx context.Context, input PromoteMemberInput) error {
+	participantID := EnsureParticipantID(input.PhoneNumber)
+
+	payload := map[string]any{
+		"participants": []map[string]string{{"id": participantID}},
+	}
+
+	path := "/api/" + url.PathEscape(input.SessionName) + "/groups/" + url.PathEscape(input.GroupID) + "/admin/promote"
+	_, err := a.doRequest(ctx, http.MethodPost, path, payload)
+	if err != nil {
+		return fmt.Errorf("failed to promote member: %w", err)
+	}
+
+	return nil
+}
+
+// DemoteMember demotes a group admin to regular member.
+func (a *WahaAdapter) DemoteMember(ctx context.Context, input DemoteMemberInput) error {
+	participantID := EnsureParticipantID(input.PhoneNumber)
+
+	payload := map[string]any{
+		"participants": []map[string]string{{"id": participantID}},
+	}
+
+	path := "/api/" + url.PathEscape(input.SessionName) + "/groups/" + url.PathEscape(input.GroupID) + "/admin/demote"
+	_, err := a.doRequest(ctx, http.MethodPost, path, payload)
+	if err != nil {
+		return fmt.Errorf("failed to demote member: %w", err)
+	}
+
+	return nil
+}
+
+// parseMemberOperationResult parses the WAHA response for member add/remove operations.
+func (a *WahaAdapter) parseMemberOperationResult(resp []byte, requestedNumbers []string) (*MemberOperationResult, error) {
+	// WAHA may return different response formats depending on version.
+	// If the response is empty or just a success status, assume all succeeded.
+	if len(resp) == 0 {
+		return &MemberOperationResult{
+			SuccessCount:  len(requestedNumbers),
+			FailedNumbers: []string{},
+		}, nil
+	}
+
+	// Try to parse as a result with status per participant
+	var participantResults []struct {
+		Status string `json:"status"`
+		JID    string `json:"jid"`
+	}
+	if err := json.Unmarshal(resp, &participantResults); err != nil {
+		// If parsing fails, assume all succeeded (WAHA returned success HTTP status)
+		return &MemberOperationResult{
+			SuccessCount:  len(requestedNumbers),
+			FailedNumbers: []string{},
+		}, nil
+	}
+
+	result := &MemberOperationResult{
+		FailedNumbers: []string{},
+	}
+	for _, pr := range participantResults {
+		if pr.Status == "200" || pr.Status == "success" || pr.Status == "" {
+			result.SuccessCount++
+		} else {
+			// Extract phone number from JID (remove @s.whatsapp.net)
+			phone := pr.JID
+			if idx := len(phone) - len("@s.whatsapp.net"); idx > 0 && phone[idx:] == "@s.whatsapp.net" {
+				phone = phone[:idx]
+			}
+			result.FailedNumbers = append(result.FailedNumbers, phone)
+		}
+	}
+
+	return result, nil
+}
+
+// =============================================================================
+// MessageSender Implementation
+// =============================================================================
+
+// requireWorkingSession checks if the session is in WORKING/CONNECTED state before send operations.
+// This prevents sending messages to sessions that are disconnected, starting, or in QR scan mode.
+// Uses cached status to avoid excessive API calls (default 5s TTL, configurable via StatusCacheTTL).
+func (a *WahaAdapter) requireWorkingSession(ctx context.Context, sessionName string) error {
+	info, err := a.GetSessionStatus(ctx, sessionName)
+	if err != nil {
+		return fmt.Errorf("failed to check session status before sending: %w", err)
+	}
+
+	if info.Status != SessionStatusConnected {
+		a.logger.Warn("session not in working state",
+			zap.String("session", sessionName),
+			zap.String("status", string(info.Status)))
+		return NewProviderError(
+			ErrCodeSessionNotConnected,
+			fmt.Sprintf("session '%s' is not working: current status is %s", sessionName, info.Status),
+			nil,
+		)
+	}
+
+	return nil
+}
+
+// SendText sends a text message to a chat.
+func (a *WahaAdapter) SendText(ctx context.Context, input SendTextInput) (*MessageResult, error) {
+	// Check session is working before sending
+	if err := a.requireWorkingSession(ctx, input.SessionName); err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("SendText request",
+		zap.String("session", input.SessionName),
+		zap.String("chatId", input.ChatID),
+		zap.Int("textLen", len(input.Text)),
+		zap.Int("mentions", len(input.Mentions)))
+
+	payload := a.mapper.SendTextToWaha(&input)
+
+	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sendText", payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send text message: %w", err)
+	}
+
+	result, err := a.parseMessageResult(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("SendText success",
+		zap.String("session", input.SessionName),
+		zap.String("chatId", input.ChatID),
+		zap.String("messageId", result.ID))
+
+	return result, nil
+}
+
+// SendImage sends an image message with optional caption.
+func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*MessageResult, error) {
+	// Check session is working before sending
+	if err := a.requireWorkingSession(ctx, input.SessionName); err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("SendImage request",
+		zap.String("session", input.SessionName),
+		zap.String("chatId", input.ChatID),
+		zap.Int("captionLen", len(input.Caption)),
+		zap.String("imageURL", input.ImageURL),
+		zap.Bool("hasBase64", input.ImageBase64 != ""))
+
+	payload := a.mapper.SendImageToWaha(&input)
+
+	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sendImage", payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send image message: %w", err)
+	}
+
+	result, err := a.parseMessageResult(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("SendImage success",
+		zap.String("session", input.SessionName),
+		zap.String("chatId", input.ChatID),
+		zap.String("messageId", result.ID))
+
+	return result, nil
+}
+
+// SendVoice sends a voice message (PTT - Push to Talk).
+func (a *WahaAdapter) SendVoice(ctx context.Context, input SendVoiceInput) (*MessageResult, error) {
+	// Check session is working before sending
+	if err := a.requireWorkingSession(ctx, input.SessionName); err != nil {
+		a.logger.Warn("[DEBUG SendVoice] session check failed", zap.Error(err))
+		return nil, err
+	}
+
+	payload := a.mapper.SendVoiceToWaha(&input)
+
+	// Debug: log the payload being sent (truncate data field)
+	dataPreview := payload.File.Data
+	if len(dataPreview) > 80 {
+		dataPreview = dataPreview[:40] + "..." + dataPreview[len(dataPreview)-40:]
+	}
+	a.logger.Info("[DEBUG SendVoice] WAHA request",
+		zap.String("session", payload.Session),
+		zap.String("chatId", payload.ChatID),
+		zap.String("mimetype", payload.File.Mimetype),
+		zap.String("filename", payload.File.Filename),
+		zap.Int("dataLen", len(payload.File.Data)),
+		zap.String("dataPreview", dataPreview),
+		zap.Bool("convert", payload.Convert))
+
+	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sendVoice", payload)
+	if err != nil {
+		a.logger.Warn("[DEBUG SendVoice] WAHA request failed", zap.Error(err))
+		return nil, fmt.Errorf("failed to send voice message: %w", err)
+	}
+
+	a.logger.Info("[DEBUG SendVoice] WAHA response", zap.String("body", string(resp)))
+
+	return a.parseMessageResult(resp)
+}
+
+// SendPoll sends a poll message to a chat.
+func (a *WahaAdapter) SendPoll(ctx context.Context, input SendPollInput) (*MessageResult, error) {
+	// Check session is working before sending
+	if err := a.requireWorkingSession(ctx, input.SessionName); err != nil {
+		return nil, err
+	}
+
+	payload := a.mapper.SendPollToWaha(&input)
+
+	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sendPoll", payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send poll message: %w", err)
+	}
+
+	return a.parseMessageResult(resp)
+}
+
+// SendVideo sends a video message to a chat.
+func (a *WahaAdapter) SendVideo(ctx context.Context, input SendVideoInput) (*MessageResult, error) {
+	if err := input.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid video input: %w", err)
+	}
+
+	if err := a.requireWorkingSession(ctx, input.SessionName); err != nil {
+		return nil, err
+	}
+
+	payload := a.mapper.SendVideoToWaha(&input)
+
+	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sendVideo", payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send video message: %w", err)
+	}
+
+	return a.parseMessageResult(resp)
+}
+
+// SendDocument sends a file/document message to a chat.
+func (a *WahaAdapter) SendDocument(ctx context.Context, input SendDocumentInput) (*MessageResult, error) {
+	if err := input.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid document input: %w", err)
+	}
+
+	if err := a.requireWorkingSession(ctx, input.SessionName); err != nil {
+		return nil, err
+	}
+
+	payload := a.mapper.SendDocumentToWaha(&input)
+
+	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sendFile", payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send document message: %w", err)
+	}
+
+	return a.parseMessageResult(resp)
+}
+
+// =============================================================================
+// WebhookManager Implementation
+// =============================================================================
+
+// SetWebhook configures the webhook URL and events for a session.
+// WAHA configures webhooks via session update (PUT /api/sessions/{session}),
+// not via a separate webhook endpoint.
+func (a *WahaAdapter) SetWebhook(ctx context.Context, input SetWebhookInput) error {
+	webhookConfig := a.mapper.SetWebhookToWahaConfig(&input)
+
+	updatePayload := &wahaUpdateSessionRequest{
+		Config: &wahaSessionConfig{
+			Webhooks: []wahaWebhookConfig{*webhookConfig},
+		},
+	}
+
+	path := "/api/sessions/" + url.PathEscape(input.SessionName)
+	_, err := a.doRequest(ctx, http.MethodPut, path, updatePayload)
+	if err != nil {
+		return fmt.Errorf("failed to set webhook: %w", err)
+	}
+
+	return nil
+}
+
+// =============================================================================
+// MessageReconciler Implementation
+// =============================================================================
+
+// GetMessages retrieves messages from a chat for reconciliation purposes.
+func (a *WahaAdapter) GetMessages(ctx context.Context, input GetMessagesInput) (*MessagesResult, error) {
+	// Build query parameters
+	params := url.Values{}
+	params.Set("limit", strconv.Itoa(input.Limit))
+	if input.Offset > 0 {
+		params.Set("offset", strconv.Itoa(input.Offset))
+	}
+	if input.DownloadMedia {
+		params.Set("downloadMedia", "true")
+	}
+
+	// Apply filters
+	if input.Filter != nil {
+		if input.Filter.FromMe != nil {
+			params.Set("fromMe", strconv.FormatBool(*input.Filter.FromMe))
+		}
+		if input.Filter.FromTimestamp != nil {
+			params.Set("fromTimestamp", strconv.FormatInt(input.Filter.FromTimestamp.Unix(), 10))
+		}
+		if input.Filter.ToTimestamp != nil {
+			params.Set("toTimestamp", strconv.FormatInt(input.Filter.ToTimestamp.Unix(), 10))
+		}
+	}
+
+	path := "/api/" + url.PathEscape(input.SessionName) + "/chats/" + url.PathEscape(input.ChatID) + "/messages?" + params.Encode()
+	resp, err := a.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages: %w", err)
+	}
+
+	var wahaResp wahaGetMessagesResponse
+	if err := json.Unmarshal(resp, &wahaResp); err != nil {
+		// Try parsing as array (WAHA sometimes returns just the messages array)
+		var wahaMessages []wahaMessage
+		if err2 := json.Unmarshal(resp, &wahaMessages); err2 != nil {
+			return nil, NewProviderError(ErrCodeProviderError, "failed to parse messages response", err)
+		}
+		wahaResp.Messages = wahaMessages
+		wahaResp.HasMore = len(wahaMessages) == input.Limit
+	}
+
+	return a.mapper.MessagesResultFromWaha(&wahaResp, input.Offset), nil
+}
+
+// =============================================================================
+// Cache Management
+// =============================================================================
+
+// getStatusFromCache retrieves session status from cache if not expired.
+func (a *WahaAdapter) getStatusFromCache(sessionName string) *SessionInfo {
+	a.statusCacheMu.RLock()
+	defer a.statusCacheMu.RUnlock()
+
+	entry, ok := a.statusCache[sessionName]
+	if !ok || time.Now().After(entry.expiresAt) {
+		return nil
+	}
+
+	return entry.info
+}
+
+// cacheStatus stores session status in cache.
+func (a *WahaAdapter) cacheStatus(sessionName string, info *SessionInfo) {
+	a.statusCacheMu.Lock()
+	defer a.statusCacheMu.Unlock()
+
+	a.statusCache[sessionName] = &statusCacheEntry{
+		info:      info,
+		expiresAt: time.Now().Add(a.statusCacheTTL),
+	}
+}
+
+// ClearStatusCache removes a session from the status cache.
+// Exported so the Redis SSE bridge can invalidate stale cache on status events.
+func (a *WahaAdapter) ClearStatusCache(sessionName string) {
+	a.statusCacheMu.Lock()
+	defer a.statusCacheMu.Unlock()
+
+	delete(a.statusCache, sessionName)
+}
+
+// ClearAllStatusCache removes all entries from the status cache.
+func (a *WahaAdapter) ClearAllStatusCache() {
+	a.statusCacheMu.Lock()
+	defer a.statusCacheMu.Unlock()
+
+	a.statusCache = make(map[string]*statusCacheEntry)
+}
+
+// =============================================================================
+// Helper Methods
+// =============================================================================
+
+// parseMessageResult parses a WAHA message send response.
+func (a *WahaAdapter) parseMessageResult(resp []byte) (*MessageResult, error) {
+	var wahaResult wahaSendMessageResponse
+	if err := json.Unmarshal(resp, &wahaResult); err != nil {
+		return nil, NewProviderError(ErrCodeProviderError, "failed to parse message result", err)
+	}
+
+	return a.mapper.MessageResultFromWaha(&wahaResult), nil
+}
+
+// =============================================================================
+// MediaDownloader Implementation
+// =============================================================================
+
+// DownloadMedia implements MediaDownloader.DownloadMedia.
+// Downloads media content from a WhatsApp message using the WAHA media endpoint.
+// Uses a direct HTTP call (instead of doRequest) to preserve Content-Type and
+// Content-Disposition response headers for mimetype/filename extraction.
+func (a *WahaAdapter) DownloadMedia(ctx context.Context, input DownloadMediaInput) (*DownloadMediaResult, error) {
+	if input.SessionName == "" {
+		return nil, NewProviderError(ErrCodeInvalidInput, "session name is required", nil)
+	}
+	if input.MediaID == "" {
+		return nil, NewProviderError(ErrCodeInvalidInput, "media ID is required", nil)
+	}
+
+	a.logger.Debug("Downloading media",
+		zap.String("session", input.SessionName),
+		zap.String("mediaID", input.MediaID))
+
+	// WAHA media download endpoint: GET /api/{session}/media/{mediaId}
+	reqURL := fmt.Sprintf("%s/api/%s/media/%s", a.apiURL, url.PathEscape(input.SessionName), url.PathEscape(input.MediaID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to create request", err)
+	}
+	req.Header.Set("X-Api-Key", a.apiKey)
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeNetworkError, "media download request failed", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to read media response", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, a.handleErrorResponse(resp.StatusCode, reqURL, body)
+	}
+
+	// Extract mimetype from Content-Type header
+	mimetype := resp.Header.Get("Content-Type")
+	if mimetype == "" {
+		mimetype = "application/octet-stream"
+	}
+
+	// Extract filename from Content-Disposition header if available
+	var filename string
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		// Parse "attachment; filename=\"example.jpg\"" or "inline; filename=example.jpg"
+		if idx := strings.Index(cd, "filename="); idx >= 0 {
+			filename = cd[idx+len("filename="):]
+			filename = strings.Trim(filename, "\"' ")
+			// Handle filename*= (RFC 5987) by taking only the part after ''
+			if eqIdx := strings.Index(filename, "''"); eqIdx >= 0 {
+				filename = filename[eqIdx+2:]
+			}
+		}
+	}
+
+	return &DownloadMediaResult{
+		Data:     body,
+		Mimetype: mimetype,
+		Filename: filename,
+	}, nil
+}
+
+// DownloadMediaByURL implements MediaDownloader.DownloadMediaByURL.
+// Downloads media from an internal WAHA file URL (e.g. http://localhost:3000/api/files/...).
+// The URL's host is replaced with the adapter's configured API URL so the
+// request goes to the correct endpoint with authentication.
+func (a *WahaAdapter) DownloadMediaByURL(ctx context.Context, mediaURL string) (*DownloadMediaResult, error) {
+	if mediaURL == "" {
+		return nil, NewProviderError(ErrCodeInvalidInput, "media URL is required", nil)
+	}
+
+	// Parse the media URL to extract the path
+	parsed, err := url.Parse(mediaURL)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeInvalidInput, "invalid media URL", err)
+	}
+
+	// Rewrite to use the adapter's configured API base URL
+	reqURL := a.apiURL + parsed.Path
+
+	a.logger.Debug("Downloading media by URL",
+		zap.String("originalURL", mediaURL),
+		zap.String("rewrittenURL", reqURL))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to create request", err)
+	}
+	req.Header.Set("X-Api-Key", a.apiKey)
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeNetworkError, "media download request failed", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to read media response", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, a.handleErrorResponse(resp.StatusCode, reqURL, body)
+	}
+
+	mimetype := resp.Header.Get("Content-Type")
+	if mimetype == "" {
+		mimetype = "application/octet-stream"
+	}
+
+	var filename string
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		if idx := strings.Index(cd, "filename="); idx >= 0 {
+			filename = cd[idx+len("filename="):]
+			filename = strings.Trim(filename, "\"' ")
+		}
+	}
+
+	return &DownloadMediaResult{
+		Data:     body,
+		Mimetype: mimetype,
+		Filename: filename,
+	}, nil
+}

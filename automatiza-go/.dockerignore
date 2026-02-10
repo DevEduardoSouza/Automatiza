@@ -1,0 +1,12 @@
+.git/
+.github/
+.scannerwork/
+*.md
+coverage/
+coverage.*
+bin/
+tmp/
+.env
+.env.*
+.vscode/
+.idea/

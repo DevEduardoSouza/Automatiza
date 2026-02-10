@@ -1,0 +1,33 @@
+[Unit]
+Description=Automatiza Backend Server
+Documentation=https://github.com/your-org/automatiza
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=automatiza
+Group=automatiza
+WorkingDirectory=/opt/automatiza/backend
+EnvironmentFile=/opt/automatiza/env.conf
+ExecStart=/opt/automatiza/backend/server
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/automatiza
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=automatiza-server
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

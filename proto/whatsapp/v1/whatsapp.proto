@@ -1,0 +1,528 @@
+syntax = "proto3";
+
+package whatsapp.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/whatsapp/v1;whatsappv1";
+
+// ============================================================
+// Enums
+// ============================================================
+
+/**
+ * State of a WhatsApp instance connection.
+ */
+enum InstanceState {
+  INSTANCE_STATE_UNSPECIFIED = 0;
+  INSTANCE_STATE_OPEN = 1;
+  INSTANCE_STATE_CLOSE = 2;
+  INSTANCE_STATE_CONNECTING = 3;
+}
+
+/**
+ * Action to apply to group settings.
+ */
+enum GroupSettingsAction {
+  GROUP_SETTINGS_ACTION_UNSPECIFIED = 0;
+  GROUP_SETTINGS_ACTION_ANNOUNCEMENT = 1;      // Close group (only admins can send)
+  GROUP_SETTINGS_ACTION_NOT_ANNOUNCEMENT = 2;  // Open group (all members can send)
+}
+
+/**
+ * State of a synchronization job.
+ */
+enum SyncJobState {
+  SYNC_JOB_STATE_UNSPECIFIED = 0;
+  SYNC_JOB_STATE_PENDING = 1;
+  SYNC_JOB_STATE_IN_PROGRESS = 2;
+  SYNC_JOB_STATE_COMPLETED = 3;
+  SYNC_JOB_STATE_FAILED = 4;
+}
+
+// ============================================================
+// Shared Messages
+// ============================================================
+
+/**
+ * WhatsApp group information.
+ */
+message WhatsAppGroup {
+  // Group unique identifier
+  string id = 1;
+
+  // Group name/subject
+  optional string subject = 2;
+
+  // Group description
+  optional string description = 3;
+
+  // Number of members
+  optional int32 size = 4;
+
+  // Whether only admins can edit group info
+  optional bool restrict = 5;
+
+  // Whether only admins can send messages
+  optional bool announce = 6;
+}
+
+/**
+ * WhatsApp group participant.
+ */
+message GroupParticipant {
+  // Participant WhatsApp ID
+  string id = 1;
+
+  // Participant display name
+  optional string name = 2;
+
+  // Whether participant is an admin
+  optional bool is_admin = 3;
+}
+
+// ============================================================
+// Instance Management
+// ============================================================
+
+message CreateInstanceRequest {
+  // Optional custom instance name (backend generates if not provided)
+  optional string instance_name = 1;
+}
+
+message CreateInstanceResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Created instance name
+  optional string instance_name = 2;
+
+  // Human-readable instance name
+  optional string friendly_name = 3;
+
+  // QR code for pairing (base64 encoded image)
+  optional string qrcode_base64 = 4;
+
+  // Error message if failed
+  optional string error = 5;
+}
+
+message DeleteInstanceRequest {
+  // Instance name to delete
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteInstanceResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Status message
+  optional string message = 2;
+}
+
+message ReconnectInstanceRequest {
+  // Instance name to reconnect
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ReconnectInstanceResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // New QR code for pairing (base64 encoded image)
+  optional string qrcode_base64 = 2;
+
+  // Error message if failed
+  optional string error = 3;
+}
+
+message CheckStatusRequest {
+  // Instance name to check
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message CheckStatusResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Current connection state
+  InstanceState state = 2;
+
+  // QR code if state requires pairing (base64 encoded image)
+  optional string qrcode_base64 = 3;
+}
+
+// ============================================================
+// Group Management
+// ============================================================
+
+message FetchGroupsRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message FetchGroupsResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // List of groups
+  repeated WhatsAppGroup groups = 2;
+}
+
+message FetchGroupParticipantsRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Group ID to fetch participants from
+  string group_id = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message FetchGroupParticipantsResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // List of participants
+  repeated GroupParticipant participants = 2;
+}
+
+message SyncGroupsRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message SyncGroupsResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Job ID for tracking sync progress
+  string job_id = 2;
+}
+
+message SyncGroupsStatusRequest {
+  // Job ID to check status
+  string job_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message SyncGroupsStatusResponse {
+  // Current job state
+  SyncJobState state = 1;
+
+  // Progress percentage (0-100)
+  optional int32 progress = 2;
+
+  // Failure reason if state is FAILED
+  optional string failed_reason = 3;
+}
+
+// ============================================================
+// Messaging
+// ============================================================
+
+message SendMessageRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Group ID to send to
+  string group_id = 2 [(buf.validate.field).string.min_len = 1];
+
+  // Message text
+  string message = 3 [(buf.validate.field).string.min_len = 1];
+
+  // WhatsApp IDs to mention in the message
+  repeated string mentions = 4;
+
+  // Images to attach (base64 or URLs)
+  repeated string images = 5;
+}
+
+message SendMessageResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Sent message ID
+  optional string message_id = 2;
+
+  // Error message if failed
+  optional string error = 3;
+}
+
+message SendAudioRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Group ID to send to
+  string group_id = 2 [(buf.validate.field).string.min_len = 1];
+
+  // Audio data (base64 with data URI or raw base64)
+  string audio = 3 [(buf.validate.field).string.min_len = 1];
+
+  // Audio MIME type (e.g., "audio/ogg")
+  optional string mimetype = 4;
+
+  // Whether to send as push-to-talk voice message
+  optional bool ptt = 5;
+
+  // Optional caption for the audio
+  optional string caption = 6;
+}
+
+message SendAudioResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Sent message ID
+  optional string message_id = 2;
+
+  // Error message if failed
+  optional string error = 3;
+}
+
+message SendPollRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Group ID to send to
+  string group_id = 2 [(buf.validate.field).string.min_len = 1];
+
+  // Poll question/title
+  string name = 3 [(buf.validate.field).string.min_len = 1];
+
+  // Poll options (minimum 2)
+  repeated string options = 4 [(buf.validate.field).repeated.min_items = 2];
+
+  // Maximum number of options a user can select
+  optional int32 selectable_count = 5;
+}
+
+message SendPollResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Sent message ID
+  optional string message_id = 2;
+
+  // Error message if failed
+  optional string error = 3;
+}
+
+// ============================================================
+// Group Updates
+// ============================================================
+
+message UpdateGroupSubjectRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Group ID to update
+  string group_id = 2 [(buf.validate.field).string.min_len = 1];
+
+  // New group subject/name
+  string subject = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message UpdateGroupSubjectResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Error message if failed
+  optional string error = 2;
+}
+
+message UpdateGroupDescriptionRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Group ID to update
+  string group_id = 2 [(buf.validate.field).string.min_len = 1];
+
+  // New group description (can be empty)
+  string description = 3;
+}
+
+message UpdateGroupDescriptionResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Error message if failed
+  optional string error = 2;
+}
+
+message UpdateGroupPictureRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Group ID to update
+  string group_id = 2 [(buf.validate.field).string.min_len = 1];
+
+  // Image URL for the new group picture
+  string image_url = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message UpdateGroupPictureResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Error message if failed
+  optional string error = 2;
+}
+
+message UpdateGroupSettingsRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Group ID to update
+  string group_id = 2 [(buf.validate.field).string.min_len = 1];
+
+  // Action to apply
+  GroupSettingsAction action = 3;
+}
+
+message UpdateGroupSettingsResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Error message if failed
+  optional string error = 2;
+}
+
+// ============================================================
+// Group Invite Code
+// ============================================================
+
+message GetGroupInviteCodeRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Group ID to get invite code for
+  string group_id = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetGroupInviteCodeResponse {
+  // The invite code (e.g., "AbCdEfGhIjK")
+  string invite_code = 1;
+
+  // Full invite URL (e.g., "https://chat.whatsapp.com/AbCdEfGhIjK")
+  string invite_url = 2;
+}
+
+// ============================================================
+// Media Download
+// ============================================================
+
+message DownloadMediaRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Media ID from message metadata
+  string media_id = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message DownloadMediaResponse {
+  // Raw media bytes
+  bytes data = 1;
+
+  // Media MIME type (e.g., "image/jpeg", "audio/ogg")
+  string mimetype = 2;
+
+  // Original filename if available
+  optional string filename = 3;
+}
+
+// ============================================================
+// Webhook Configuration
+// ============================================================
+
+message SetWebhookRequest {
+  // Instance name
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Webhook URL to receive events
+  string url = 2 [(buf.validate.field).string.min_len = 1];
+
+  // Events to subscribe to (empty means all events)
+  repeated string events = 3;
+
+  // Whether webhook is enabled
+  bool enabled = 4;
+}
+
+message SetWebhookResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * WhatsAppService handles WhatsApp instance management, messaging, and group operations.
+ * This is the canonical service (the deprecated evolution.v1 service has been removed).
+ */
+service WhatsAppService {
+  // Instance Management
+
+  // Creates a new WhatsApp instance and returns QR code for pairing.
+  rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
+
+  // Deletes an existing WhatsApp instance.
+  rpc DeleteInstance(DeleteInstanceRequest) returns (DeleteInstanceResponse);
+
+  // Reconnects an existing instance and generates a new QR code.
+  rpc ReconnectInstance(ReconnectInstanceRequest) returns (ReconnectInstanceResponse);
+
+  // Checks the current status of a WhatsApp instance.
+  rpc CheckStatus(CheckStatusRequest) returns (CheckStatusResponse);
+
+  // Group Management
+
+  // Fetches all groups from a WhatsApp instance.
+  rpc FetchGroups(FetchGroupsRequest) returns (FetchGroupsResponse);
+
+  // Fetches participants from a specific group.
+  rpc FetchGroupParticipants(FetchGroupParticipantsRequest) returns (FetchGroupParticipantsResponse);
+
+  // Starts an asynchronous group synchronization job.
+  rpc SyncGroups(SyncGroupsRequest) returns (SyncGroupsResponse);
+
+  // Checks the status of a group synchronization job.
+  rpc SyncGroupsStatus(SyncGroupsStatusRequest) returns (SyncGroupsStatusResponse);
+
+  // Messaging
+
+  // Sends a text message to a group (optionally with images and mentions).
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+
+  // Sends an audio message to a group.
+  rpc SendAudio(SendAudioRequest) returns (SendAudioResponse);
+
+  // Sends a poll to a group.
+  rpc SendPoll(SendPollRequest) returns (SendPollResponse);
+
+  // Group Updates
+
+  // Updates a group's subject/name.
+  rpc UpdateGroupSubject(UpdateGroupSubjectRequest) returns (UpdateGroupSubjectResponse);
+
+  // Updates a group's description.
+  rpc UpdateGroupDescription(UpdateGroupDescriptionRequest) returns (UpdateGroupDescriptionResponse);
+
+  // Updates a group's picture.
+  rpc UpdateGroupPicture(UpdateGroupPictureRequest) returns (UpdateGroupPictureResponse);
+
+  // Updates a group's settings (open/close).
+  rpc UpdateGroupSettings(UpdateGroupSettingsRequest) returns (UpdateGroupSettingsResponse);
+
+  // Gets the invite code for a group (requires admin privileges).
+  rpc GetGroupInviteCode(GetGroupInviteCodeRequest) returns (GetGroupInviteCodeResponse);
+
+  // Media Operations
+
+  // Downloads media content from a message.
+  rpc DownloadMedia(DownloadMediaRequest) returns (DownloadMediaResponse);
+
+  // Webhook Configuration
+
+  // Configures webhook URL and events for a session.
+  rpc SetWebhook(SetWebhookRequest) returns (SetWebhookResponse);
+}

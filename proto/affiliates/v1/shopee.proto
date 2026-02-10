@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package affiliates.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/affiliates/v1;affiliatesv1";
+
+/**
+ * Sort criteria for Shopee offer search results.
+ */
+enum SortBy {
+  SORT_BY_UNSPECIFIED = 0;
+  SORT_BY_COMMISSION = 1;
+  SORT_BY_PRICE_LOW = 2;
+  SORT_BY_PRICE_HIGH = 3;
+  SORT_BY_SALES = 4;
+  SORT_BY_DISCOUNT = 5;
+  SORT_BY_SAVING = 6;
+}
+
+/**
+ * Filter type for Shopee offer search.
+ */
+enum FilterType {
+  FILTER_TYPE_UNSPECIFIED = 0;
+  FILTER_TYPE_LIGHT = 1;
+  FILTER_TYPE_HEAVY = 2;
+}
+
+/**
+ * Shopee offer preview with product and affiliate information.
+ */
+message ShopeeOffer {
+  // Product URL on Shopee
+  string product_url = 1;
+
+  // Product title
+  string title = 2;
+
+  // Original price before discount
+  double original_price = 3;
+
+  // Final price after discount
+  double final_price = 4;
+
+  // Discount percentage (0-100)
+  int32 discount_percent = 5;
+
+  // Product image URL
+  optional string image_url = 6;
+
+  // Store/seller name
+  optional string store_name = 7;
+
+  // Commission rate percentage
+  optional double commission_rate = 8;
+}
+
+// ============================================================
+// Search Offers
+// ============================================================
+
+message SearchOffersRequest {
+  // User ID for tracking affiliate commissions
+  string user_id = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Search keyword
+  optional string keyword = 2;
+
+  // Category IDs or names to filter
+  repeated string categories = 3;
+
+  // Minimum price filter
+  optional double min_price = 4;
+
+  // Maximum price filter
+  optional double max_price = 5;
+
+  // Minimum discount percentage (0-100)
+  optional int32 min_discount = 6;
+
+  // Sort criteria
+  optional SortBy sort_by = 7;
+
+  // Maximum number of results to return
+  optional int32 limit = 8;
+
+  // Filter type (light/heavy processing)
+  optional FilterType filter_type = 9;
+
+  // Whether to use category IDs instead of names
+  optional bool use_category_ids = 10;
+}
+
+message SearchOffersResponse {
+  // List of matching offers
+  repeated ShopeeOffer offers = 1;
+}
+
+// ============================================================
+// Generate Affiliate Link
+// ============================================================
+
+message GenerateAffiliateLinkRequest {
+  // Original product URL
+  string product_url = 1 [(buf.validate.field).string.min_len = 1];
+
+  // User ID for tracking commissions
+  string user_id = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message GenerateAffiliateLinkResponse {
+  // Generated affiliate URL
+  string affiliate_url = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * ShopeeService provides operations for Shopee affiliate marketing.
+ */
+service ShopeeService {
+  // Searches for offers on Shopee based on filters.
+  rpc SearchOffers(SearchOffersRequest) returns (SearchOffersResponse);
+
+  // Generates an affiliate link for a Shopee product.
+  rpc GenerateAffiliateLink(GenerateAffiliateLinkRequest) returns (GenerateAffiliateLinkResponse);
+}

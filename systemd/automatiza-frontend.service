@@ -1,0 +1,31 @@
+[Unit]
+Description=Automatiza Frontend Server
+Documentation=https://github.com/your-org/automatiza
+After=network.target
+
+[Service]
+Type=simple
+User=automatiza
+Group=automatiza
+WorkingDirectory=/opt/automatiza/frontend
+ExecStart=/usr/bin/npx serve -s dist -l 8000
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/automatiza
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=automatiza-frontend
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,217 @@
+syntax = "proto3";
+
+package coupons.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/coupons/v1;couponsv1";
+
+/**
+ * DiscountType defines the type of discount a coupon provides.
+ */
+enum DiscountType {
+  DISCOUNT_TYPE_UNSPECIFIED = 0;
+  DISCOUNT_TYPE_FIXED = 1;
+  DISCOUNT_TYPE_PERCENT = 2;
+}
+
+/**
+ * Store defines the affiliate store for a coupon.
+ */
+enum Store {
+  STORE_UNSPECIFIED = 0;
+  STORE_SHOPEE = 1;
+  STORE_AMAZON = 2;
+  STORE_MAGALU = 3;
+  STORE_MERCADO_LIVRE = 4;
+  STORE_SHEIN = 5;
+  STORE_ALIEXPRESS = 6;
+  STORE_AWIN = 7;
+}
+
+/**
+ * Coupon represents a discount coupon for affiliate marketing.
+ */
+message Coupon {
+  // Unique identifier
+  string id = 1;
+
+  // User who owns this coupon
+  string user_id = 2;
+
+  // Coupon code (e.g., "DESCONTO10")
+  string code = 3;
+
+  // Display title
+  string title = 4;
+
+  // Store identifier
+  Store store = 5;
+
+  // Affiliate link URL
+  optional string affiliate_link = 6;
+
+  // Expiration timestamp (ISO 8601)
+  optional string expires_at = 7;
+
+  // Whether the coupon is active
+  bool is_active = 8;
+
+  // Category for organization
+  optional string category = 9;
+
+  // Type of discount
+  DiscountType discount_type = 10;
+
+  // Discount amount (percentage or fixed value)
+  optional double discount_value = 11;
+
+  // Maximum discount amount (for percentage discounts)
+  optional double max_discount = 12;
+
+  // Minimum product price for coupon to apply
+  optional double min_product_price = 13;
+
+  // Pre-formatted text with coupon information
+  optional string coupon_text = 14;
+
+  // Creation timestamp (ISO 8601)
+  string created_at = 15;
+
+  // Last update timestamp (ISO 8601)
+  string updated_at = 16;
+}
+
+/**
+ * CouponFilter defines filters for listing coupons.
+ */
+message CouponFilter {
+  // Filter by store
+  optional Store store = 1;
+
+  // Filter by active status
+  optional bool is_active = 2;
+
+  // Filter by category
+  optional string category = 3;
+}
+
+// ============================================================
+// List Coupons
+// ============================================================
+
+message ListCouponsRequest {
+  // Optional filters
+  optional CouponFilter filter = 1;
+}
+
+message ListCouponsResponse {
+  repeated Coupon coupons = 1;
+}
+
+// ============================================================
+// Get Coupon
+// ============================================================
+
+message GetCouponRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetCouponResponse {
+  Coupon coupon = 1;
+}
+
+// ============================================================
+// Create Coupon
+// ============================================================
+
+message CreateCouponRequest {
+  string code = 1 [(buf.validate.field).string = {min_len: 1, max_len: 50}];
+  string title = 2 [(buf.validate.field).string = {min_len: 1, max_len: 255}];
+  Store store = 3 [(buf.validate.field).enum.defined_only = true];
+  optional string affiliate_link = 4;
+  optional string expires_at = 5;
+  optional string category = 6;
+  DiscountType discount_type = 7;
+  optional double discount_value = 8;
+  optional double max_discount = 9;
+  optional double min_product_price = 10;
+  optional string coupon_text = 11;
+}
+
+message CreateCouponResponse {
+  Coupon coupon = 1;
+}
+
+// ============================================================
+// Update Coupon
+// ============================================================
+
+message UpdateCouponRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  optional string code = 2 [(buf.validate.field).string.max_len = 50];
+  optional string title = 3 [(buf.validate.field).string.max_len = 255];
+  optional Store store = 4;
+  optional string affiliate_link = 5;
+  optional string expires_at = 6;
+  optional bool is_active = 7;
+  optional string category = 8;
+  optional DiscountType discount_type = 9;
+  optional double discount_value = 10;
+  optional double max_discount = 11;
+  optional double min_product_price = 12;
+  optional string coupon_text = 13;
+}
+
+message UpdateCouponResponse {
+  Coupon coupon = 1;
+}
+
+// ============================================================
+// Delete Coupon
+// ============================================================
+
+message DeleteCouponRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteCouponResponse {}
+
+// ============================================================
+// List Coupons By Store
+// ============================================================
+
+message ListCouponsByStoreRequest {
+  Store store = 1 [(buf.validate.field).enum.defined_only = true];
+}
+
+message ListCouponsByStoreResponse {
+  repeated Coupon coupons = 1;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * CouponsService provides operations for managing discount coupons.
+ */
+service CouponsService {
+  // Lists all coupons for the authenticated user with optional filters.
+  rpc ListCoupons(ListCouponsRequest) returns (ListCouponsResponse);
+
+  // Gets a specific coupon by ID.
+  rpc GetCoupon(GetCouponRequest) returns (GetCouponResponse);
+
+  // Creates a new coupon.
+  rpc CreateCoupon(CreateCouponRequest) returns (CreateCouponResponse);
+
+  // Updates an existing coupon.
+  rpc UpdateCoupon(UpdateCouponRequest) returns (UpdateCouponResponse);
+
+  // Deletes a coupon.
+  rpc DeleteCoupon(DeleteCouponRequest) returns (DeleteCouponResponse);
+
+  // Lists active coupons for a specific store.
+  rpc ListCouponsByStore(ListCouponsByStoreRequest) returns (ListCouponsByStoreResponse);
+}

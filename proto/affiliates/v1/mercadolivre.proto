@@ -1,0 +1,160 @@
+syntax = "proto3";
+
+package affiliates.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/affiliates/v1;affiliatesv1";
+
+/**
+ * Mercado Livre affiliate link URLs.
+ */
+message MlLinkUrl {
+  // Long affiliate URL
+  optional string long_url = 1;
+
+  // Short affiliate URL
+  optional string short_url = 2;
+}
+
+/**
+ * Product preview information from Mercado Livre.
+ */
+message MlProductPreview {
+  // Product title
+  optional string title = 1;
+
+  // Product price
+  optional double price = 2;
+
+  // Currency code (e.g., "BRL")
+  optional string currency = 3;
+
+  // Product image URL
+  optional string image_url = 4;
+
+  // Seller name
+  optional string seller_name = 5;
+
+  // Product condition (new, used)
+  optional string condition = 6;
+
+  // Number of units sold
+  optional int32 sold_quantity = 7;
+
+  // Average rating (0-5)
+  optional double rating_average = 8;
+
+  // Total number of reviews
+  optional int32 reviews_total = 9;
+
+  // Original price before discount
+  optional double original_price = 10;
+
+  // Discount percentage
+  optional double discount_percent = 11;
+
+  // Installments text (e.g., "12x R$ 99,90 sem juros")
+  optional string installments_text = 12;
+}
+
+// ============================================================
+// Connect (Setup ML affiliate account)
+// ============================================================
+
+message MlConnectRequest {
+  // User ID
+  string user_id = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Affiliate tag
+  string tag = 2 [(buf.validate.field).string.min_len = 1];
+
+  // Session cookie for ML authentication
+  optional string cookie = 3;
+
+  // CSRF token for ML authentication
+  optional string csrf_token = 4;
+
+  // Whether to auto-generate links
+  optional bool auto_generate = 5;
+}
+
+message MlConnectResponse {
+  // Whether the connection was successful
+  bool success = 1;
+
+  // Optional message with details
+  optional string message = 2;
+}
+
+// ============================================================
+// Create Link
+// ============================================================
+
+message MlCreateLinkRequest {
+  // User ID
+  string user_id = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Original product URL
+  string origin_url = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message MlCreateLinkResponse {
+  // Generated affiliate URLs
+  repeated MlLinkUrl urls = 1;
+}
+
+// ============================================================
+// Preview
+// ============================================================
+
+message MlPreviewRequest {
+  // User ID
+  string user_id = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Product URL to preview
+  string origin_url = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message MlPreviewResponse {
+  // Product preview information
+  MlProductPreview preview = 1;
+}
+
+// ============================================================
+// Invalidate Preview Cache
+// ============================================================
+
+message MlInvalidatePreviewCacheRequest {
+  // Product URL to invalidate cache for
+  string origin_url = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message MlInvalidatePreviewCacheResponse {
+  // Whether the invalidation was successful
+  bool success = 1;
+
+  // Optional message with details
+  optional string message = 2;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * MercadoLivreService provides operations for Mercado Livre affiliate marketing.
+ */
+service MercadoLivreService {
+  // Connects/configures ML affiliate account for a user.
+  rpc Connect(MlConnectRequest) returns (MlConnectResponse);
+
+  // Creates an affiliate link for a ML product.
+  rpc CreateLink(MlCreateLinkRequest) returns (MlCreateLinkResponse);
+
+  // Previews product information from a ML URL.
+  rpc Preview(MlPreviewRequest) returns (MlPreviewResponse);
+
+  // Invalidates the cached preview for a product (forces fresh fetch on next call).
+  rpc InvalidatePreviewCache(MlInvalidatePreviewCacheRequest) returns (MlInvalidatePreviewCacheResponse);
+}

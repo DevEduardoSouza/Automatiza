@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package webhooks.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/automatiza/proto/webhooks/v1;webhooksv1";
+
+// ============================================================
+// Process Kiwify Webhook
+// ============================================================
+
+message ProcessKiwifyWebhookRequest {
+  // Webhook payload as a dynamic structure
+  google.protobuf.Struct webhook_data = 1;
+}
+
+message ProcessKiwifyWebhookResponse {
+  // Whether the webhook was processed successfully
+  bool success = 1;
+
+  // Processing message
+  optional string message = 2;
+
+  // Event type that was processed
+  optional string event_type = 3;
+
+  // Error message if failed
+  optional string error = 4;
+}
+
+// ============================================================
+// Simulate Kiwify Webhook
+// ============================================================
+
+message SimulateKiwifyWebhookRequest {
+  // Customer email
+  string email = 1 [(buf.validate.field).string = {min_len: 5, max_len: 255}];
+
+  // Event type (e.g., "subscription_created", "subscription_cancelled")
+  string event = 2 [(buf.validate.field).string = {min_len: 1, max_len: 100}];
+
+  // Product identifier
+  optional string product = 3 [(buf.validate.field).string.max_len = 255];
+
+  // Webhook verification token
+  optional string token = 4 [(buf.validate.field).string.max_len = 255];
+}
+
+message SimulateKiwifyWebhookResponse {
+  // Whether the simulation succeeded
+  bool success = 1;
+
+  // Simulation result message
+  optional string message = 2;
+
+  // Simulated event details
+  optional string event_details = 3;
+
+  // Error message if failed
+  optional string error = 4;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * WebhooksService handles incoming webhooks from external services.
+ */
+service WebhooksService {
+  // Processes a Kiwify webhook (subscription events).
+  rpc ProcessKiwifyWebhook(ProcessKiwifyWebhookRequest) returns (ProcessKiwifyWebhookResponse);
+
+  // Simulates a Kiwify webhook for testing purposes (admin only).
+  rpc SimulateKiwifyWebhook(SimulateKiwifyWebhookRequest) returns (SimulateKiwifyWebhookResponse);
+}

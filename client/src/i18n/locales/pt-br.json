@@ -1,0 +1,3351 @@
+{
+  "errorBoundary": {
+    "title": "Algo deu errado",
+    "description": "Ocorreu um erro inesperado. Tente recarregar a página.",
+    "retry": "Tentar novamente"
+  },
+  "common": {
+    "loading": "Carregando...",
+    "loadingMore": "Carregando mais...",
+    "member": "Membro",
+    "members": "membros",
+    "admin": "Admin",
+    "store": "Loja",
+    "category": "Categoria",
+    "expired": "Expirado",
+    "more": "Mais",
+    "showMore": "Ver mais",
+    "previousSlide": "Slide anterior",
+    "nextSlide": "Próximo slide",
+    "morePages": "Mais páginas",
+    "toggleSidebar": "Alternar barra lateral",
+    "previous": "Anterior",
+    "next": "Próximo",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "edit": "Editar",
+    "delete": "Excluir",
+    "add": "Adicionar",
+    "remove": "Remover",
+    "create": "Criar",
+    "update": "Atualizar",
+    "refresh": "Atualizar",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "actions": "Ações",
+    "status": "Status",
+    "active": "Ativo",
+    "inactive": "Inativo",
+    "all": "Todos",
+    "none": "Nenhum",
+    "noResults": "Nenhum resultado encontrado",
+    "noData": "Nenhum dado disponível",
+    "yes": "Sim",
+    "no": "Não",
+    "details": "Detalhes",
+    "close": "Fechar",
+    "confirm": "Confirmar",
+    "processing": "Processando...",
+    "error": "Erro",
+    "success": "Sucesso",
+    "name": "Nome",
+    "email": "Email",
+    "phone": "Telefone",
+    "date": "Data",
+    "description": "Descrição",
+    "tip": "Dica",
+    "select": "Selecione...",
+    "addToFavorites": "Adicionar aos favoritos",
+    "removeFromFavorites": "Remover dos favoritos",
+    "notAvailable": "N/D",
+    "ok": "OK",
+    "tryAgain": "Tente novamente",
+    "unknownError": "Erro desconhecido",
+    "seconds": "Segundos",
+    "minutes": "minutos",
+    "comingSoon": "Em breve",
+    "planNames": {
+      "free": "Free",
+      "pro": "Pro",
+      "elite": "Elite",
+      "starter": "Starter",
+      "master": "Master"
+    },
+    "errors": {
+      "notAuthenticated": "Usuário não autenticado",
+      "network": {
+        "invalidArgument": "Dados inválidos. Verifique os campos e tente novamente.",
+        "unauthenticated": "Sessão expirada. Faça login novamente.",
+        "permissionDenied": "Você não tem permissão para realizar esta ação.",
+        "notFound": "Recurso não encontrado.",
+        "alreadyExists": "Este item já existe.",
+        "resourceExhausted": "Limite de requisições atingido. Aguarde um momento.",
+        "failedPrecondition": "Operação não permitida no estado atual.",
+        "aborted": "Operação cancelada. Tente novamente.",
+        "outOfRange": "Valor fora do intervalo permitido.",
+        "unimplemented": "Funcionalidade não disponível.",
+        "internal": "Erro interno do servidor. Tente novamente mais tarde.",
+        "unavailable": "Serviço temporariamente indisponível. Tentando reconectar...",
+        "dataLoss": "Erro de dados. Entre em contato com o suporte.",
+        "deadlineExceeded": "A operação demorou muito. Tente novamente.",
+        "canceled": "Operação cancelada.",
+        "connection": "Erro de conexão. Verifique sua internet e tente novamente.",
+        "unknown": "Ocorreu um erro inesperado."
+      },
+      "auth": {
+        "invalidCredentials": "Email ou senha incorretos.",
+        "emailNotConfirmed": "Email não confirmado. Verifique sua caixa de entrada.",
+        "emailExists": "Este email já está cadastrado.",
+        "userNotFound": "Usuário não encontrado.",
+        "userBanned": "Esta conta foi suspensa.",
+        "userDisabled": "Esta conta está desativada.",
+        "weakPassword": "A senha é muito fraca. Use letras, números e caracteres especiais.",
+        "samePassword": "A nova senha deve ser diferente da atual.",
+        "sessionExpired": "Sua sessão expirou. Faça login novamente.",
+        "rateLimitExceeded": "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+        "emailRateLimitExceeded": "Muitos emails enviados. Aguarde alguns minutos.",
+        "otpExpired": "O código de verificação expirou. Solicite um novo.",
+        "otpDisabled": "Verificação por código está desativada.",
+        "providerDisabled": "Este método de login está desativado.",
+        "ssoDomainNotFound": "Domínio SSO não configurado.",
+        "validationFailed": "Dados inválidos. Verifique os campos.",
+        "badRequest": "Requisição inválida.",
+        "unauthorized": "Não autorizado.",
+        "forbidden": "Acesso negado.",
+        "notFound": "Recurso não encontrado.",
+        "conflict": "Conflito de dados.",
+        "serverError": "Erro no servidor. Tente novamente mais tarde.",
+        "serviceUnavailable": "Serviço indisponível. Tente novamente em instantes.",
+        "networkError": "Erro de conexão. Verifique sua internet.",
+        "unknown": "Erro ao autenticar. Tente novamente."
+      },
+      "automations": {
+        "lockConflict": "Automação em execução. Aguarde {{minutes}} minuto(s) e tente novamente.",
+        "lockConflictGeneric": "Automação em execução. Aguarde alguns minutos e tente novamente.",
+        "planLimitReached": "Limite do plano atingido. Atualize seu plano para continuar.",
+        "notFound": "Automação não encontrada.",
+        "createFailed": "Falha ao criar automação.",
+        "updateFailed": "Falha ao atualizar automação.",
+        "deleteFailed": "Falha ao excluir automação.",
+        "diagnoseFailed": "Falha ao diagnosticar automação.",
+        "runFailed": "Falha ao executar automação."
+      }
+    }
+  },
+  "pages": {
+    "index": {
+      "title": "Bem-vindo ao Automatisa Grupos",
+      "subtitle": "Comece a construir seu projeto aqui!"
+    },
+    "auth": {
+      "title": "Bem-vindo",
+      "subtitle": "Entre com suas credenciais para acessar",
+      "tabs": {
+        "login": "Login"
+      },
+      "form": {
+        "email": "Email",
+        "emailPlaceholder": "seu@email.com",
+        "password": "Senha",
+        "passwordPlaceholder": "••••••••",
+        "submit": "Entrar",
+        "submitting": "Entrando...",
+        "showPassword": "Mostrar senha",
+        "hidePassword": "Ocultar senha"
+      },
+      "forgotPassword": "Esqueci minha senha",
+      "noPlan": "Não tem uma conta? Compre um plano e receba acesso por email.",
+      "errors": {
+        "login": "Erro ao fazer login",
+        "emailRequired": "Email é obrigatório",
+        "invalidEmail": "Email inválido",
+        "passwordRequired": "Senha é obrigatória"
+      },
+      "orContinueWith": "ou continue com",
+      "magicLink": {
+        "button": "Entrar com e-mail",
+        "title": "Entrar com link mágico",
+        "subtitle": "Enviaremos um link de acesso para seu email",
+        "verifying": "Verificando link...",
+        "form": {
+          "submit": "Enviar link",
+          "submitting": "Enviando..."
+        },
+        "success": {
+          "title": "Link enviado!",
+          "description": "Verifique seu email {{email}} e clique no link para entrar."
+        },
+        "errors": {
+          "title": "Link inválido",
+          "invalid": "Link inválido ou expirado. Solicite um novo.",
+          "sendFailed": "Erro ao enviar link. Tente novamente.",
+          "emailRequired": "Email é obrigatório",
+          "invalidEmail": "Email inválido",
+          "userNotFound": "Usuário não encontrado. Crie uma conta primeiro."
+        },
+        "backToPassword": "Voltar para login com senha",
+        "backToLogin": "Voltar para login"
+      }
+    },
+    "notFound": {
+      "title": "404",
+      "subtitle": "Ops! Página não encontrada",
+      "backHome": "Voltar para o início"
+    },
+    "publicRedirect": {
+      "loading": {
+        "title": "Redirecionando...",
+        "subtitle": "Preparando seu acesso ao grupo",
+        "hint": "Você será redirecionado automaticamente para o WhatsApp"
+      },
+      "error": {
+        "title": "Erro no Redirecionamento",
+        "invalidLink": "Link inválido ou não encontrado.",
+        "linkInactive": "Este link foi desativado.",
+        "noGroups": "Nenhum grupo configurado para este link.",
+        "groupsFull": "Todos os grupos estão com capacidade máxima no momento. Tente novamente mais tarde.",
+        "groupNotFound": "O grupo configurado não foi encontrado.",
+        "instanceNotFound": "A sessão do WhatsApp não foi encontrada.",
+        "notAdmin": "O bot precisa ser administrador do grupo para gerar o link de convite.",
+        "inviteCodeFailed": "Não foi possível obter o código de convite do grupo.",
+        "sessionDisconnected": "A sessão do WhatsApp está desconectada. Entre em contato com o administrador.",
+        "inviteCodeNotAvailable": "O código de convite do grupo não está disponível.",
+        "providerNotConfigured": "O provedor WhatsApp não está configurado.",
+        "genericError": "Não foi possível processar seu link. Verifique se o endereço está correto.",
+        "tryAgain": "Tentar Novamente",
+        "back": "Voltar"
+      },
+      "manual": {
+        "title": "Abra no WhatsApp",
+        "groupLabel": "Grupo:",
+        "tapToJoin": "Toque para entrar no grupo",
+        "openWhatsApp": "Abrir no WhatsApp",
+        "copyLink": "Copiar link do convite",
+        "openInviteLink": "Abrir link do convite",
+        "iosHint": "Se não abriu o app, toque em \"Copiar link do convite\" e cole no Safari/Chrome (ou use o menu ⋯ para abrir no navegador).",
+        "androidHint": "Se não abriu o app, tente \"Copiar link do convite\" ou abrir no navegador.",
+        "tiktokHint": "Se aparecer \"A ação não pode ser concluída\" no TikTok, toque em ⋯ e escolha Abrir no navegador (Safari/Chrome) e tente novamente."
+      }
+    },
+    "forgotPassword": {
+      "title": "Recuperar Senha",
+      "subtitle": "Digite seu email para receber o link de recuperação",
+      "emailSentSubtitle": "Verifique seu email para redefinir sua senha",
+      "form": {
+        "email": "Email",
+        "emailPlaceholder": "seu@email.com",
+        "submit": "Enviar link de recuperação",
+        "submitting": "Enviando..."
+      },
+      "emailSent": {
+        "message": "Enviamos um email para {{email}} com instruções para redefinir sua senha.",
+        "spamHint": "Não recebeu o email? Verifique sua caixa de spam ou tente novamente.",
+        "resend": "Enviar novamente"
+      },
+      "backToLogin": "Voltar para login",
+      "success": {
+        "title": "Email enviado!",
+        "message": "Verifique sua caixa de entrada para redefinir sua senha."
+      },
+      "errors": {
+        "send": "Erro ao enviar email",
+        "emailRequired": "Email é obrigatório",
+        "invalidEmail": "Email inválido"
+      }
+    },
+    "resetPassword": {
+      "title": "Redefinir Senha",
+      "subtitle": "Digite sua nova senha abaixo",
+      "form": {
+        "newPassword": "Nova Senha",
+        "confirmPassword": "Confirmar Senha",
+        "passwordPlaceholder": "••••••••",
+        "submit": "Redefinir Senha",
+        "submitting": "Atualizando..."
+      },
+      "success": {
+        "title": "Senha atualizada!",
+        "message": "Sua senha foi redefinida com sucesso."
+      },
+      "errors": {
+        "invalidLink": "Link inválido ou expirado",
+        "invalidLinkMessage": "Por favor, solicite um novo link de recuperação.",
+        "passwordMismatch": "Senhas não coincidem",
+        "passwordMismatchMessage": "As senhas devem ser iguais.",
+        "passwordTooShort": "Senha muito curta",
+        "passwordTooShortMessage": "A senha deve ter pelo menos 6 caracteres.",
+        "update": "Erro ao atualizar senha"
+      }
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "subtitle": "Visão geral da sua operação WhatsApp",
+      "stats": {
+        "totalGroups": "Total de Grupos",
+        "fullGroups": "Grupos Cheios",
+        "totalMembers": "Total de Membros",
+        "activeLinks": "Links Ativos",
+        "groups": "Grupos",
+        "members": "Membros",
+        "full": "Cheio",
+        "active": "Ativo",
+        "totalGroupsDesc": "Grupos gerenciados na plataforma",
+        "fullGroupsDesc": "Grupos que atingiram a capacidade",
+        "totalMembersDesc": "Membros em todos os grupos",
+        "activeLinksDesc": "Links de redirecionamento ativos"
+      },
+      "welcome": {
+        "title": "Bem-vindo ao Automatisa Grupos",
+        "description": "Comece conectando seu WhatsApp na aba \"WhatsApp\" para importar seus grupos.",
+        "step1": {
+          "title": "1. Conecte seu WhatsApp",
+          "description": "Use o QR Code para conectar sua conta"
+        },
+        "step2": {
+          "title": "2. Importe seus grupos",
+          "description": "Seus grupos serão listados automaticamente"
+        },
+        "step3": {
+          "title": "3. Configure redirecionamento",
+          "description": "Crie links inteligentes para distribuir membros"
+        }
+      },
+      "chart": {
+        "title": "Crescimento",
+        "subtitle": "Evolução de membros e grupos",
+        "subtitleWeekly": "Evolução de membros e grupos nos últimos 7 dias",
+        "subtitleMonthly": "Evolução de membros e grupos nas últimas 4 semanas",
+        "subtitleYearly": "Evolução de membros e grupos nos últimos 12 meses",
+        "members": "Membros",
+        "groups": "Grupos",
+        "newMembers": "Novos membros",
+        "newGroups": "Novos grupos",
+        "growthRate": "Taxa de crescimento",
+        "peakMembers": "Pico de membros",
+        "activeGroups": "Grupos ativos",
+        "period": {
+          "weekly": "Semanal",
+          "monthly": "Mensal",
+          "yearly": "Anual"
+        },
+        "loading": "Carregando dados..."
+      },
+      "error": {
+        "loadFailed": "Não foi possível carregar os dados do dashboard. Tente novamente."
+      }
+    },
+    "profile": {
+      "title": "Perfil",
+      "subtitle": "Seus dados e configurações da conta",
+      "loading": "Carregando informações…",
+      "accountInfo": {
+        "title": "Informações da conta",
+        "email": "Email",
+        "plan": "Plano",
+        "automations": "automações",
+        "nextPayment": "Próximo pagamento",
+        "accessUntil": "Acesso até",
+        "userId": "ID do usuário",
+        "connectedWhatsApp": "WhatsApp conectados",
+        "instances": "instância(s)",
+        "createdAt": "Criado em",
+        "updatedAt": "Atualizado em"
+      },
+      "phone": {
+        "title": "Telefone",
+        "label": "Número (opcional)",
+        "placeholder": "5511999999999",
+        "hint": "Use somente números, com DDI (ex.: 55…)",
+        "save": "Salvar telefone",
+        "saving": "Salvando..."
+      },
+      "security": {
+        "title": "Segurança",
+        "currentPassword": "Senha atual",
+        "newPassword": "Nova senha",
+        "confirmPassword": "Confirmar senha",
+        "placeholder": "••••••••",
+        "save": "Atualizar senha",
+        "saving": "Atualizando..."
+      },
+      "success": {
+        "phoneUpdated": "Telefone atualizado",
+        "phoneUpdatedMessage": "Seu número foi salvo com sucesso.",
+        "passwordUpdated": "Senha atualizada",
+        "passwordUpdatedMessage": "Sua senha foi alterada com sucesso."
+      },
+      "errors": {
+        "loadProfile": "Erro ao carregar perfil",
+        "loadProfileMessage": "Tente novamente em alguns instantes.",
+        "savePhone": "Erro ao salvar telefone",
+        "savePhoneMessage": "Tente novamente.",
+        "invalidPassword": "Senha inválida",
+        "invalidPasswordMessage": "Use uma senha com pelo menos 8 caracteres.",
+        "currentPasswordRequired": "Informe sua senha atual.",
+        "passwordMismatch": "As senhas não conferem",
+        "passwordMismatchMessage": "Confirme a mesma senha nos dois campos.",
+        "updatePassword": "Erro ao atualizar senha",
+        "updatePasswordMessage": "Tente novamente."
+      },
+      "sessions": {
+        "title": "Dispositivos e Sessões",
+        "description": "{{count}} sessão(ões) ativa(s)",
+        "current": "Este dispositivo",
+        "mobile": "Celular",
+        "tablet": "Tablet",
+        "desktop": "Desktop",
+        "browser": "Navegador",
+        "unknownBrowser": "Navegador desconhecido",
+        "unknownIP": "IP desconhecido",
+        "lastActivity": "Última atividade",
+        "justNow": "Agora mesmo",
+        "minutesAgo": "{{count}} min atrás",
+        "hoursAgo": "{{count}}h atrás",
+        "daysAgo": "{{count}}d atrás",
+        "revoke": "Encerrar sessão",
+        "revokeConfirmTitle": "Encerrar esta sessão?",
+        "revokeConfirmDescription": "O dispositivo será desconectado e precisará fazer login novamente.",
+        "revokeConfirm": "Encerrar",
+        "revokeSuccess": "Sessão encerrada",
+        "revokeSuccessMessage": "O dispositivo foi desconectado com sucesso.",
+        "revokeError": "Erro ao encerrar sessão",
+        "logoutAll": "Sair de todos",
+        "logoutAllConfirmTitle": "Encerrar todas as outras sessões?",
+        "logoutAllConfirmDescription": "Todos os outros dispositivos serão desconectados. Você permanecerá logado neste dispositivo.",
+        "logoutAllConfirm": "Encerrar todas",
+        "logoutAllSuccess": "Sessões encerradas",
+        "logoutAllSuccessMessage": "Todos os outros dispositivos foram desconectados.",
+        "noSessions": "Nenhuma sessão ativa encontrada."
+      }
+    },
+    "redirectLink": {
+      "title": "Link de Redirecionamento",
+      "subtitle": "Crie um link inteligente que distribui automaticamente novos membros",
+      "configureLink": {
+        "title": "Configurar Link",
+        "editTitle": "Editar Link",
+        "description": "Personalize seu link de redirecionamento",
+        "editDescription": "Altere as informações do seu link"
+      },
+      "form": {
+        "name": "Nome do Redirecionamento",
+        "namePlaceholder": "Ex: Campanha Black Friday 2025",
+        "nameHint": "Nome para identificar facilmente seu link",
+        "slug": "Slug do Link (gerada automaticamente)",
+        "slugPrefix": "/r/",
+        "slugPlaceholder": "slug-aleatoria",
+        "slugHint": "Slug gerada automaticamente. Você pode editá-la se quiser.",
+        "slugEditHint": "A slug não pode ser alterada após criar o link",
+        "strategy": "Estratégia de Distribuição",
+        "clickLimit": "Limite de Cliques",
+        "clickLimitHint": "Configure quantos cliques cada grupo deve receber antes de passar para o próximo",
+        "memberLimit": "Vagas Disponíveis",
+        "memberLimitHint": "Distribui baseado em vagas disponíveis (membros vs limite)",
+        "selectGroups": "Selecionar Grupos",
+        "groupsSelected": "grupo(s) selecionado(s) para esta campanha",
+        "campaignGroups": "Grupos da Campanha"
+      },
+      "dialog": {
+        "title": "Selecionar Grupos",
+        "description": "Escolha os grupos que farão parte desta campanha",
+        "searchPlaceholder": "Buscar grupos...",
+        "favorites": "⭐ Favoritos",
+        "allGroups": "Todos os Grupos",
+        "apply": "Aplicar Seleção"
+      },
+      "buttons": {
+        "create": "Criar e Salvar Link",
+        "update": "Atualizar Link",
+        "saving": "Salvando...",
+        "cancel": "Cancelar",
+        "editTooltip": "Editar link",
+        "openTooltip": "Abrir link",
+        "deleteTooltip": "Excluir link"
+      },
+      "savedLinks": {
+        "title": "Links Salvos",
+        "description": "Seus links de redirecionamento criados",
+        "empty": "Nenhum link salvo ainda",
+        "emptyHintDesktop": "Crie seu primeiro link ao lado",
+        "emptyHintMobile": "Crie seu primeiro link acima",
+        "clicks": "clique(s)",
+        "copy": "Copiar",
+        "active": "Ativo"
+      },
+      "priority": {
+        "title": "Prioridade de Inserção dos Grupos",
+        "descriptionDesktop": "Arraste ou use as setas para definir a ordem de preenchimento",
+        "descriptionMobile": "Use as setas para definir a ordem de preenchimento",
+        "order": "Ordem",
+        "group": "Grupo",
+        "whatsappLink": "Link WhatsApp",
+        "clickLimit": "Limite Cliques",
+        "members": "Membros",
+        "actions": "Ações",
+        "configured": "Configurado",
+        "noLink": "Sem link",
+        "clickLimitPlaceholder": "Ex: 50",
+        "up": "Subir",
+        "down": "Descer"
+      },
+      "howItWorks": {
+        "title": "Como funciona?",
+        "description": "O sistema de redirecionamento inteligente distribui automaticamente novos membros para grupos que ainda têm vagas disponíveis seguindo a ordem de prioridade:",
+        "step1": "Uma pessoa acessa seu link personalizado",
+        "step2": "O sistema verifica qual grupo tem maior prioridade e ainda tem vagas",
+        "step3": "A pessoa é redirecionada automaticamente para o WhatsApp do grupo",
+        "step4": "Quando um grupo atinge o limite, o próximo na ordem de prioridade é usado",
+        "step5": "Cada clique é contabilizado automaticamente",
+        "tip": "Organize a ordem acima para controlar qual grupo deve ser preenchido primeiro. Os grupos no topo da lista têm prioridade maior."
+      },
+      "alerts": {
+        "editing": "Editando link existente",
+        "adminOnly": "IMPORTANTE: Use apenas grupos onde você é Admin. Grupos sem permissão de admin podem não funcionar corretamente."
+      },
+      "success": {
+        "created": "Link criado!",
+        "createdMessage": "Seu link de redirecionamento foi salvo com sucesso",
+        "updated": "Link atualizado!",
+        "updatedMessage": "As alterações foram salvas com sucesso",
+        "deleted": "Link excluído",
+        "deletedMessage": "O link foi removido com sucesso",
+        "copied": "Link copiado!",
+        "copiedMessage": "O link foi copiado para sua área de transferência",
+        "orderUpdated": "Ordem atualizada",
+        "orderUpdatedMessage": "A prioridade dos grupos foi alterada",
+        "groupsUpdated": "Grupos atualizados",
+        "groupsUpdatedMessage": "{{count}} grupo(s) selecionado(s) para este link",
+        "editMode": "Editando link",
+        "editModeMessage": "Altere as informações e clique em 'Atualizar Link'",
+        "editCancelled": "Edição cancelada",
+        "editCancelledMessage": "Formulário resetado"
+      },
+      "errors": {
+        "loadGroups": "Erro ao carregar grupos",
+        "loadGroupsMessage": "Não foi possível carregar seus grupos",
+        "nameRequired": "Nome obrigatório",
+        "nameRequiredMessage": "Por favor, dê um nome para seu redirecionamento",
+        "slugRequired": "Slug obrigatório",
+        "slugRequiredMessage": "Por favor, insira um slug para seu link",
+        "groupsRequired": "Grupos obrigatórios",
+        "groupsRequiredMessage": "Selecione pelo menos um grupo",
+        "invalidSlug": "Slug inválido",
+        "invalidSlugMessage": "Use apenas letras minúsculas, números e hífens",
+        "slugExists": "Slug já existe",
+        "slugExistsMessage": "Escolha outro nome para seu link",
+        "clickLimitsRequired": "Limites de cliques obrigatórios",
+        "clickLimitsRequiredMessage": "Configure quantos cliques cada grupo deve receber",
+        "create": "Erro",
+        "createMessage": "Não foi possível criar o link",
+        "update": "Erro",
+        "updateMessage": "Não foi possível atualizar o link",
+        "delete": "Erro",
+        "deleteMessage": "Não foi possível excluir o link",
+        "checkSlug": "Erro ao verificar slug",
+        "checkSlugMessage": "Não foi possível verificar a disponibilidade do slug"
+      }
+    },
+    "whatsapp": {
+      "title": "Conexão do WhatsApp",
+      "subtitle": "Conecte sua conta do WhatsApp para gerenciar grupos",
+      "defaults": {
+        "noName": "Sem nome",
+        "autoGenerated": "Será gerado automaticamente"
+      },
+      "warning": {
+        "title": "ATENÇÃO",
+        "message": "Evite fazer spam para não perder o seu número, e por segurança tenha mais de 1 administrador em seu grupo"
+      },
+      "connect": {
+        "title": "Conectar WhatsApp",
+        "description": "Use o WAHA Plus para conectar sua conta",
+        "instanceName": "Nome da Instância",
+        "instancePlaceholder": "Gerado automaticamente",
+        "instanceHint": "✅ Nome gerado automaticamente para evitar problemas técnicos"
+      },
+      "connected": {
+        "status": "Conectado",
+        "description": "Sua instância está ativa e funcionando",
+        "importing": "Importando grupos...",
+        "importGroups": "Importar Grupos",
+        "syncGroupsManually": "Sincronizar Grupos",
+        "lastSync": "Último sync",
+        "autoSync": {
+          "title": "Auto-sync",
+          "enabled": "Sincroniza a cada 1 hora",
+          "disabled": "Desativado",
+          "lastSync": "Último sync:",
+          "activate": "Ativar",
+          "activated": "Ativado"
+        },
+        "reconnect": "Reconectar",
+        "disconnect": "Desconectar",
+        "cleanOld": "Limpar Instâncias Antigas",
+        "cleaning": "Limpando..."
+      },
+      "disconnected": {
+        "generateQR": "Gerar QR Code",
+        "connecting": "Conectando...",
+        "checkStatus": "Verificar Status",
+        "checking": "Verificando..."
+      },
+      "qrCode": {
+        "title": "QR Code",
+        "description": "Escaneie com seu WhatsApp",
+        "waiting": "Aguardando leitura...",
+        "generating": "Gerando QR Code...",
+        "clickToGenerate": "Clique em \"Gerar QR Code\" para começar",
+        "expiresIn": "Expira em {{seconds}}s"
+      },
+      "howItWorks": {
+        "title": "Como funciona?",
+        "steps_1": "Clique em \"Gerar QR Code\"",
+        "steps_2": "Abra o WhatsApp no seu celular",
+        "steps_3": "Vá em Configurações → Aparelhos conectados → Conectar um aparelho",
+        "steps_4": "Escaneie o QR Code exibido na tela",
+        "steps_5": "Pronto! Seus grupos serão importados automaticamente",
+        "steps_6": "Importe seus grupos clicando em 'Importar Grupos' ou ative o Auto-sync"
+      },
+      "success": {
+        "qrGenerated": "QR Code gerado!",
+        "qrGeneratedMessage": "Escaneie o código com seu WhatsApp",
+        "connected": "WhatsApp conectado!",
+        "connectedMessage": "Sua instância foi conectada com sucesso",
+        "imported": "Grupos importados!",
+        "importedMessage": "{{newGroups}} novos, {{updatedGroups}} atualizados",
+        "syncComplete": "Grupos sincronizados com sucesso",
+        "autoSyncEnabled": "Auto-sync ativado!",
+        "autoSyncEnabledMessage": "Seus grupos serão sincronizados automaticamente a cada 1 hora. Se entrar em novos grupos, clique em 'Importar Grupos' para atualizar imediatamente.",
+        "autoSyncDisabled": "Auto-sync desativado",
+        "autoSyncDisabledMessage": "Auto-sync foi desativado. Você precisará importar grupos manualmente.",
+        "cleaned": "Instâncias limpas!",
+        "cleanedMessage": "{{count}} instância(s) antiga(s) removida(s)",
+        "nothingToClean": "Nenhuma instância para limpar",
+        "nothingToCleanMessage": "Não há instâncias antigas desconectadas"
+      },
+      "errors": {
+        "connect": "Erro ao conectar",
+        "connectMessage": "Erro ao gerar QR Code. Verifique as configurações do WAHA Plus no painel de Admin.",
+        "import": "Erro ao importar grupos",
+        "importMessage": "Tente novamente",
+        "connectionLost": "Conexão perdida",
+        "connectionLostMessage": "A instância não existe mais. Clique em 'Reconectar' para criar uma nova.",
+        "disconnected": "WhatsApp desconectado",
+        "disconnectedMessage": "Sua instância está desconectada. Clique em \"Reconectar\" para gerar um novo QR Code.",
+        "clean": "Erro ao limpar instâncias"
+      }
+    },
+    "history": {
+      "title": "Histórico de Ações",
+      "subtitle": "Acompanhe todas as ações executadas no sistema",
+      "loading": "Carregando histórico...",
+      "stats": {
+        "total": "Total de Ações",
+        "completed": "Concluídas",
+        "running": "Em Execução",
+        "failed": "Falhadas"
+      },
+      "table": {
+        "title": "Histórico Completo",
+        "description": "Últimas 100 ações registradas",
+        "empty": "Nenhuma ação registrada ainda",
+        "columns": {
+          "dateTime": "Data/Hora",
+          "action": "Ação",
+          "description": "Descrição",
+          "status": "Status",
+          "results": "Resultados",
+          "duration": "Duração"
+        },
+        "total": "Total:",
+        "error": "Erro:"
+      },
+      "status": {
+        "pending": "Pendente",
+        "running": "Executando",
+        "completed": "Concluído",
+        "failed": "Falhou"
+      },
+      "actions": {
+        "closeGroups": "Fechar Grupos",
+        "openGroups": "Abrir Grupos",
+        "sendMessage": "Enviar Mensagem",
+        "changeName": "Alterar Nome",
+        "changePhoto": "Alterar Foto",
+        "changeDescription": "Alterar Descrição",
+        "importGroups": "Importar Grupos",
+        "automationRun": "Executar Automação",
+        "couponUsed": "Cupom Utilizado",
+        "linkClicked": "Link Acessado",
+        "error": "Erro",
+        "sendCampaign": "Enviar Campanha",
+        "generateImage": "Gerar Imagem",
+        "addMember": "Adicionar Membro",
+        "removeMember": "Remover Membro",
+        "promoteMember": "Promover a Admin",
+        "demoteMember": "Rebaixar Admin",
+        "leaveGroup": "Sair do Grupo"
+      },
+      "clearButton": "Limpar Histórico",
+      "clearSuccess": "Histórico limpo com sucesso",
+      "clearSuccessDescription": "{{count}} registros foram removidos do histórico",
+      "clearDialog": {
+        "title": "Limpar todo o histórico?",
+        "description": "Esta ação não pode ser desfeita. Todo o histórico de ações será permanentemente removido."
+      },
+      "filters": {
+        "eventType": "Tipo de evento",
+        "allTypes": "Todos os tipos",
+        "status": "Status",
+        "allStatuses": "Todos os status",
+        "clear": "Limpar filtros"
+      },
+      "errors": {
+        "load": "Erro ao carregar histórico",
+        "clear": "Erro ao limpar histórico"
+      }
+    },
+    "groups": {
+      "title": "Gestão de Grupos",
+      "subtitle": "Gerencie todos os seus grupos do WhatsApp em um só lugar - Total de {{count}} grupos",
+      "defaults": {
+        "newGroupName": "Novo Grupo"
+      },
+      "search": {
+        "placeholder": "Buscar grupos por nome...",
+        "label": "Buscar grupos"
+      },
+      "loading": "Carregando grupos...",
+      "sync": {
+        "syncing": "Sincronizando...",
+        "syncGroups": "Sincronizar Grupos",
+        "syncGroupsShort": "Sincronizar",
+        "title": "Sincronização",
+        "inProgress": "Sincronização em andamento...",
+        "completed": "Sincronização concluída",
+        "newGroups": "{{count}} novo(s) grupo(s) encontrado(s)",
+        "updatedGroups": "{{count}} grupo(s) atualizado(s)",
+        "noChanges": "Nenhuma alteração detectada",
+        "alreadyInProgress": "Sincronização já em andamento"
+      },
+      "connection": {
+        "connected": "WhatsApp Conectado",
+        "connectedMessage": "Instância conectada e pronta para enviar mensagens.",
+        "disconnected": "WhatsApp Desconectado",
+        "disconnectedMessage": "Sua instância está desconectada. Reconecte para enviar mensagens.",
+        "reconnecting": "Reconectando...",
+        "reconnectNow": "Reconectar Agora"
+      },
+      "warnings": {
+        "adminCheck": "Aviso",
+        "adminCheckMessage": "Não foi possível confirmar em quais grupos você é admin. Exibindo todos os grupos sincronizados.",
+        "groupWarning": "Aviso para {{name}}",
+        "adminOnly": "ATENÇÃO",
+        "adminOnlyDescription": "Fechar grupos, Abrir grupos, Alterar nome, Alterar foto e Alterar descrição só funcionam em grupos ao qual você é administrador, caso contrário dará erro!"
+      },
+      "list": {
+        "title": "Seus Grupos ({{filtered}}/{{total}})",
+        "titlePaginated": "Grupos ({{start}}-{{end}} de {{total}})",
+        "emptyState": "Nenhum grupo importado ainda. Vá para a página WhatsApp e clique em 'Importar Grupos'",
+        "searchResults": "{{count}} grupos encontrados",
+        "allGroups": "Lista completa de grupos importados",
+        "noSearchResults": "Nenhum grupo encontrado com esse nome",
+        "noGroups": "Nenhum grupo importado ainda",
+        "selectAll": "Selecionar todos",
+        "selectGroup": "Selecionar grupo {{name}}",
+        "columns": {
+          "name": "Nome do Grupo",
+          "members": "Membros",
+          "limit": "Limite",
+          "status": "Status",
+          "inviteLink": "Link de Convite",
+          "actions": "Ações"
+        }
+      },
+      "pagination": {
+        "itemsPerPage": "Itens por página:",
+        "showing": "Mostrando {{start}}-{{end}} de {{total}} grupos",
+        "page": "Página {{page}} de {{total}}",
+        "previous": "Anterior",
+        "next": "Próximo",
+        "first": "Primeira",
+        "last": "Última"
+      },
+      "stats": {
+        "total": "Total de Grupos",
+        "favorites": "Favoritos",
+        "closed": "Fechados",
+        "withLink": "Com Link"
+      },
+      "table": {
+        "name": "Nome",
+        "members": "Membros",
+        "link": "Link",
+        "status": "Status",
+        "actions": "Ações",
+        "hasLink": "Com link",
+        "noLink": "Sem link",
+        "favorite": "Favorito"
+      },
+      "status": {
+        "open": "Aberto",
+        "closed": "Fechado",
+        "full": "Cheio",
+        "connected": "Conectado",
+        "disconnected": "Desconectado"
+      },
+      "actions": {
+        "edit": "Editar",
+        "delete": "Excluir",
+        "favorite": "Favoritar",
+        "unfavorite": "Desfavoritar",
+        "copyLink": "Copiar Link",
+        "openWhatsApp": "Abrir WhatsApp",
+        "refresh": "Atualizar Link",
+        "bulkActions": "Ações em Massa",
+        "selectAll": "Selecionar Todos",
+        "deselectAll": "Desmarcar Todos",
+        "syncGroups": "Sincronizar Grupos",
+        "syncing": "Sincronizando...",
+        "reconnect": "Reconectar",
+        "reconnecting": "Reconectando...",
+        "checkStatus": "Verificar Status",
+        "checking": "Verificando...",
+        "configure": "Configurar",
+        "send": "Enviar",
+        "sending": "Enviando...",
+        "execute": "Executar",
+        "executing": "Executando...",
+        "mention": "Mencionar",
+        "mentionAll": "Mencionar todos"
+      },
+      "form": {
+        "message": "Mensagem",
+        "searchMention": "Buscar menção...",
+        "noOptionFound": "Nenhuma opção encontrada.",
+        "mentionOptions": "Opções de Menção",
+        "messagePlaceholder": "Digite sua mensagem... Use @todos para mencionar todos"
+      },
+      "history": {
+        "sendingMessage": "Enviando mensagem para {{count}} grupo(s)",
+        "sendingAudio": "Enviando áudio para {{count}} grupo(s)",
+        "bulkActionDescription": "{{action}} em {{count}} grupo(s)"
+      },
+      "dialog": {
+        "editTitle": "Editar Grupo",
+        "editDescription": "Altere as configurações do grupo",
+        "name": "Nome do Grupo",
+        "memberLimit": "Limite de Membros",
+        "inviteCode": "Código do Convite",
+        "inviteCodePlaceholder": "Ex: AbCdEfGhIjK",
+        "inviteCodeHint": "Cole apenas o código final do link (ex: AbCdEfGhIjK)",
+        "save": "Salvar",
+        "saving": "Salvando..."
+      },
+      "inviteCode": {
+        "dialogTitle": "Configurar Link de Convite",
+        "dialogDescription": "Configure o código de convite do grupo: {{name}}",
+        "hint": "Cole o link completo do WhatsApp (https://chat.whatsapp.com/CODIGO) ou apenas o código de convite",
+        "label": "Link ou Código de Convite",
+        "placeholder": "Ex: https://chat.whatsapp.com/EaogUMM2qYBBj6emfrIHjh",
+        "detectedCode": "Código detectado: {{code}}",
+        "save": "Salvar Código",
+        "configured": "Link Configurado",
+        "configure": "Configurar Link"
+      },
+      "bulkActions": {
+        "title": "Ações em Massa",
+        "description": "Execute ações em múltiplos grupos de uma vez",
+        "selectedCount": "{{count}} grupo(s) selecionado(s)",
+        "selected": "selecionado(s)",
+        "closeGroups": "Fechar Grupos",
+        "closeGroupsShort": "Fechar",
+        "openGroups": "Abrir Grupos",
+        "openGroupsShort": "Abrir",
+        "sendMessage": "Enviar Mensagem",
+        "sendMessageShort": "Mensagem",
+        "sendAudio": "Enviar Áudio (PTT)",
+        "sendAudioShort": "Áudio",
+        "sendPoll": "Enviar Enquete",
+        "sendPollShort": "Enquete",
+        "changeName": "Alterar Nome",
+        "changeNameShort": "Nome",
+        "changePhoto": "Alterar Foto",
+        "changePhotoShort": "Foto",
+        "changeDescription": "Alterar Descrição",
+        "changeDescriptionShort": "Descrição",
+        "message": "Mensagem",
+        "messagePlaceholder": "Digite sua mensagem...",
+        "messageHint": "Use @todos para mencionar todos os membros",
+        "newName": "Novo Nome",
+        "newNamePlaceholder": "Digite o novo nome...",
+        "autoNumber": "Numerar automaticamente",
+        "autoNumberHint": "Adiciona numeração sequencial (#1, #2, etc)",
+        "newDescription": "Nova Descrição",
+        "newDescriptionPlaceholder": "Digite a nova descrição...",
+        "selectPhoto": "Selecionar Foto",
+        "photoSelected": "Foto selecionada",
+        "enhanceWithAI": "Melhorar com IA",
+        "enhancing": "Melhorando...",
+        "generateWithAI": "Gerar com IA",
+        "generating": "Gerando...",
+        "mediaAttachment": "Anexar Mídia",
+        "audioAttachment": "Gravar Áudio",
+        "recording": "Gravando...",
+        "recordedAudio": "Áudio gravado",
+        "processingGroups": "Processando {{current}} de {{total}} grupos...",
+        "completed": "{{success}} de {{total}} grupos processados com sucesso",
+        "partialSuccess": "Ação parcialmente concluída",
+        "allFailed": "Nenhum grupo foi processado com sucesso",
+        "noGroupsSelected": "Nenhum grupo selecionado",
+        "selectAtLeastOne": "Selecione pelo menos um grupo para executar esta ação"
+      },
+      "whatsapp": {
+        "title": "Conexão WhatsApp",
+        "connected": "WhatsApp conectado",
+        "disconnected": "WhatsApp desconectado",
+        "connecting": "Conectando...",
+        "scanQR": "Escaneie o QR Code",
+        "scanQRCode": "Escaneie o código com seu WhatsApp para reconectar",
+        "waitingQR": "Aguardando QR Code...",
+        "qrExpired": "QR Code expirado",
+        "qrGenerated": "QR Code gerado!",
+        "generateQR": "Gerar QR Code",
+        "reconnectTitle": "Reconectar WhatsApp",
+        "reconnectDescription": "Escaneie o QR Code abaixo com seu WhatsApp para reconectar a instância \"{{instanceName}}\"",
+        "qrCodeAlt": "QR Code para reconexão",
+        "generatingQr": "Gerando QR Code...",
+        "waitingScan": "Aguardando escaneamento..."
+      },
+      "dialogs": {
+        "changeName": {
+          "title": "Alterar Nome dos Grupos",
+          "description": "Defina um novo nome para os grupos selecionados",
+          "autoNumber": "Numerar automaticamente",
+          "autoNumberDescription": "Adiciona numeração sequencial aos grupos (ex: #1 Grupo, #2 Grupo)",
+          "baseNameOptional": "Nome Base (opcional)",
+          "baseNamePlaceholder": "Ex: Novo Grupo (será #1 Novo Grupo, #2 Novo Grupo...)",
+          "newName": "Novo Nome",
+          "newNamePlaceholder": "Digite o novo nome...",
+          "preview": "Preview: #1 {{name}}, #2 {{name}}, #3 {{name}}...",
+          "defaultName": "Novo Grupo",
+          "submit": "Atualizar Nome"
+        },
+        "changePhoto": {
+          "title": "Alterar Foto dos Grupos",
+          "description": "Envie uma nova foto para os grupos selecionados",
+          "label": "Foto do Grupo",
+          "selectedFile": "Arquivo selecionado: {{name}}",
+          "submit": "Atualizar Foto"
+        },
+        "changeDescription": {
+          "title": "Alterar Descrição",
+          "description": "Atualize a descrição dos grupos selecionados",
+          "label": "Nova Descrição",
+          "placeholder": "Digite a nova descrição...",
+          "submit": "Atualizar"
+        },
+        "sendMessage": {
+          "title": "Enviar Mensagem",
+          "description": "Envie uma mensagem para os grupos selecionados",
+          "mentionDetected": "Menção @todos detectada!",
+          "mentionDescription": "Os participantes de cada grupo serão buscados dinamicamente no momento do envio. Certifique-se de que você tem permissão para visualizar os membros dos grupos.",
+          "enhancing": "Melhorando...",
+          "enhanceWithAI": "Melhorar com IA",
+          "attachMedia": "Anexar Mídia (Imagem/Vídeo)",
+          "submit": "Enviar Mensagem"
+        },
+        "sendAudio": {
+          "title": "Enviar Áudio (PTT)",
+          "description": "Envie um áudio como \"voz\" (push-to-talk) para os grupos selecionados. Limite: 10 grupos por envio.",
+          "limitTitle": "Limite de grupos",
+          "limitDescription": "Para áudio, selecione no máximo 10 grupos.",
+          "selectAudio": "Selecionar áudio",
+          "hint": "Para PTT (voz), use preferencialmente .ogg (opus). Recomendado: áudio curto (ex: < 60s). Tamanho máximo: 4MB.",
+          "pttLabel": "Enviar como PTT (voz)",
+          "pttDescription": "Envia como áudio de voz (push-to-talk), mostrando o avatar da instância.",
+          "captionLabel": "Legenda (opcional)",
+          "captionPlaceholder": "Texto opcional para acompanhar o áudio",
+          "sending": "Enviando...",
+          "submit": "Enviar Áudio"
+        },
+        "poll": {
+          "title": "Criar e Enviar Enquete",
+          "description": "Crie uma enquete e envie para os grupos selecionados",
+          "questionLabel": "Pergunta da Enquete",
+          "questionPlaceholder": "Digite a pergunta da enquete",
+          "optionsLabel": "Opções de Resposta (mín: 2, máx: 12)",
+          "optionPlaceholder": "Opção {{number}}",
+          "removeOption": "Remover opção",
+          "addOption": "Adicionar Opção",
+          "sending": "Enviando...",
+          "submit": "Enviar Enquete para {{count}} Grupo(s)"
+        }
+      },
+      "members": {
+        "title": "Gerenciar Membros",
+        "description": "Gerencie os membros do grupo {{name}}",
+        "addMember": "Adicionar Membro",
+        "addMemberDescription": "Adicione um novo membro ao grupo pelo número de telefone",
+        "removeMember": "Remover Membro",
+        "removeMemberConfirm": "Tem certeza que deseja remover {{name}} do grupo?",
+        "leaveGroup": "Sair do Grupo",
+        "leaveGroupConfirm": "Tem certeza que deseja sair do grupo {{name}}? Esta ação não pode ser desfeita.",
+        "promoteToAdmin": "Promover a Admin",
+        "promoteConfirm": "Deseja promover {{name}} a administrador do grupo?",
+        "demoteFromAdmin": "Remover Admin",
+        "demoteConfirm": "Deseja remover {{name}} da administração do grupo?",
+        "phoneNumber": "Número de telefone",
+        "phonePlaceholder": "Ex: 5511999999999",
+        "phoneHint": "Digite o número com código do país, sem + ou espaços",
+        "role": "Função",
+        "admin": "Admin",
+        "superAdmin": "Super Admin",
+        "member": "Membro",
+        "participantCount": "{{count}} participante(s)",
+        "loading": "Carregando participantes...",
+        "adding": "Adicionando...",
+        "removing": "Removendo...",
+        "leaving": "Saindo...",
+        "promoting": "Promovendo...",
+        "demoting": "Removendo admin...",
+        "memberAdded": "Membro adicionado com sucesso",
+        "memberAddedCount": "{{count}} membro(s) adicionado(s) com sucesso",
+        "memberAddedWithErrors": "{{success}} adicionado(s), {{errors}} falharam",
+        "memberRemoved": "Membro removido com sucesso",
+        "memberRemovedCount": "{{count}} membro(s) removido(s) com sucesso",
+        "memberRemovedWithErrors": "{{success}} removido(s), {{errors}} falharam",
+        "leftGroup": "Você saiu do grupo",
+        "memberPromoted": "Membro promovido a admin",
+        "memberDemoted": "Admin removido",
+        "noParticipants": "Nenhum participante encontrado",
+        "searchParticipants": "Buscar participantes...",
+        "manage": "Membros"
+      },
+      "success": {
+        "updated": "Grupo atualizado",
+        "deleted": "Grupo excluído",
+        "linkCopied": "Link copiado!",
+        "linkRefreshed": "Link atualizado",
+        "favorited": "Adicionado aos favoritos",
+        "unfavorited": "Removido dos favoritos",
+        "addedFavorite": "Adicionado aos favoritos",
+        "addedFavoriteMessage": "O grupo foi marcado como favorito e aparecerá no topo",
+        "removedFavorite": "Removido dos favoritos",
+        "removedFavoriteMessage": "O grupo foi removido dos favoritos",
+        "inviteCodeSaved": "Código de convite salvo",
+        "inviteCodeUpdated": "Código atualizado!",
+        "inviteCodeUpdatedMessage": "O código de convite foi salvo com sucesso",
+        "mentionAdded": "Menção adicionada",
+        "mentionAddedMessage": "\"{{mention}}\" foi adicionado à mensagem",
+        "messageSent": "Mensagem enviada",
+        "messagesSent": "Mensagens enviadas",
+        "messagesSentMessage": "{{success}} enviadas com sucesso{{errors, select, 0 {} other {, {{errors}} falharam}}}",
+        "groupsClosed": "Grupo(s) fechado(s)",
+        "groupsOpened": "Grupo(s) aberto(s)",
+        "nameChanged": "Nome alterado",
+        "photoChanged": "Foto alterada",
+        "descriptionChanged": "Descrição alterada",
+        "reconnected": "WhatsApp reconectado!",
+        "reconnectedMessage": "Sua instância foi reconectada com sucesso",
+        "synced": "Grupos sincronizados!",
+        "syncedMessage": "Seus grupos foram atualizados com verificação de admin.",
+        "partialComplete": "Ação parcialmente concluída",
+        "groupsUpdatedWithErrors": "{{success}} grupo(s) atualizado(s), {{errors}} falharam:",
+        "andMore": "...e mais {{count}}",
+        "actionComplete": "Ação concluída!",
+        "groupsUpdated": "{{count}} grupo(s) atualizado(s) com sucesso",
+        "messageEnhanced": "Mensagem melhorada!",
+        "messageEnhancedMessage": "A IA personalizou sua mensagem com sucesso",
+        "messagesCreated": "Mensagens criadas!",
+        "messagesCreatedMessage": "A IA criou {{count}} versões. Usando a primeira.",
+        "pollSent": "Enquete enviada!",
+        "pollSentMessage": "Enquete enviada para {{count}} grupo(s) com sucesso",
+        "pollPartiallySent": "Enquete parcialmente enviada",
+        "pollSentWithErrors": "{{success}} grupo(s) receberam, {{errors}} falharam:",
+        "audioSent": "Áudio enviado!",
+        "audioSentMessage": "{{success}} enviado(s) com sucesso, {{errors}} falharam"
+      },
+      "errors": {
+        "load": "Erro ao carregar grupos",
+        "loadMessage": "Não foi possível carregar seus grupos",
+        "update": "Erro ao atualizar grupo",
+        "delete": "Erro ao excluir grupo",
+        "refresh": "Erro ao atualizar link",
+        "favorite": "Erro ao atualizar favorito",
+        "favoriteUpdate": "Erro ao atualizar favorito",
+        "saveInviteCode": "Erro ao salvar código",
+        "sendMessage": "Erro ao enviar mensagem",
+        "closeGroup": "Erro ao fechar grupo",
+        "openGroup": "Erro ao abrir grupo",
+        "changeName": "Erro ao alterar nome",
+        "changePhoto": "Erro ao alterar foto",
+        "changeDescription": "Erro ao alterar descrição",
+        "reconnect": "Erro ao reconectar",
+        "reconnectMessage": "Verifique sua conexão e tente novamente",
+        "sync": "Erro ao sincronizar grupos",
+        "syncMessage": "Não foi possível sincronizar os grupos",
+        "syncQueue": "Não foi possível enfileirar a sincronização de grupos",
+        "syncFailed": "Falha ao sincronizar grupos",
+        "syncTimeout": "A sincronização está demorando muito. Aguarde e tente recarregar os grupos.",
+        "checkStatus": "Erro ao verificar conexão",
+        "processImage": "Erro ao processar imagem",
+        "processImageMessage": "Não foi possível processar o arquivo {{filename}}",
+        "instanceNotConnected": "WhatsApp não conectado",
+        "instanceNotConnectedMessage": "Conecte seu WhatsApp antes de executar esta ação",
+        "noGroupSelected": "Nenhum grupo selecionado",
+        "noGroupSelectedMessage": "Selecione pelo menos um grupo para executar esta ação",
+        "noGroupsSelected": "Nenhum grupo selecionado",
+        "noGroupsSelectedMessage": "Selecione pelo menos um grupo",
+        "emptyMessage": "Mensagem vazia",
+        "emptyMessageMessage": "Digite uma mensagem para enviar",
+        "emptyMessageDesc": "Digite uma mensagem antes de enviar",
+        "emptyName": "Nome vazio",
+        "emptyNameMessage": "Digite um nome para o grupo",
+        "emptyDescription": "Descrição vazia",
+        "emptyDescriptionMessage": "Digite uma descrição para o grupo",
+        "noPhoto": "Nenhuma foto selecionada",
+        "noPhotoMessage": "Selecione uma foto para alterar",
+        "unknown": "Erro desconhecido",
+        "notAuthenticated": "Usuário não autenticado",
+        "noInstance": "Nenhuma instância conectada. Conecte seu WhatsApp primeiro.",
+        "connectWhatsAppFirst": "Conecte seu WhatsApp primeiro",
+        "emptyInviteCode": "Código de convite não pode estar vazio",
+        "closedGroupsSelected": "Grupos fechados selecionados",
+        "closedGroupsSelectedMessage": "{{count}} grupo(s) está(ão) fechado(s) e você não é admin. Mensagens só podem ser enviadas em grupos abertos ou onde você é admin.",
+        "whatsappDisconnected": "WhatsApp desconectado",
+        "reconnectWhatsApp": "Sua instância do WhatsApp está desconectada. Reconecte na página do WhatsApp.",
+        "verifyConnection": "Erro ao verificar conexão",
+        "verifyConnectionMessage": "Não foi possível verificar o status da conexão do WhatsApp",
+        "instanceDisconnected": "Instância desconectada (Status: {{status}})",
+        "instanceNotFound": "Instância não encontrada no WAHA Plus",
+        "emptyGroupMention": "Grupo vazio ou sem permissão para acessar participantes. A menção @todos não funcionará.",
+        "groupError": "Erro no grupo {{name}}",
+        "fetchParticipantsFailed": "Não foi possível buscar os participantes para menção @todos. A mensagem não será enviada.",
+        "sendFailures": "{{count}} falhas ao enviar",
+        "audioTooLarge": "Áudio muito grande",
+        "audioTooLargeMessage": "Envie um áudio de até 4MB (recomendado < 60s).",
+        "groupLimit": "Limite de grupos",
+        "audioGroupLimit": "Para áudio (PTT), envie no máximo 10 grupos por vez.",
+        "typeMessageToEnhance": "Digite uma mensagem para melhorar",
+        "unexpectedResponse": "Resposta inesperada",
+        "unexpectedResponseMessage": "A IA retornou um formato não reconhecido",
+        "enhanceMessage": "Erro ao melhorar mensagem",
+        "tryAgain": "Tente novamente em instantes",
+        "invalidFile": "Arquivo inválido",
+        "onlyImagesAndVideos": "Apenas imagens e vídeos são permitidos",
+        "fileTooLarge": "Arquivo muito grande",
+        "fileTooLargeMessage": "Use um arquivo menor (max. ~7MB)",
+        "onlyImages": "Apenas imagens são permitidas",
+        "limitReached": "Limite atingido",
+        "maxPollOptions": "Você pode adicionar no máximo 12 opções",
+        "questionRequired": "Pergunta obrigatória",
+        "questionRequiredMessage": "Digite a pergunta da enquete",
+        "insufficientOptions": "Opções insuficientes",
+        "insufficientOptionsMessage": "A enquete precisa ter pelo menos 2 opções",
+        "selectGroups": "Selecione grupos",
+        "selectGroupsPollMessage": "Selecione pelo menos um grupo para enviar a enquete",
+        "sendPoll": "Erro ao enviar enquete",
+        "bulkAction": "Erro ao executar ação",
+        "qrNotFound": "QR Code não encontrado na resposta",
+        "qrGeneration": "Erro ao gerar QR code",
+        "permissionDenied": "Sem permissão",
+        "notAdminMessage": "Você não é admin em {{count}} grupo(s): {{names}}",
+        "selectGroupFirst": "Selecione pelo menos um grupo primeiro",
+        "nameRequired": "Nome do grupo é obrigatório",
+        "noPhotoSelected": "Nenhuma foto selecionada",
+        "descriptionRequired": "Descrição é obrigatória",
+        "unknownAction": "Ação desconhecida",
+        "noAudioSelected": "Nenhum áudio selecionado",
+        "selectAudioFirst": "Selecione um arquivo de áudio antes de enviar",
+        "closedAudioMessage": "{{count}} grupo(s) está(ão) fechado(s) e você não é admin. Áudio não pode ser enviado.",
+        "invalidPttFormat": "Formato inválido para PTT",
+        "pttFormatMessage": "Para enviar como áudio de voz (PTT), use arquivo .ogg (opus)"
+      },
+      "empty": "Nenhum grupo encontrado",
+      "emptyHint": "Conecte seu WhatsApp e importe seus grupos",
+      "emptySearch": "Nenhum grupo corresponde à busca",
+      "confirm": {
+        "delete": "Tem certeza que deseja excluir este grupo?",
+        "closeGroups": "Fechar {{count}} grupo(s)?",
+        "openGroups": "Abrir {{count}} grupo(s)?"
+      },
+      "multiple": {
+        "defaultName": "Grupo",
+        "configureButton": "Configurar Vários Grupos",
+        "title": "Configurar Múltiplos Grupos",
+        "description": "Aplique configurações em vários grupos de uma vez",
+        "howItWorks": {
+          "title": "Como funciona:",
+          "description": "Selecione os grupos existentes onde você é admin e aplique as configurações desejadas (nome numerado, descrição, status e foto)."
+        },
+        "selectGroups": "Selecionar Grupos (você é admin)",
+        "searchPlaceholder": "Pesquisar grupos...",
+        "noGroupsAvailable": "Nenhum grupo disponível. Sincronize seus grupos primeiro.",
+        "selectedCount": "{{count}} grupo(s) selecionado(s) - Receberão numeração: #1, #2, #3...",
+        "baseName": "Nome Base dos Grupos",
+        "baseNamePlaceholder": "Ex: Ofertas Shopee",
+        "renameHint": "Os grupos serão renomeados para: #1 {{name}}, #2 {{name}}, #3 {{name}}...",
+        "groupDescription": "Descrição dos Grupos",
+        "descriptionPlaceholder": "Ex: Grupo exclusivo para ofertas e descontos diários da Shopee",
+        "descriptionHint": "Esta descrição será aplicada a todos os grupos criados",
+        "groupStatus": "Status dos Grupos",
+        "statusOpen": "Aberto - Todos podem comentar",
+        "statusClosed": "Fechado - Apenas admins podem escrever",
+        "groupPhoto": "Foto dos Grupos",
+        "photoHint": "Esta foto será aplicada a todos os grupos selecionados",
+        "configureCount": "Configurar {{count}} Grupo(s)",
+        "photoSelected": "Foto selecionada",
+        "success": {
+          "scheduled": "Configurações agendadas!",
+          "scheduledDescription": "{{count}} grupo(s) serão configurados em instantes"
+        },
+        "errors": {
+          "noGroupSelected": "Nenhum grupo selecionado",
+          "selectAtLeastOne": "Selecione pelo menos um grupo para aplicar as configurações",
+          "configError": "Erro ao configurar grupos"
+        }
+      },
+      "schedule": {
+        "scheduleButton": "Agendar em Vários Grupos",
+        "scheduleButtonShort": "Vários Grupos",
+        "title": "Agendar Ações em Múltiplos Grupos",
+        "description": "Configure múltiplas ações para vários grupos e agende para uma data/hora específica",
+        "howItWorks": {
+          "title": "Como funciona:",
+          "description": "Configure as ações desejadas (nome, descrição, status, foto e/ou mensagem) e escolha quando serão executadas. As ações serão aplicadas automaticamente em todos os grupos selecionados."
+        },
+        "date": "Data",
+        "time": "Hora",
+        "selectGroups": "Selecionar Grupos",
+        "searchPlaceholder": "Pesquisar grupos...",
+        "noGroupsAvailable": "Nenhum grupo disponível. Importe grupos primeiro.",
+        "selectedCount": "{{count}} grupo(s) selecionado(s) - Receberão numeração: #1, #2, #3...",
+        "baseNameOptional": "Nome Base dos Grupos (opcional)",
+        "baseNamePlaceholder": "Ex: Ofertas Shopee",
+        "renameHint": "Os grupos serão renomeados para: #1 {{name}}, #2 {{name}}, #3 {{name}}...",
+        "descriptionOptional": "Descrição dos Grupos (opcional)",
+        "descriptionPlaceholder": "Ex: Grupo exclusivo para ofertas e descontos diários da Shopee",
+        "statusOptional": "Status dos Grupos (opcional)",
+        "statusNoChange": "Não alterar",
+        "statusOpen": "Aberto - Todos podem comentar",
+        "statusClosed": "Fechado - Apenas admins podem escrever",
+        "photoOptional": "Foto dos Grupos (opcional)",
+        "messageOptional": "Mensagem (opcional)",
+        "messagePlaceholder": "Digite a mensagem a ser enviada... Use @todos para mencionar todos",
+        "mentionDetected": {
+          "title": "Menção @todos detectada!",
+          "description": "Os participantes de cada grupo serão buscados dinamicamente no momento do envio. Certifique-se de que você tem permissão para visualizar os membros dos grupos."
+        },
+        "scheduleCount": "Agendar Ações para {{count}} Grupo(s)",
+        "photoSelected": "Foto selecionada",
+        "success": {
+          "scheduled": "Ações agendadas!",
+          "scheduledDescription": "{{actions}} ação(ões) agendada(s) para {{groups}} grupo(s)"
+        },
+        "errors": {
+          "requiredFields": "Campos obrigatórios",
+          "fillDateAndTime": "Preencha data e hora",
+          "noGroupSelected": "Nenhum grupo selecionado",
+          "selectAtLeastOne": "Selecione pelo menos um grupo",
+          "noActionConfigured": "Nenhuma ação configurada",
+          "configureAtLeastOneAction": "Configure pelo menos uma ação (nome, descrição, mensagem, status ou foto)",
+          "scheduleError": "Erro ao agendar"
+        }
+      }
+    },
+    "dispatchTexts": {
+      "title": "Textos de Disparo",
+      "subtitle": "Crie um texto 100% personalizável com variáveis (placeholders) e use nas suas automações.",
+      "newText": "Novo texto",
+      "editTitle": "Editar Texto de Disparo",
+      "createTitle": "Novo Texto de Disparo",
+      "form": {
+        "name": "Nome",
+        "namePlaceholder": "Ex: Oferta agressiva com cupom",
+        "active": "Ativo",
+        "activeHint": "Se desativar, ele não aparece na seleção das automações.",
+        "variables": "Variáveis disponíveis",
+        "text": "Texto",
+        "textPlaceholder": "Escreva seu texto aqui..."
+      },
+      "variables": {
+        "productName": "Nome do produto",
+        "price": "Preço (11,99)",
+        "priceFormatted": "Preço (R$ 11,99)",
+        "originalPrice": "Preço original (37,90)",
+        "originalPriceFormatted": "Preço original (R$ 37,90)",
+        "affiliateLink": "Link afiliado",
+        "priceWarning": "Aviso padrão"
+      },
+      "alert": {
+        "formatting": "Você pode usar formatação do WhatsApp: *negrito*, _itálico_, ~riscado~ e quebras de linha. Variáveis ficam entre chaves: {nome_produto}."
+      },
+      "preview": {
+        "title": "Pré-visualização (exemplo)",
+        "empty": "Comece a digitar para ver a prévia."
+      },
+      "table": {
+        "title": "Meus textos",
+        "name": "Nome",
+        "status": "Status",
+        "actions": "Ações"
+      },
+      "empty": "Você ainda não criou nenhum Texto de Disparo.",
+      "success": {
+        "created": "Texto criado",
+        "updated": "Texto atualizado",
+        "deleted": "Texto excluído",
+        "copied": "Copiado"
+      },
+      "errors": {
+        "load": "Erro ao carregar",
+        "loadMessage": "Não foi possível carregar seus Textos de Disparo.",
+        "save": "Erro ao salvar",
+        "saveMessage": "Não foi possível salvar o Texto de Disparo.",
+        "delete": "Erro ao excluir",
+        "deleteMessage": "Não foi possível excluir o Texto de Disparo.",
+        "requiredFields": "Campos obrigatórios",
+        "requiredFieldsMessage": "Preencha Nome e o Texto.",
+        "nameRequired": "Nome obrigatório",
+        "bodyRequired": "Texto obrigatório",
+        "notFound": "Texto de disparo não encontrado",
+        "createFailed": "Falha ao criar texto de disparo",
+        "updateFailed": "Falha ao atualizar texto de disparo"
+      },
+      "confirmDelete": "Excluir \"{{name}}\"?",
+      "confirmDeleteTitle": "Confirmar exclusão",
+      "confirmDeleteDescription": "Tem certeza que deseja excluir o texto \"{{name}}\"? Esta ação não pode ser desfeita.",
+      "defaultTemplate": "*NADA MELHOR QUE COMPRAR E ECONOMIZAR*\n\n> CORRE QUE VAI ESGOTAR\n\n{nome_produto}\n\nDe: ~R$ {preco_original}~\n\nPor: *R$ {preco}*\n\nCompre aqui: {link_afiliado}\n\n*{aviso_preco}*",
+      "sampleVars": {
+        "productName": "Bracelete Deusa Grega",
+        "price": "11,99",
+        "priceFormatted": "R$ 11,99",
+        "originalPrice": "37,90",
+        "originalPriceFormatted": "R$ 37,90",
+        "affiliateLink": "https://s.shopee.com.br/806Bcl3ADX",
+        "priceWarning": "O preço e disponibilidade do produto podem variar. As promoções são por tempo limitado"
+      },
+      "aria": {
+        "editItem": "Editar {{name}}",
+        "deleteItem": "Excluir {{name}}"
+      }
+    },
+    "coupons": {
+      "title": "Cupons",
+      "subtitle": "Gerencie seus cupons de desconto",
+      "newCoupon": "Novo cupom",
+      "editTitle": "Editar Cupom",
+      "editDescription": "Edite as informações do cupom de desconto.",
+      "createTitle": "Novo Cupom",
+      "createDescription": "Preencha as informações do novo cupom de desconto.",
+      "form": {
+        "code": "Código",
+        "codePlaceholder": "Ex: DESCONTO10",
+        "discount": "Desconto",
+        "discountPlaceholder": "10",
+        "type": "Tipo",
+        "typePercent": "Porcentagem",
+        "typeFixed": "Valor fixo",
+        "validUntil": "Válido até",
+        "titlePlaceholder": "R$ 20 OFF em compras acima de R$ 200",
+        "affiliateLinkPlaceholder": "https://s.shopee.com.br/...",
+        "store": "Loja",
+        "affiliateLink": "Link de afiliado",
+        "maxDiscount": "Desconto máximo",
+        "maxDiscountPlaceholder": "50",
+        "minProductPrice": "Valor mínimo do produto",
+        "minProductPricePlaceholder": "200",
+        "couponText": "Texto do cupom"
+      },
+      "actions": {
+        "activate": "Ativar cupom",
+        "deactivate": "Desativar cupom",
+        "edit": "Editar cupom",
+        "delete": "Excluir cupom",
+        "copyCode": "Copiar código"
+      },
+      "confirmDelete": "Tem certeza que deseja excluir este cupom?",
+      "confirmActivate": "Tem certeza que deseja ativar este cupom?",
+      "confirmDeactivate": "Tem certeza que deseja desativar este cupom?",
+      "searchPlaceholder": "Buscar por código ou descrição...",
+      "stores": {
+        "shopee": "Shopee",
+        "amazon": "Amazon",
+        "magalu": "Magazine Luiza",
+        "ml": "Mercado Livre",
+        "shein": "Shein",
+        "aliexpress": "AliExpress",
+        "awin": "Awin"
+      },
+      "categories": {
+        "generalOffers": "Ofertas gerais",
+        "electronics": "Eletrônicos",
+        "fashion": "Moda",
+        "men": "Homens",
+        "homeDecor": "Casa e Decoração",
+        "beauty": "Beleza",
+        "sports": "Esportes",
+        "books": "Livros",
+        "toys": "Brinquedos",
+        "children": "Infantil",
+        "maternity": "Maternidade",
+        "food": "Alimentos",
+        "automotive": "Automotivo",
+        "pets": "Pets"
+      },
+      "table": {
+        "title": "Meus cupons",
+        "code": "Código",
+        "validUntil": "Válido até",
+        "status": "Status"
+      },
+      "empty": "Você ainda não criou nenhum cupom.",
+      "success": {
+        "created": "Cupom criado",
+        "updated": "Cupom atualizado",
+        "deleted": "Cupom excluído",
+        "copied": "Código copiado"
+      },
+      "errors": {
+        "load": "Erro ao carregar cupons",
+        "save": "Erro ao salvar cupom",
+        "delete": "Erro ao excluir cupom",
+        "duplicateCode": "Já existe um cupom com este código. Use um código diferente.",
+        "notFound": "Cupom não encontrado.",
+        "invalidData": "Dados inválidos. Verifique os campos.",
+        "codeRequired": "O código do cupom é obrigatório.",
+        "titleRequired": "A descrição do cupom é obrigatória.",
+        "storeRequired": "Selecione uma loja."
+      }
+    },
+    "contactExtractor": {
+      "title": "Extrator de Contatos",
+      "subtitle": "Extraia contatos de grupos do WhatsApp",
+      "selectGroup": "Selecionar Grupo",
+      "selectGroupPlaceholder": "Escolha um grupo...",
+      "extract": "Extrair Contatos",
+      "extracting": "Extraindo...",
+      "results": {
+        "title": "Contatos Extraídos",
+        "total": "Total de contatos",
+        "exported": "Exportados"
+      },
+      "table": {
+        "name": "Nome",
+        "phone": "Telefone",
+        "actions": "Ações"
+      },
+      "export": {
+        "csv": "Exportar CSV",
+        "txt": "Exportar TXT",
+        "copy": "Copiar Todos"
+      },
+      "empty": "Nenhum contato extraído ainda",
+      "emptyHint": "Selecione um grupo e clique em \"Extrair Contatos\"",
+      "success": {
+        "extracted": "Contatos extraídos",
+        "extractedMessage": "{{count}} contato(s) extraído(s) com sucesso",
+        "copied": "Contatos copiados",
+        "copiedMessage": "{{count}} contato(s) copiado(s) para a área de transferência"
+      },
+      "errors": {
+        "load": "Erro ao carregar grupos",
+        "extract": "Erro ao extrair contatos",
+        "extractMessage": "Não foi possível extrair os contatos do grupo"
+      }
+    },
+    "automationLogs": {
+      "title": "Logs de Automações",
+      "subtitle": "Histórico de envios e ações das automações",
+      "filters": {
+        "title": "Filtros",
+        "automation": "Automação",
+        "store": "Loja",
+        "group": "Grupo",
+        "status": "Status",
+        "searchUrl": "Buscar URL",
+        "searchPlaceholder": "Buscar produto...",
+        "all": "Todas",
+        "allGroups": "Todos",
+        "allStatus": "Todos"
+      },
+      "table": {
+        "title": "Registros",
+        "description": "{{filtered}} de {{total}} log(s)",
+        "dateTime": "Data/Hora",
+        "automation": "Automação",
+        "store": "Loja",
+        "group": "Grupo",
+        "category": "Categoria",
+        "product": "Produto",
+        "coupon": "Cupom",
+        "affiliateLink": "Link Afiliado",
+        "status": "Status",
+        "error": "Erro",
+        "viewProduct": "Ver produto",
+        "reconnect": "Reconectar"
+      },
+      "status": {
+        "queued": "Em fila",
+        "sent": "Enviado",
+        "skipped": "Ignorado",
+        "error": "Erro"
+      },
+      "queue": {
+        "explanation": "significa que o envio foi enfileirado e será enviado em etapas para manter o WhatsApp estável.",
+        "estimate": "Estimativa atual:",
+        "minutes": "min",
+        "waiting": "aguardando",
+        "waitingLabel": "aguardando",
+        "delayedLabel": "atrasado",
+        "activeLabel": "ativo",
+        "limit": "Limite:",
+        "perMinute": "/min",
+        "concurrency": "Concorrência:",
+        "reconnect": "Reconectar WhatsApp"
+      },
+      "couponStatus": {
+        "applied": "aplicado",
+        "notApplied": "não aplicado"
+      },
+      "groupRemoved": "Grupo removido",
+      "empty": "Nenhum log registrado ainda",
+      "emptyFiltered": "Nenhum log corresponde aos filtros aplicados",
+      "export": {
+        "csv": "Exportar CSV",
+        "success": "CSV exportado com sucesso!"
+      },
+      "errors": {
+        "load": "Erro ao carregar logs"
+      }
+    },
+    "mlLinkLists": {
+      "title": "Listas de links",
+      "subtitle": "Cadastre links de produtos do Mercado Livre e use no modo Lista das Automações.",
+      "alert": "Ao enviar para os grupos, os links serão convertidos automaticamente para o seu link de afiliado.",
+      "newList": "Nova lista",
+      "editTitle": "Editar lista",
+      "createTitle": "Nova lista",
+      "form": {
+        "name": "Nome",
+        "namePlaceholder": "Ex: Eletrônicos 2026",
+        "description": "Descrição (opcional)",
+        "descriptionPlaceholder": "O que tem nessa lista?",
+        "active": "Ativa",
+        "activeHint": "Listas inativas não aparecem na automação."
+      },
+      "lists": {
+        "title": "Suas listas",
+        "refresh": "Atualizar",
+        "select": "Selecionar lista",
+        "selectPlaceholder": "Selecione uma lista",
+        "inactive": "(inativa)",
+        "empty": "Você ainda não tem listas. Clique em Nova lista para começar.",
+        "edit": "Editar",
+        "delete": "Excluir",
+        "confirmDelete": "Excluir a lista \"{{name}}\"? Isso remove todos os links dela.",
+        "confirmDeleteTitle": "Excluir lista",
+        "confirmDeleteMessage": "Tem certeza que deseja excluir a lista \"{{name}}\"? Esta ação não pode ser desfeita e todos os links serão removidos."
+      },
+      "items": {
+        "title": "Links da lista",
+        "noDescription": "Sem descrição",
+        "resetSent": "Resetar enviados",
+        "selectList": "Selecione uma lista para gerenciar os links.",
+        "addLink": "Adicionar link",
+        "linkLabel": "Link do produto (Mercado Livre)",
+        "linkPlaceholder": "Cole um link de produto do Mercado Livre",
+        "add": "Adicionar",
+        "clear": "Limpar",
+        "fragmentHint": "Dica: nós removemos o fragmento #... automaticamente.",
+        "preview": "Preview (último)",
+        "noTitle": "(sem título)",
+        "copyUrl": "Copiar URL",
+        "bulkImport": "Importar em massa",
+        "onePerLine": "1 link por linha",
+        "bulkPlaceholder": "Cole aqui vários links do Mercado Livre (1 por linha)",
+        "import": "Importar",
+        "bulkHint": "Apenas links de produto do Mercado Livre são aceitos.",
+        "total": "Total:",
+        "loaded": "{{count}} carregados",
+        "available": "Disponíveis:",
+        "sent": "Enviados:",
+        "allSentAlert": "Todos os links desta lista já foram enviados. Para reutilizar, clique em Resetar enviados ou adicione novos links.",
+        "table": {
+          "order": "Ordem",
+          "product": "Produto",
+          "price": "Preço",
+          "status": "Status",
+          "actions": "Ações"
+        },
+        "statusActive": "Ativo",
+        "statusInactive": "Inativo",
+        "statusSent": "Enviado",
+        "statusAvailable": "Disponível",
+        "copyLink": "Copiar link",
+        "deactivate": "Desativar",
+        "activate": "Ativar",
+        "empty": "Nenhum link ainda.",
+        "moveUp": "Mover para cima",
+        "moveDown": "Mover para baixo"
+      },
+      "success": {
+        "created": "Lista criada",
+        "updated": "Lista atualizada",
+        "deleted": "Lista excluída",
+        "linkAdded": "Link adicionado",
+        "imported": "Importado",
+        "importedMessage": "{{count}} link(s) importado(s).",
+        "sentReset": "Enviados resetados",
+        "linkRemoved": "Link removido",
+        "copied": "Copiado"
+      },
+      "errors": {
+        "load": "Erro ao carregar listas",
+        "loadMessage": "Não foi possível carregar as listas.",
+        "loadLinks": "Erro ao carregar links",
+        "loadLinksMessage": "Não foi possível carregar os links.",
+        "save": "Erro ao salvar lista",
+        "saveMessage": "Não foi possível salvar.",
+        "delete": "Erro ao excluir lista",
+        "deleteMessage": "Não foi possível excluir.",
+        "invalidLink": "Link inválido",
+        "invalidLinkMessage": "Cole um link de produto do Mercado Livre.",
+        "previewUnavailable": "Preview indisponível",
+        "previewUnavailableMessage": "Não foi possível obter preview agora. O link será salvo mesmo assim.",
+        "addLink": "Erro ao adicionar link",
+        "addLinkMessage": "Não foi possível adicionar este link (talvez já exista na lista).",
+        "noValidLinks": "Nenhum link válido",
+        "noValidLinksMessage": "Cole um link por linha (somente Mercado Livre).",
+        "import": "Erro ao importar",
+        "importMessage": "Não foi possível importar (alguns links podem estar duplicados na lista).",
+        "toggle": "Erro",
+        "toggleMessage": "Não foi possível atualizar o item.",
+        "reorder": "Erro ao reordenar",
+        "reorderMessage": "Não foi possível reordenar.",
+        "reset": "Erro ao resetar",
+        "resetMessage": "Não foi possível resetar.",
+        "remove": "Erro ao remover",
+        "removeMessage": "Não foi possível remover.",
+        "nameRequired": "Nome obrigatório",
+        "nameRequiredMessage": "Informe o nome da lista.",
+        "notFound": "Lista não encontrada",
+        "createFailed": "Falha ao criar lista",
+        "updateFailed": "Falha ao atualizar lista",
+        "addLinkFailed": "Falha ao adicionar link",
+        "updateItemFailed": "Falha ao atualizar item"
+      },
+      "confirm": {
+        "resetSent": "Resetar enviados desta lista? (todos os links voltam a ficar disponíveis)",
+        "removeLink": "Remover este link da lista?",
+        "resetSentTitle": "Resetar enviados",
+        "resetSentMessage": "Tem certeza que deseja marcar todos os links como não enviados? Eles voltarão a ficar disponíveis para uso.",
+        "removeLinkTitle": "Remover link",
+        "removeLinkMessage": "Tem certeza que deseja remover este link da lista? Esta ação não pode ser desfeita."
+      }
+    },
+    "aiTools": {
+      "title": "Ferramentas de IA",
+      "subtitle": "Use inteligência artificial para criar campanhas, analisar engajamento e identificar tendências",
+      "tabs": {
+        "campaign": "Criar Campanha",
+        "engagement": "Engajamento",
+        "trends": "Tendências",
+        "messages": "Mensagens"
+      },
+      "campaign": {
+        "title": "Crie sua Campanha com IA",
+        "description": "Descreva sua campanha e a IA gerará nomes de grupos, fotos, descrições e cronograma completo",
+        "promptLabel": "Descrição da Campanha",
+        "promptPlaceholder": "Ex: \"Quero fazer uma oferta de produtos da Shopee e captar gente interessada em descontos.\"",
+        "generate": "Gerar Campanha Completa",
+        "generating": "Gerando campanha...",
+        "newCampaign": "Gerar Nova Campanha",
+        "results": {
+          "groupNames": "Nomes dos Grupos",
+          "groupPhoto": "Foto do Grupo",
+          "groupImageAlt": "Imagem sugerida para o grupo",
+          "description": "Descrição",
+          "welcomeMessage": "Mensagem de Boas-vindas",
+          "schedule": "Cronograma de 7 Dias",
+          "day": "Dia"
+        },
+        "success": "Campanha criada!",
+        "successMessage": "Sua campanha foi gerada com sucesso e está salva",
+        "ready": "Pronto!",
+        "readyMessage": "Você pode criar uma nova campanha agora"
+      },
+      "engagement": {
+        "title": "IA de Engajamento Automatizado",
+        "description": "Analise a interação do grupo e receba sugestões para reativar membros",
+        "selectGroup": "Selecione um grupo para analisar",
+        "loadingGroups": "Carregando grupos...",
+        "noGroups": "Nenhum grupo encontrado",
+        "analyze": "Analisar Engajamento",
+        "analyzing": "Analisando...",
+        "results": {
+          "status": "Status do Grupo",
+          "suggestions": "Sugestões de Reativação",
+          "actionPlan": "Plano de Ação"
+        },
+        "success": "Análise concluída!",
+        "successMessage": "Confira as sugestões de engajamento"
+      },
+      "trends": {
+        "title": "Identificador de Tendências",
+        "description": "Descubra os produtos mais vendidos e tendências do momento",
+        "platformPlaceholder": "Selecione a plataforma",
+        "platforms": {
+          "shopee": "Shopee",
+          "shein": "Shein",
+          "mercadolivre": "Mercado Livre",
+          "aliexpress": "AliExpress"
+        },
+        "categoryPlaceholder": "Ex: \"Moda feminina\", \"Eletrônicos\", \"Casa e decoração\"",
+        "identify": "Identificar Tendências",
+        "identifying": "Identificando tendências...",
+        "results": {
+          "products": "Produtos em Alta",
+          "sales": "vendas",
+          "searchProduct": "Buscar Produto",
+          "marketAnalysis": "Análise de Mercado",
+          "recommendations": "Recomendações"
+        },
+        "success": "Tendências identificadas!",
+        "successMessage": "Veja os produtos em alta"
+      },
+      "messages": {
+        "title": "Criador de Mensagens Personalizadas",
+        "description": "Cole os links dos produtos da Shopee e escolha o estilo de copy para criar mensagens persuasivas",
+        "productLink": "Link do Produto",
+        "productLinkPlaceholder": "Cole o link do produto aqui\nEx: https://shopee.com.br/produto",
+        "productLinkHint": "Cole apenas um link de produto por vez para melhores resultados",
+        "affiliateLink": "Link de Afiliado (Opcional)",
+        "affiliateLinkPlaceholder": "Ex: https://s.shopee.com.br/seu-link-afiliado",
+        "affiliateLinkHint": "Se você tem um link de afiliado, cole aqui para ser incluído nas mensagens geradas",
+        "stylePlaceholder": "Selecione o estilo de copy",
+        "styles": {
+          "aggressive": "Venda Agressiva",
+          "scarcity": "Escassez e Urgência",
+          "emotional": "Apelo Emocional",
+          "benefit": "Foco em Benefícios",
+          "social": "Prova Social",
+          "storytelling": "Storytelling"
+        },
+        "generate": "Gerar Mensagens",
+        "generating": "Criando mensagens...",
+        "results": {
+          "productInfo": "Informações dos Produtos",
+          "option": "Opção",
+          "copy": "Copiar",
+          "whyItWorks": "Por que funciona:",
+          "tips": "Dicas de Uso"
+        },
+        "copied": "Copiado!",
+        "copiedMessage": "Mensagem copiada para a área de transferência",
+        "success": "Mensagens criadas!",
+        "successMessage": "Escolha a que mais combina com você"
+      },
+      "errors": {
+        "emptyPrompt": "Por favor, descreva sua campanha",
+        "emptyGroup": "Por favor, selecione um grupo",
+        "emptyCategory": "Por favor, informe a categoria de produtos",
+        "emptyLinks": "Por favor, cole os links dos produtos",
+        "loadGroups": "Erro ao carregar grupos",
+        "loadGroupsMessage": "Não foi possível carregar seus grupos",
+        "createCampaign": "Não foi possível criar a campanha",
+        "analyzeEngagement": "Erro na análise",
+        "analyzeTrends": "Não foi possível identificar tendências",
+        "enhanceMessage": "Não foi possível criar as mensagens"
+      }
+    },
+    "jobs": {
+      "title": "Agendamentos",
+      "subtitle": "Agende ações para serem executadas automaticamente",
+      "newJob": "Novo Agendamento",
+      "newJobShort": "Novo",
+      "dialog": {
+        "createTitle": "Agendar Nova Ação",
+        "editTitle": "Editar Agendamento",
+        "createDescription": "Configure uma ação para ser executada em uma data e hora específicas",
+        "editDescription": "Atualize os dados do agendamento"
+      },
+      "form": {
+        "actionType": "Tipo de Ação",
+        "actionTypePlaceholder": "Selecione uma ação",
+        "selectGroups": "Selecionar Grupos",
+        "searchGroups": "Pesquisar grupos...",
+        "noGroups": "Nenhum grupo disponível. Importe grupos primeiro.",
+        "groupsSelected": "grupo(s) selecionado(s)",
+        "date": "Data",
+        "time": "Hora",
+        "message": "Mensagem",
+        "messagePlaceholder": "Digite sua mensagem... Use @todos para mencionar todos",
+        "mention": "Mencionar",
+        "mentionDetected": "Menção @todos detectada!",
+        "mentionHint": "Os participantes de cada grupo serão buscados automaticamente no momento do envio. Certifique-se de que você tem permissão para visualizar os membros dos grupos.",
+        "enhanceWithAI": "Melhorar com IA",
+        "enhancing": "Melhorando...",
+        "attachMedia": "Anexar Imagem/Vídeo (opcional)",
+        "fileSelected": "Arquivo selecionado:",
+        "pollQuestion": "Pergunta da Enquete",
+        "pollQuestionPlaceholder": "Digite a pergunta da enquete",
+        "pollOptions": "Opções de Resposta (mín: 2, máx: 12)",
+        "pollOptionPlaceholder": "Opção {{index}}",
+        "addOption": "Adicionar Opção",
+        "mlUrl": "URL do produto (Mercado Livre)",
+        "mlUrlPlaceholder": "https://www.mercadolivre.com.br/.../p/MLB...",
+        "mlUrlHint": "Requer Mercado Livre ativo em Programas de Afiliado.",
+        "sendImage": "Enviar imagem do produto",
+        "sendImageHint": "Usa a thumbnail do preview do produto (quando disponível).",
+        "dispatchText": "Texto de disparo (opcional)",
+        "dispatchTextPlaceholder": "Se vazio, usamos um texto padrão. Variáveis: {nome_produto} {preco} {preco_formatado} {preco_original} {preco_original_formatado} {link_afiliado}",
+        "dispatchTextVariables": "Variáveis: {nome_produto} {preco} {preco_formatado} {preco_original} {preco_original_formatado} {link_afiliado} {aviso_preco}",
+        "newDescription": "Nova Descrição",
+        "newDescriptionPlaceholder": "Digite a nova descrição...",
+        "autoNumber": "Numerar automaticamente",
+        "autoNumberHint": "Adiciona numeração sequencial aos grupos (ex: #1 Grupo, #2 Grupo)",
+        "newName": "Novo Nome do Grupo",
+        "newNameBase": "Nome Base (opcional)",
+        "newNamePlaceholder": "Digite o novo nome...",
+        "newNameBasePlaceholder": "Ex: Novo Grupo (será #1 Novo Grupo, #2 Novo Grupo...)",
+        "newNamePreview": "Preview:",
+        "newNamePreviewDefault": "Novo Grupo",
+        "newPhoto": "Nova Foto do Grupo",
+        "submit": "Agendar Ação",
+        "submitting": "Agendando...",
+        "save": "Salvar Alterações",
+        "saving": "Salvando..."
+      },
+      "actionTypes": {
+        "sendMessage": "Enviar Mensagem",
+        "sendPoll": "Enviar Enquete",
+        "sendMlOffer": "Mercado Livre (Afiliado)",
+        "updateDescription": "Alterar Descrição",
+        "closeGroups": "Fechar Grupos",
+        "openGroups": "Abrir Grupos",
+        "changeGroupName": "Alterar Nome do Grupo",
+        "changeGroupPhoto": "Alterar Foto do Grupo"
+      },
+      "status": {
+        "pending": "Aguardando",
+        "running": "Executando",
+        "done": "Concluído",
+        "failed": "Erro",
+        "cancelled": "Cancelado"
+      },
+      "table": {
+        "title": "Ações Agendadas",
+        "description": "Lista de todas as ações programadas",
+        "action": "Ação",
+        "dateTime": "Data/Hora",
+        "status": "Status",
+        "actions": "Ações",
+        "edit": "Editar",
+        "delete": "Excluir",
+        "editSchedule": "Editar Agendamento",
+        "showing": "Exibindo {{count}} de {{total}} agendamentos",
+        "loadMore": "Carregar mais"
+      },
+      "alert": {
+        "title": "ATENÇÃO",
+        "message": "Fechar grupos, Abrir grupos, Alterar nome, Alterar foto e Alterar descrição só funcionam em grupos ao qual você é administrador, caso contrário dará erro!"
+      },
+      "howItWorks": {
+        "title": "Como funcionam os agendamentos?",
+        "description": "O sistema de agendamentos permite que você programe ações para serem executadas automaticamente em uma data e hora específicas:",
+        "sendMessage": "Envia uma mensagem para todos os grupos selecionados",
+        "updateDescription": "Atualiza a descrição de múltiplos grupos",
+        "closeOpenGroups": "Altera as configurações de privacidade",
+        "changeName": "Atualiza o nome de grupos específicos",
+        "changePhoto": "Atualiza a foto de grupos específicos",
+        "note": "As ações são executadas por um cron job no servidor. Você pode monitorar o status de cada agendamento nesta página."
+      },
+      "empty": "Nenhum agendamento criado ainda",
+      "success": {
+        "scheduled": "Ação agendada!",
+        "scheduledMessage": "A ação será executada no horário programado",
+        "updated": "Agendamento atualizado!",
+        "updatedMessage": "As alterações foram salvas com sucesso",
+        "enhanced": "Mensagem melhorada!",
+        "enhancedMessage": "A IA aprimorou sua mensagem",
+        "deleted": "Agendamento excluído!",
+        "deletedMessage": "O agendamento foi removido com sucesso",
+        "enhancedMultiple": "Mensagens criadas!",
+        "enhancedMultipleMessage": "A IA criou {{count}} versões. Usando a primeira.",
+        "processed": "Jobs processados!",
+        "processedDetails": "{{processed}} processados, {{failed}} com erro"
+      },
+      "errors": {
+        "requiredFields": "Campos obrigatórios",
+        "requiredFieldsMessage": "Preencha todos os campos para agendar a ação",
+        "noGroups": "Nenhum grupo selecionado",
+        "noGroupsMessage": "Selecione pelo menos um grupo",
+        "emptyMessage": "Mensagem vazia",
+        "emptyMessageMessage": "Digite uma mensagem para enviar",
+        "emptyUrl": "URL obrigatória",
+        "emptyUrlMessage": "Cole a URL do produto do Mercado Livre",
+        "emptyPollQuestion": "Pergunta obrigatória",
+        "emptyPollQuestionMessage": "Digite a pergunta da enquete",
+        "insufficientOptions": "Opções insuficientes",
+        "insufficientOptionsMessage": "A enquete precisa ter pelo menos 2 opções",
+        "maxOptions": "Limite atingido",
+        "maxOptionsMessage": "Você pode adicionar no máximo 12 opções",
+        "fileTooLarge": "Arquivo muito grande",
+        "fileTooLargeMessage": "Use um arquivo menor (máx. ~7MB) para agendamento.",
+        "fileReadError": "Erro ao processar anexo",
+        "fileReadMessage": "Não foi possível ler o arquivo selecionado.",
+        "schedule": "Erro ao agendar",
+        "update": "Erro ao atualizar",
+        "delete": "Erro ao excluir",
+        "enhance": "Erro ao melhorar mensagem",
+        "enhanceMessage": "Não foi possível melhorar a mensagem",
+        "unexpectedResponse": "Resposta inesperada",
+        "unexpectedResponseMessage": "A IA retornou um formato não reconhecido",
+        "process": "Erro ao processar jobs",
+        "createFailed": "Falha ao criar agendamento",
+        "updateFailed": "Falha ao atualizar agendamento"
+      }
+    },
+    "affiliatePrograms": {
+      "title": "Programas de Afiliado",
+      "subtitle": "Configure suas credenciais para gerar links de afiliado automaticamente",
+      "loading": "Carregando...",
+      "programs": {
+        "shopee": "Shopee",
+        "mercadoLivre": "Mercado Livre",
+        "amazon": "Amazon Associates",
+        "magalu": "Magazine Luiza",
+        "shein": "Shein",
+        "aliexpress": "AliExpress",
+        "awin": "Awin"
+      },
+      "descriptions": {
+        "shopee": "Configure suas credenciais da API de Afiliados Shopee",
+        "amazon": "Configure suas credenciais da Amazon Product Advertising API",
+        "magalu": "Configure seu link de loja parceira Magazine Você",
+        "ml": "Conecte com o token da extensão. O sistema salva a sessão criptografada no backend.",
+        "shein": "Cole seu link de afiliado Shein (formato: https://onelink.shein.com/...)",
+        "aliexpress": "Configure suas credenciais do AliExpress Affiliate Program",
+        "awin": "Configure suas credenciais do Awin"
+      },
+      "comingSoon": "Em breve",
+      "comingSoonDesc": "Em breve você poderá conectar o {{store}} aqui.",
+      "comingSoonNote": "No momento Shopee e Mercado Livre estão disponíveis para geração automática de links de afiliado.",
+      "status": {
+        "active": "Ativo",
+        "incomplete": "Incompleto"
+      },
+      "form": {
+        "appId": "App ID",
+        "appIdPlaceholder": "12345",
+        "password": "Password",
+        "tag": "Tag (etiqueta)",
+        "tagPlaceholder": "soed324928",
+        "accessKey": "Access Key",
+        "accessKeyPlaceholder": "AKIAIOSFODNN7EXAMPLE",
+        "secretKey": "Secret Key",
+        "partnerStore": "Loja Parceiro",
+        "partnerStorePlaceholder": "magazinevoce.com.br/sualoja",
+        "affiliateLink": "Link de Afiliado",
+        "affiliateLinkPlaceholder": "https://onelink.shein.com/...",
+        "trackingId": "Tracking ID",
+        "trackingIdPlaceholder": "default",
+        "appKey": "App Key",
+        "awinId": "Awin ID",
+        "awinIdPlaceholder": "Exemplo: 123457",
+        "oauth2Token": "Awin OAuth2 Token",
+        "oauth2TokenPlaceholder": "Exemplo: a12b3c4-d5e6-f890-123a-b4c567890f12",
+        "save": "Salvar",
+        "test": "Testar",
+        "autoGenerate": "Gerar link automaticamente"
+      },
+      "sales": {
+        "thousandsSold": "+{{count}} mil vendidos",
+        "unitsSold": "+{{count}} vendidos"
+      },
+      "ml": {
+        "connectionToken": "Token da extensão (MVP)",
+        "connectionTokenPlaceholder": "Cole aqui o token gerado pela extensão (MLCRED_V1:...)",
+        "validateToken": "Validar token",
+        "tokenValidated": "Token validado",
+        "tokenValidatedMessage": "Token OK. Agora é só salvar para conectar.",
+        "tokenInvalid": "Token inválido",
+        "extensionNote": "A extensão evita abrir DevTools. O backend salva a sessão criptografada e pode obter o CSRF automaticamente.",
+        "securityNote": "Por segurança, o token não fica salvo no painel. Cole novamente apenas se precisar reconectar (sessão expirou).",
+        "testProductUrl": "URL do produto para testar (não é salvo como requisito)",
+        "testProductUrlPlaceholder": "https://www.mercadolivre.com.br/.../p/MLB...",
+        "testProductUrlHint": "Dica: use a URL \"origin_url\" (sem #fragment).",
+        "testResult": "Resultado do teste",
+        "noTitlePrice": "(Preview sem título/preço para essa URL)",
+        "shortUrl": "Short:",
+        "longUrl": "Long:",
+        "sold": "vendidos",
+        "off": "OFF",
+        "from": "De:",
+        "connectedSuccess": "Mercado Livre conectado com sucesso!",
+        "updatedSuccess": "Mercado Livre atualizado com sucesso!",
+        "testSuccess": "Mercado Livre OK",
+        "linkGenerated": "Link gerado com sucesso."
+      },
+      "shein": {
+        "linkHint": "Não é necessário configurar ID. Cole seu link direto no formato https://onelink.shein.com/",
+        "invalidLink": "Link inválido",
+        "invalidLinkMessage": "O link da Shein deve começar com https://onelink.shein.com/"
+      },
+      "awin": {
+        "selectBrands": "Selecione as marcas que deseja usar:",
+        "brandsSelected": "{{count}} marca(s) selecionada(s)"
+      },
+      "success": {
+        "saved": "Credenciais salvas com sucesso!",
+        "validated": "Credenciais validadas",
+        "validatedMessage": "As credenciais do {{store}} foram verificadas. A validação completa ocorrerá no primeiro uso.",
+        "deleted": "Credencial excluída"
+      },
+      "errors": {
+        "load": "Erro ao carregar credenciais",
+        "save": "Erro ao salvar",
+        "saveUnknown": "Erro desconhecido",
+        "authError": "Erro de autenticação",
+        "authErrorMessage": "Usuário não autenticado",
+        "credentialNotFound": "Erro",
+        "credentialNotFoundMessage": "Credencial não encontrada",
+        "tokenRequired": "Token obrigatório",
+        "tokenRequiredMessage": "Cole o token da extensão para conectar o Mercado Livre pela primeira vez.",
+        "tagRequired": "Tag obrigatória",
+        "tagRequiredMessage": "Informe a Tag (etiqueta) para salvar.",
+        "fieldsRequired": "Campos obrigatórios",
+        "fieldsRequiredMessage": "Informe a Tag e cole um token válido da extensão.",
+        "fillAllFields": "Preencha todos os campos",
+        "connectFirst": "Conecte o Mercado Livre e salve antes de testar",
+        "testUrlRequired": "Informe uma URL de produto para testar",
+        "testError": "Erro no teste",
+        "testErrorMessage": "Verifique se as credenciais estão corretas.",
+        "saveFailed": "Falha ao salvar credencial"
+      }
+    },
+    "offerAutomations": {
+      "title": "Divulgações de IA",
+      "subtitle": "Busca e monitoramento de promoções com IA",
+      "automationsCount": "automações",
+      "tabs": {
+        "search": "Busca",
+        "monitor": "Monitor",
+        "list": "Lista"
+      },
+      "modes": {
+        "search": "Busca de Promoções",
+        "monitor": "Monitoramento",
+        "list": "Lista de links"
+      },
+      "newAutomation": "Nova Automação",
+      "editTitle": "Editar Automação",
+      "createTitle": "Nova Automação",
+      "noAutomations": "Nenhuma automação criada ainda",
+      "createFirst": "Criar Primeira Automação",
+      "listTitle": "Automações",
+      "listDescription": "{{count}} automação(ões) configurada(s) • Limite: {{max}}",
+      "whatsappDisconnected": "WhatsApp desconectado — envios pausados. Conecte em WhatsApp.",
+      "form": {
+        "name": "Nome da Automação",
+        "namePlaceholder": "Ex: Promoções Eletrônicos",
+        "mode": "Modo de Automação",
+        "platform": "Plataforma",
+        "searchTerm": "Termo de busca",
+        "searchTermPlaceholder": "Ex: smartphone",
+        "minDiscount": "Desconto Mínimo (%)",
+        "minPrice": "Preço Mínimo (R$)",
+        "maxPrice": "Preço Máximo (R$)",
+        "groups": "Grupos de destino",
+        "monitorGroups": "Grupos a Monitorar (até 3) *",
+        "sendGroups": "Grupos para Enviar",
+        "sendGroupsHint": "Selecione até {{max}} grupos.",
+        "searchGroups": "Buscar grupos...",
+        "groupsSelected": "grupos selecionados",
+        "stores": "Lojas",
+        "categories": "Categorias",
+        "categoriesHint": "Selecione pelo menos 1. Use \"{{general}}\" para não filtrar por categoria.",
+        "toggleRefinement": "Abrir/fechar refinamento de {{category}}",
+        "priority": "Prioridade",
+        "filterType": "Tipo de Filtro",
+        "dispatchText": "Texto de Disparo (opcional)",
+        "dispatchTextHint": "Se selecionar um Texto de Disparo, ele substitui o texto padrão do envio e você pode usar variáveis como {nome_produto} e {preco}.",
+        "dispatchTextActive": "Você selecionou um Texto de Disparo. O bloco \"Textos da Mensagem\" não é usado nesse modo.",
+        "noDispatchTexts": "Você ainda não criou nenhum.",
+        "createNow": "Criar agora",
+        "useDefault": "Usar padrão do sistema",
+        "systemDefault": "Padrão do sistema",
+        "interval": "Intervalo de Execução (minutos)",
+        "delay": "Delay para envio",
+        "delayHint": "Tempo de espera antes de reenviar a mensagem convertida. Ex: 10 minutos = 600s.",
+        "coupon": "Cupom Promocional (Opcional)",
+        "couponHint": "Selecione um cupom para incluir nas ofertas enviadas",
+        "couponActive": "O cupom será incluído automaticamente nas mensagens de ofertas",
+        "noCoupon": "Nenhum cupom",
+        "active": "Ativa",
+        "startTime": "Horário de Início",
+        "endTime": "Horário de Término",
+        "texts": "Textos da Mensagem (até 3)",
+        "textPlaceholder": "Ex: 🔥 Oferta imperdível!",
+        "generating": "Gerando...",
+        "suggestWithAI": "✨ Sugerir com IA",
+        "ctas": "CTAs (chamadas para ação)",
+        "listLinks": "Lista de links",
+        "linkList": "Lista de links (ML) *",
+        "selectList": "Selecione uma lista",
+        "noListsFound": "Nenhuma lista ativa encontrada",
+        "linkListHint": "Dica: crie/gerencie suas listas em Listas de links. Se a lista ficar sem links disponíveis, a automação vai pular o envio e registrar no Log.",
+        "listModeInfo": "O modo Lista consome links sequencialmente e dispara para os grupos. A loja é fixa: Mercado Livre.",
+        "listModeStoreInfo": "No modo Lista, a loja é fixa: Mercado Livre. Os links são convertidos para afiliado no envio.",
+        "monitorModeStoreHint": "No modo Monitoramento, por enquanto só suportamos conversão automática para Shopee.",
+        "configureCredentials": "Configure credenciais para ativar",
+        "itemsPerRun": "Itens por execução",
+        "includeImage": "Incluir imagem",
+        "textProcessing": "Processamento de Texto (Monitoramento)",
+        "textProcessingHint": "Personalize a mensagem original antes de enviar para os grupos de destino.",
+        "prefix": "Prefixo (topo)",
+        "prefixPlaceholder": "Ex: PromoZap:",
+        "suffix": "Sufixo (final)",
+        "suffixPlaceholder": "Ex: Aproveite!",
+        "removeMentions": "Remover @menções",
+        "removePhones": "Remover telefones",
+        "removeTerms": "Remover termos/padrões (1 por linha)",
+        "removeTermsPlaceholder": "Ex:\n@canal\nre:cupom\\s*:\\s*\\w+",
+        "removeTermsHint": "Dica: use re: para regex. Ex: re:@\\w+",
+        "substitutions": "Substituições",
+        "fromPlaceholder": "De (ex: Achados da Ana)",
+        "toPlaceholder": "Para (ex: PromoZap)",
+        "affiliateCredentialsHint": "Configure suas credenciais em Programas de Afiliado para gerar links automaticamente.",
+        "createAndActivate": "Criar e Ativar"
+      },
+      "priorities": {
+        "discount": "Maior Desconto (%)",
+        "price": "Maior Economia (R$)",
+        "commission": "Maior Comissão (%)"
+      },
+      "filterTypes": {
+        "light": "Leve (mais variedade)",
+        "heavy": "Pesado (mais seletivo)"
+      },
+      "table": {
+        "title": "Minhas Automações",
+        "name": "Nome",
+        "platform": "Plataforma",
+        "status": "Status",
+        "lastRun": "Última execução",
+        "actions": "Ações",
+        "headers": {
+          "name": "Nome",
+          "mode": "Modo",
+          "stores": "Lojas",
+          "intervalDelay": "Intervalo / Delay",
+          "window": "Janela",
+          "status": "Status",
+          "nextRun": "Próxima",
+          "actions": "Ações"
+        },
+        "storeCount_one": "{{count}} loja",
+        "storeCount_other": "{{count}} lojas",
+        "reactive": "Reativo",
+        "delayMinutes": "{{value}} min (Delay)",
+        "delaySeconds": "{{value}} seg (Delay)",
+        "intervalMinutes": "{{value}} min",
+        "nextRunLabel": "Próxima:"
+      },
+      "status": {
+        "active": "Ativa",
+        "paused": "Pausada",
+        "error": "Com erro"
+      },
+      "actions": {
+        "run": "Executar agora",
+        "pause": "Pausar",
+        "resume": "Retomar",
+        "edit": "Editar automação",
+        "editShort": "Editar",
+        "preview": "Visualizar ofertas",
+        "previewShort": "Ver",
+        "runNow": "Executar agora",
+        "runNowShort": "Rodar",
+        "resetHistory": "Resetar histórico de envios (últimas 24h)",
+        "delete": "Excluir automação"
+      },
+      "preview": {
+        "title": "Ofertas Encontradas - Shopee",
+        "loading": "Buscando ofertas...",
+        "empty": "Nenhuma oferta encontrada",
+        "emptyHint": "Tente ajustar os filtros da automação",
+        "productAlt": "Produto",
+        "productNoName": "Produto sem nome",
+        "commission": "Comissão: {{value}}%",
+        "viewProduct": "Ver produto →"
+      },
+      "empty": "Você ainda não criou nenhuma automação.",
+      "storesInactive": "Algumas lojas estão inativas. Para ativá-las, configure suas credenciais em",
+      "validation": {
+        "requiredFields": "Campos obrigatórios",
+        "requiredFieldsMessage": "Preencha nome e grupos de envio.",
+        "storesRequired": "Lojas obrigatórias",
+        "storesRequiredMessage": "Selecione pelo menos 1 loja.",
+        "monitorGroupsRequired": "Grupos para monitorar",
+        "monitorGroupsRequiredMessage": "Selecione até 3 grupos para monitorar.",
+        "categoriesRequired": "Categorias obrigatórias",
+        "categoriesRequiredMessage": "Selecione pelo menos 1 categoria.",
+        "invalidConfiguration": "Configuração inválida",
+        "conflictingGroupsMessage": "Um grupo não pode ser monitorado e receber mensagens ao mesmo tempo. Remova o grupo conflitante de uma das listas.",
+        "groupsLimit": "Limite de grupos",
+        "groupsLimitMessage": "Você pode selecionar no máximo {{max}} grupos.",
+        "maxMonitorGroups": "Limite de grupos atingido",
+        "maxMonitorGroupsMessage": "Você pode monitorar no máximo 3 grupos por automação.",
+        "shopeeOnly": "Apenas Shopee",
+        "shopeeOnlyMessage": "Visualização de ofertas disponível apenas para Shopee"
+      },
+      "limits": {
+        "automationsReached": "Limite de automações atingido",
+        "automationsReachedMessage": "Você já possui {{count}} automações. Seu limite atual é {{max}}. Apague uma automação ou fale com o suporte para aumentar seu limite.",
+        "reachedMessage": "Você atingiu o limite de {{max}} automações no seu plano. Apague uma automação para criar outra, ou fale com o suporte para aumentar seu limite.",
+        "nearMessage": "Você está perto do limite ({{count}}/{{max}}). Se precisar, apague automações antigas."
+      },
+      "success": {
+        "created": "Automação criada com sucesso!",
+        "updated": "Automação atualizada com sucesso!",
+        "deleted": "Automação excluída",
+        "started": "Automação iniciada",
+        "paused": "Automação pausada",
+        "activated": "Automação ativada!",
+        "resumed": "Automação retomada!",
+        "executed": "Automação executada com sucesso!",
+        "diagnosticOk": "Diagnóstico OK",
+        "historyReset": "Histórico resetado com sucesso!",
+        "historyResetMessage": "O histórico de ofertas foi limpo.",
+        "textsSuggested": "Textos sugeridos!",
+        "textsSuggestedMessage": "Os textos foram gerados e adicionados ao formulário.",
+        "addedFavorite": "Adicionado aos favoritos",
+        "addedFavoriteMessage": "{{name}} foi adicionado aos favoritos.",
+        "removedFavorite": "Removido dos favoritos",
+        "removedFavoriteMessage": "{{name}} foi removido dos favoritos."
+      },
+      "confirm": {
+        "delete": "Tem certeza que deseja excluir esta automação?",
+        "resetHistory": "Tem certeza que deseja resetar o histórico da automação {{name}}? Isso permitirá que ofertas já enviadas sejam enviadas novamente."
+      },
+      "errors": {
+        "load": "Erro ao carregar automações",
+        "loadAutomations": "Erro ao carregar automações",
+        "loadAutomationsMessage": "Não foi possível carregar as automações.",
+        "save": "Erro ao salvar automação",
+        "saveMessage": "Não foi possível salvar a automação.",
+        "delete": "Erro ao excluir automação",
+        "run": "Erro ao executar automação",
+        "execute": "Erro ao executar automação",
+        "executeFailed": "Falha ao executar a automação.",
+        "alreadyRunning": "Automação já em execução",
+        "favoriteUpdate": "Erro ao atualizar favorito",
+        "resetHistory": "Erro ao resetar histórico",
+        "resetHistoryMessage": "Não foi possível resetar o histórico.",
+        "fetchOffers": "Erro ao buscar ofertas",
+        "adjustFilters": "Ajuste os filtros e tente novamente.",
+        "noOffersFound": "Nenhuma oferta encontrada",
+        "suggestTexts": "Erro ao sugerir textos"
+      }
+    }
+  },
+  "admin": {
+    "title": "Painel Administrativo",
+    "subtitle": "Gerencie usuários, planos, equipe e configurações",
+    "tabs": {
+      "dashboard": "Dashboard",
+      "users": "Usuários",
+      "plans": "Planos",
+      "categories": "Categorias",
+      "team": "Equipe",
+      "emails": "E-mails",
+      "settings": "Config"
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "stats": {
+        "totalUsers": "Total de Usuários",
+        "activeUsers": "Usuários Ativos",
+        "inactiveUsers": "inativos",
+        "activeLast30Days": "Ativos nos últimos 30 dias",
+        "contractedPlans": "Planos Contratados",
+        "differentPlans": "Diferentes planos ativos"
+      },
+      "loadBalancer": {
+        "title": "Load Balancer (WAHA)",
+        "description": "Usuários por servidor (capacidade e uso)",
+        "refresh": "Atualizar",
+        "refreshing": "Atualizando...",
+        "forceWebhooks": "Forçar Webhooks (Srv2)",
+        "forcing": "Forçando...",
+        "summary": "Resumo",
+        "server": "Servidor",
+        "url": "URL",
+        "users": "Usuários",
+        "waha": "WAHA",
+        "slots": "Slots",
+        "usage": "Uso",
+        "capacityLimitTitle": "Capacidade do Load Balancer no limite",
+        "capacityLimitDesc": "Os servidores atingiram (ou passaram) a capacidade planejada. Novos usuários podem ser alocados mesmo assim (fallback), mas isso tende a aumentar erros/instabilidade. Considere aumentar a capacidade no Admin → Settings → Load Balancer, ou adicionar mais servidores.",
+        "nearLimitTitle": "Atenção: Load Balancer acima de 80%",
+        "nearLimitDesc": "A capacidade planejada está alta (≥80%). Recomendo já preparar expansão (aumentar capacidade no Admin → Settings → Load Balancer, ou adicionar mais servidores) para evitar bater 100%.",
+        "unavailable": "Não foi possível carregar os dados do load balancer agora.",
+        "loadError": "Falha ao carregar stats do load balancer",
+        "forceWebhooksError": "Erro ao forçar webhooks do servidor 2",
+        "forceWebhooksSuccess": "Webhooks (Srv2): ok {{ok}}/{{total}} • falhas {{fail}}",
+        "unavailableShort": "indisp.",
+        "forceWebhooksTitle": "Força a configuração de webhook nas instâncias mapeadas no Servidor 2",
+        "wahaLabels": "open/connecting/close/total"
+      },
+      "observability": {
+        "title": "Observabilidade (Operação)",
+        "description": "Fila, envios recentes, automações e grupos",
+        "generatedAt": "Gerado em",
+        "queue": {
+          "title": "Fila (queued)",
+          "waiting": "waiting",
+          "delayed": "delayed"
+        },
+        "workers": {
+          "title": "Workers (active)",
+          "concurrency": "conc."
+        },
+        "sendLimit": {
+          "title": "Limite envio",
+          "perMinute": "por minuto"
+        },
+        "estimatedWait": {
+          "title": "Espera estimada",
+          "minutes": "minutos"
+        },
+        "automations": {
+          "title": "Automações",
+          "active": "ativas"
+        },
+        "usersAutomations": {
+          "title": "Usuários (automações)",
+          "withAutomation": "com automação",
+          "active": "ativas"
+        },
+        "groups": {
+          "title": "Grupos",
+          "total": "total cadastrado"
+        },
+        "avgGroups": {
+          "title": "Média grupos/automação",
+          "slots": "slots @g.us"
+        },
+        "lbMapped": {
+          "title": "LB (map.)",
+          "capacity": "cap."
+        },
+        "sends": {
+          "title": "Envios (últimos {{minutes}}min)",
+          "total": "Total"
+        },
+        "topErrors": {
+          "title": "Top erros",
+          "quantity": "Qtde",
+          "noErrors": "Sem erros no período"
+        },
+        "topUsers": {
+          "title": "Usuários que mais usam (agora)",
+          "description": "Top 10 por volume nos últimos {{minutes}}min",
+          "user": "User",
+          "sent": "sent",
+          "queued": "queued",
+          "skipped": "skipped",
+          "error": "error",
+          "noData": "Sem dados no período"
+        },
+        "topByGroups": {
+          "title": "Top por grupos",
+          "automations": "automações",
+          "groupsSlots": "grupos (slots)",
+          "noData": "Sem dados"
+        },
+        "unavailable": "Não foi possível carregar as métricas agora.",
+        "loadError": "Falha ao carregar observabilidade"
+      },
+      "shopeeAudit": {
+        "title": "Auditoria Shopee (Afiliados)",
+        "description": "Verifica possíveis inconsistências de afiliado (mmp_pid/af_siteid) vs appID do usuário.",
+        "days": "Dias",
+        "scanned": "Scaneados",
+        "withIdentifier": "Com mmp/af",
+        "mismatch": "Mismatch",
+        "noQuery": "Sem query",
+        "noShopeeCredentials": "Sem cred Shopee",
+        "mismatchSamples": "Amostras (mismatch)",
+        "date": "Data",
+        "user": "Usuário",
+        "expected": "Esperado",
+        "actual": "Atual",
+        "automation": "Automação",
+        "noMismatch": "Nenhum mismatch detectado nos últimos {{days}} dias (para links que expõem mmp_pid/af_siteid).",
+        "noData": "Não foi possível carregar a auditoria agora. Tente novamente.",
+        "shortLinkNote": "Observação: short links (ex: s.shopee.com.br) não exibem mmp_pid na URL, então entram como \"Sem query\".",
+        "loadError": "Falha ao carregar auditoria Shopee"
+      },
+      "charts": {
+        "userGrowth": {
+          "title": "Crescimento de Usuários",
+          "last7Days": "Últimos 7 dias",
+          "users": "Usuários"
+        },
+        "planDistribution": {
+          "title": "Distribuição por Plano",
+          "description": "Usuários por tipo de plano"
+        }
+      },
+      "webhook": {
+        "urlTitle": "URL do Webhook Kiwify",
+        "urlDescription": "Configure esta URL no painel da Kiwify para receber eventos automáticos",
+        "copySuccess": "URL copiada para área de transferência!",
+        "configureToken": "Configure o token de segurança nas configurações e use o mesmo token no painel da Kiwify.",
+        "badges": {
+          "cancelled": "Cancelada",
+          "overdue": "Atrasada"
+        },
+        "simulator": {
+          "title": "Simulador de Webhooks",
+          "description": "Teste o processamento de webhooks sem precisar fazer uma compra real",
+          "email": "Email do Usuário",
+          "emailPlaceholder": "usuario@exemplo.com",
+          "event": "Evento",
+          "eventPlaceholder": "Selecione o evento",
+          "product": "Produto",
+          "productPlaceholder": "Selecione o plano",
+          "simulate": "Simular Webhook",
+          "success": "Webhook simulado com sucesso!",
+          "error": "Erro ao simular webhook",
+          "tokenNotConfigured": "Token do webhook não configurado",
+          "fillEmailAndEvent": "Por favor, preencha email e evento"
+        },
+        "events": {
+          "approved": "Assinatura Aprovada",
+          "renewed": "Assinatura Renovada",
+          "cancelled": "Assinatura Cancelada",
+          "overdue": "Assinatura Atrasada",
+          "expired": "Assinatura Expirada"
+        },
+        "plans": {
+          "starter": "Plano Starter",
+          "pro": "Plano Pro",
+          "master": "Plano Master"
+        },
+        "lastEvents": {
+          "title": "Últimos Eventos Processados",
+          "description": "Histórico dos 10 últimos webhooks recebidos",
+          "noEvents": "Nenhum evento processado ainda",
+          "dateTime": "Data/Hora",
+          "plan": "Plano"
+        }
+      }
+    },
+    "users": {
+      "title": "Gerenciamento de Usuários",
+      "description": "Visualize e gerencie todos os usuários da plataforma",
+      "addUser": "Adicionar Usuário",
+      "add": "Adicionar",
+      "search": "Buscar por email ou telefone...",
+      "searchPlaceholder": "Buscar por email ou telefone...",
+      "noUsers": "Nenhum usuário encontrado",
+      "showingUsers": "Mostrando {{from}} a {{to}} de {{total}} usuários",
+      "registration": "Cadastro",
+      "automationLimit": "Limite automações",
+      "automationLimitDefault": "Vazio = padrão do sistema",
+      "automationLimitPlaceholder": "(padrão)",
+      "validation": {
+        "invalidEmail": "Email inválido",
+        "passwordMinLength": "Senha deve ter no mínimo 6 caracteres"
+      },
+      "statusFilter": "Filtro de status",
+      "call": "Chamar",
+      "makeAdmin": "Tornar Admin",
+      "removeAdmin": "Remover Admin",
+      "columns": {
+        "email": "Email",
+        "phone": "Telefone",
+        "plan": "Plano",
+        "automationLimit": "Limite automações",
+        "status": "Status",
+        "registration": "Cadastro",
+        "actions": "Ações"
+      },
+      "pagination": {
+        "showing": "Mostrando {{from}} a {{to}} de {{total}} usuários"
+      },
+      "actions": {
+        "details": "Detalhes",
+        "viewDetails": "Ver detalhes",
+        "call": "Chamar",
+        "makeAdmin": "Tornar Admin",
+        "revokeAdmin": "Remover Admin"
+      },
+      "dialog": {
+        "createTitle": "Criar Novo Usuário",
+        "createDescription": "Preencha os dados para criar um novo usuário manualmente",
+        "emailRequired": "Email *",
+        "passwordRequired": "Senha *",
+        "passwordHint": "Mínimo 6 caracteres",
+        "phoneLabel": "Telefone (WhatsApp)",
+        "planRequired": "Plano *",
+        "createButton": "Criar Usuário",
+        "creating": "Criando..."
+      },
+      "details": {
+        "title": "Detalhes do usuário",
+        "loading": "Carregando detalhes...",
+        "noData": "Nenhum detalhe carregado",
+        "quickActions": "Ações Rápidas",
+        "tabs": {
+          "profile": "Perfil",
+          "whatsapp": "WhatsApp",
+          "automations": "Automações",
+          "logs": "Logs"
+        },
+        "profile": {
+          "title": "Perfil",
+          "id": "ID",
+          "email": "Email",
+          "plan": "Plano",
+          "billingStatus": "Status cobrança",
+          "suspended": "SUSPENSO",
+          "ok": "OK",
+          "reason": "Motivo",
+          "type": "Tipo",
+          "whatsapp": "WhatsApp",
+          "admin": "Admin",
+          "automationLimit": "Limite automações",
+          "default": "padrão",
+          "registration": "Cadastro",
+          "loadBalancer": "Servidor (Load Balancer)",
+          "stickyMapping": "Mapeamento sticky em",
+          "current": "Atual",
+          "update": "Atualizar",
+          "updating": "Atualizando...",
+          "targetServer": "Servidor destino",
+          "server": "Servidor",
+          "migrateUser": "Migrar usuário",
+          "migrating": "Migrando..."
+        },
+        "instances": {
+          "title": "Instâncias WhatsApp",
+          "found": "{{count}} encontrada(s)",
+          "noInstances": "Nenhuma instância"
+        },
+        "automations": {
+          "title": "Automações",
+          "total": "Total",
+          "active": "Ativas",
+          "paused": "Pausadas",
+          "noAutomations": "Nenhuma automação",
+          "showing": "Mostrando 50 de {{total}} automações.",
+          "showingLimit": "Mostrando 50 de {{count}} automações.",
+          "noName": "(sem nome)",
+          "columns": {
+            "name": "Nome",
+            "status": "Status",
+            "interval": "Intervalo",
+            "window": "Janela",
+            "next": "Próxima"
+          }
+        },
+        "logs": {
+          "title": "Logs do sistema",
+          "description": "Eventos leves (admin) para investigar problemas por usuário/instância",
+          "window": "Janela (min)",
+          "load": "Carregar",
+          "hint": "Dica: para ver \"not_found / auto-heal\", abra o WhatsApp do usuário e clique em \"Verificar status\".",
+          "noLogs": "Nenhum log no período (ou ainda não gerou eventos).",
+          "columns": {
+            "when": "Quando",
+            "level": "Nível",
+            "scope": "Escopo",
+            "message": "Mensagem",
+            "instance": "Instância"
+          }
+        },
+        "actions": {
+          "block": "Bloquear",
+          "unblock": "Desbloquear",
+          "activatePaused": "Ativar pausadas",
+          "activateAndSpread": "Ativar + espalhar",
+          "pause": "Pausar",
+          "resetPassword": "Resetar senha",
+          "blockType": {
+            "label": "Tipo",
+            "payment": "Falta de pagamento (libera automático)",
+            "manual": "Outro/Manual (só admin libera)"
+          },
+          "blockReason": {
+            "label": "Motivo",
+            "placeholder": "ex: reembolso antigo / chargeback"
+          },
+          "spreadMinutes": "Espalhar (min)",
+          "rescheduleNextRun": "Reagendar next_run",
+          "noActiveAutomations": "Nenhuma automação ativa para reagendar",
+          "unblockTitle": "Libera o acesso do usuário (automações continuam pausadas)",
+          "blockTitle": "Bloqueia a conta do usuário e pausa todas as automações",
+          "activatePausedTitle": "Ativa todas as automações que estão pausadas",
+          "activateAndSpreadTitle": "Ativa pausadas e também espalha o next_run_at",
+          "resetPasswordTitle": "Gera uma nova senha temporária e envia por email"
+        }
+      },
+      "errors": {
+        "loadError": "Erro ao carregar usuários",
+        "filterError": "Erro ao filtrar usuários",
+        "createError": "Erro ao criar usuário",
+        "noWhatsApp": "Usuário não possui número de WhatsApp",
+        "emailAlreadyRegistered": "Este email já está cadastrado no sistema",
+        "promoteError": "Erro ao promover admin",
+        "revokeError": "Erro ao remover admin",
+        "cannotRemoveOwnAdmin": "Você não pode remover seu próprio admin.",
+        "updateLimitError": "Erro ao atualizar limite",
+        "blockError": "Erro ao bloquear conta. Verifique se as migrations de billing já foram aplicadas.",
+        "unblockError": "Erro ao desbloquear conta",
+        "resetPasswordError": "Erro ao resetar senha",
+        "cannotBlockOwnAccount": "Você não pode bloquear sua própria conta.",
+        "cannotResetOwnPassword": "Você não pode resetar sua própria senha.",
+        "loadDetailsError": "Erro ao carregar detalhes do usuário",
+        "systemEventsError": "Erro ao buscar logs do sistema",
+        "migrateError": "Erro ao migrar usuário",
+        "pauseError": "Erro ao pausar automações",
+        "activateError": "Erro ao ativar automações",
+        "rescheduleError": "Erro ao reagendar next_run_at",
+        "invalidServer": "Selecione um servidor válido",
+        "createNotAvailable": "Criacao de usuarios nao esta disponivel no momento. Aguarde a implementacao do endpoint.",
+        "adminNotAvailable": "Gerenciamento de administradores nao esta disponivel no momento.",
+        "bulkActionsNotAvailable": "Acoes em lote nao estao disponiveis no momento. Aguarde a implementacao dos endpoints."
+      },
+      "success": {
+        "created": "Usuário criado com sucesso!",
+        "promoted": "Usuário promovido a admin",
+        "revoked": "Permissão de admin removida",
+        "adminGranted": "Permissão de admin concedida",
+        "adminRevoked": "Permissão de admin removida",
+        "limitUpdated": "Limite atualizado",
+        "blocked": "Conta bloqueada e automações pausadas",
+        "unblocked": "Conta desbloqueada",
+        "passwordReset": "Senha resetada! Email enviado para {{email}}.",
+        "tempPassword": "Senha temporária: {{password}}",
+        "tempPasswordHint": "Copie esta senha para informar ao usuário se necessário",
+        "migrated": "Usuário migrado para servidor {{server}}",
+        "paused": "Automações ativas pausadas",
+        "activated": "Automações pausadas ativadas",
+        "automationsPaused": "{{count}} automação(ões) pausada(s)",
+        "automationsActivated": "{{count}} automação(ões) ativada(s)",
+        "scheduleSpread": "Reagendado next_run_at de {{count}} automação(ões) (a cada {{minutes}} min)",
+        "rescheduled": "Reagendado next_run_at de {{count}} automação(ões) (a cada {{minutes}} min)"
+      },
+      "confirm": {
+        "block": "Bloquear a conta deste usuário?\n\n{{email}}\n\nIsso vai pausar todas as automações e impedir ações na plataforma.",
+        "unblock": "Desbloquear a conta deste usuário?\n\n{{email}}\n\nAs automações continuarão pausadas (você pode ativar manualmente).",
+        "resetPassword": "Resetar a senha deste usuário?\n\n{{email}}\n\nUma nova senha temporária será gerada e enviada por email.",
+        "removeAdmin": "Tem certeza que deseja remover {{email}} da equipe de administradores?",
+        "migrate": "Migrar este usuário para o servidor {{server}}?\n\nIsso muda o roteamento (user_servers). Para o WhatsApp efetivamente ir para o novo servidor, normalmente você precisa deletar a instância no servidor antigo e o usuário reconectar (QR)."
+      }
+    },
+    "plans": {
+      "title": "Gerenciamento de Planos",
+      "description": "Configure planos e conecte com produtos da Kiwify",
+      "newPlan": "Novo Plano",
+      "noPlans": "Nenhum plano cadastrado",
+      "noMonthlyPrice": "Sem preço mensal",
+      "perMonth": "mês",
+      "tableAriaLabel": "Tabela de planos",
+      "editAriaLabel": "Editar plano {{name}}",
+      "deleteAriaLabel": "Excluir plano {{name}}",
+      "kiwifyLabels": {
+        "monthly": "Mensal",
+        "semester": "Semestral",
+        "semesterShort": "Sem",
+        "annual": "Anual"
+      },
+      "columns": {
+        "name": "Nome",
+        "monthlyPrice": "Preço Mensal",
+        "kiwifyIds": "IDs Kiwify",
+        "groups": "Grupos",
+        "storage": "Armazenamento",
+        "status": "Status",
+        "actions": "Ações"
+      },
+      "dialog": {
+        "editTitle": "Editar Plano",
+        "createTitle": "Novo Plano",
+        "description": "Configure as informações do plano e conecte com os produtos da Kiwify",
+        "planName": "Nome do Plano",
+        "slug": "Slug",
+        "monthlyPrice": "Preço Mensal (R$)",
+        "semesterPrice": "Preço Semestral (R$)",
+        "annualPrice": "Preço Anual (R$)",
+        "priceHint": "Deixe vazio se não houver plano {{period}}",
+        "groupLimit": "Limite de Grupos",
+        "storageLimit": "Armazenamento (bytes)",
+        "features": "Funcionalidades (uma por linha)",
+        "featuresPlaceholder": "Acesso básico\n5 grupos\nSuporte prioritário",
+        "kiwifyLinks": {
+          "title": "Links da Kiwify (Opcional)",
+          "description": "Vincule os links de checkout da Kiwify para que o sistema identifique automaticamente qual plano atribuir quando uma compra for aprovada.",
+          "howToFind": {
+            "title": "Como encontrar o código do link:",
+            "step1": "Na Kiwify, vá em Produtos → Editar Produto → Aba \"Links\"",
+            "step2": "Copie o link completo (ex: https://pay.kiwify.com.br/SeNH87h)",
+            "step3": "O código é a parte final: SeNH87h"
+          },
+          "monthlyId": "ID do Link Mensal",
+          "semesterId": "ID do Link Semestral",
+          "annualId": "ID do Link Anual",
+          "placeholder": "Ex: {{example}} ou https://pay.kiwify.com.br/{{example}}",
+          "hint": "Cole o link completo ou apenas o código",
+          "tip": "Você pode colar o link completo (com https://...) que o sistema vai extrair o código automaticamente. Ou cole apenas o código (ex: SeNH87h)."
+        },
+        "savePlan": "Salvar Plano"
+      },
+      "periods": {
+        "monthly": "mensal",
+        "semester": "semestral",
+        "annual": "anual"
+      },
+      "errors": {
+        "loadError": "Erro ao carregar planos",
+        "nameRequired": "O nome do plano é obrigatório",
+        "slugRequired": "O slug do plano é obrigatório",
+        "atLeastOnePrice": "É necessário preencher pelo menos um preço (Mensal, Semestral ou Anual)",
+        "kiwifyIdRequired": "É necessário informar o ID do link Kiwify para o plano {{period}}",
+        "saveError": "Erro ao salvar plano",
+        "createError": "Erro ao criar plano",
+        "updateError": "Erro ao atualizar plano",
+        "deleteError": "Erro ao excluir plano",
+        "serviceNotAvailable": "Serviço de planos não está disponível. Aguarde a implementação do backend."
+      },
+      "success": {
+        "updated": "Plano atualizado com sucesso!",
+        "created": "Plano criado com sucesso!",
+        "deleted": "Plano excluído com sucesso!"
+      },
+      "confirm": {
+        "delete": "Tem certeza que deseja excluir este plano?"
+      }
+    },
+    "categories": {
+      "title": "Gerenciamento de Categorias",
+      "description": "Configure categorias e subcategorias de produtos para automações",
+      "newCategory": "Nova Categoria",
+      "noCategories": "Nenhuma categoria cadastrada",
+      "addSubcategory": "Adicionar subcategoria",
+      "noGroup": "Sem grupo",
+      "systemCategory": "Categoria do sistema (não pode ser excluída)",
+      "systemSubcategory": "Subcategoria do sistema (não pode ser excluída)",
+      "dialog": {
+        "createCategory": "Nova Categoria",
+        "editCategory": "Editar Categoria",
+        "createCategoryDescription": "Crie uma nova categoria para organizar automações",
+        "editCategoryDescription": "Edite as informações da categoria",
+        "createSubcategory": "Nova Subcategoria",
+        "editSubcategory": "Editar Subcategoria",
+        "parentCategory": "Categoria pai"
+      },
+      "form": {
+        "name": "Nome",
+        "namePlaceholder": "Ex: Eletrônicos",
+        "icon": "Ícone",
+        "iconPlaceholder": "Ex: monitor",
+        "iconHint": "Nome do ícone Lucide (ex: monitor, shirt, home)",
+        "selectIcon": "Selecione um ícone",
+        "searchIcon": "Buscar ícone...",
+        "noIconsFound": "Nenhum ícone encontrado",
+        "displayOrder": "Ordem de exibição",
+        "hasRefinements": "Permite subcategorias",
+        "hasRefinementsHint": "Ativa a seleção de subcategorias específicas",
+        "subcategoryNamePlaceholder": "Ex: Notebooks",
+        "groupName": "Nome do grupo",
+        "groupNamePlaceholder": "Ex: Computadores",
+        "groupNameHint": "Agrupa subcategorias relacionadas (opcional)",
+        "searchOrCreateGroup": "Buscar ou criar grupo...",
+        "useGroupName": "Usar",
+        "existingGroups": "Grupos existentes",
+        "displayKey": "Chave de exibição",
+        "displayKeyPlaceholder": "Ex: Eletrônicos - Computadores (Notebooks)",
+        "displayKeyHint": "Identificador único usado pelo backend. Gerado automaticamente.",
+        "translations": "Traduções",
+        "translationsHint": "Adicione traduções para outros idiomas (opcional)",
+        "preview": "Preview"
+      },
+      "errors": {
+        "nameRequired": "O nome é obrigatório",
+        "displayKeyRequired": "A chave de exibição é obrigatória",
+        "parentRequired": "A categoria pai é obrigatória",
+        "cannotDeleteSystem": "Categorias do sistema não podem ser excluídas",
+        "cannotDeleteSystemSubcategory": "Subcategorias do sistema não podem ser excluídas"
+      },
+      "confirm": {
+        "delete": "Tem certeza que deseja excluir esta categoria?",
+        "deleteSubcategory": "Tem certeza que deseja excluir esta subcategoria?"
+      },
+      "createSuccess": "Categoria criada com sucesso",
+      "updateSuccess": "Categoria atualizada com sucesso",
+      "deleteSuccess": "Categoria excluída com sucesso",
+      "createError": "Erro ao criar categoria",
+      "updateError": "Erro ao atualizar categoria",
+      "deleteError": "Erro ao excluir categoria",
+      "createSubcategorySuccess": "Subcategoria criada com sucesso",
+      "updateSubcategorySuccess": "Subcategoria atualizada com sucesso",
+      "deleteSubcategorySuccess": "Subcategoria excluída com sucesso",
+      "createSubcategoryError": "Erro ao criar subcategoria",
+      "updateSubcategoryError": "Erro ao atualizar subcategoria",
+      "deleteSubcategoryError": "Erro ao excluir subcategoria"
+    },
+    "team": {
+      "title": "Gerenciamento de Equipe",
+      "description": "Adicione e gerencie administradores do sistema",
+      "addAdmin": "Adicionar Admin",
+      "add": "Adicionar",
+      "noAdmins": "Nenhum administrador cadastrado",
+      "tableAriaLabel": "Tabela de administradores",
+      "removeAriaLabel": "Remover administrador {{email}}",
+      "columns": {
+        "email": "Email",
+        "role": "Cargo",
+        "addedAt": "Adicionado em",
+        "actions": "Ações"
+      },
+      "roles": {
+        "admin": "Administrador"
+      },
+      "dialog": {
+        "title": "Adicionar Administrador",
+        "description": "Insira o email do usuário que deseja tornar administrador",
+        "emailLabel": "Email do Usuário",
+        "emailPlaceholder": "usuario@exemplo.com",
+        "addButton": "Adicionar como Administrador"
+      },
+      "errors": {
+        "loadError": "Erro ao carregar membros da equipe",
+        "emailRequired": "Por favor, insira um email",
+        "userNotFound": "Usuário não encontrado com este email",
+        "alreadyAdmin": "Este usuário já é um administrador",
+        "addError": "Erro ao adicionar administrador",
+        "removeError": "Erro ao remover administrador",
+        "serviceNotAvailable": "Servico de gerenciamento de equipe nao esta disponivel. Aguarde a implementacao do backend."
+      },
+      "success": {
+        "added": "Administrador adicionado com sucesso!",
+        "removed": "Administrador removido com sucesso!"
+      },
+      "confirm": {
+        "remove": "Tem certeza que deseja remover {{email}} da equipe de administradores?"
+      }
+    },
+    "emailTemplates": {
+      "title": "Modelos de e-mail",
+      "description": "Configurar modelos de e-mail",
+      "search": "Buscar aqui",
+      "createTemplate": "Criar Template",
+      "noTemplates": "Nenhum modelo encontrado. Clique em \"Criar Template\" para adicionar um novo.",
+      "tableAriaLabel": "Tabela de modelos de e-mail",
+      "toggleAriaLabel": "Alternar status do modelo {{name}}",
+      "editAriaLabel": "Editar modelo {{name}}",
+      "defaults": {
+        "subject": "Bem-vindo ao Automatisa Grupos!",
+        "description": "Email de boas-vindas enviado quando um novo usuário é criado",
+        "greeting": "Olá!",
+        "accountCreated": "Sua conta foi criada com sucesso!",
+        "emailLabel": "Email:",
+        "passwordLabel": "Senha:",
+        "accessButton": "Acessar Minha Conta",
+        "securityTip": "Importante: Por segurança, recomendamos que você altere sua senha após o primeiro acesso.",
+        "ignoreNote": "Se você não solicitou esta conta, por favor, ignore este email.",
+        "copyright": "Todos os direitos reservados."
+      },
+      "columns": {
+        "name": "Nome",
+        "subject": "Assunto",
+        "status": "Status",
+        "actions": "Ações"
+      },
+      "dialog": {
+        "editTitle": "Editar Modelo de E-mail",
+        "createTitle": "Criar Modelo de E-mail",
+        "editDescription": "Modifique os campos do modelo de e-mail",
+        "createDescription": "Preencha os campos para criar um novo modelo de e-mail",
+        "nameLabel": "Nome",
+        "nameHint": "Para email de boas-vindas, use: welcome_email",
+        "subjectLabel": "Assunto",
+        "descriptionLabel": "Descrição",
+        "contentLabel": "Conteúdo HTML",
+        "contentHint": "Use variáveis como {{email}}, {{password}}, {{loginUrl}}, {{company_name}}, {{plan_name}}, etc.",
+        "activeLabel": "Modelo ativo",
+        "saveChanges": "Salvar Alterações"
+      },
+      "errors": {
+        "loadError": "Erro ao carregar modelos de e-mail",
+        "saveError": "Erro ao salvar modelo",
+        "toggleError": "Erro ao atualizar status do modelo",
+        "nameRequired": "O nome do modelo é obrigatório",
+        "subjectRequired": "O assunto do modelo é obrigatório",
+        "serviceNotAvailable": "Servico de modelos de email nao esta disponivel. Aguarde a implementacao do backend."
+      },
+      "success": {
+        "updated": "Modelo atualizado com sucesso!",
+        "created": "Modelo criado com sucesso!",
+        "activated": "Modelo ativado",
+        "deactivated": "Modelo desativado"
+      }
+    },
+    "settings": {
+      "loading": "Carregando configurações...",
+      "saveButton": "Salvar Configurações",
+      "saving": "Salvando...",
+      "saveAriaLabel": "Salvar configurações",
+      "savingAriaLabel": "Salvando configurações...",
+      "smtp": {
+        "title": "Configurações de E-mail (SMTP)",
+        "description": "Configure o servidor SMTP para envio de e-mails. Recomendado: Gmail com App Password.",
+        "host": "Servidor SMTP",
+        "hostPlaceholder": "smtp.gmail.com",
+        "port": "Porta",
+        "portPlaceholder": "587",
+        "username": "Usuário",
+        "usernamePlaceholder": "seu-email@gmail.com",
+        "password": "Senha de App",
+        "passwordHint": "Use uma Senha de App do Gmail, não sua senha normal. Requer 2FA ativado na conta Google.",
+        "fromEmail": "E-mail Remetente",
+        "fromName": "Nome do Remetente"
+      },
+      "kiwify": {
+        "title": "Kiwify Webhook",
+        "description": "Token de segurança para validação de webhooks",
+        "token": "Token de Segurança",
+        "tokenPlaceholder": "••••••••••••",
+        "tokenHint": "Este token é usado para validar requisições de webhook da Kiwify. Configure o mesmo token no painel da Kiwify."
+      },
+      "waha": {
+        "title": "WAHA Plus",
+        "description": "Configure a conexão com o WAHA Plus (GoWS Engine)",
+        "url": "URL da API",
+        "urlPlaceholder": "https://waha.example.com",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "••••••••••••••••"
+      },
+      "ai": {
+        "title": "API de IA (Gemini/OpenAI)",
+        "description": "Configure a API de IA que será usada por todos os usuários para geração de conteúdo",
+        "url": "URL da API",
+        "urlPlaceholder": "https://generativelanguage.googleapis.com",
+        "urlHint": "Para Google Gemini: https://generativelanguage.googleapis.com\nPara OpenAI: https://api.openai.com/v1",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "••••••••••••••••",
+        "apiKeyHint": "Chave da API de IA. Para Gemini, obtenha em: Google AI Studio",
+        "model": "Modelo de IA",
+        "modelPlaceholder": "gemini-2.0-flash-exp",
+        "modelHint": "Modelo a ser usado para geração de texto. Exemplos: gemini-2.0-flash-exp (Gemini), gpt-4 (OpenAI)",
+        "imageModel": "Modelo de IA para Imagens",
+        "imageModelPlaceholder": "imagen-3.0-generate-002",
+        "imageModelHint": "Modelo para geração de imagens. Exemplo: imagen-3.0-generate-002 (Gemini Imagen)"
+      },
+      "app": {
+        "title": "Configurações da Aplicação",
+        "description": "Configure números de suporte e links de tutoriais",
+        "supportWhatsapp": "WhatsApp de Suporte",
+        "supportWhatsappPlaceholder": "5511999999999",
+        "supportWhatsappHint": "Digite o número com código do país sem espaços ou símbolos (ex: 5511999999999)",
+        "tutorialLink": "Link dos Tutoriais",
+        "tutorialLinkPlaceholder": "https://exemplo.com/tutoriais",
+        "tutorialLinkHint": "Link para a página de tutoriais da ferramenta"
+      },
+      "loadBalancer": {
+        "title": "Load Balancer",
+        "description": "Capacidade lógica por servidor (impacta alocação e métricas do painel).",
+        "server1": "Servidor 1 — max usuários",
+        "server2": "Servidor 2 — max usuários",
+        "server3": "Servidor 3 — max usuários",
+        "example": "Ex: 100",
+        "tip": "Dica: isso não é um limite do WAHA em si — é a capacidade \"planejada\" do load balancer para distribuir usuários e calcular uso/slots."
+      },
+      "linkSafety": {
+        "title": "Segurança de Links",
+        "description": "Permite liberar shorteners (ex: domínio do appid do afiliado) com validação por redirect e bloquear links suspeitos.",
+        "mode": "Modo",
+        "modeBlock": "Block (bloquear envio)",
+        "modeRedact": "Redact (remover link do texto)",
+        "modeOff": "Off (desligado)",
+        "modeHint": "Recomendado: block. \"redact\" remove o link e ainda envia o restante.",
+        "enforceAllowlist": "Enforce allowlist",
+        "enforceAllowlistHint": "Se ligado, só permite links de hosts da allowlist (ou shorteners confiáveis que redirecionem para ela).",
+        "allowlist": "Allowlist (hosts permitidos)",
+        "allowlistPlaceholder": "s.shopee.com.br\nshopee.com.br",
+        "allowlistHint": "Aceita vírgula ou 1 host por linha.",
+        "blocklist": "Blocklist (hosts bloqueados)",
+        "blocklistPlaceholder": "ex: domain-suspeito.com",
+        "blocklistHint": "Hosts aqui sempre bloqueiam (mesmo se estiver na allowlist).",
+        "trustedRedirects": "Shorteners confiáveis (Trusted redirect hosts)",
+        "trustedRedirectsPlaceholder": "ex: shoope.top",
+        "trustedRedirectsHint": "Esses hosts só serão permitidos se o link redirecionar para um host da allowlist (cacheado).",
+        "maxRedirects": "Max redirects",
+        "timeout": "Timeout (ms)",
+        "cache": "Cache (segundos)"
+      },
+      "announcement": {
+        "title": "Comunicado do Dashboard",
+        "description": "Personalize a mensagem exibida para os usuários no Dashboard",
+        "enabled": "Exibir comunicado",
+        "enabledHint": "Quando desligado, o banner não aparece no Dashboard.",
+        "titleLabel": "Título",
+        "titlePlaceholder": "Ex: 📢 Atualização",
+        "messageLabel": "Mensagem",
+        "messagePlaceholder": "Uma linha por parágrafo.\nEx:\nEstamos online de novo.\nMonitoramento/Espelhamento ainda está em desenvolvimento."
+      },
+      "errors": {
+        "loadError": "Erro ao carregar configurações",
+        "saveError": "Erro ao salvar configurações"
+      },
+      "success": {
+        "saved": "Configurações salvas com sucesso!",
+        "updated": "Configuração atualizada com sucesso!"
+      }
+    }
+  },
+  "config": {
+    "stores": {
+      "shopee": "Shopee",
+      "amazon": "Amazon",
+      "magalu": "Magazine Luiza",
+      "ml": "Mercado Livre",
+      "shein": "Shein",
+      "aliexpress": "AliExpress",
+      "awin": "Awin"
+    },
+    "categories": {
+      "ofertasGerais": "Ofertas gerais",
+      "eletronicos": "Eletrônicos",
+      "eletrodomesticos": "Eletrodomésticos",
+      "moda": "Moda",
+      "homens": "Homens",
+      "casaDecoracao": "Casa e Decoração",
+      "beleza": "Beleza",
+      "esportes": "Esportes",
+      "livros": "Livros",
+      "brinquedos": "Brinquedos",
+      "infantil": "Infantil",
+      "maternidade": "Maternidade",
+      "alimentos": "Alimentos",
+      "automotivo": "Automotivo",
+      "pets": "Pets"
+    },
+    "subcategories": {
+      "eletronicos": {
+        "computadores": {
+          "notebooks": "Notebooks",
+          "ssd": "SSD",
+          "ram": "Memória RAM",
+          "teclados": "Teclados",
+          "monitores": "Monitores"
+        },
+        "celulares": {
+          "smartphones": "Smartphones",
+          "capas": "Capas/Películas",
+          "carregadores": "Carregadores/Cabos",
+          "powerbank": "Powerbank"
+        },
+        "audio": {
+          "fonesHeadsets": "Fones/Headsets",
+          "caixasDeSom": "Caixas de som"
+        },
+        "games": {
+          "consoles": "Consoles",
+          "acessoriosControles": "Controles/Acessórios"
+        },
+        "camerasDrones": {
+          "webcams": "Webcams",
+          "drones": "Drones"
+        },
+        "wearables": {
+          "smartwatch": "Smartwatches"
+        }
+      },
+      "eletrodomesticos": {
+        "cozinha": {
+          "airfryer": "Airfryer",
+          "liquidificadorEspremedor": "Liquidificador/Espremedor",
+          "cafeteira": "Cafeteira",
+          "microOndas": "Micro-ondas",
+          "torradeiraSanduicheira": "Torradeira/Sanduicheira",
+          "batedeiraMixer": "Batedeira/Mixer",
+          "geladeira": "Geladeira",
+          "filtroAgua": "Filtro/Purificador/Água"
+        },
+        "climatizacao": {
+          "ventilador": "Ventilador",
+          "arCondicionado": "Ar-condicionado",
+          "portatilClimatizador": "Portátil/Climatizador"
+        },
+        "lavanderia": {
+          "lavaESeca": "Lava e seca",
+          "ferroVaporizador": "Ferro/Vaporizador"
+        },
+        "limpeza": {
+          "aspiradorRobo": "Aspirador/Robô"
+        },
+        "tvs": {
+          "tv": "TVs"
+        }
+      },
+      "homens": {
+        "roupas": {
+          "camisetas": "Camisetas",
+          "bermudas": "Bermudas/Shorts",
+          "jeans": "Jeans",
+          "calcasCargo": "Calças (Cargo)",
+          "moletons": "Moletons",
+          "jaquetas": "Jaquetas"
+        },
+        "acessorios": {
+          "bones": "Bonés",
+          "relogios": "Relógios",
+          "carteirasPortaCartoes": "Carteiras/Porta-cartões",
+          "cintos": "Cintos",
+          "oculosDeSol": "Óculos de sol"
+        },
+        "calcados": {
+          "tenis": "Tênis",
+          "chinelos": "Chinelos",
+          "botas": "Botas",
+          "sociaisOxford": "Sociais/Oxford"
+        },
+        "intimas": {
+          "cuecas": "Cuecas",
+          "meias": "Meias"
+        },
+        "barbearia": {
+          "aparadores": "Aparadores/Máquinas",
+          "cremesGeis": "Cremes/Espumas/Géis"
+        },
+        "perfumes": "Perfumes"
+      },
+      "esportes": {
+        "fitness": {
+          "camisetas": "Camisetas",
+          "regatas": "Regatas",
+          "musculacaoAcessorios": "Musculação/Acessórios",
+          "maquinas": "Máquinas (esteira/bike/etc)"
+        },
+        "outdoor": {
+          "ciclismoAcessorios": "Outdoor/Ciclismo (Acessórios)"
+        },
+        "futebol": {
+          "bolas": "Futebol: Bolas"
+        },
+        "lutas": {
+          "luvasBandagens": "Lutas: Luvas/Bandagens",
+          "sacosDePancada": "Lutas: Sacos de pancada"
+        }
+      },
+      "moda": {
+        "feminina": {
+          "vestidos": "Vestidos",
+          "shorts": "Shorts",
+          "calcadosTenis": "Calçados: Tênis",
+          "calcadosPlataformas": "Calçados: Plataformas",
+          "calcas": "Calças",
+          "jeans": "Jeans",
+          "camisetas": "Camisetas",
+          "blusas": "Blusas",
+          "bolsas": "Bolsas",
+          "lingerieCalcinhas": "Lingerie: Calcinhas"
+        },
+        "masculina": {
+          "bermudas": "Bermudas",
+          "camisas": "Camisas",
+          "jeans": "Jeans",
+          "calcadosTenis": "Calçados: Tênis",
+          "calcadosChinelos": "Calçados: Chinelos"
+        }
+      },
+      "casa": {
+        "cozinha": {
+          "armazenamento": "Cozinha: Armazenamento (potes/marmitas)",
+          "cortadores": "Cozinha: Cortadores/Raladores"
+        },
+        "quarto": {
+          "camaEdredom": "Quarto: Cama/Edredom/Colchas"
+        },
+        "decoracao": {
+          "tapetes": "Decoração: Tapetes",
+          "cortinas": "Decoração: Cortinas/Persianas",
+          "vasos": "Decoração: Vasos",
+          "paredeMolduras": "Decoração: Parede/Molduras"
+        },
+        "banheiro": {
+          "suportesSabonete": "Banheiro: Suportes/Saboneteiras"
+        },
+        "organizacao": {
+          "guardaRoupa": "Organização: Guarda-roupa",
+          "sapateiras": "Organização: Sapateiras"
+        },
+        "moveis": {
+          "guardaRoupas": "Móveis: Guarda-roupas",
+          "armariosGabinetes": "Móveis: Armários/Gabinetes",
+          "camasCabeceiras": "Móveis: Camas/Cabeceiras",
+          "sofas": "Móveis: Sofás",
+          "cadeirasBanquetas": "Móveis: Cadeiras/Banquetas",
+          "mesasEscrivaninhas": "Móveis: Mesas/Escrivaninhas",
+          "prateleirasRacks": "Móveis: Prateleiras/Racks"
+        }
+      },
+      "beleza": {
+        "perfumes": "Perfumes e Fragrâncias",
+        "skincare": {
+          "hidratanteFacial": "Skincare: Hidratante facial",
+          "protetorSolarFacial": "Skincare: Protetor solar facial",
+          "soroEssencia": "Skincare: Soro/Essência",
+          "mascaras": "Skincare: Máscaras",
+          "massagemFacial": "Skincare: Massagem facial"
+        },
+        "maquiagem": {
+          "base": "Maquiagem: Base",
+          "corretivo": "Maquiagem: Corretivo",
+          "po": "Maquiagem: Pó",
+          "kits": "Maquiagem: Kits"
+        },
+        "cabelo": {
+          "shampoo": "Cabelo: Shampoo",
+          "tratamento": "Cabelo: Tratamento",
+          "finalizadores": "Cabelo: Finalizadores",
+          "tintura": "Cabelo: Tintura"
+        },
+        "corpo": {
+          "desodorantesBodySplash": "Corpo: Desodorantes/Body splash",
+          "hidratanteCorporal": "Corpo: Hidratante corporal",
+          "sabonetes": "Corpo: Sabonetes",
+          "depilacao": "Corpo: Depilação"
+        },
+        "unhas": {
+          "gel": "Unhas: Gel",
+          "ferramentas": "Unhas: Ferramentas"
+        }
+      }
+    },
+    "errors": {
+      "shopeeAffiliate": {
+        "noAccess": "Erro [10035]: Sua conta da Shopee ainda não tem permissão para usar a API do programa de afiliados (Open API). Por isso o sistema não consegue buscar ofertas automaticamente. Você precisa solicitar/liberar o acesso na Shopee Afiliados (ou falar com o suporte da Shopee Afiliados) e depois tentar novamente.",
+        "rateLimit": "Erro [10030]: A Shopee limitou temporariamente as requisições (rate limit). Aguarde alguns minutos e tente novamente.",
+        "invalidSignature": "Erro [10020]: As credenciais da Shopee (App ID/Senha) parecem inválidas ou não estão autorizadas. Verifique em \"Programas de Afiliado\" e tente novamente.",
+        "authNotFound": "Conta Shopee não conectada. Configure suas credenciais de afiliado Shopee nas configurações.",
+        "invalidToken": "Erro [10015]: Token de acesso inválido ou expirado. Reconecte sua conta Shopee nas configurações."
+      }
+    },
+    "groups": {
+      "eletronicos": {
+        "computadores": "Computadores",
+        "celulares": "Celulares",
+        "audio": "Áudio",
+        "games": "Games",
+        "camerasDrones": "Câmeras & Drones",
+        "wearables": "Wearables"
+      },
+      "eletrodomesticos": {
+        "cozinha": "Cozinha",
+        "climatizacao": "Climatização",
+        "lavanderia": "Lavanderia",
+        "limpeza": "Limpeza",
+        "tvs": "TVs"
+      },
+      "homens": {
+        "roupas": "Roupas",
+        "acessorios": "Acessórios",
+        "calcados": "Calçados",
+        "intimas": "Íntimas",
+        "barbearia": "Barbearia",
+        "perfumes": "Perfumes"
+      },
+      "esportes": {
+        "fitness": "Fitness",
+        "outdoor": "Outdoor/Ciclismo",
+        "futebol": "Futebol",
+        "lutas": "Lutas"
+      },
+      "moda": {
+        "feminina": "Feminina",
+        "masculina": "Masculina"
+      },
+      "casa": {
+        "moveis": "Móveis",
+        "decoracao": "Decoração",
+        "organizacao": "Organização",
+        "cozinha": "Cozinha",
+        "quarto": "Quarto",
+        "banheiro": "Banheiro"
+      },
+      "beleza": {
+        "skincare": "Skincare",
+        "cabelo": "Cabelo",
+        "maquiagem": "Maquiagem",
+        "corpo": "Corpo",
+        "unhas": "Unhas",
+        "perfumes": "Perfumes"
+      }
+    }
+  },
+  "automations": {
+    "refine": "Refinar {{category}} (ativar todas subcategorias)",
+    "refineTip": "Dica: desmarque o que não quiser. Se desativar o refinamento, volta para \"{{category}}\" (genérico).",
+    "refinement": {
+      "description": "Se quiser mais precisão, ative o refinamento abaixo. Mantemos {{category}} marcado como categoria pai.",
+      "eletronicos": "Eletrônicos",
+      "eletrodomesticos": "Eletrodomésticos",
+      "esportes": "Esportes",
+      "homens": "Homens",
+      "moda": "Moda",
+      "casaDecoracao": "Casa e Decoração",
+      "beleza": "Beleza"
+    },
+    "errors": {
+      "notFound": "Automação não encontrada",
+      "createFailed": "Falha ao criar automação",
+      "updateFailed": "Falha ao atualizar automação",
+      "diagnoseFailed": "Falha ao diagnosticar automação"
+    }
+  },
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "whatsapp": "WhatsApp",
+    "groups": "Grupos",
+    "schedules": "Agendamentos",
+    "redirect": "Link de Redirecionamento",
+    "contacts": "Extrator de Contatos",
+    "aiTools": "Ferramentas de IA",
+    "offerAutomations": "Divulgações de IA",
+    "linkLists": "Listas de links",
+    "dispatchTexts": "Textos de Disparo",
+    "affiliatePrograms": "Programas de Afiliado",
+    "coupons": "Cupons",
+    "automationLogs": "Logs de Automações",
+    "history": "Histórico",
+    "profile": "Perfil",
+    "admin": "Admin",
+    "support": "Suporte",
+    "tutorials": "Tutoriais",
+    "lightTheme": "Tema Claro",
+    "darkTheme": "Tema Escuro",
+    "logout": "Sair"
+  },
+  "billing": {
+    "suspended": {
+      "title": "Sua conta está suspensa por cobrança.",
+      "description": "Regularize o pagamento (cancelamento/reembolso/atraso) para voltar a usar a plataforma. Suas automações foram pausadas."
+    }
+  },
+  "contexts": {
+    "auth": {
+      "errors": {
+        "providerMissing": "useAuth deve ser usado dentro de um AuthProvider"
+      }
+    }
+  }
+}

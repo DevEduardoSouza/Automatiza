@@ -1,0 +1,1097 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"automatiza-go/internal/adapters/whatsapp"
+	"automatiza-go/internal/auth"
+	"automatiza-go/internal/config"
+	"automatiza-go/internal/connectrpc"
+	"automatiza-go/internal/gen/admin/v1/adminv1connect"
+	"automatiza-go/internal/gen/affiliates/v1/affiliatesv1connect"
+	"automatiza-go/internal/gen/auth/v1/authv1connect"
+	"automatiza-go/internal/gen/automations/v1/automationsv1connect"
+	"automatiza-go/internal/gen/coupons/v1/couponsv1connect"
+	"automatiza-go/internal/gen/dashboard/v1/dashboardv1connect"
+	dispatchtextsv1connect "automatiza-go/internal/gen/dispatch_texts/v1/dispatch_textsv1connect"
+	"automatiza-go/internal/gen/whatsapp/v1/whatsappv1connect"
+	"automatiza-go/internal/gen/groups/v1/groupsv1connect"
+	"automatiza-go/internal/gen/history/v1/historyv1connect"
+	"automatiza-go/internal/gen/instances/v1/instancesv1connect"
+	"automatiza-go/internal/gen/jobs/v1/jobsv1connect"
+	mllinksv1connect "automatiza-go/internal/gen/ml_links/v1/ml_linksv1connect"
+	"automatiza-go/internal/gen/plans/v1/plansv1connect"
+	"automatiza-go/internal/gen/profiles/v1/profilesv1connect"
+	aiv1connect "automatiza-go/internal/gen/ai/v1/aiv1connect"
+	redirectv1connect "automatiza-go/internal/gen/redirect/v1/redirectv1connect"
+	"automatiza-go/internal/gen/settings/v1/settingsv1connect"
+	"automatiza-go/internal/gen/webhooks/v1/webhooksv1connect"
+	"automatiza-go/internal/handlers"
+	"automatiza-go/internal/lib/backpressure"
+	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/urlsafety"
+	"automatiza-go/internal/middleware"
+	"automatiza-go/internal/repository"
+	"automatiza-go/internal/repository/postgres"
+	"automatiza-go/internal/services/ai"
+	"automatiza-go/internal/services/automation"
+	"automatiza-go/internal/services/coupons"
+	"automatiza-go/internal/services/cron"
+	"automatiza-go/internal/services/dashboard"
+	"automatiza-go/internal/services/email"
+	"automatiza-go/internal/services/jobs"
+	"automatiza-go/internal/services/kiwify"
+	"automatiza-go/internal/services/loadbalancer"
+	"automatiza-go/internal/services/mercadolivre"
+	"automatiza-go/internal/services/mllinklists"
+	"automatiza-go/internal/services/monitoring"
+	"automatiza-go/internal/services/reconciliation"
+	"automatiza-go/internal/services/redirect"
+	"automatiza-go/internal/services/shopee"
+	"automatiza-go/internal/services/user"
+	"automatiza-go/internal/startup"
+	"automatiza-go/internal/workers"
+
+	emailadapter "automatiza-go/internal/adapters/email"
+	profileservice "automatiza-go/internal/services/profile"
+
+	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
+)
+
+func main() {
+	// Parse flags
+	workerMode := flag.Bool("worker", false, "Run in worker mode")
+	flag.Parse()
+
+	// Load configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create logger
+	logger, err := config.NewLogger(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() { _ = logger.Sync() }()
+
+	logger.Info("Starting application",
+		zap.String("env", cfg.NodeEnv),
+		zap.String("port", cfg.Port),
+		zap.Bool("workerMode", *workerMode))
+
+	// Initialize token HMAC key for secure token hashing
+	hmacKey := cfg.GetTokenHMACKey()
+	if hmacKey != nil {
+		if err := auth.InitTokenHMAC(hmacKey); err != nil {
+			logger.Error("Failed to initialize token HMAC - using fallback",
+				zap.Error(err))
+		} else {
+			logger.Info("Token HMAC initialized successfully")
+		}
+	} else {
+		logger.Warn("TOKEN_HMAC_KEY not configured - token hashing will use fallback SHA-256 (less secure)")
+	}
+
+	// Create Redis client
+	redisClient, err := config.NewRedisClient(cfg)
+	if err != nil {
+		logger.Warn("Failed to connect to Redis, continuing without cache",
+			zap.Error(err))
+	} else {
+		defer func() { _ = redisClient.Close() }()
+	}
+
+	// Create PostgreSQL connection
+	pgCfg := cfg.GetPostgresConfig()
+	port, _ := strconv.Atoi(pgCfg.Port)
+	db, err := postgres.NewDB(context.Background(), &postgres.Config{
+		Host:     pgCfg.Host,
+		Port:     port,
+		User:     pgCfg.User,
+		Password: pgCfg.Password,
+		Database: pgCfg.Database,
+		SSLMode:  pgCfg.SSLMode,
+		MaxConns: int32(pgCfg.MaxConns),
+	}, config.NewModuleLogger(logger, "postgres"))
+	if err != nil {
+		logger.Fatal("Failed to connect to PostgreSQL", zap.Error(err))
+	}
+	defer db.Close()
+
+	// Create cache
+	var cacheClient *cache.Cache
+	if redisClient != nil {
+		cacheClient = cache.NewCache(redisClient.Client, cfg.AppCachePrefix, cfg.DisableAppRedisCache)
+	}
+
+	// Create repositories (PostgreSQL)
+	repos := postgres.NewRepositories(db, logger)
+
+	// Create Waha config provider (using PostgreSQL settings repo)
+	wahaConfigProvider := config.NewWahaConfigProvider(cfg, repos.Settings)
+
+	// Create WhatsApp adapter (implements whatsapp.WhatsAppProvider)
+	// Use static config first, fall back to config provider if needed
+	wahaAPIURL := cfg.WahaAPIURL
+	wahaAPIKey := cfg.WahaAPIKey
+	if wahaAPIURL == "" || wahaAPIKey == "" {
+		// Try to get from config provider (requires context)
+		wahaConfig, err := wahaConfigProvider.GetConfig(context.Background())
+		if err != nil {
+			logger.Warn("Failed to get WAHA config from provider", zap.Error(err))
+		} else if wahaConfig != nil {
+			wahaAPIURL = wahaConfig.APIURL
+			wahaAPIKey = wahaConfig.APIKey
+		}
+	}
+
+	var wahaAdapter whatsapp.WhatsAppProvider
+	if wahaAPIURL != "" && wahaAPIKey != "" {
+		adapter, err := whatsapp.NewWahaAdapter(whatsapp.WahaAdapterConfig{
+			APIURL:         wahaAPIURL,
+			APIKey:         wahaAPIKey,
+			WebhookBaseURL: cfg.BackendPublicURL,
+			WebhookSecret:  cfg.WebhookSecret,
+		}, config.NewModuleLogger(logger, "waha-adapter"))
+		if err != nil {
+			logger.Fatal("Failed to create WAHA adapter", zap.Error(err))
+		}
+		wahaAdapter = adapter
+	} else {
+		logger.Warn("WAHA not configured, WhatsApp adapter disabled")
+	}
+
+	// Shorthand references for services
+	profileRepo := repos.Profile
+	instanceRepo := repos.Instance
+	groupRepo := repos.Group
+	automationRepo := repos.Automation
+	actionHistoryRepo := repos.ActionHistory
+	settingsRepo := repos.Settings
+	couponRepo := repos.Coupon
+	dispatchLogRepo := repos.DispatchLog
+	scheduledJobRepo := repos.ScheduledJob
+	systemEventRepo := repos.SystemEvent
+	userRoleRepo := repos.UserRole
+	affiliateRepo := repos.Affiliate
+	mlCredentialsRepo := repos.MLCredentials
+	mlLinkRepo := repos.MLLink
+	userServerRepo := repos.UserServer
+
+	// Create URL safety service
+	urlSafetyService := urlsafety.NewService(urlsafety.Config{
+		Mode:             cfg.LinkSafetyMode,
+		BlockedHosts:     cfg.GetLinkSafetyBlockedHosts(),
+		AllowedHosts:     cfg.GetLinkSafetyAllowedHosts(),
+		EnforceAllowlist: cfg.LinkSafetyEnforceAllowlist,
+	}, cacheClient, config.NewModuleLogger(logger, "urlsafety"))
+
+	// Create backpressure manager
+	backpressureManager := backpressure.NewProducerBackpressure(backpressure.Config{
+		DelayMS:         cfg.ProducerBackpressureDelayMS,
+		UserMaxEnqueued: cfg.ProducerUserMaxEnqueued10Min,
+		WindowMinutes:   10,
+		Enabled:         true,
+	}, cacheClient, config.NewModuleLogger(logger, "backpressure"))
+
+	// Get Redis address for queue
+	redisAddr := "localhost:6379"
+	if redisClient != nil {
+		redisAddr = redisClient.Options().Addr
+	}
+
+	// Create queue client (needed for services)
+	queueClient := workers.NewQueueClient(redisAddr, config.NewModuleLogger(logger, "queue"))
+	defer func() { _ = queueClient.Close() }()
+
+	// Create services
+	shopeeService := shopee.NewShopeeService(
+		cacheClient,
+		affiliateRepo,
+		settingsRepo,
+		config.NewModuleLogger(logger, "shopee"),
+	)
+
+	mlService := mercadolivre.NewMLService(
+		cacheClient,
+		mlCredentialsRepo,
+		mlLinkRepo,
+		cfg.MLCredentialsEncryptionKey,
+		config.NewModuleLogger(logger, "ml"),
+	)
+
+	aiService := ai.NewAIService(
+		cfg.AIApiURL,
+		cfg.AIApiKey,
+		cfg.AIModel,
+		cacheClient,
+		config.NewModuleLogger(logger, "ai"),
+	)
+
+	// Create email service (SMTP Gmail) - reads config from database with env fallback
+	var fallbackEmailConfig *email.Config
+	if cfg.HasSMTP() {
+		fallbackEmailConfig = &email.Config{
+			Host:      cfg.SMTPHost,
+			Port:      cfg.SMTPPort,
+			User:      cfg.SMTPUser,
+			Password:  cfg.SMTPPassword,
+			FromEmail: cfg.SMTPFromEmail,
+			FromName:  cfg.SMTPFromName,
+		}
+	}
+
+	// Use dynamic email service that reads SMTP config from database
+	// Falls back to environment variables if database settings are not available
+	emailService := email.NewDynamicEmailService(
+		settingsRepo,
+		fallbackEmailConfig,
+		config.NewModuleLogger(logger, "email"),
+	)
+
+	userService := user.NewUserService(
+		profileRepo,
+		emailService,
+		config.NewModuleLogger(logger, "user"),
+	)
+
+	jobsService := jobs.NewJobsService(
+		scheduledJobRepo,
+		automationRepo,
+		instanceRepo,
+		queueClient,
+		cacheClient,
+		config.NewModuleLogger(logger, "jobs"),
+	)
+
+	// Create SSE Hub for real-time notifications (created early so it can be passed to services)
+	sseHub := handlers.NewSSEHub(config.NewModuleLogger(logger, "sse-hub"))
+	defer sseHub.Close()
+
+	// Create standalone jobs service for new job management (8 action types)
+	standaloneJobsService := jobs.NewService(
+		repos.Job,
+		instanceRepo,
+		groupRepo,
+		wahaAdapter,
+		mlService,
+		sseHub,
+		actionHistoryRepo,
+		sseHub, // historyNotifier: publishes history.change SSE events
+		config.NewModuleLogger(logger, "standalone-jobs"),
+	)
+
+	lbService := loadbalancer.NewLoadBalancerService(
+		userServerRepo,
+		settingsRepo,
+		cacheClient,
+		config.NewModuleLogger(logger, "loadbalancer"),
+	)
+
+	couponsService := coupons.NewCouponsService(
+		couponRepo,
+		cacheClient,
+		config.NewModuleLogger(logger, "coupons"),
+	)
+
+	automationService := automation.NewAutomationService(
+		automationRepo,
+		repos.AutomationRun,
+		instanceRepo,
+		groupRepo,
+		dispatchLogRepo,
+		actionHistoryRepo,
+		settingsRepo,
+		profileRepo,
+		repos.MlLinkListItem,
+		shopeeService,
+		mlService,
+		urlSafetyService,
+		backpressureManager,
+		queueClient,
+		cacheClient,
+		config.NewModuleLogger(logger, "automation"),
+	)
+
+	// Create automation scheduler for cron-based execution
+	automationScheduler := automation.NewScheduler(
+		automationRepo,
+		automationService,
+		config.NewModuleLogger(logger, "automation-scheduler"),
+	)
+
+	// Create cron service with automation scheduler support
+	// Uses standaloneJobsService to process jobs from the 'jobs' table (standalone jobs)
+	cronService := cron.NewCronServiceWithScheduler(
+		standaloneJobsService,
+		automationScheduler,
+		config.NewModuleLogger(logger, "cron"),
+	)
+
+	monitoringService := monitoring.NewMonitoringService(
+		automationRepo,
+		instanceRepo,
+		dispatchLogRepo,
+		shopeeService,
+		mlService,
+		wahaAdapter,
+		cacheClient,
+		config.NewModuleLogger(logger, "monitoring"),
+	)
+
+	dashboardService := dashboard.NewDashboardService(
+		repos.Dashboard,
+		config.NewModuleLogger(logger, "dashboard"),
+	)
+
+	// Create redirect service for public redirect links
+	redirectService := redirect.NewRedirectService(
+		repos.RedirectLink,
+		groupRepo,
+		instanceRepo,
+		wahaAdapter,
+		config.NewModuleLogger(logger, "redirect"),
+	)
+
+	// Create ML link lists service (with audit trail support)
+	mlLinkListsService := mllinklists.NewServiceWithAudit(
+		repos.MLLinkList,
+		actionHistoryRepo,
+		config.NewModuleLogger(logger, "ml-link-lists"),
+	)
+
+	// Create Kiwify webhook service
+	kiwifyService := kiwify.NewKiwifyService(
+		profileRepo,
+		repos.Plan,
+		settingsRepo,
+		userRoleRepo,
+		emailService,
+		&kiwify.Config{
+			WebhookToken: cfg.KiwifyWebhookToken,
+		},
+		config.NewModuleLogger(logger, "kiwify"),
+	)
+
+	// Run in worker mode
+	if *workerMode {
+		var redisClientForWorker *redis.Client
+		if redisClient != nil {
+			redisClientForWorker = redisClient.Client
+		}
+		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, logger)
+		return
+	}
+
+	// Start Redis SSE bridge (server-side subscriber)
+	// This receives SSE events published by the worker process via Redis Pub/Sub
+	// and forwards them to the local SSEHub for delivery to connected frontend clients.
+	if redisClient != nil {
+		bridge := handlers.NewSSERedisBridge(redisClient.Client, config.NewModuleLogger(logger, "sse-bridge"))
+		bridge.SetHub(sseHub)
+
+		// If wahaAdapter is a concrete *WahaAdapter, wire up cache clearing
+		// so that when a status event arrives via Redis, the stale 5s adapter cache is invalidated
+		if concreteAdapter, ok := wahaAdapter.(*whatsapp.WahaAdapter); ok {
+			bridge.SetCacheClearer(concreteAdapter)
+		}
+
+		ctx, cancelBridge := context.WithCancel(context.Background())
+		defer cancelBridge()
+		if err := bridge.Subscribe(ctx); err != nil {
+			logger.Warn("Failed to start Redis SSE bridge, SSE from worker will not be relayed",
+				zap.Error(err))
+		} else {
+			logger.Info("Redis SSE bridge started (server-side subscriber)")
+		}
+	}
+
+	// Create DB clients (for auth service - uses PostgreSQL directly)
+	dbClients, err := config.NewDBClients(cfg)
+	if err != nil {
+		logger.Fatal("Failed to create DB clients", zap.Error(err))
+	}
+
+	// Create dependencies
+	deps := &handlers.Dependencies{
+		Config:           cfg,
+		Cache:            cacheClient,
+		Logger:           logger,
+		SSEHub:           sseHub, // Real-time notifications
+		WhatsAppProvider: wahaAdapter,
+		QueueClient:      queueClient,
+		URLSafetyService: urlSafetyService,
+		Backpressure:     backpressureManager,
+
+		// Services
+		ShopeeService:     shopeeService,
+		MLService:         mlService,
+		AIService:         aiService,
+		AutomationService: automationService,
+		MonitoringService: monitoringService,
+		JobsService:       jobsService,
+		UserService:       userService,
+		CouponsService:    couponsService,
+		LBService:         lbService,
+		RedirectService:   redirectService,
+		KiwifyService:     kiwifyService,
+
+		// Repositories
+		ProfileRepo:       profileRepo,
+		InstanceRepo:      instanceRepo,
+		GroupRepo:         groupRepo,
+		AutomationRepo:    automationRepo,
+		ActionHistoryRepo: actionHistoryRepo,
+		SettingsRepo:      settingsRepo,
+		CouponRepo:        couponRepo,
+		DispatchLogRepo:   dispatchLogRepo,
+		ScheduledJobRepo:  scheduledJobRepo,
+		SystemEventRepo:   systemEventRepo,
+		UserRoleRepo:      userRoleRepo,
+		WebhookEventsRepo: repos.WebhookEvents,
+	}
+
+	// Create Gin router
+	if cfg.IsProduction() {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	router := gin.New()
+
+	// Add middleware
+	router.Use(gin.Recovery())
+	router.Use(middleware.LoggingMiddleware(logger))
+	router.Use(middleware.RequestIDMiddleware())
+	router.Use(middleware.CORSMiddleware(middleware.DefaultCORSConfig(cfg.CorsOrigin, cfg.IsDevelopment())))
+	router.Use(middleware.ErrorHandler(logger, cfg.IsDevelopment()))
+
+	// Register custom validators
+	middleware.RegisterCustomValidators()
+
+	// Setup routes
+	handlers.SetupRoutes(router, deps)
+
+	// Create cookie config for auth
+	cookieConfig := auth.DefaultCookieConfig(cfg.IsProduction())
+
+	// Create auth service
+	var redisClientForAuth *redis.Client
+	if redisClient != nil {
+		redisClientForAuth = redisClient.Client
+	}
+	// Create rate limit config from environment (production-safe defaults)
+	rateLimitConfig := auth.NewRateLimitConfig(
+		cfg.RateLimitMaxAttempts,
+		cfg.RateLimitWindowSec,
+		cfg.RateLimitBlockSec,
+	)
+
+	authService := auth.NewAuthService(&auth.AuthServiceConfig{
+		DB:              dbClients.Admin,
+		Redis:           redisClientForAuth,
+		CookieConfig:    cookieConfig,
+		Logger:          config.NewModuleLogger(logger, "auth"),
+		RateLimitConfig: rateLimitConfig,
+	})
+
+	// Create ConnectRPC server with suspension check
+	connectServer := connectrpc.NewServer(&connectrpc.ServerConfig{
+		AuthService:  authService,
+		CookieConfig: cookieConfig,
+		ProfileRepo:  profileRepo,
+		Logger:       config.NewModuleLogger(logger, "connect"),
+	})
+
+	// Register auth service handler
+	authHandler := connectrpc.NewAuthHandler(authService, cookieConfig)
+	authPath, authHTTPHandler := authv1connect.NewAuthServiceHandler(authHandler)
+	connectServer.RegisterService(authPath, authHTTPHandler)
+
+	// Register dashboard service handler (requires auth)
+	dashboardHandler := connectrpc.NewDashboardHandler(dashboardService, logger)
+	dashboardPath, dashboardHTTPHandler := dashboardv1connect.NewDashboardServiceHandler(
+		dashboardHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(dashboardPath, dashboardHTTPHandler)
+
+	// Register groups service handler (requires auth)
+	groupsHandler := connectrpc.NewGroupsHandler(groupRepo, instanceRepo, wahaAdapter, queueClient, connectrpc.WithGroupEventPublisher(sseHub), connectrpc.WithGroupActionHistoryRepo(actionHistoryRepo), connectrpc.WithGroupHistoryPublisher(sseHub))
+	groupsPath, groupsHTTPHandler := groupsv1connect.NewGroupsServiceHandler(
+		groupsHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(groupsPath, groupsHTTPHandler)
+
+	// Register automations service handler (requires auth)
+	automationsHandler := connectrpc.NewAutomationsHandler(automationRepo, dispatchLogRepo, automationService, jobsService, logger)
+	automationsPath, automationsHTTPHandler := automationsv1connect.NewAutomationsServiceHandler(
+		automationsHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(automationsPath, automationsHTTPHandler)
+
+	// Register WhatsApp service handler (canonical service, requires auth)
+	whatsappHandler := connectrpc.NewWhatsAppHandler(wahaAdapter, instanceRepo, repos.SyncJob, queueClient, cfg.WebhookSecret)
+	whatsappPath, whatsappHTTPHandler := whatsappv1connect.NewWhatsAppServiceHandler(
+		whatsappHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(whatsappPath, whatsappHTTPHandler)
+
+	// Register instances service handler (requires auth)
+	instancesHandler := connectrpc.NewInstancesHandlerWithAdapter(instanceRepo, wahaAdapter)
+	instancesPath, instancesHTTPHandler := instancesv1connect.NewInstancesServiceHandler(
+		instancesHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(instancesPath, instancesHTTPHandler)
+
+	// Create profile services
+	profileSvc := profileservice.NewProfileService(
+		profileRepo,
+		automationRepo,
+		instanceRepo,
+		userRoleRepo,
+		config.NewModuleLogger(logger, "profile-service"),
+	)
+
+	// Create email adapter for password reset
+	var emailProvider emailadapter.EmailProvider
+	smtpHost := os.Getenv("SMTP_HOST")
+	smtpUsername := os.Getenv("SMTP_USERNAME")
+	smtpPassword := os.Getenv("SMTP_PASSWORD")
+	if smtpHost != "" && smtpUsername != "" && smtpPassword != "" {
+		smtpPort := 587
+		if portStr := os.Getenv("SMTP_PORT"); portStr != "" {
+			if p, err := strconv.Atoi(portStr); err == nil {
+				smtpPort = p
+			}
+		}
+		fromEmail := os.Getenv("SMTP_FROM_EMAIL")
+		if fromEmail == "" {
+			fromEmail = smtpUsername
+		}
+		fromName := os.Getenv("SMTP_FROM_NAME")
+		if fromName == "" {
+			fromName = "Automatiza"
+		}
+
+		adapter, err := emailadapter.NewSMTPAdapter(emailadapter.SMTPConfig{
+			Host:        smtpHost,
+			Port:        smtpPort,
+			Username:    smtpUsername,
+			Password:    smtpPassword,
+			FromName:    fromName,
+			FromEmail:   fromEmail,
+			TLSRequired: true,
+			Timeout:     30 * time.Second,
+		}, config.NewModuleLogger(logger, "email-adapter"))
+		if err != nil {
+			logger.Warn("Failed to create email adapter, password reset will be disabled",
+				zap.Error(err))
+		} else {
+			emailProvider = adapter
+		}
+	} else {
+		logger.Warn("SMTP not configured, password reset emails disabled")
+		// Use fake adapter for development
+		emailProvider = emailadapter.NewFakeEmailAdapter()
+	}
+
+	// Get HMAC key for password reset tokens
+	// Use the global token HMAC key if available, otherwise fallback to separate env var
+	pwResetHMACKey := cfg.GetTokenHMACKey()
+	if pwResetHMACKey == nil {
+		pwResetHMACKeyStr := os.Getenv("PASSWORD_RESET_HMAC_KEY")
+		if pwResetHMACKeyStr != "" {
+			pwResetHMACKey = []byte(pwResetHMACKeyStr)
+		} else {
+			// Generate random key (not ideal for production, should be from env)
+			pwResetHMACKey = make([]byte, 32)
+			// In production, this should come from environment
+			logger.Warn("PASSWORD_RESET_HMAC_KEY not set, using zero key (not for production)")
+		}
+	}
+
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+
+	passwordSvc := profileservice.NewPasswordService(
+		profileRepo,
+		repos.PasswordResetToken,
+		repos.RateLimit,
+		emailProvider,
+		profileservice.PasswordServiceConfig{
+			HMACKey:     pwResetHMACKey,
+			FrontendURL: frontendURL,
+		},
+		config.NewModuleLogger(logger, "password-service"),
+	)
+
+	// Register profiles service handler (requires auth for most RPCs)
+	profilesHandler := connectrpc.NewProfilesHandler(profileSvc, passwordSvc, config.NewModuleLogger(logger, "profiles-handler"))
+	profilesPath, profilesHTTPHandler := profilesv1connect.NewProfilesServiceHandler(
+		profilesHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(profilesPath, profilesHTTPHandler)
+
+	// Register settings service handler (requires auth)
+	settingsHandler := connectrpc.NewSettingsHandler(settingsRepo, userRoleRepo)
+	settingsPath, settingsHTTPHandler := settingsv1connect.NewSettingsServiceHandler(
+		settingsHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(settingsPath, settingsHTTPHandler)
+
+	// Register history service handler (requires auth)
+	historyHandler := connectrpc.NewHistoryHandler(actionHistoryRepo, dispatchLogRepo)
+	historyPath, historyHTTPHandler := historyv1connect.NewHistoryServiceHandler(
+		historyHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(historyPath, historyHTTPHandler)
+
+	// Register coupons service handler (requires auth)
+	couponsHandler := connectrpc.NewCouponsHandler(couponsService)
+	couponsPath, couponsHTTPHandler := couponsv1connect.NewCouponsServiceHandler(
+		couponsHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(couponsPath, couponsHTTPHandler)
+
+	// Register admin service handler (requires auth + admin role)
+	adminHandler := connectrpc.NewAdminHandler(
+		userRoleRepo,
+		systemEventRepo,
+		instanceRepo,
+		profileRepo,
+		repos.Plan,
+		repos.EmailTemplate,
+		actionHistoryRepo,
+		wahaAdapter,
+		emailService,
+		connectrpc.WithAffiliateRepo(affiliateRepo),
+		connectrpc.WithDispatchLogRepo(dispatchLogRepo),
+		connectrpc.WithWebhookBaseURL(cfg.BackendPublicURL),
+		connectrpc.WithAutomationRepo(automationRepo),
+		connectrpc.WithGroupRepo(groupRepo),
+		connectrpc.WithKiwifyService(kiwifyService),
+		connectrpc.WithLBService(lbService),
+		connectrpc.WithWebhookLogRepo(connectrpc.NewWebhookLogAdapter(repos.WebhookLog)),
+		connectrpc.WithWebhookLogWriteRepo(repos.WebhookLog),
+		connectrpc.WithCategoryRepo(repos.Category),
+	)
+	adminPath, adminHTTPHandler := adminv1connect.NewAdminServiceHandler(
+		adminHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(adminPath, adminHTTPHandler)
+
+	// Register load balancer service handler (requires auth + admin role)
+	loadBalancerHandler := connectrpc.NewLoadBalancerHandler(
+		config.NewModuleLogger(logger, "loadbalancer-handler"),
+		userRoleRepo,
+		lbService,
+	)
+	lbPath, lbHTTPHandler := adminv1connect.NewLoadBalancerServiceHandler(
+		loadBalancerHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(lbPath, lbHTTPHandler)
+
+	// Register plans service handler (requires auth + admin role)
+	plansHandler := connectrpc.NewPlansHandler(repos.Plan, userRoleRepo)
+	plansPath, plansHTTPHandler := plansv1connect.NewPlansServiceHandler(
+		plansHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(plansPath, plansHTTPHandler)
+
+	// Register dispatch texts service handler (requires auth)
+	dispatchTextsHandler := connectrpc.NewDispatchTextsHandler(settingsRepo)
+	dispatchTextsPath, dispatchTextsHTTPHandler := dispatchtextsv1connect.NewDispatchTextsServiceHandler(
+		dispatchTextsHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(dispatchTextsPath, dispatchTextsHTTPHandler)
+
+	// Register ML links service handler (requires auth)
+	mlLinksHandler := connectrpc.NewMlLinksHandler(mlLinkListsService)
+	mlLinksPath, mlLinksHTTPHandler := mllinksv1connect.NewMlLinksServiceHandler(
+		mlLinksHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(mlLinksPath, mlLinksHTTPHandler)
+
+	// Register jobs service handler (requires auth)
+	jobsHandler := connectrpc.NewJobsHandler(standaloneJobsService, userRoleRepo, config.NewModuleLogger(logger, "jobs-handler"), cfg)
+	jobsPath, jobsHTTPHandler := jobsv1connect.NewJobsServiceHandler(
+		jobsHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(jobsPath, jobsHTTPHandler)
+
+	// Register webhooks service handler (no auth for external webhooks, admin check internal)
+	webhooksHandler := connectrpc.NewWebhooksHandler(userRoleRepo, kiwifyService, repos.WebhookLog)
+	webhooksPath, webhooksHTTPHandler := webhooksv1connect.NewWebhooksServiceHandler(webhooksHandler)
+	connectServer.RegisterService(webhooksPath, webhooksHTTPHandler)
+
+	// Register affiliate credentials service handler (requires auth)
+	affiliateCredentialsHandler := connectrpc.NewAffiliateCredentialsHandler(affiliateRepo)
+	affiliateCredentialsPath, affiliateCredentialsHTTPHandler := affiliatesv1connect.NewAffiliateCredentialsServiceHandler(
+		affiliateCredentialsHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(affiliateCredentialsPath, affiliateCredentialsHTTPHandler)
+
+	// Register Mercado Livre service handler (requires auth)
+	mercadoLivreHandler := connectrpc.NewMercadoLivreHandler(mlService)
+	mercadoLivrePath, mercadoLivreHTTPHandler := affiliatesv1connect.NewMercadoLivreServiceHandler(
+		mercadoLivreHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(mercadoLivrePath, mercadoLivreHTTPHandler)
+
+	// Register Shopee service handler (requires auth)
+	shopeeHandler := connectrpc.NewShopeeHandler(shopeeService)
+	shopeePath, shopeeHTTPHandler := affiliatesv1connect.NewShopeeServiceHandler(
+		shopeeHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(shopeePath, shopeeHTTPHandler)
+
+	// Register redirect link service handler (requires auth)
+	redirectHandler := connectrpc.NewRedirectHandler(redirectService)
+	redirectPath, redirectHTTPHandler := redirectv1connect.NewRedirectLinkServiceHandler(
+		redirectHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(redirectPath, redirectHTTPHandler)
+
+	// Register AI tools service handler (requires auth)
+	aiToolsHandler := connectrpc.NewAiToolsHandler(aiService, config.NewModuleLogger(logger, "ai-tools"))
+	aiToolsPath, aiToolsHTTPHandler := aiv1connect.NewAiToolsServiceHandler(
+		aiToolsHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(aiToolsPath, aiToolsHTTPHandler)
+
+	// Create CORS config for HTTP middleware (ConnectRPC paths)
+	corsConfig := middleware.DefaultCORSConfig(cfg.CorsOrigin, cfg.IsDevelopment())
+
+	// Create combined HTTP handler with path-based routing
+	// ConnectRPC handles /connect/* paths, Gin handles everything else
+	combinedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/connect/") {
+			// Strip /connect prefix and forward to ConnectRPC
+			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/connect")
+			connectServer.Handler().ServeHTTP(w, r)
+			return
+		}
+		// Forward to Gin router
+		router.ServeHTTP(w, r)
+	})
+
+	// Apply CORS middleware to the combined handler (handles ConnectRPC CORS)
+	corsHandler := middleware.HTTPCORSMiddleware(corsConfig)(combinedHandler)
+
+	// Wrap with h2c for HTTP/2 cleartext support (required for ConnectRPC gRPC protocol)
+	h2cHandler := h2c.NewHandler(corsHandler, &http2.Server{})
+
+	// Start cron service for scheduled automation processing
+	cronService.Start()
+	logger.Info("Cron service started for automation scheduling")
+
+	// Create HTTP server
+	srv := &http.Server{
+		Addr:         ":" + cfg.Port,
+		Handler:      h2cHandler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 5 * time.Minute,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Start server in goroutine
+	go func() {
+		logger.Info("Starting HTTP server",
+			zap.String("addr", srv.Addr))
+
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("Failed to start server", zap.Error(err))
+		}
+	}()
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info("Shutting down server...")
+
+	// Stop cron service
+	cronService.Stop()
+	logger.Info("Cron service stopped")
+
+	// Graceful shutdown with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Error("Server forced to shutdown", zap.Error(err))
+	}
+
+	logger.Info("Server exited")
+}
+
+func runWorker(
+	cfg *config.Config,
+	redisAddr string,
+	db *postgres.DB,
+	wahaAdapter whatsapp.WhatsAppProvider,
+	urlSafetyService *urlsafety.Service,
+	instanceRepo repository.InstanceRepository,
+	groupRepo repository.GroupRepository,
+	historyRepo repository.ActionHistoryRepository,
+	dispatchLogRepo repository.DispatchLogRepository,
+	webhookEventsRepo repository.WebhookEventsRepository,
+	queueClient *workers.QueueClient,
+	redisClientForSSE *redis.Client,
+	monitoringService monitoring.Service,
+	logger *zap.Logger,
+) {
+	logger.Info("Starting worker mode",
+		zap.Int("concurrency", cfg.WorkerConcurrency))
+
+	// Create queue server
+	queueServer := workers.NewQueueServer(redisAddr, cfg.WorkerConcurrency, config.NewModuleLogger(logger, "worker"))
+
+	// Create workers
+	messageWorker := workers.NewMessageWorker(
+		wahaAdapter,
+		urlSafetyService,
+		historyRepo,
+		dispatchLogRepo,
+		config.NewModuleLogger(logger, "message_worker"),
+	)
+
+	// Create job progress publisher for SSE notifications during long-running tasks
+	var jobProgressPub workers.JobProgressPublisher
+	if redisClientForSSE != nil {
+		bridge := handlers.NewSSERedisBridge(redisClientForSSE, config.NewModuleLogger(logger, "sse-bridge-progress"))
+		jobProgressPub = handlers.NewRedisJobProgressPublisher(
+			bridge,
+			config.NewModuleLogger(logger, "job-progress-publisher"),
+		)
+	}
+
+	groupsSyncWorker := workers.NewGroupsSyncWorker(
+		wahaAdapter,
+		instanceRepo,
+		groupRepo,
+		config.NewModuleLogger(logger, "groups_sync_worker"),
+		jobProgressPub,
+	)
+
+	// Create user resolver function for SSE notifications
+	// This resolves session name (instance_id) to user_id using the instance repository
+	userResolver := func(sessionName string) (string, error) {
+		instance, err := instanceRepo.GetInstanceByName(context.Background(), sessionName)
+		if err != nil {
+			return "", err
+		}
+		if instance == nil {
+			return "", fmt.Errorf("instance not found: %s", sessionName)
+		}
+		return instance.UserID, nil
+	}
+
+	// Create SSE status notifier for real-time UI updates
+	// Uses Redis Pub/Sub bridge so status events from the worker process
+	// reach the server process's SSEHub (they run as separate OS processes).
+	var statusProcessor workers.StatusWebhookProcessor
+	if redisClientForSSE != nil {
+		bridge := handlers.NewSSERedisBridge(redisClientForSSE, config.NewModuleLogger(logger, "sse-bridge"))
+		statusProcessor = handlers.NewRedisSSEStatusNotifier(
+			bridge,
+			config.NewModuleLogger(logger, "sse-notifier"),
+			userResolver,
+		)
+	}
+
+	// Create monitoring message processor for MONITOR mode automations
+	// This processes incoming WhatsApp messages and triggers monitoring automations
+	var messageProcessor workers.MessageWebhookProcessor
+	if monitoringService != nil {
+		messageProcessor = workers.NewMonitoringMessageProcessor(
+			monitoringService,
+			config.NewModuleLogger(logger, "monitoring-processor"),
+		)
+	}
+
+	// Create dispatch log processor for reconciliation
+	// This creates dispatch_logs for reconciled messages to fill gaps in history
+	dispatchLogProcessor := workers.NewDispatchLogProcessor(workers.DispatchLogProcessorConfig{
+		DispatchLogRepo:  dispatchLogRepo,
+		InstanceRepo:     instanceRepo,
+		Logger:           config.NewModuleLogger(logger, "dispatch-log-processor"),
+		DedupWindowHours: 168, // 7 days dedup window
+	})
+
+	// Create reconciliation service checkpoint repository adapter
+	// The reconciliation service expects its own CheckpointRepository interface
+	checkpointRepoAdapter := postgres.NewCheckpointRepository(db, config.NewModuleLogger(logger, "checkpoint-repo"))
+
+	// Create reconciliation service
+	// This handles message backfill when gaps are detected via silence watchdog
+	var reconcileSvc *reconciliation.Service
+	if wahaAdapter != nil {
+		reconcileSvc = reconciliation.New(
+			wahaAdapter,
+			checkpointRepoAdapter,
+			dispatchLogProcessor, // Integrates with dispatch_logs
+			config.NewModuleLogger(logger, "reconciliation"),
+			reconciliation.DefaultConfig(),
+		)
+
+		// Start the silence watchdog in background
+		// It will detect when a session goes silent and trigger reconciliation
+		cancelWatchdog := reconcileSvc.StartWatchdog(context.Background())
+		defer cancelWatchdog()
+
+		// Create and run the backfill service for comprehensive startup recovery
+		// This checks all active sessions for gaps and enqueues reconciliation tasks
+		backfillSvc := startup.NewBackfillService(
+			instanceRepo,
+			checkpointRepoAdapter,
+			wahaAdapter,
+			queueClient,
+			reconcileSvc,
+			config.NewModuleLogger(logger, "backfill"),
+			startup.DefaultBackfillConfig(),
+		)
+
+		// Run startup backfill in background to avoid blocking worker startup
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+
+			result, err := backfillSvc.RunOnStartup(ctx)
+			if err != nil {
+				logger.Error("Startup backfill failed", zap.Error(err))
+				return
+			}
+
+			if len(result.Errors) > 0 {
+				logger.Warn("Startup backfill completed with errors",
+					zap.Int("totalSessions", result.TotalSessions),
+					zap.Int("sessionsWithGaps", result.SessionsWithGaps),
+					zap.Int("reconciliationsEnqueued", result.ReconciliationsEnqueued),
+					zap.Int("errors", len(result.Errors)),
+					zap.Duration("duration", result.Duration))
+			} else {
+				logger.Info("Startup backfill completed successfully",
+					zap.Int("totalSessions", result.TotalSessions),
+					zap.Int("sessionsWithGaps", result.SessionsWithGaps),
+					zap.Int("reconciliationsEnqueued", result.ReconciliationsEnqueued),
+					zap.Duration("duration", result.Duration))
+			}
+		}()
+	}
+
+	// Create webhook consumer worker with SSE integration and monitoring processor
+	webhookConsumerWorker := workers.NewWebhookConsumerWorker(workers.WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		ReconcileSvc:      reconcileSvc, // Records events for silence detection
+		InstanceRepo:      instanceRepo,
+		GroupRepo:         groupRepo,
+		QueueClient:       queueClient,
+		Logger:            config.NewModuleLogger(logger, "webhook-consumer"),
+		StatusProcessor:   statusProcessor,  // SSE notifications for status changes
+		MessageProcessor:  messageProcessor, // MONITOR mode automation processing
+	})
+
+	// Create reconciliation worker for processing queued reconciliation tasks
+	var reconciliationWorker *workers.ReconciliationWorker
+	if reconcileSvc != nil {
+		reconciliationWorker = workers.NewReconciliationWorker(
+			reconcileSvc,
+			config.NewModuleLogger(logger, "reconciliation-worker"),
+		)
+	}
+
+	// Create asynq inspector for queue monitoring (used by MessageQueueWorker for backpressure)
+	asynqInspector := asynq.NewInspector(asynq.RedisClientOpt{Addr: redisAddr})
+	defer func() { _ = asynqInspector.Close() }()
+
+	// Create asynq client for enqueueing tasks (used by MessageQueueWorker)
+	asynqClient := asynq.NewClient(asynq.RedisClientOpt{Addr: redisAddr})
+	defer func() { _ = asynqClient.Close() }()
+
+	// Create message queue worker for new message types (text, audio, image, poll)
+	// This worker handles messages enqueued with type-specific task types for better routing
+	messageQueueWorker := workers.NewMessageQueueWorker(
+		wahaAdapter,
+		historyRepo,
+		asynqInspector,
+		asynqClient,
+		config.NewModuleLogger(logger, "message_queue_worker"),
+	)
+
+	// Register handlers
+	queueServer.RegisterHandler(workers.TypeSendMessage, messageWorker.ProcessTaskWrapper())
+	queueServer.RegisterHandler(workers.TypeSyncGroups, groupsSyncWorker.ProcessTaskWrapper())
+	queueServer.RegisterHandler(workers.TypeWAHAWebhook, webhookConsumerWorker)
+
+	// Register message queue worker handlers for typed messages
+	// These handle messages enqueued via MessageQueueWorker.Enqueue* methods
+	queueServer.RegisterHandler(workers.TypeMessageText, messageQueueWorker)
+	queueServer.RegisterHandler(workers.TypeMessageAudio, messageQueueWorker)
+	queueServer.RegisterHandler(workers.TypeMessageImage, messageQueueWorker)
+	queueServer.RegisterHandler(workers.TypeMessagePoll, messageQueueWorker)
+	logger.Info("Message queue worker registered for typed message handling")
+
+	// Register reconciliation handlers if service is available
+	if reconciliationWorker != nil {
+		queueServer.RegisterHandler(workers.TypeReconcileChat, asynq.HandlerFunc(reconciliationWorker.ProcessChatWrapper()))
+		queueServer.RegisterHandler(workers.TypeReconcileSession, asynq.HandlerFunc(reconciliationWorker.ProcessSessionWrapper()))
+		logger.Info("Reconciliation worker registered")
+	}
+
+	// Start server
+	go func() {
+		if err := queueServer.Start(); err != nil {
+			logger.Fatal("Failed to start queue server", zap.Error(err))
+		}
+	}()
+
+	// Wait for interrupt
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info("Shutting down worker...")
+	queueServer.Shutdown()
+	logger.Info("Worker exited")
+}

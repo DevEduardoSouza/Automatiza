@@ -1,0 +1,266 @@
+syntax = "proto3";
+
+package auth.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "automatiza-go/internal/gen/auth/v1;authv1";
+
+// ============================================================
+// Core Types
+// ============================================================
+
+/**
+ * Authenticated user information.
+ */
+message AuthUser {
+  string id = 1;
+  string email = 2;
+  optional string display_name = 3;
+  string role = 4;
+  bool email_verified = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+/**
+ * Session information.
+ */
+message SessionInfo {
+  string session_id = 1;
+  google.protobuf.Timestamp expires_at = 2;
+  string device_fingerprint = 3;
+  string ip_address = 4;
+  string user_agent = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp last_activity_at = 7;
+  bool is_current = 8;
+}
+
+// ============================================================
+// Login
+// ============================================================
+
+message LoginRequest {
+  string email = 1 [(buf.validate.field).string.email = true];
+  string password = 2 [(buf.validate.field).string.min_len = 8];
+  optional string device_fingerprint = 3;
+}
+
+message LoginResponse {
+  AuthUser user = 1;
+  SessionInfo session = 2;
+  string csrf_token = 3;
+}
+
+// ============================================================
+// Register
+// ============================================================
+
+message RegisterRequest {
+  string email = 1 [(buf.validate.field).string.email = true];
+  // Password must be 8-128 chars. Complexity validation (lowercase, uppercase, digit) done in service layer.
+  string password = 2 [(buf.validate.field).string = {
+    min_len: 8
+    max_len: 128
+  }];
+  optional string display_name = 3 [(buf.validate.field).string.max_len = 100];
+}
+
+message RegisterResponse {
+  AuthUser user = 1;
+  bool email_verification_sent = 2;
+}
+
+// ============================================================
+// Logout
+// ============================================================
+
+message LogoutRequest {
+  bool logout_all_devices = 1;
+}
+
+message LogoutResponse {
+  bool success = 1;
+  int32 sessions_revoked = 2;
+}
+
+// ============================================================
+// Session Management
+// ============================================================
+
+message RefreshSessionRequest {}
+
+message RefreshSessionResponse {
+  SessionInfo session = 1;
+  string csrf_token = 2;
+}
+
+message GetCurrentUserRequest {}
+
+message GetCurrentUserResponse {
+  AuthUser user = 1;
+  SessionInfo session = 2;
+}
+
+message ListSessionsRequest {}
+
+message ListSessionsResponse {
+  repeated SessionInfo sessions = 1;
+  string current_session_id = 2;
+}
+
+message RevokeSessionRequest {
+  string session_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message RevokeSessionResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Password Operations
+// ============================================================
+
+message ForgotPasswordRequest {
+  string email = 1 [(buf.validate.field).string.email = true];
+}
+
+message ForgotPasswordResponse {
+  bool success = 1;
+}
+
+message ResetPasswordRequest {
+  string token = 1 [(buf.validate.field).string.min_len = 1];
+  // Password must be 8-128 chars. Complexity validation done in service layer.
+  string new_password = 2 [(buf.validate.field).string = {
+    min_len: 8
+    max_len: 128
+  }];
+}
+
+message ResetPasswordResponse {
+  bool success = 1;
+}
+
+message ChangePasswordRequest {
+  string current_password = 1 [(buf.validate.field).string.min_len = 1];
+  // Password must be 8-128 chars. Complexity validation done in service layer.
+  string new_password = 2 [(buf.validate.field).string = {
+    min_len: 8
+    max_len: 128
+  }];
+}
+
+message ChangePasswordResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// Email Verification
+// ============================================================
+
+message VerifyEmailRequest {
+  string token = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message VerifyEmailResponse {
+  bool success = 1;
+  AuthUser user = 2;
+}
+
+message ResendVerificationEmailRequest {}
+
+message ResendVerificationEmailResponse {
+  bool success = 1;
+}
+
+// ============================================================
+// CSRF Token
+// ============================================================
+
+message GetCsrfTokenRequest {}
+
+message GetCsrfTokenResponse {
+  string csrf_token = 1;
+}
+
+// ============================================================
+// Magic Link Authentication
+// ============================================================
+
+message SendMagicLinkRequest {
+  string email = 1 [(buf.validate.field).string.email = true];
+}
+
+message SendMagicLinkResponse {
+  bool success = 1;
+}
+
+message VerifyMagicLinkRequest {
+  string token = 1 [(buf.validate.field).string.min_len = 1];
+  optional string device_fingerprint = 2;
+}
+
+message VerifyMagicLinkResponse {
+  AuthUser user = 1;
+  SessionInfo session = 2;
+  string csrf_token = 3;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * AuthService provides authentication and session management operations.
+ *
+ * Authentication is cookie-based with HTTP-only secure cookies.
+ * All mutating operations require CSRF token validation.
+ */
+service AuthService {
+  // Authenticates user with email and password, sets session cookie.
+  rpc Login(LoginRequest) returns (LoginResponse);
+
+  // Registers a new user account.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Logs out user, clears session cookie(s).
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+
+  // Refreshes the current session, rotates tokens.
+  rpc RefreshSession(RefreshSessionRequest) returns (RefreshSessionResponse);
+
+  // Returns the currently authenticated user and session info.
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (GetCurrentUserResponse);
+
+  // Lists all active sessions for the current user.
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+
+  // Revokes a specific session.
+  rpc RevokeSession(RevokeSessionRequest) returns (RevokeSessionResponse);
+
+  // Initiates password reset flow by sending email.
+  rpc ForgotPassword(ForgotPasswordRequest) returns (ForgotPasswordResponse);
+
+  // Completes password reset with token.
+  rpc ResetPassword(ResetPasswordRequest) returns (ResetPasswordResponse);
+
+  // Changes password for authenticated user.
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+
+  // Verifies email address with token.
+  rpc VerifyEmail(VerifyEmailRequest) returns (VerifyEmailResponse);
+
+  // Resends verification email to current user.
+  rpc ResendVerificationEmail(ResendVerificationEmailRequest) returns (ResendVerificationEmailResponse);
+
+  // Returns a new CSRF token for the current session.
+  rpc GetCsrfToken(GetCsrfTokenRequest) returns (GetCsrfTokenResponse);
+
+  // Sends a magic link to the specified email for passwordless authentication.
+  rpc SendMagicLink(SendMagicLinkRequest) returns (SendMagicLinkResponse);
+
+  // Verifies a magic link token and creates a session.
+  rpc VerifyMagicLink(VerifyMagicLinkRequest) returns (VerifyMagicLinkResponse);
+}

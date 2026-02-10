@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package admin.v1;
+
+option go_package = "github.com/automatiza/proto/admin/v1;adminv1";
+
+/**
+ * Server represents a WAHA server in the load balancer.
+ */
+message Server {
+  // Server identifier
+  int32 server_id = 1;
+
+  // Human-readable server name
+  string server_name = 2;
+
+  // Server URL
+  string url = 3;
+
+  // Current number of users assigned to this server
+  int32 current_users = 4;
+
+  // Maximum number of users this server can handle
+  int32 max_users = 5;
+
+  // Available slots for new users
+  int32 available_slots = 6;
+
+  // Usage percentage (0-100)
+  double usage_percent = 7;
+
+  // Server status (e.g., "online", "offline", "maintenance")
+  string status = 8;
+
+  // Total WAHA instances on this server
+  optional int32 waha_instances_total = 9;
+
+  // WAHA instances with "open" status
+  optional int32 waha_instances_open = 10;
+
+  // WAHA instances with "connecting" status
+  optional int32 waha_instances_connecting = 11;
+
+  // WAHA instances with "close" status
+  optional int32 waha_instances_close = 12;
+}
+
+/**
+ * Summary statistics across all servers.
+ */
+message LoadBalancerSummary {
+  // Total number of servers
+  int32 total_servers = 1;
+
+  // Total capacity across all servers
+  int32 total_capacity = 2;
+
+  // Total users currently assigned
+  int32 total_used = 3;
+
+  // Total available slots
+  int32 total_available = 4;
+
+  // Overall usage percentage (0-100)
+  double usage_percent = 5;
+
+  // Total WAHA instances across all servers
+  optional int32 waha_instances_total = 6;
+
+  // Total WAHA instances with "open" status
+  optional int32 waha_instances_open = 7;
+
+  // Total WAHA instances with "connecting" status
+  optional int32 waha_instances_connecting = 8;
+
+  // Total WAHA instances with "close" status
+  optional int32 waha_instances_close = 9;
+}
+
+// ============================================================
+// Get Stats
+// ============================================================
+
+message GetStatsRequest {}
+
+message GetStatsResponse {
+  // List of all servers with their stats
+  repeated Server servers = 1;
+
+  // Aggregated summary
+  LoadBalancerSummary summary = 2;
+}
+
+// ============================================================
+// Get User Server
+// ============================================================
+
+message GetUserServerRequest {
+  // User ID to look up
+  string user_id = 1;
+}
+
+message GetUserServerResponse {
+  // Server assigned to the user (null if not assigned)
+  optional Server server = 1;
+}
+
+// ============================================================
+// Migrate User
+// ============================================================
+
+message MigrateUserRequest {
+  // User ID to migrate
+  string user_id = 1;
+
+  // Target server ID
+  int32 target_server_id = 2;
+}
+
+message MigrateUserResponse {
+  // Previous server ID (0 if not previously assigned)
+  int32 previous_server_id = 1;
+
+  // New server ID
+  int32 new_server_id = 2;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * LoadBalancerService provides operations for managing WAHA server load balancing.
+ */
+service LoadBalancerService {
+  // Returns statistics for all load balancer servers.
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+
+  // Returns the server assigned to a specific user.
+  rpc GetUserServer(GetUserServerRequest) returns (GetUserServerResponse);
+
+  // Migrates a user to a different server.
+  rpc MigrateUser(MigrateUserRequest) returns (MigrateUserResponse);
+}

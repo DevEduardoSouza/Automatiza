@@ -1,0 +1,838 @@
+package handlers
+
+import (
+	"automatiza-go/internal/adapters/whatsapp"
+	"automatiza-go/internal/middleware"
+	"automatiza-go/internal/models"
+	"automatiza-go/internal/services/coupons"
+	"context"
+	"net/http"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+)
+
+// SettingsHandler handles settings operations
+type SettingsHandler struct{ deps *Dependencies }
+
+func NewSettingsHandler(deps *Dependencies) *SettingsHandler { return &SettingsHandler{deps: deps} }
+
+func (h *SettingsHandler) Get(c *gin.Context) {
+	settings, err := h.deps.SettingsRepo.GetAll(c.Request.Context())
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar configurações")
+		return
+	}
+	middleware.RespondSuccess(c, settings)
+}
+
+func (h *SettingsHandler) Update(c *gin.Context) {
+	var req models.UpdateSettingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+	if err := h.deps.SettingsRepo.Update(c.Request.Context(), req.Key, req.Value); err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao atualizar configuração")
+		return
+	}
+	middleware.RespondSuccess(c, map[string]interface{}{"updated": true})
+}
+
+// HistoryHandler handles action history operations
+type HistoryHandler struct{ deps *Dependencies }
+
+func NewHistoryHandler(deps *Dependencies) *HistoryHandler { return &HistoryHandler{deps: deps} }
+
+func (h *HistoryHandler) List(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	history, err := h.deps.ActionHistoryRepo.GetUserHistory(c.Request.Context(), user.ID, 50, 0)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar histórico")
+		return
+	}
+	middleware.RespondSuccess(c, map[string]interface{}{"history": history, "total": len(history)})
+}
+
+// ContactsHandler handles contact operations
+type ContactsHandler struct{ deps *Dependencies }
+
+func NewContactsHandler(deps *Dependencies) *ContactsHandler { return &ContactsHandler{deps: deps} }
+
+func (h *ContactsHandler) Extract(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	var req models.ContactExtractRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+	if h.deps.WhatsAppProvider == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "WhatsApp provider não configurado")
+		return
+	}
+	instance, _ := h.deps.InstanceRepo.GetInstanceByUserAndName(c.Request.Context(), user.ID, req.InstanceName)
+	if instance == nil {
+		middleware.RespondError(c, http.StatusNotFound, "Instância não encontrada")
+		return
+	}
+	participants, err := h.deps.WhatsAppProvider.GetGroupParticipants(c.Request.Context(), req.InstanceName, req.GroupID)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao extrair contatos")
+		return
+	}
+	// Convert to Contact format
+	contacts := make([]models.Contact, len(participants))
+	for i, p := range participants {
+		isAdmin := p.IsAdmin || p.IsSuperAdmin
+		contacts[i] = models.Contact{
+			ID:      p.ID,
+			IsAdmin: &isAdmin,
+		}
+	}
+	middleware.RespondSuccess(c, models.ContactExtractResponse{Contacts: contacts, Total: len(contacts)})
+}
+
+// ShopeeHandler handles Shopee operations
+type ShopeeHandler struct{ deps *Dependencies }
+
+func NewShopeeHandler(deps *Dependencies) *ShopeeHandler { return &ShopeeHandler{deps: deps} }
+
+func (h *ShopeeHandler) SearchOffers(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	var params models.ShopeeSearchParams
+	if err := c.ShouldBindJSON(&params); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+
+	if h.deps.ShopeeService == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "Serviço Shopee não configurado")
+		return
+	}
+
+	result, err := h.deps.ShopeeService.SearchOffers(c.Request.Context(), user.ID, params)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar ofertas: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, result)
+}
+
+func (h *ShopeeHandler) GenerateAffiliateLink(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	var req models.ShopeeGenerateLinkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "productUrl é obrigatório")
+		return
+	}
+
+	if h.deps.ShopeeService == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "Serviço Shopee não configurado")
+		return
+	}
+
+	result, err := h.deps.ShopeeService.GenerateAffiliateLink(c.Request.Context(), req.ProductURL, user.ID)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao gerar link: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, result)
+}
+
+// MLHandler handles Mercado Livre operations
+type MLHandler struct{ deps *Dependencies }
+
+func NewMLHandler(deps *Dependencies) *MLHandler { return &MLHandler{deps: deps} }
+
+func (h *MLHandler) CreateLink(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	var req models.MLCreateLinkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "productUrl é obrigatório")
+		return
+	}
+
+	if h.deps.MLService == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "Serviço ML não configurado")
+		return
+	}
+
+	result, err := h.deps.MLService.CreateAffiliateLink(c.Request.Context(), req.ProductURL, user.ID)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao criar link: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, result)
+}
+
+func (h *MLHandler) Preview(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	var req models.MLPreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "productUrl é obrigatório")
+		return
+	}
+
+	if h.deps.MLService == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "Serviço ML não configurado")
+		return
+	}
+
+	result, err := h.deps.MLService.GetProductPreview(c.Request.Context(), req.ProductURL, user.ID)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar preview: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, result)
+}
+
+func (h *MLHandler) Connect(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	var req models.MLConnectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+
+	if h.deps.MLService == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "Serviço ML não configurado")
+		return
+	}
+
+	err := h.deps.MLService.SaveCredentials(c.Request.Context(), user.ID, req.Cookie, req.CSRF)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao conectar: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, map[string]interface{}{"connected": true})
+}
+
+// AIHandler handles AI operations
+type AIHandler struct{ deps *Dependencies }
+
+func NewAIHandler(deps *Dependencies) *AIHandler { return &AIHandler{deps: deps} }
+
+func (h *AIHandler) AnalyzeEngagement(c *gin.Context) {
+	var req models.AIAnalyzeEngagementRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+
+	if h.deps.AIService == nil {
+		middleware.RespondSuccess(c, models.AIAnalyzeEngagementResponse{Summary: "Serviço de IA não configurado"})
+		return
+	}
+
+	// Extract messages from group data
+	var messages []string
+	for _, group := range req.GroupData {
+		messages = append(messages, group.GroupName)
+	}
+
+	result, err := h.deps.AIService.AnalyzeEngagement(c.Request.Context(), "", messages)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha na análise: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, models.AIAnalyzeEngagementResponse{
+		Summary:         result.Sentiment,
+		Recommendations: result.Recommendations,
+	})
+}
+
+func (h *AIHandler) AnalyzeTrends(c *gin.Context) {
+	var req models.AIAnalyzeTrendsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+
+	if h.deps.AIService == nil {
+		middleware.RespondSuccess(c, models.AIAnalyzeTrendsResponse{TopCategories: []string{}})
+		return
+	}
+
+	category := ""
+	if len(req.ProductData) > 0 {
+		category = req.ProductData[0].Category
+	}
+
+	result, err := h.deps.AIService.AnalyzeTrends(c.Request.Context(), category)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha na análise: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, models.AIAnalyzeTrendsResponse{
+		TopCategories: result.TrendingProducts,
+		Insights:      result.Insights,
+	})
+}
+
+func (h *AIHandler) EnhanceMessage(c *gin.Context) {
+	var req models.AIEnhanceMessageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "message é obrigatório")
+		return
+	}
+
+	if h.deps.AIService == nil {
+		middleware.RespondSuccess(c, models.AIEnhanceMessageResponse{EnhancedMessage: req.Message})
+		return
+	}
+
+	enhanced, err := h.deps.AIService.EnhanceMessage(c.Request.Context(), req.Message, "")
+	if err != nil {
+		middleware.RespondSuccess(c, models.AIEnhanceMessageResponse{EnhancedMessage: req.Message})
+		return
+	}
+	middleware.RespondSuccess(c, models.AIEnhanceMessageResponse{EnhancedMessage: enhanced})
+}
+
+func (h *AIHandler) SuggestOfferText(c *gin.Context) {
+	var req models.AISuggestOfferTextRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+
+	if h.deps.AIService == nil {
+		middleware.RespondSuccess(c, models.AISuggestOfferTextResponse{Suggestions: []models.OfferTextSuggestion{}})
+		return
+	}
+
+	offer := &models.ShopeeOffer{
+		Name:     req.ProductName,
+		Price:    req.Price,
+		Discount: req.Discount,
+	}
+
+	text, err := h.deps.AIService.SuggestOfferText(c.Request.Context(), offer)
+	if err != nil {
+		middleware.RespondSuccess(c, models.AISuggestOfferTextResponse{Suggestions: []models.OfferTextSuggestion{}})
+		return
+	}
+	middleware.RespondSuccess(c, models.AISuggestOfferTextResponse{
+		Suggestions: []models.OfferTextSuggestion{{Text: text, Tone: "promotional"}},
+	})
+}
+
+// ImagesHandler handles image operations
+type ImagesHandler struct{ deps *Dependencies }
+
+func NewImagesHandler(deps *Dependencies) *ImagesHandler { return &ImagesHandler{deps: deps} }
+
+func (h *ImagesHandler) GenerateOffer(c *gin.Context) {
+	middleware.RespondError(c, http.StatusNotImplemented, "Funcionalidade não implementada")
+}
+
+func (h *ImagesHandler) GenerateOfferPost(c *gin.Context) {
+	middleware.RespondError(c, http.StatusNotImplemented, "Funcionalidade não implementada")
+}
+
+// CampaignsHandler handles campaign operations
+type CampaignsHandler struct{ deps *Dependencies }
+
+func NewCampaignsHandler(deps *Dependencies) *CampaignsHandler { return &CampaignsHandler{deps: deps} }
+
+func (h *CampaignsHandler) Create(c *gin.Context) {
+	var req models.CreateCampaignRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+	middleware.RespondSuccess(c, models.CreateCampaignResponse{Status: "created", TotalGroups: len(req.GroupIDs)})
+}
+
+// JobsHandler handles job operations
+type JobsHandler struct{ deps *Dependencies }
+
+func NewJobsHandler(deps *Dependencies) *JobsHandler { return &JobsHandler{deps: deps} }
+
+func (h *JobsHandler) ProcessScheduled(c *gin.Context) {
+	if h.deps.JobsService == nil {
+		middleware.RespondSuccess(c, models.ProcessScheduledJobsResult{ProcessedCount: 0})
+		return
+	}
+
+	result, err := h.deps.JobsService.ProcessScheduledJobs(c.Request.Context())
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao processar jobs: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, models.ProcessScheduledJobsResult{
+		ProcessedCount: result.Processed,
+		FailedCount:    result.Failed,
+	})
+}
+
+func (h *JobsHandler) QueueStatus(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+
+	if h.deps.JobsService == nil {
+		middleware.RespondSuccess(c, models.QueueStatus{Pending: 0, Processing: 0})
+		return
+	}
+
+	status, err := h.deps.JobsService.GetQueueStatus(c.Request.Context(), user.ID)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar status: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, models.QueueStatus{
+		Pending:    status.Pending,
+		Processing: status.Running,
+	})
+}
+
+// WebhooksHandler handles webhook operations
+type WebhooksHandler struct{ deps *Dependencies }
+
+func NewWebhooksHandler(deps *Dependencies) *WebhooksHandler { return &WebhooksHandler{deps: deps} }
+
+func (h *WebhooksHandler) WhatsApp(c *gin.Context) {
+	var msg models.IncomingMessage
+	if err := c.ShouldBindJSON(&msg); err != nil {
+		// Log but don't fail - webhooks should always return 200
+		h.deps.Logger.Warn("Failed to parse WhatsApp webhook", zap.Error(err))
+		c.JSON(http.StatusOK, gin.H{"received": true})
+		return
+	}
+
+	if h.deps.MonitoringService != nil {
+		go func() {
+			ctx := context.Background()
+			if err := h.deps.MonitoringService.ProcessIncomingMessage(ctx, &msg); err != nil {
+				h.deps.Logger.Error("Failed to process WhatsApp message",
+					zap.String("instanceName", msg.InstanceName),
+					zap.Error(err))
+			}
+		}()
+	}
+
+	c.JSON(http.StatusOK, gin.H{"received": true})
+}
+
+func (h *WebhooksHandler) Kiwify(c *gin.Context) {
+	// Log incoming webhook for debugging
+	h.deps.Logger.Info("Kiwify webhook received",
+		zap.String("method", c.Request.Method),
+		zap.String("contentType", c.ContentType()),
+	)
+
+	// Parse the webhook payload
+	var payload models.KiwifyWebhookPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		h.deps.Logger.Error("Failed to parse Kiwify webhook payload",
+			zap.Error(err))
+		c.JSON(http.StatusBadRequest, models.KiwifyWebhookResult{
+			Success: false,
+			Message: "Invalid webhook payload: " + err.Error(),
+		})
+		return
+	}
+
+	// Get signature from query or body
+	signature := c.Query("signature")
+	if signature == "" {
+		signature = payload.Signature
+	}
+
+	// Check if Kiwify service is configured
+	if h.deps.KiwifyService == nil {
+		h.deps.Logger.Warn("Kiwify service not configured")
+		c.JSON(http.StatusOK, models.KiwifyWebhookResult{
+			Success: true,
+			Message: "Webhook received but Kiwify service not configured",
+		})
+		return
+	}
+
+	// Process the webhook
+	result, err := h.deps.KiwifyService.ProcessWebhook(c.Request.Context(), &payload, signature)
+	if err != nil {
+		h.deps.Logger.Error("Failed to process Kiwify webhook",
+			zap.Error(err))
+		c.JSON(http.StatusInternalServerError, models.KiwifyWebhookResult{
+			Success: false,
+			Message: "Failed to process webhook: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *WebhooksHandler) KiwifySimulate(c *gin.Context) {
+	// Simulation request structure
+	type SimulateRequest struct {
+		Email   string `json:"email" binding:"required,email"`
+		Event   string `json:"evento" binding:"required"`
+		Product string `json:"produto"`
+		Token   string `json:"token"`
+	}
+
+	var req SimulateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Email and event are required")
+		return
+	}
+
+	// Validate token if configured
+	if h.deps.KiwifyService == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "Kiwify service not configured")
+		return
+	}
+
+	// Create simulated payload
+	productName := req.Product
+	if productName == "" {
+		productName = "Test Product"
+	}
+
+	payload := &models.KiwifyWebhookPayload{
+		Customer: &models.KiwifyCustomer{
+			Email:    req.Email,
+			FullName: strings.Split(req.Email, "@")[0],
+		},
+		Product: &models.KiwifyProduct{
+			ProductName: productName,
+			ProductID:   "TEST123",
+		},
+		WebhookEventType: req.Event,
+		CheckoutLink:     "https://pay.kiwify.com.br/TEST123",
+	}
+
+	// Process as a real webhook
+	result, err := h.deps.KiwifyService.ProcessWebhook(c.Request.Context(), payload, req.Token)
+	if err != nil {
+		h.deps.Logger.Error("Failed to process simulated Kiwify webhook",
+			zap.Error(err))
+		middleware.RespondError(c, http.StatusInternalServerError, "Failed to process webhook: "+err.Error())
+		return
+	}
+
+	middleware.RespondSuccess(c, result)
+}
+
+// RedirectHandler handles redirect operations
+type RedirectHandler struct{ deps *Dependencies }
+
+func NewRedirectHandler(deps *Dependencies) *RedirectHandler { return &RedirectHandler{deps: deps} }
+
+func (h *RedirectHandler) Process(c *gin.Context) {
+	var req models.RedirectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "url é obrigatório")
+		return
+	}
+	middleware.RespondSuccess(c, models.RedirectResponse{OriginalURL: req.URL, FinalURL: req.URL})
+}
+
+// InstancesHandler handles instance webhook operations
+type InstancesHandler struct{ deps *Dependencies }
+
+func NewInstancesHandler(deps *Dependencies) *InstancesHandler { return &InstancesHandler{deps: deps} }
+
+func (h *InstancesHandler) SyncWebhook(c *gin.Context) {
+	instanceName := c.Param("id")
+
+	if h.deps.WhatsAppProvider == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "WhatsApp provider não configurado")
+		return
+	}
+
+	// Get instance to verify it exists
+	instance, err := h.deps.InstanceRepo.GetInstanceByName(c.Request.Context(), instanceName)
+	if err != nil || instance == nil {
+		middleware.RespondError(c, http.StatusNotFound, "Instância não encontrada")
+		return
+	}
+
+	// Build webhook URL — use /waha endpoint (new handler with Asynq + SSE pipeline)
+	webhookURL := h.deps.Config.BackendPublicURL + "/api/v1/webhooks/waha"
+	events := []string{"message", "message.ack", "session.status"}
+
+	err = h.deps.WhatsAppProvider.SetWebhook(c.Request.Context(), whatsapp.SetWebhookInput{
+		SessionName: instance.InstanceID,
+		URL:         webhookURL,
+		Events:      events,
+	})
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao sincronizar webhook: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, map[string]interface{}{"synced": true, "instanceName": instance.InstanceID})
+}
+
+func (h *InstancesHandler) SyncAllWebhooks(c *gin.Context) {
+	if h.deps.WhatsAppProvider == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "WhatsApp provider não configurado")
+		return
+	}
+
+	// Get all connected instances
+	instances, err := h.deps.InstanceRepo.GetAllConnectedInstances(c.Request.Context())
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar instâncias: "+err.Error())
+		return
+	}
+
+	webhookURL := h.deps.Config.BackendPublicURL + "/api/v1/webhooks/waha"
+	events := []string{"message", "message.ack", "session.status"}
+
+	synced := 0
+	failed := 0
+	for _, instance := range instances {
+		err := h.deps.WhatsAppProvider.SetWebhook(c.Request.Context(), whatsapp.SetWebhookInput{
+			SessionName: instance.InstanceID,
+			URL:         webhookURL,
+			Events:      events,
+		})
+		if err != nil {
+			h.deps.Logger.Warn("Failed to sync webhook",
+				zap.String("instanceID", instance.InstanceID),
+				zap.Error(err))
+			failed++
+		} else {
+			synced++
+		}
+	}
+
+	middleware.RespondSuccess(c, map[string]interface{}{
+		"synced": synced,
+		"failed": failed,
+		"total":  len(instances),
+	})
+}
+
+// AdminHandler handles admin operations
+type AdminHandler struct{ deps *Dependencies }
+
+func NewAdminHandler(deps *Dependencies) *AdminHandler { return &AdminHandler{deps: deps} }
+
+func (h *AdminHandler) ResetPassword(c *gin.Context) {
+	admin := middleware.MustGetAuthenticatedUser(c)
+	userID := c.Param("userId")
+
+	if h.deps.UserService == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "Serviço de usuários não configurado")
+		return
+	}
+
+	result, err := h.deps.UserService.ResetUserPassword(c.Request.Context(), userID, admin.ID, admin.Email)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao resetar senha: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, result)
+}
+
+func (h *AdminHandler) Observability(c *gin.Context) {
+	middleware.RespondSuccess(c, map[string]interface{}{"status": "ok"})
+}
+
+func (h *AdminHandler) EnsureWebhooks(c *gin.Context) {
+	middleware.RespondSuccess(c, map[string]interface{}{"ensured": true})
+}
+
+func (h *AdminHandler) ShopeeAffiliateAudit(c *gin.Context) {
+	middleware.RespondSuccess(c, map[string]interface{}{"audit": []interface{}{}})
+}
+
+func (h *AdminHandler) SystemEvents(c *gin.Context) {
+	events, _ := h.deps.SystemEventRepo.GetRecent(c.Request.Context(), 100)
+	middleware.RespondSuccess(c, map[string]interface{}{"events": events})
+}
+
+// CouponsHandler handles coupon operations
+type CouponsHandler struct{ deps *Dependencies }
+
+func NewCouponsHandler(deps *Dependencies) *CouponsHandler { return &CouponsHandler{deps: deps} }
+
+func (h *CouponsHandler) List(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	if h.deps.CouponsService == nil {
+		middleware.RespondSuccess(c, map[string]interface{}{"coupons": []interface{}{}, "total": 0})
+		return
+	}
+	coupons, err := h.deps.CouponsService.GetUserCoupons(c.Request.Context(), user.ID, nil)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar cupons")
+		return
+	}
+	middleware.RespondSuccess(c, map[string]interface{}{"coupons": coupons, "total": len(coupons)})
+}
+
+func (h *CouponsHandler) Get(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	if h.deps.CouponsService == nil {
+		middleware.RespondError(c, http.StatusNotFound, "Cupom não encontrado")
+		return
+	}
+	coupon, err := h.deps.CouponsService.GetCouponByID(c.Request.Context(), c.Param("id"), user.ID)
+	if err != nil || coupon == nil {
+		middleware.RespondError(c, http.StatusNotFound, "Cupom não encontrado")
+		return
+	}
+	middleware.RespondSuccess(c, coupon)
+}
+
+func (h *CouponsHandler) GetByStore(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	if h.deps.CouponsService == nil {
+		middleware.RespondSuccess(c, map[string]interface{}{"coupons": []interface{}{}, "total": 0})
+		return
+	}
+	coupons, err := h.deps.CouponsService.GetCouponsByStore(c.Request.Context(), user.ID, c.Param("store"))
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar cupons")
+		return
+	}
+	middleware.RespondSuccess(c, map[string]interface{}{"coupons": coupons, "total": len(coupons)})
+}
+
+func (h *CouponsHandler) Create(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	var req models.CreateCouponRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+	if h.deps.CouponsService == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "Serviço de cupons não configurado")
+		return
+	}
+	result, err := h.deps.CouponsService.CreateCoupon(c.Request.Context(), user.ID, &coupons.CreateCouponData{
+		Code:          req.Code,
+		Title:         req.Title,
+		Store:         req.Store,
+		AffiliateLink: stringVal(req.AffiliateLink),
+		ExpiresAt:     stringVal(req.ExpiresAt),
+	})
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao criar cupom: "+err.Error())
+		return
+	}
+	middleware.RespondCreated(c, result)
+}
+
+func (h *CouponsHandler) Update(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	var req models.UpdateCouponRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+	if h.deps.CouponsService == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "Serviço de cupons não configurado")
+		return
+	}
+	result, err := h.deps.CouponsService.UpdateCoupon(c.Request.Context(), c.Param("id"), user.ID, &coupons.UpdateCouponData{
+		Code:     req.Code,
+		Title:    req.Title,
+		IsActive: req.IsActive,
+	})
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao atualizar cupom: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, result)
+}
+
+func (h *CouponsHandler) Delete(c *gin.Context) {
+	user := middleware.MustGetAuthenticatedUser(c)
+	if h.deps.CouponsService == nil {
+		middleware.RespondError(c, http.StatusServiceUnavailable, "Serviço de cupons não configurado")
+		return
+	}
+	if err := h.deps.CouponsService.DeleteCoupon(c.Request.Context(), c.Param("id"), user.ID); err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao excluir cupom: "+err.Error())
+		return
+	}
+	middleware.RespondSuccess(c, map[string]interface{}{"deleted": true})
+}
+
+// Helper function to get string value from pointer
+func stringVal(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// LoadBalancerHandler handles load balancer operations
+type LoadBalancerHandler struct{ deps *Dependencies }
+
+func NewLoadBalancerHandler(deps *Dependencies) *LoadBalancerHandler {
+	return &LoadBalancerHandler{deps: deps}
+}
+
+func (h *LoadBalancerHandler) Stats(c *gin.Context) {
+	if h.deps.LBService == nil {
+		middleware.RespondSuccess(c, models.LoadBalancerStats{Servers: []models.ServerStats{}})
+		return
+	}
+
+	stats, err := h.deps.LBService.GetServerStats(c.Request.Context())
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar stats: "+err.Error())
+		return
+	}
+
+	serverStats := make([]models.ServerStats, 0, len(stats.Servers))
+	for _, s := range stats.Servers {
+		serverStats = append(serverStats, models.ServerStats{
+			ServerID:    s.ID,
+			URL:         s.URL,
+			TotalUsers:  s.UserCount,
+			MaxUsers:    s.MaxUsers,
+			Utilization: s.Utilization,
+			IsActive:    s.IsActive,
+		})
+	}
+
+	middleware.RespondSuccess(c, models.LoadBalancerStats{
+		TotalUsers: stats.TotalUsers,
+		Servers:    serverStats,
+	})
+}
+
+func (h *LoadBalancerHandler) GetUserServer(c *gin.Context) {
+	userID := c.Param("userId")
+
+	if h.deps.LBService == nil {
+		middleware.RespondSuccess(c, map[string]interface{}{"server": nil})
+		return
+	}
+
+	server, err := h.deps.LBService.GetServerForUser(c.Request.Context(), userID)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar servidor: "+err.Error())
+		return
+	}
+
+	middleware.RespondSuccess(c, map[string]interface{}{"server": server})
+}
+
+func (h *LoadBalancerHandler) Migrate(c *gin.Context) {
+	var req models.MigrateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondError(c, http.StatusBadRequest, "Dados inválidos")
+		return
+	}
+
+	if h.deps.LBService == nil {
+		middleware.RespondSuccess(c, models.MigrateUserResponse{Success: false, Message: "Serviço não configurado"})
+		return
+	}
+
+	err := h.deps.LBService.MigrateUser(c.Request.Context(), req.UserID, req.TargetServerID)
+	if err != nil {
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha na migração: "+err.Error())
+		return
+	}
+
+	middleware.RespondSuccess(c, models.MigrateUserResponse{Success: true, Message: "Usuário migrado com sucesso"})
+}

@@ -1,0 +1,182 @@
+services:
+  # =============================================================================
+  # PostgreSQL Database
+  # =============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: automatiza-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-automatiza}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-automatiza}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-automatiza} -d ${DB_NAME:-automatiza}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - automatiza
+
+  # =============================================================================
+  # Redis (Cache & Queue)
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: automatiza-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - automatiza
+
+  # =============================================================================
+  # WAHA Plus (WhatsApp API)
+  # =============================================================================
+  waha:
+    image: devlikeapro/waha-plus:latest
+    container_name: automatiza-waha
+    restart: unless-stopped
+    environment:
+      WHATSAPP_API_KEY: ${WAHA_API_KEY}
+      WHATSAPP_DEFAULT_ENGINE: GOWS
+      WAHA_WORKER_MODE: GOWS
+      WHATSAPP_RESTART_ALL_SESSIONS: "true"
+      WHATSAPP_HOOK_URL: http://server:3000/api/v1/webhooks/waha
+      WHATSAPP_HOOK_EVENTS: message,message.ack,session.status,group.join,group.leave
+      WAHA_DASHBOARD_ENABLED: "false"
+      WAHA_LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - waha_data:/app/.waha
+    ports:
+      - "127.0.0.1:3001:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - automatiza
+
+  # =============================================================================
+  # Database Migrations (run on-demand via `docker compose run migrate`)
+  # =============================================================================
+  migrate:
+    image: ${BACKEND_IMAGE:-ghcr.io/bruno-vilefort-tech-consulting/carlos-automatisa/backend:latest}
+    container_name: automatiza-migrate
+    profiles: ["tools"]
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        echo "=== Running init.sql ==="
+        PGPASSWORD=$$DB_PASSWORD psql -h postgres -U $$DB_USER -d $$DB_NAME -f /app/db/init.sql
+        echo "=== Running migrations ==="
+        DB_HOST=postgres /app/db/run-migrations.sh
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-automatiza}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-automatiza}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - automatiza
+
+  # =============================================================================
+  # Backend Server
+  # =============================================================================
+  server:
+    image: ${BACKEND_IMAGE:-ghcr.io/bruno-vilefort-tech-consulting/carlos-automatisa/backend:latest}
+    container_name: automatiza-server
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Docker networking overrides (not in .env)
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - CACHE_REDIS_URI=redis://redis:6379/0
+      - WAHA_API_URL=http://waha:3000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - automatiza
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # =============================================================================
+  # Background Worker
+  # =============================================================================
+  worker:
+    image: ${BACKEND_IMAGE:-ghcr.io/bruno-vilefort-tech-consulting/carlos-automatisa/backend:latest}
+    container_name: automatiza-worker
+    restart: unless-stopped
+    command: ["./server", "--worker"]
+    env_file: .env
+    environment:
+      # Docker networking overrides (not in .env)
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_MAX_CONNS=10
+      - CACHE_REDIS_URI=redis://redis:6379/0
+      - WAHA_API_URL=http://waha:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - automatiza
+
+  # =============================================================================
+  # Frontend (nginx SPA)
+  # =============================================================================
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/bruno-vilefort-tech-consulting/carlos-automatisa/frontend:latest}
+    container_name: automatiza-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:80"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - automatiza
+
+volumes:
+  postgres_data:
+    name: docker_postgres_data
+  redis_data:
+    name: docker_redis_data
+  waha_data:
+    name: docker_waha_data
+
+networks:
+  automatiza:
+    driver: bridge
