@@ -1,6 +1,5 @@
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ScheduleMultipleGroups } from '@/components/groups';
-import { Button } from '@/components/ui/button';
 import { useJobs } from '@/hooks/use-jobs';
 import { AlertCircle, HelpCircle, List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -194,6 +193,7 @@ export default function JobsPage() {
                 </div>
               </div>
 
+              <ErrorBoundary>
               {jobs.loadingJobs ? (
                 <div className="flex items-center justify-center py-8">
                   <div
@@ -238,13 +238,18 @@ export default function JobsPage() {
                       })}
                     </p>
                     {jobs.hasNextPage && (
-                      <Button variant="outline" size="sm" onClick={jobs.loadNextPage}>
+                      <button
+                        type="button"
+                        onClick={jobs.loadNextPage}
+                        className="inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+                      >
                         {t('pages.jobs.table.loadMore')}
-                      </Button>
+                      </button>
                     )}
                   </div>
                 </>
               )}
+              </ErrorBoundary>
             </div>
 
             {/* Como funciona Card */}
@@ -268,12 +273,12 @@ export default function JobsPage() {
                 </span>
               </div>
 
-              <div className="space-y-4">
-                <p className="text-sm md:text-base lg:text-lg" style={{ color: '#71717a' }}>
+              <div className="space-y-3">
+                <p className="text-xs xs:text-sm" style={{ color: '#71717a' }}>
                   {t('pages.jobs.howItWorks.description')}
                 </p>
                 <ul
-                  className="list-disc list-inside space-y-2 lg:space-y-3 text-sm md:text-base lg:text-lg"
+                  className="list-disc list-inside space-y-1.5 text-xs xs:text-sm"
                   style={{ color: '#71717a' }}
                 >
                   <li>
@@ -301,13 +306,13 @@ export default function JobsPage() {
                   </li>
                 </ul>
                 <div
-                  className="p-3 xs:p-4 md:p-5 lg:p-6 rounded-lg xs:rounded-xl border"
+                  className="p-2.5 xs:p-3 rounded-lg xs:rounded-xl border"
                   style={{
                     backgroundColor: colors.iconBg,
                     borderColor: colors.wineBorder,
                   }}
                 >
-                  <p className="text-xs md:text-sm lg:text-base">
+                  <p className="text-xs xs:text-sm">
                     <strong>{t('common.tip')}:</strong> {t('pages.jobs.howItWorks.note')}
                   </p>
                 </div>

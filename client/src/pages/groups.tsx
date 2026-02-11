@@ -7,7 +7,6 @@ import {
   GroupMembersDialog,
   GroupReconnectDialog,
 } from '@/components/groups';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGroups } from '@/hooks/use-groups';
 import { cn } from '@/lib/utils';
@@ -68,6 +67,8 @@ export default function Groups() {
     mediaFile,
     groupPhoto,
     mentionOpen,
+    mentionParticipants,
+    loadingMentionParticipants,
     connectionStatus,
     instanceName,
     reconnecting,
@@ -158,7 +159,9 @@ export default function Groups() {
                 className="h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
                 style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
               />
-              <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>{t('pages.groups.loading')}</p>
+              <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                {t('pages.groups.loading')}
+              </p>
             </div>
           </div>
         </div>
@@ -198,17 +201,23 @@ export default function Groups() {
                   </p>
                 </div>
               </div>
-              <Button
+              <button
+                type="button"
                 onClick={handleSyncGroups}
                 disabled={syncing || connectionStatus !== 'connected'}
-                className="w-full sm:w-auto bg-[#8D2D53] text-white hover:bg-[#7a2747]"
+                className="auth-btn-glow relative inline-flex w-full sm:w-auto cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <RefreshCw
-                  className={cn('mr-2 h-3.5 w-3.5 xs:h-4 xs:w-4', syncing && 'animate-spin')}
-                  aria-hidden="true"
-                />
-                {syncing ? t('pages.groups.sync.syncing') : t('pages.groups.sync.syncGroups')}
-              </Button>
+                <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+                  <div className="auth-btn-glow__glow absolute inset-0" />
+                </div>
+                <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+                  <RefreshCw
+                    className={cn('h-4 w-4', syncing && 'animate-spin')}
+                    aria-hidden="true"
+                  />
+                  {syncing ? t('pages.groups.sync.syncing') : t('pages.groups.sync.syncGroups')}
+                </span>
+              </button>
             </div>
 
             {/* Connection Status Alerts */}
@@ -293,6 +302,8 @@ export default function Groups() {
               mentionOpen={mentionOpen}
               onMentionOpenChange={setMentionOpen}
               onInsertMention={insertMention}
+              mentionParticipants={mentionParticipants}
+              loadingMentionParticipants={loadingMentionParticipants}
               isEnhancing={isEnhancing}
               onEnhanceMessage={handleEnhanceMessage}
               mediaFile={mediaFile}
@@ -340,6 +351,7 @@ export default function Groups() {
             </div>
 
             {/* Groups Table */}
+            <ErrorBoundary>
             <GroupListTable
               groups={groups}
               filteredGroups={filteredGroups}
@@ -364,6 +376,7 @@ export default function Groups() {
               onPageChange={setCurrentPage}
               onPageSizeChange={setPageSize}
             />
+            </ErrorBoundary>
 
             {/* Invite Code Dialog */}
             <GroupInviteCodeDialog

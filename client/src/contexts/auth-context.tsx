@@ -1,4 +1,6 @@
 import { ROUTES } from '@/constants/routes';
+import { captureHookError, setSentryUser } from '@/lib/sentry';
+import * as Sentry from '@sentry/react';
 import {
   AuthService,
   ChangePasswordRequestSchema,
@@ -230,8 +232,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const response = await authClient.getCurrentUser(create(GetCurrentUserRequestSchema, {}));
 
         if (response.user && response.session) {
-          setUser(protoToAuthUser(response.user));
+          const restoredUser = protoToAuthUser(response.user);
+          setUser(restoredUser);
           setSession(protoToSessionInfo(response.session));
+          setSentryUser({ id: restoredUser.id, email: restoredUser.email, role: restoredUser.role });
           // Restore CSRF token from cookie if not in memory
           // This handles page reloads where the in-memory token is lost
           if (!getCsrfToken()) {
@@ -251,10 +255,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error instanceof ConnectError && error.code === Code.Unauthenticated) {
           setUser(null);
           setSession(null);
+          setSentryUser(null);
           clearCsrfToken();
+        } else {
+          // FSQ17: Capture non-auth errors as warning for diagnostics
+          Sentry.captureException(error, {
+            level: 'warning',
+            tags: { auth_operation: 'checkSession' },
+          });
         }
-        // For other errors (network, timeout, server unavailable), keep existing state
-        // This prevents unnecessary logouts during transient failures
       } finally {
         initializedRef.current = true;
         setLoading(false);
@@ -296,9 +305,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
 
       if (response.user && response.session) {
-        setUser(protoToAuthUser(response.user));
+        const loggedInUser = protoToAuthUser(response.user);
+        setUser(loggedInUser);
         setSession(protoToSessionInfo(response.session));
         setCsrfToken(response.csrfToken);
+        setSentryUser({ id: loggedInUser.id, email: loggedInUser.email, role: loggedInUser.role });
         // Navigation is handled by the calling component (use-auth-page)
         // via useEffect that monitors user state
         return { error: null };
@@ -321,10 +332,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             logoutAllDevices,
           })
         );
-      } catch {
-        // Ignore errors on logout
+      } catch (error) {
+        // FSQ15: Capture logout errors as warning instead of silencing
+        Sentry.captureException(error, {
+          level: 'warning',
+          tags: { auth_operation: 'logout' },
+        });
       }
 
+      setSentryUser(null);
       setUser(null);
       setSession(null);
       clearCsrfToken();
@@ -400,7 +416,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sessions: response.sessions.map(protoToSessionInfo),
         currentSessionId: response.currentSessionId,
       };
-    } catch {
+    } catch (error) {
+      // FSQ16: Capture server errors for diagnostics
+      captureHookError(error, 'AuthContext', 'listSessions');
       return { sessions: [], currentSessionId: '' };
     }
   }, []);
@@ -443,9 +461,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
 
         if (response.user && response.session) {
-          setUser(protoToAuthUser(response.user));
+          const magicUser = protoToAuthUser(response.user);
+          setUser(magicUser);
           setSession(protoToSessionInfo(response.session));
           setCsrfToken(response.csrfToken);
+          setSentryUser({ id: magicUser.id, email: magicUser.email, role: magicUser.role });
           navigate(ROUTES.DASHBOARD);
           return { error: null };
         }

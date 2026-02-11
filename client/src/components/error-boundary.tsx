@@ -1,7 +1,8 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import * as Sentry from '@sentry/react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
-import { Component, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface ErrorBoundaryProps {
@@ -26,6 +27,16 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    Sentry.captureException(error, {
+      contexts: {
+        react: {
+          componentStack: errorInfo.componentStack ?? undefined,
+        },
+      },
+    });
   }
 
   handleRetry = (): void => {
@@ -59,8 +70,9 @@ function isI18nKey(message: string): boolean {
 
 /**
  * Default fallback UI for ErrorBoundary.
+ * Exported for reuse with Sentry.ErrorBoundary.
  */
-function ErrorFallback({ error, onRetry }: ErrorFallbackProps): ReactNode {
+export function ErrorFallback({ error, onRetry }: ErrorFallbackProps): ReactNode {
   const { t } = useTranslation();
 
   const errorMessage = error?.message
