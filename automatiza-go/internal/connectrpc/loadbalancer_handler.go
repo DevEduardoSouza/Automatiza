@@ -7,10 +7,12 @@ import (
 	"strconv"
 
 	adminv1 "automatiza-go/internal/gen/admin/v1"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/loadbalancer"
 
 	"connectrpc.com/connect"
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -78,7 +80,13 @@ func (h *LoadBalancerHandler) GetStats(
 	var totalCapacity, totalUsed int32
 
 	for i, srv := range stats.Servers {
-		serverID, _ := strconv.ParseInt(srv.ID, 10, 32)
+		serverID, parseErr := strconv.ParseInt(srv.ID, 10, 32)
+		if parseErr != nil {
+			observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to parse server ID", parseErr, map[string]string{
+				"module": "loadbalancer", "operation": "parse_server_id", "raw_id": srv.ID,
+			})
+			serverID = int64(i + 1)
+		}
 		if serverID == 0 {
 			serverID = int64(i + 1)
 		}
@@ -168,7 +176,12 @@ func (h *LoadBalancerHandler) GetUserServer(
 		}), nil
 	}
 
-	serverID, _ := strconv.ParseInt(server.ID, 10, 32)
+	serverID, parseErr := strconv.ParseInt(server.ID, 10, 32)
+	if parseErr != nil {
+		observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to parse server ID for user server", parseErr, map[string]string{
+			"module": "loadbalancer", "operation": "parse_server_id", "raw_id": server.ID,
+		})
+	}
 	status := "offline"
 	if server.IsActive {
 		status = "online"
@@ -215,7 +228,12 @@ func (h *LoadBalancerHandler) MigrateUser(
 	var previousServerID int32
 	currentServer, err := h.lbService.GetServerForUser(ctx, userID)
 	if err == nil && currentServer != nil {
-		prevID, _ := strconv.ParseInt(currentServer.ID, 10, 32)
+		prevID, parseErr := strconv.ParseInt(currentServer.ID, 10, 32)
+		if parseErr != nil {
+			observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to parse previous server ID during migration", parseErr, map[string]string{
+				"module": "loadbalancer", "operation": "parse_server_id", "raw_id": currentServer.ID,
+			})
+		}
 		previousServerID = int32(prevID)
 	}
 

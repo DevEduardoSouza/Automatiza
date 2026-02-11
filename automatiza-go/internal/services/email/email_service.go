@@ -2,6 +2,7 @@ package email
 
 import (
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 	"gopkg.in/gomail.v2"
 )
@@ -228,7 +230,11 @@ func (s *dynamicEmailService) SendCustomEmail(ctx context.Context, to, subject, 
 func (s *dynamicEmailService) send(ctx context.Context, to, subject, htmlBody string) error {
 	cfg := s.getConfig(ctx)
 	if cfg == nil {
-		return fmt.Errorf("SMTP not configured")
+		cfgErr := fmt.Errorf("SMTP not configured")
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Email SMTP not configured", cfgErr, map[string]string{
+			"external_service": "email",
+		})
+		return cfgErr
 	}
 
 	dialer := gomail.NewDialer(cfg.Host, cfg.Port, cfg.User, cfg.Password)
@@ -244,10 +250,10 @@ func (s *dynamicEmailService) send(ctx context.Context, to, subject, htmlBody st
 	m.SetBody("text/html", htmlBody)
 
 	if err := dialer.DialAndSend(m); err != nil {
-		s.logger.Error("Failed to send email",
-			zap.String("to", to),
-			zap.String("subject", subject),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to send email via SMTP", err, map[string]string{
+			"external_service": "email",
+			"email_subject":    subject,
+		})
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 
@@ -348,10 +354,10 @@ func (s *emailService) send(to, subject, htmlBody string) error {
 	m.SetBody("text/html", htmlBody)
 
 	if err := s.dialer.DialAndSend(m); err != nil {
-		s.logger.Error("Failed to send email",
-			zap.String("to", to),
-			zap.String("subject", subject),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to send email via SMTP", err, map[string]string{
+			"external_service": "email",
+			"email_subject":    subject,
+		})
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 

@@ -8,10 +8,12 @@ import (
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/workers"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -195,10 +197,14 @@ func (s *standaloneJobsService) createActionHistory(ctx context.Context, job *mo
 	}
 
 	// Set target_count and mark as running
-	_ = s.historyRepo.Update(ctx, history.ID, map[string]interface{}{
+	if err := s.historyRepo.Update(ctx, history.ID, map[string]interface{}{
 		"target_count": targetCount,
 		"status":       models.ActionStatusRunning,
-	})
+	}); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError,
+			"Failed to update history target_count and status", err,
+			map[string]string{"module": "jobs", "operation": "history-target-count-update"})
+	}
 
 	s.notifyHistoryChange(job.UserID, history.ID, models.ActionStatusRunning)
 
@@ -221,8 +227,16 @@ func (s *standaloneJobsService) completeActionHistory(ctx context.Context, userI
 		errStr = *errorMsg
 	}
 
-	_ = s.historyRepo.UpdateCounts(ctx, historyID, int32(successCount), int32(errorCount))
-	_ = s.historyRepo.UpdateStatus(ctx, historyID, status, errStr)
+	if err := s.historyRepo.UpdateCounts(ctx, historyID, int32(successCount), int32(errorCount)); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError,
+			"Failed to update history counts", err,
+			map[string]string{"module": "jobs", "operation": "history-update-counts"})
+	}
+	if err := s.historyRepo.UpdateStatus(ctx, historyID, status, errStr); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError,
+			"Failed to update history status", err,
+			map[string]string{"module": "jobs", "operation": "history-update-status"})
+	}
 
 	s.notifyHistoryChange(userID, historyID, status)
 }
@@ -232,7 +246,11 @@ func (s *standaloneJobsService) failActionHistory(ctx context.Context, userID, h
 	if s.historyRepo == nil || historyID == "" {
 		return
 	}
-	_ = s.historyRepo.MarkFailed(ctx, historyID, errMsg)
+	if err := s.historyRepo.MarkFailed(ctx, historyID, errMsg); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError,
+			"Failed to mark history as failed", err,
+			map[string]string{"module": "jobs", "operation": "history-mark-failed"})
+	}
 
 	s.notifyHistoryChange(userID, historyID, models.ActionStatusFailed)
 }
@@ -446,7 +464,11 @@ func (s *standaloneJobsService) ProcessScheduledJobs(ctx context.Context) (*Proc
 		sessionName, err := s.getConnectedSession(ctx, job.UserID)
 		if err != nil {
 			errMsg := err.Error()
-			_ = s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusFailed, &errMsg)
+			if updateErr := s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusFailed, &errMsg); updateErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelError,
+					"Failed to update job status to failed (no session)", updateErr,
+					map[string]string{"module": "jobs", "operation": "job-status-update"})
+			}
 			s.notifyJobStatus(job.UserID, job.ID, models.StandaloneJobStatusFailed, &errMsg)
 			s.failActionHistory(ctx, job.UserID, historyID, errMsg)
 			result.Failed++
@@ -466,7 +488,11 @@ func (s *standaloneJobsService) ProcessScheduledJobs(ctx context.Context) (*Proc
 						zap.String("jobID", job.ID),
 						zap.Int("retryCount", job.RetryCount),
 						zap.Error(err))
-					_ = s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusFailed, errorMsg)
+					if updateErr := s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusFailed, errorMsg); updateErr != nil {
+						observability.LogAndCapture(s.logger, sentry.LevelError,
+							"Failed to update job status to failed (retry schedule failed)", updateErr,
+							map[string]string{"module": "jobs", "operation": "job-status-update"})
+					}
 					s.notifyJobStatus(job.UserID, job.ID, models.StandaloneJobStatusFailed, errorMsg)
 					s.completeActionHistory(ctx, job.UserID, historyID, success, failed, errorMsg)
 					result.Failed++
@@ -486,7 +512,11 @@ func (s *standaloneJobsService) ProcessScheduledJobs(ctx context.Context) (*Proc
 				}
 			} else {
 				// Retries exhausted - mark as failed
-				_ = s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusFailed, errorMsg)
+				if updateErr := s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusFailed, errorMsg); updateErr != nil {
+					observability.LogAndCapture(s.logger, sentry.LevelError,
+						"Failed to update job status to failed (retries exhausted)", updateErr,
+						map[string]string{"module": "jobs", "operation": "job-status-update"})
+				}
 				s.notifyJobStatus(job.UserID, job.ID, models.StandaloneJobStatusFailed, errorMsg)
 				s.completeActionHistory(ctx, job.UserID, historyID, success, failed, errorMsg)
 				result.Failed++
@@ -496,7 +526,11 @@ func (s *standaloneJobsService) ProcessScheduledJobs(ctx context.Context) (*Proc
 			}
 		} else {
 			// At least partial success - mark as done
-			_ = s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusDone, errorMsg)
+			if updateErr := s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusDone, errorMsg); updateErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelError,
+					"Failed to update job status to done", updateErr,
+					map[string]string{"module": "jobs", "operation": "job-status-update"})
+			}
 			s.notifyJobStatus(job.UserID, job.ID, models.StandaloneJobStatusDone, errorMsg)
 			s.completeActionHistory(ctx, job.UserID, historyID, success, failed, errorMsg)
 			result.Processed++
@@ -668,7 +702,11 @@ func (s *legacyJobsService) ProcessScheduledJobs(ctx context.Context) (*ProcessR
 		automation, err := s.automationRepo.GetAutomationByID(ctx, job.AutomationID)
 		if err != nil || automation == nil {
 			errMsg := "automation not found"
-			_ = s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "failed", &errMsg)
+			if updateErr := s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "failed", &errMsg); updateErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelError,
+					"Failed to update scheduled job status (automation not found)", updateErr,
+					map[string]string{"module": "jobs", "operation": "scheduled-job-status-update"})
+			}
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("Job %s: %s", job.ID, errMsg))
 			continue
@@ -676,7 +714,11 @@ func (s *legacyJobsService) ProcessScheduledJobs(ctx context.Context) (*ProcessR
 
 		if !automation.IsActive() {
 			errMsg := "automation is not active"
-			_ = s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "failed", &errMsg)
+			if updateErr := s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "failed", &errMsg); updateErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelError,
+					"Failed to update scheduled job status (automation inactive)", updateErr,
+					map[string]string{"module": "jobs", "operation": "scheduled-job-status-update"})
+			}
 			result.Failed++
 			continue
 		}
@@ -684,7 +726,11 @@ func (s *legacyJobsService) ProcessScheduledJobs(ctx context.Context) (*ProcessR
 		instances, err := s.instanceRepo.GetUserInstances(ctx, automation.UserID)
 		if err != nil || len(instances) == 0 {
 			errMsg := "no connected instance found"
-			_ = s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "failed", &errMsg)
+			if updateErr := s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "failed", &errMsg); updateErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelError,
+					"Failed to update scheduled job status (no instance)", updateErr,
+					map[string]string{"module": "jobs", "operation": "scheduled-job-status-update"})
+			}
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("Job %s: %s", job.ID, errMsg))
 			continue
@@ -700,7 +746,11 @@ func (s *legacyJobsService) ProcessScheduledJobs(ctx context.Context) (*ProcessR
 
 		if connectedInstance == nil {
 			errMsg := "no connected instance"
-			_ = s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "failed", &errMsg)
+			if updateErr := s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "failed", &errMsg); updateErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelError,
+					"Failed to update scheduled job status (no connected instance)", updateErr,
+					map[string]string{"module": "jobs", "operation": "scheduled-job-status-update"})
+			}
 			result.Failed++
 			continue
 		}
@@ -708,19 +758,31 @@ func (s *legacyJobsService) ProcessScheduledJobs(ctx context.Context) (*ProcessR
 		err = s.executeAutomation(ctx, automation, connectedInstance)
 		if err != nil {
 			errMsg := err.Error()
-			_ = s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "failed", &errMsg)
+			if updateErr := s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "failed", &errMsg); updateErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelError,
+					"Failed to update scheduled job status (execution failed)", updateErr,
+					map[string]string{"module": "jobs", "operation": "scheduled-job-status-update"})
+			}
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("Job %s: %s", job.ID, errMsg))
 			continue
 		}
 
-		_ = s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "completed", nil)
+		if updateErr := s.scheduledJobRepo.UpdateJobStatus(ctx, job.ID, "completed", nil); updateErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError,
+				"Failed to update scheduled job status to completed", updateErr,
+				map[string]string{"module": "jobs", "operation": "scheduled-job-status-update"})
+		}
 		result.Processed++
 
 		now := time.Now().UTC().Format(time.RFC3339)
-		_ = s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
+		if updateErr := s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
 			"last_run_at": now,
-		})
+		}); updateErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError,
+				"Failed to update automation last_run_at", updateErr,
+				map[string]string{"module": "jobs", "operation": "automation-next-run-update"})
+		}
 
 		s.logger.Info("Processed scheduled job",
 			zap.String("jobID", job.ID),

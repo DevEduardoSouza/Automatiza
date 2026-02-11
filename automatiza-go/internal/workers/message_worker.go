@@ -12,8 +12,10 @@ import (
 	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/urlsafety"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
 )
@@ -117,8 +119,12 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		_, sendErr = w.whatsappProvider.SendVoice(ctx, voiceInput)
 
 		if sendErr == nil && normalizedMessage != "" {
-			// Wait a bit then send text
-			time.Sleep(1500 * time.Millisecond)
+			// Wait a bit then send text (context-aware)
+			select {
+			case <-time.After(1500 * time.Millisecond):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 			textInput := whatsapp.SendTextInput{
 				SessionName: data.InstanceName,
 				ChatID:      data.GroupID,
@@ -234,6 +240,9 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 					zap.String("automationID", data.AutomationID),
 					zap.String("instanceName", data.InstanceName),
 					zap.String("groupId", data.GroupID))
+				observability.CaptureMessage(sentry.LevelWarning,
+					fmt.Sprintf("Message send timeout (provider), assuming sent: group=%s", data.GroupID),
+					map[string]string{"flow": "message-send", "reason": "timeout-assumed-sent"})
 				w.updateHistoryStatus(ctx, data.HistoryID, "assumedSent")
 				w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
 					"status": "sent",
@@ -249,6 +258,9 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 				zap.String("automationID", data.AutomationID),
 				zap.String("instanceName", data.InstanceName),
 				zap.String("groupId", data.GroupID))
+			observability.CaptureMessage(sentry.LevelWarning,
+				fmt.Sprintf("Message send timeout (legacy), assuming sent: group=%s", data.GroupID),
+				map[string]string{"flow": "message-send", "reason": "timeout-assumed-sent"})
 			w.updateHistoryStatus(ctx, data.HistoryID, "assumedSent")
 			w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
 				"status": "sent",
@@ -320,7 +332,11 @@ func (w *MessageWorker) updateHistoryStatus(ctx context.Context, historyID *stri
 		updates["completed_at"] = time.Now().UTC().Format(time.RFC3339)
 	}
 
-	_ = w.historyRepo.Update(ctx, *historyID, updates)
+	if err := w.historyRepo.Update(ctx, *historyID, updates); err != nil {
+		observability.LogAndCapture(w.logger, sentry.LevelError,
+			"Failed to update history status", err,
+			map[string]string{"module": "message-worker", "operation": "history-status-update"})
+	}
 }
 
 func isTimeoutError(err error) bool {
@@ -380,5 +396,9 @@ func (w *MessageWorker) updateDispatchLog(ctx context.Context, dispatchLogID *in
 		return
 	}
 
-	_ = w.dispatchLogRepo.Update(ctx, *dispatchLogID, updates)
+	if err := w.dispatchLogRepo.Update(ctx, *dispatchLogID, updates); err != nil {
+		observability.LogAndCapture(w.logger, sentry.LevelError,
+			"Failed to update dispatch log", err,
+			map[string]string{"module": "message-worker", "operation": "dispatch-log-update"})
+	}
 }

@@ -9,11 +9,13 @@ import (
 
 	automationsv1 "automatiza-go/internal/gen/automations/v1"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/automation"
 	"automatiza-go/internal/services/jobs"
 
 	"connectrpc.com/connect"
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -229,10 +231,14 @@ func (h *AutomationsHandler) RunAutomation(
 		// Save error to automation for visibility in the UI
 		now := time.Now().UTC().Format(time.RFC3339)
 		errMsg := err.Error()
-		_ = h.automationRepo.UpdateAutomation(ctx, automationID, map[string]interface{}{
+		if metaErr := h.automationRepo.UpdateAutomation(ctx, automationID, map[string]interface{}{
 			"last_error":    errMsg,
 			"last_error_at": now,
-		})
+		}); metaErr != nil {
+			observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to update automation error metadata", metaErr, map[string]string{
+				"module": "automations", "operation": "error_metadata_update", "automation_id": automationID,
+			})
+		}
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("automation execution failed: %w", err))
 	}
 

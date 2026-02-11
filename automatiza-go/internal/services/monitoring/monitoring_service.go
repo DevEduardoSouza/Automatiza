@@ -16,10 +16,12 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/shopee"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -449,7 +451,16 @@ func (s *monitoringService) logDispatch(ctx context.Context, automation *models.
 		log.Error = &errorMsg
 	}
 
-	_, _ = s.dispatchLogRepo.Create(ctx, log)
+	// W34: Capture dispatch log creation errors with Sentry tags
+	if _, err := s.dispatchLogRepo.Create(ctx, log); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to create dispatch log", err, map[string]string{
+			"module":       "monitoring",
+			"operation":    "dispatch_log_create",
+			"automationID": automation.ID,
+			"groupID":      groupID,
+			"status":       status,
+		})
+	}
 }
 
 func truncateStr(s string, max int) string {

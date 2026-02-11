@@ -11,11 +11,13 @@
 package handlers
 
 import (
+	"automatiza-go/internal/observability"
 	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -61,20 +63,29 @@ func (b *SSERedisBridge) SetCacheClearer(cc SessionCacheClearer) {
 
 // Publish serializes an SSEEvent to JSON and publishes it to the Redis channel.
 // Called by the worker process when a webhook event produces an SSE notification.
+// Uses context.WithTimeout (W30) to prevent indefinite blocking on Redis publish.
 func (b *SSERedisBridge) Publish(ctx context.Context, event SSEEvent) error {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal SSE event: %w", err)
 	}
 
-	if err := b.redisClient.Publish(ctx, b.channel, data).Err(); err != nil {
-		b.logger.Warn("Failed to publish SSE event to Redis",
-			zap.String("eventType", string(event.Type)),
-			zap.Error(err))
+	// W30: Use context.WithTimeout to prevent indefinite blocking
+	pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := b.redisClient.Publish(pubCtx, b.channel, data).Err(); err != nil {
+		observability.LogAndCapture(b.logger, sentry.LevelWarning,
+			"Failed to publish SSE event to Redis",
+			fmt.Errorf("redis publish event %s: %w", event.Type, err),
+			map[string]string{
+				"module":    "sse-redis-bridge",
+				"eventType": string(event.Type),
+			})
 		return fmt.Errorf("redis publish: %w", err)
 	}
 
-	b.logger.Debug("Published SSE event to Redis",
+	b.logger.Info("Published SSE event to Redis",
 		zap.String("eventType", string(event.Type)),
 		zap.String("session", event.Session),
 		zap.String("userID", event.UserID))
@@ -88,6 +99,7 @@ func (b *SSERedisBridge) Publish(ctx context.Context, event SSEEvent) error {
 //
 // This should be called only on the server process (the one serving SSE to clients).
 // The context controls the lifetime of the subscription.
+// Uses SafeGo (S68), cancel-before-close (C8), and reconnect with exponential backoff (N10).
 func (b *SSERedisBridge) Subscribe(ctx context.Context) error {
 	if b.hub == nil {
 		return fmt.Errorf("SSEHub not set; call SetHub before Subscribe")
@@ -104,30 +116,103 @@ func (b *SSERedisBridge) Subscribe(ctx context.Context) error {
 	b.logger.Info("Redis SSE bridge subscribed",
 		zap.String("channel", b.channel))
 
-	go func() {
-		defer func() {
-			if err := pubsub.Close(); err != nil {
-				b.logger.Warn("Failed to close Redis subscription", zap.Error(err))
-			}
-		}()
-
-		ch := pubsub.Channel()
-		for {
-			select {
-			case <-ctx.Done():
-				b.logger.Info("Redis SSE bridge shutting down")
-				return
-			case msg, ok := <-ch:
-				if !ok {
-					b.logger.Warn("Redis subscription channel closed")
-					return
-				}
-				b.handleMessage(msg)
-			}
-		}
-	}()
+	// S68: Use SafeGo for panic recovery + Sentry capture
+	observability.SafeGo("sse-redis-bridge", func() {
+		b.subscribeLoop(ctx, pubsub)
+	})
 
 	return nil
+}
+
+// subscribeLoop runs the subscription loop with reconnect support.
+// On channel close or error, it reconnects with exponential backoff (N10).
+func (b *SSERedisBridge) subscribeLoop(ctx context.Context, pubsub *redis.PubSub) {
+	const (
+		baseBackoff = 100 * time.Millisecond
+		maxBackoff  = 30 * time.Second
+		multiplier  = 2
+	)
+
+	// Run initial subscription
+	b.drainPubSub(ctx, pubsub)
+
+	// C8: Cancel context before closing pubsub to avoid race
+	if err := pubsub.Close(); err != nil {
+		b.logger.Warn("Failed to close Redis subscription on initial drain", zap.Error(err))
+	}
+
+	// N10: Reconnect with exponential backoff
+	backoff := baseBackoff
+	for {
+		select {
+		case <-ctx.Done():
+			b.logger.Info("Redis SSE bridge shutting down, no reconnect")
+			return
+		default:
+		}
+
+		b.logger.Info("Redis SSE bridge reconnecting",
+			zap.Duration("backoff", backoff))
+
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			b.logger.Info("Redis SSE bridge shutting down during backoff")
+			return
+		case <-timer.C:
+		}
+
+		newPubSub := b.redisClient.Subscribe(ctx, b.channel)
+		_, err := newPubSub.Receive(ctx)
+		if err != nil {
+			observability.LogAndCapture(b.logger, sentry.LevelWarning,
+				"Redis SSE bridge reconnect failed",
+				fmt.Errorf("redis resubscribe: %w", err),
+				map[string]string{
+					"module":  "sse-redis-bridge",
+					"channel": b.channel,
+				})
+
+			// Exponential backoff
+			backoff *= time.Duration(multiplier)
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			continue
+		}
+
+		// Reconnected successfully — reset backoff
+		b.logger.Info("Redis SSE bridge reconnected successfully",
+			zap.String("channel", b.channel))
+		backoff = baseBackoff
+
+		b.drainPubSub(ctx, newPubSub)
+
+		// C8: Close after context is already handled
+		if err := newPubSub.Close(); err != nil {
+			b.logger.Warn("Failed to close Redis subscription after drain", zap.Error(err))
+		}
+	}
+}
+
+// drainPubSub reads messages from the pubsub channel until context cancellation
+// or the channel is closed.
+func (b *SSERedisBridge) drainPubSub(ctx context.Context, pubsub *redis.PubSub) {
+	ch := pubsub.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			b.logger.Info("Redis SSE bridge shutting down")
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				b.logger.Warn("Redis subscription channel closed, will reconnect")
+				return
+			}
+			b.handleMessage(msg)
+		}
+	}
 }
 
 // handleMessage deserializes a Redis message and forwards it to the SSEHub.
@@ -140,7 +225,7 @@ func (b *SSERedisBridge) handleMessage(msg *redis.Message) {
 		return
 	}
 
-	b.logger.Debug("Received SSE event from Redis",
+	b.logger.Info("Received SSE event from Redis",
 		zap.String("eventType", string(event.Type)),
 		zap.String("session", event.Session),
 		zap.String("userID", event.UserID))
@@ -186,9 +271,14 @@ func NewRedisSSEStatusNotifier(
 func (n *RedisSSEStatusNotifier) ProcessStatus(ctx context.Context, sessionName, status string) error {
 	userID, err := n.userResolver(sessionName)
 	if err != nil {
-		n.logger.Warn("Failed to resolve user ID for session",
-			zap.String("session", sessionName),
-			zap.Error(err))
+		// W31: Status notifier errors captured
+		observability.LogAndCapture(n.logger, sentry.LevelWarning,
+			"Failed to resolve user ID for session",
+			fmt.Errorf("resolve user for session %s: %w", sessionName, err),
+			map[string]string{
+				"module":  "redis-sse-status-notifier",
+				"session": sessionName,
+			})
 		// Don't fail — SSE notification is best-effort
 		return nil
 	}
@@ -236,24 +326,60 @@ func NewRedisJobProgressPublisher(bridge *SSERedisBridge, logger *zap.Logger) *R
 // Also persists the latest progress in a Redis key so the polling endpoint (GetSyncStatus)
 // can read real-time progress without relying on fire-and-forget Pub/Sub alone.
 func (p *RedisJobProgressPublisher) PublishJobProgress(userID string, data map[string]any) {
+	p.logger.Info("[redis-job-progress] PublishJobProgress called",
+		zap.String("userID", userID),
+		zap.Any("jobId", data["jobId"]),
+		zap.Any("progress", data["progress"]),
+		zap.Any("status", data["status"]))
+
 	event := SSEEvent{
 		Type:   SSEEventJobStatus,
 		UserID: userID,
 		Data:   data,
 	}
 
-	if err := p.bridge.Publish(context.Background(), event); err != nil {
-		p.logger.Warn("Failed to publish job progress via Redis",
-			zap.String("userID", userID),
-			zap.Error(err))
+	// W30: Use context.WithTimeout for Redis publish
+	pubCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := p.bridge.Publish(pubCtx, event); err != nil {
+		observability.LogAndCapture(p.logger, sentry.LevelWarning,
+			"Failed to publish job progress via Redis",
+			fmt.Errorf("publish job progress for user %s: %w", userID, err),
+			map[string]string{
+				"module": "redis-job-progress-publisher",
+				"userID": userID,
+			})
 	}
 
 	// Persist latest progress in a Redis key for polling (GetSyncStatus)
 	if jobID, ok := data["jobId"].(string); ok && jobID != "" {
-		progressJSON, err := json.Marshal(data)
-		if err == nil {
+		progressJSON, marshalErr := json.Marshal(data)
+		if marshalErr != nil {
+			observability.LogAndCapture(p.logger, sentry.LevelWarning,
+				"Failed to marshal sync progress data",
+				fmt.Errorf("marshal sync progress for job %s: %w", jobID, marshalErr),
+				map[string]string{
+					"module": "redis-job-progress-publisher",
+					"jobID":  jobID,
+				})
+		} else {
 			key := "sync_progress:" + jobID
-			p.bridge.redisClient.Set(context.Background(), key, progressJSON, 5*time.Minute)
+			setCtx, setCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			setErr := p.bridge.redisClient.Set(setCtx, key, progressJSON, 5*time.Minute).Err()
+			setCancel()
+			if setErr != nil {
+				observability.LogAndCapture(p.logger, sentry.LevelWarning,
+					"Failed to SET sync_progress in Redis",
+					fmt.Errorf("redis SET %s: %w", key, setErr),
+					map[string]string{
+						"module": "redis-job-progress-publisher",
+						"key":    key,
+					})
+			} else {
+				p.logger.Info("[redis-job-progress] Redis SET sync_progress OK",
+					zap.String("key", key))
+			}
 		}
 	}
 }

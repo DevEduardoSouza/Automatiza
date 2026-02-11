@@ -8,11 +8,14 @@ import (
 	"automatiza-go/internal/adapters/whatsapp"
 	groupsv1 "automatiza-go/internal/gen/groups/v1"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/workers"
 
 	"connectrpc.com/connect"
+	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
+	"go.uber.org/zap"
 )
 
 // GroupEventPublisher publishes real-time group change notifications.
@@ -43,6 +46,7 @@ type GroupsHandler struct {
 	eventPublisher    GroupEventPublisher
 	historyPublisher  GroupHistoryPublisher
 	progressReader    SyncProgressReader
+	logger            *zap.Logger
 }
 
 // NewGroupsHandler creates a new groups handler.
@@ -100,6 +104,13 @@ func WithAsynqInspector(inspector *asynq.Inspector) GroupsHandlerOption {
 func WithSyncProgressReader(reader SyncProgressReader) GroupsHandlerOption {
 	return func(h *GroupsHandler) {
 		h.progressReader = reader
+	}
+}
+
+// WithGroupLogger sets the logger for the groups handler.
+func WithGroupLogger(logger *zap.Logger) GroupsHandlerOption {
+	return func(h *GroupsHandler) {
+		h.logger = logger
 	}
 }
 
@@ -634,6 +645,8 @@ func (h *GroupsHandler) GetSyncStatus(
 
 	jobID := req.Msg.GetJobId()
 
+	log.Printf("[GetSyncStatus] called with jobID=%s", jobID)
+
 	// 1. Try to read real-time progress from Redis (persisted by the worker)
 	if h.progressReader != nil {
 		progressData, err := h.progressReader.GetSyncProgress(ctx, jobID)
@@ -654,12 +667,16 @@ func (h *GroupsHandler) GetSyncStatus(
 			if c, ok := progressData["current"].(float64); ok {
 				synced = int32(c)
 			}
+			log.Printf("[GetSyncStatus] Redis HIT jobID=%s status=%s progress=%d total=%d synced=%d", jobID, status, progress, total, synced)
 			return connect.NewResponse(&groupsv1.GetSyncStatusResponse{
 				Status:       status,
 				Progress:     progress,
 				TotalGroups:  &total,
 				GroupsSynced: synced,
 			}), nil
+		}
+		if err != nil {
+			log.Printf("[GetSyncStatus] Redis MISS/error jobID=%s err=%v", jobID, err)
 		}
 	}
 
@@ -682,11 +699,15 @@ func (h *GroupsHandler) GetSyncStatus(
 			status = "failed"
 		}
 
+		log.Printf("[GetSyncStatus] Asynq fallback jobID=%s state=%s", jobID, status)
+
 		return connect.NewResponse(&groupsv1.GetSyncStatusResponse{
 			Status:   status,
 			Progress: 0,
 		}), nil
 	}
+
+	log.Printf("[GetSyncStatus] No progressReader or inspector available, returning unknown")
 
 	// Without inspector or progress reader, return unknown status
 	return connect.NewResponse(&groupsv1.GetSyncStatusResponse{
@@ -1296,7 +1317,15 @@ func (h *GroupsHandler) LeaveGroup(
 	// Remove group from database after leaving
 	group, groupErr := h.groupRepo.GetGroupByWAGroupID(ctx, user.ID, groupID)
 	if groupErr == nil && group != nil {
-		_ = h.groupRepo.DeleteGroup(ctx, group.ID, user.ID)
+		if deleteErr := h.groupRepo.DeleteGroup(ctx, group.ID, user.ID); deleteErr != nil {
+			logger := h.logger
+			if logger == nil {
+				logger = zap.NewNop()
+			}
+			observability.LogAndCapture(logger, sentry.LevelWarning, "failed to delete group after leaving", deleteErr, map[string]string{
+				"module": "groups", "operation": "delete_after_leave", "group_id": group.ID,
+			})
+		}
 	}
 
 	h.recordHistory(ctx, user.ID, models.ActionTypeLeaveGroup,

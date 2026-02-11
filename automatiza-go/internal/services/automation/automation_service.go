@@ -13,12 +13,14 @@ import (
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/shopee"
 	sharedErrors "automatiza-go/internal/shared/errors"
 	"automatiza-go/internal/workers"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -746,7 +748,16 @@ func (s *automationService) logDispatch(ctx context.Context, automation *models.
 		log.Error = &errorMsg
 	}
 
-	_, _ = s.dispatchLogRepo.Create(ctx, log)
+	// W35: Capture dispatch log creation errors with Sentry tags
+	if _, err := s.dispatchLogRepo.Create(ctx, log); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to create dispatch log", err, map[string]string{
+			"module":       "automation",
+			"operation":    "dispatch_log_create",
+			"automationID": automation.ID,
+			"groupID":      groupID,
+			"status":       status,
+		})
+	}
 }
 
 func (s *automationService) ResetHistory(ctx context.Context, automationID, userID string) error {

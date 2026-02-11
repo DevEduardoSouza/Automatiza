@@ -14,6 +14,7 @@ import (
 
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
@@ -84,6 +85,12 @@ func (i *RecoveryInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFun
 					zap.Any("panic", r),
 					zap.String("stack", string(debug.Stack())),
 				)
+				// BG7: Capture panic in Sentry with context
+				if hub := sentry.GetHubFromContext(ctx); hub != nil {
+					hub.RecoverWithContext(ctx, r)
+				} else {
+					sentry.CurrentHub().RecoverWithContext(ctx, r)
+				}
 				err = connect.NewError(connect.CodeInternal, fmt.Errorf("internal server error"))
 			}
 		}()
@@ -105,6 +112,12 @@ func (i *RecoveryInterceptor) WrapStreamingHandler(next connect.StreamingHandler
 					zap.Any("panic", r),
 					zap.String("stack", string(debug.Stack())),
 				)
+				// BG7: Capture panic in Sentry with context
+				if hub := sentry.GetHubFromContext(ctx); hub != nil {
+					hub.RecoverWithContext(ctx, r)
+				} else {
+					sentry.CurrentHub().RecoverWithContext(ctx, r)
+				}
 				err = connect.NewError(connect.CodeInternal, fmt.Errorf("internal server error"))
 			}
 		}()

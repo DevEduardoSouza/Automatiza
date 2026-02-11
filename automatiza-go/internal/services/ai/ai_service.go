@@ -3,6 +3,7 @@ package ai
 import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -313,7 +315,15 @@ func (s *aiService) callAI(ctx context.Context, prompt, systemPrompt string) (st
 		"max_tokens":  1000,
 	}
 
-	jsonPayload, _ := json.Marshal(payload)
+	jsonPayload, marshalErr := json.Marshal(payload)
+	if marshalErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal AI request payload", marshalErr, map[string]string{
+			"external_service": "ai",
+			"endpoint":        s.apiURL,
+		})
+		return "", fmt.Errorf("failed to marshal AI payload: %w", marshalErr)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", s.apiURL, bytes.NewReader(jsonPayload))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
@@ -322,16 +332,40 @@ func (s *aiService) callAI(ctx context.Context, prompt, systemPrompt string) (st
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.apiKey)
 
+	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("POST "+s.apiURL))
+	span.SetTag("external_service", "ai")
+	span.SetTag("endpoint", s.apiURL)
+	span.SetTag("ai.model", s.model)
 	resp, err := s.httpClient.Do(req)
+	span.Finish()
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "AI API HTTP request failed", err, map[string]string{
+			"external_service":         "ai",
+			"endpoint":                 s.apiURL,
+			"circuit_breaker_candidate": "true",
+		})
 		return "", fmt.Errorf("failed to call AI API: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
+	if readErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to read AI API response body", readErr, map[string]string{
+			"external_service": "ai",
+			"endpoint":        s.apiURL,
+		})
+		return "", fmt.Errorf("failed to read AI response: %w", readErr)
+	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("AI API error %d: %s", resp.StatusCode, string(body))
+		httpErr := fmt.Errorf("AI API error %d: %s", resp.StatusCode, string(body))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "AI API returned non-200 status", httpErr, map[string]string{
+			"external_service":         "ai",
+			"endpoint":                 s.apiURL,
+			"http_status":              fmt.Sprintf("%d", resp.StatusCode),
+			"circuit_breaker_candidate": "true",
+		})
+		return "", httpErr
 	}
 
 	var result struct {
@@ -343,11 +377,20 @@ func (s *aiService) callAI(ctx context.Context, prompt, systemPrompt string) (st
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal AI API response", err, map[string]string{
+			"external_service": "ai",
+			"endpoint":        s.apiURL,
+		})
 		return "", fmt.Errorf("failed to parse AI response: %w", err)
 	}
 
 	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("no response from AI")
+		noRespErr := fmt.Errorf("no response from AI")
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "AI API returned empty choices", noRespErr, map[string]string{
+			"external_service": "ai",
+			"endpoint":        s.apiURL,
+		})
+		return "", noRespErr
 	}
 
 	return result.Choices[0].Message.Content, nil

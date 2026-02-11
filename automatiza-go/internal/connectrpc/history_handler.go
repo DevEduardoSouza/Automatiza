@@ -8,6 +8,7 @@ import (
 
 	historyv1 "automatiza-go/internal/gen/history/v1"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
 	"connectrpc.com/connect"
@@ -216,7 +217,13 @@ func historyEventToProto(h *models.ActionHistory) *historyv1.HistoryEvent {
 	var metadata *structpb.Struct
 	if h.Details != nil {
 		if detailsMap, ok := h.Details.(map[string]interface{}); ok {
-			metadata, _ = structpb.NewStruct(detailsMap)
+			var structErr error
+			metadata, structErr = structpb.NewStruct(detailsMap)
+			if structErr != nil {
+				observability.CaptureWithTags(fmt.Errorf("failed to convert history details to struct: %w", structErr), map[string]string{
+					"module": "history", "operation": "details_conversion", "history_id": h.ID,
+				})
+			}
 		}
 	}
 

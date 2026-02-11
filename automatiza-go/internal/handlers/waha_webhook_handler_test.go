@@ -639,14 +639,14 @@ func TestWAHAWebhookHandler_PayloadSizeLimit(t *testing.T) {
 		wantError  string
 	}{
 		{
-			name:       "payload over limit (1MB + 1 byte)",
-			bodySize:   (1 << 20) + 1,
+			name:       "payload over limit (10MB + 1 byte)",
+			bodySize:   (10 << 20) + 1,
 			wantStatus: http.StatusRequestEntityTooLarge,
 			wantError:  "payload too large",
 		},
 		{
-			name:       "payload way over limit (2MB)",
-			bodySize:   2 << 20,
+			name:       "payload way over limit (20MB)",
+			bodySize:   20 << 20,
 			wantStatus: http.StatusRequestEntityTooLarge,
 			wantError:  "payload too large",
 		},
@@ -1046,10 +1046,10 @@ func TestGenerateFallbackEventID(t *testing.T) {
 			assert.Contains(t, got, tt.session)
 			assert.Contains(t, got, tt.eventType)
 
-			// Should contain timestamp (starts with number)
+			// Format: hex:session:eventType:timestamp (4 parts)
 			parts := strings.Split(got, ":")
-			assert.Len(t, parts, 3)
-			assert.NotEmpty(t, parts[0]) // Timestamp
+			assert.Len(t, parts, 4)
+			assert.NotEmpty(t, parts[0]) // Random hex
 		})
 	}
 }
@@ -1062,9 +1062,9 @@ func TestGenerateFallbackEventID_ContainsTimestamp(t *testing.T) {
 	id := generateFallbackEventID(session, eventType)
 	after := time.Now().UnixNano()
 
-	// Extract timestamp from ID (format: timestamp:session:eventType)
+	// Extract parts from ID (format: hex:session:eventType:timestamp)
 	parts := strings.Split(id, ":")
-	require.Len(t, parts, 3)
+	require.Len(t, parts, 4)
 
 	// Verify the ID contains expected parts
 	assert.Contains(t, id, session)

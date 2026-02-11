@@ -3,6 +3,7 @@ package shopee
 import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"bytes"
 	"context"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -95,26 +97,45 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	sig := shopeeSign(appID, ts, payload, secret)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", s.baseURL+"/graphql", bytes.NewBufferString(payload))
+	endpoint := s.baseURL + "/graphql"
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBufferString(payload))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("SHA256 Credential=%s,Timestamp=%s,Signature=%s", appID, ts, sig))
 
+	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("POST "+endpoint))
+	span.SetTag("external_service", "shopee")
+	span.SetTag("endpoint", "graphql")
 	resp, err := s.httpClient.Do(req)
+	span.Finish()
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee GraphQL HTTP request failed", err, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "graphql",
+		})
 		return nil, fmt.Errorf("shopee API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20)) // 2MB limit
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to read Shopee GraphQL response body", err, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "graphql",
+		})
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("shopee API error %d: %s", resp.StatusCode, string(body))
+		httpErr := fmt.Errorf("shopee API error %d: %s", resp.StatusCode, string(body))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee GraphQL returned non-200 status", httpErr, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "graphql",
+			"http_status":     fmt.Sprintf("%d", resp.StatusCode),
+		})
+		return nil, httpErr
 	}
 
 	// Check for GraphQL errors
@@ -125,10 +146,19 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 		} `json:"errors"`
 	}
 	if err := json.Unmarshal(body, &gqlResp); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal Shopee GraphQL response", err, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "graphql",
+		})
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 	if len(gqlResp.Errors) > 0 {
-		return nil, fmt.Errorf("shopee API error: %s", gqlResp.Errors[0].Message)
+		gqlErr := fmt.Errorf("shopee API error: %s", gqlResp.Errors[0].Message)
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee GraphQL returned error", gqlErr, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "graphql",
+		})
+		return nil, gqlErr
 	}
 
 	return gqlResp.Data, nil
@@ -258,7 +288,14 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 
 	gqlQuery := fmt.Sprintf(`{ productOfferV2(%s) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName productCatIds } } }`, args)
 
-	payload, _ := json.Marshal(map[string]string{"query": gqlQuery})
+	payload, marshalErr := json.Marshal(map[string]string{"query": gqlQuery})
+	if marshalErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee search payload", marshalErr, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "searchOffers",
+		})
+		return nil, fmt.Errorf("failed to marshal search payload: %w", marshalErr)
+	}
 	payloadStr := string(payload)
 
 	data, err := s.shopeeGraphQL(ctx, appID, secret, payloadStr)
@@ -289,6 +326,10 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 		} `json:"productOfferV2"`
 	}
 	if err := json.Unmarshal(data, &result); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal Shopee search results", err, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "searchOffers",
+		})
 		return nil, fmt.Errorf("failed to parse search results: %w", err)
 	}
 
@@ -398,11 +439,22 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 	// Use GraphQL mutation to generate short link
 	originURL := fmt.Sprintf("https://shopee.com.br/product/%d/%d", shopID, itemID)
 	gqlQuery := fmt.Sprintf(`mutation { generateShortLink(input: {originUrl: %q}) { shortLink } }`, originURL)
-	payload, _ := json.Marshal(map[string]string{"query": gqlQuery})
+	payload, marshalErr := json.Marshal(map[string]string{"query": gqlQuery})
+	if marshalErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee generateShortLink payload", marshalErr, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "generateShortLink",
+		})
+		return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", marshalErr)
+	}
 	payloadStr := string(payload)
 
 	data, err := s.shopeeGraphQL(ctx, appID, secret, payloadStr)
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee generateShortLink API failed", err, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "generateShortLink",
+		})
 		return nil, fmt.Errorf("failed to generate affiliate link: %w", err)
 	}
 
@@ -412,6 +464,10 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		} `json:"generateShortLink"`
 	}
 	if err := json.Unmarshal(data, &gqlResult); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal Shopee generateShortLink response", err, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "generateShortLink",
+		})
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
@@ -433,7 +489,12 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 
 	// Cache for 1 hour (best effort)
 	if s.cache != nil {
-		_ = s.cache.SetJSON(ctx, cacheKey, result, time.Hour)
+		if cacheErr := s.cache.SetJSON(ctx, cacheKey, result, time.Hour); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to cache Shopee affiliate link", cacheErr, map[string]string{
+				"external_service": "shopee",
+				"endpoint":        "cache_set_link",
+			})
+		}
 	}
 
 	return result, nil
@@ -467,11 +528,22 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 
 	// Use productOfferV2 with itemId and shopId to get product details
 	gqlQuery := fmt.Sprintf(`{ productOfferV2(itemId: %d, shopId: %d, limit: 1) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName } } }`, itemID, shopID)
-	payload, _ := json.Marshal(map[string]string{"query": gqlQuery})
+	payload, marshalErr := json.Marshal(map[string]string{"query": gqlQuery})
+	if marshalErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee getProduct payload", marshalErr, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "getProduct",
+		})
+		return nil, fmt.Errorf("failed to marshal getProduct payload: %w", marshalErr)
+	}
 	payloadStr := string(payload)
 
 	data, err := s.shopeeGraphQL(ctx, appID, secret, payloadStr)
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee getProduct API failed", err, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "getProduct",
+		})
 		return nil, err
 	}
 
@@ -497,6 +569,10 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 		} `json:"productOfferV2"`
 	}
 	if err := json.Unmarshal(data, &result); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal Shopee product details", err, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "getProduct",
+		})
 		return nil, fmt.Errorf("failed to parse product details: %w", err)
 	}
 
@@ -572,9 +648,25 @@ func (s *shopeeService) ExpandURL(ctx context.Context, shortURL string) (string,
 		},
 	}
 
-	req, _ := http.NewRequestWithContext(ctx, "HEAD", shortURL, nil)
+	req, reqErr := http.NewRequestWithContext(ctx, "HEAD", shortURL, nil)
+	if reqErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to create Shopee ExpandURL request", reqErr, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "expandURL",
+		})
+		return shortURL, reqErr
+	}
+
+	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("HEAD "+shortURL))
+	span.SetTag("external_service", "shopee")
+	span.SetTag("endpoint", "expandURL")
 	resp, err := client.Do(req)
+	span.Finish()
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee ExpandURL HTTP request failed", err, map[string]string{
+			"external_service": "shopee",
+			"endpoint":        "expandURL",
+		})
 		return shortURL, err
 	}
 	defer resp.Body.Close()
@@ -583,7 +675,12 @@ func (s *shopeeService) ExpandURL(ctx context.Context, shortURL string) (string,
 
 	// Cache for 24 hours (best effort)
 	if s.cache != nil {
-		_ = s.cache.Set(ctx, cacheKey, finalURL, 24*time.Hour)
+		if cacheErr := s.cache.Set(ctx, cacheKey, finalURL, 24*time.Hour); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to cache Shopee expanded URL", cacheErr, map[string]string{
+				"external_service": "shopee",
+				"endpoint":        "cache_set_expandURL",
+			})
+		}
 	}
 
 	return finalURL, nil

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -546,7 +547,9 @@ func (s *Service) Start(ctx context.Context) error {
 	s.mu.Unlock()
 
 	s.wg.Add(1)
-	go s.run(ctx)
+	observability.SafeGo("watchdog", func() {
+		s.run(ctx)
+	})
 
 	s.logger.Info("Watchdog started",
 		zap.Duration("silenceThreshold", s.config.SilenceThreshold),

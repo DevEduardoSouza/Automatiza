@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/services/jobs"
 	"context"
 	"sync"
@@ -107,10 +108,13 @@ func (s *cronService) Start() {
 	// Register default tasks
 	s.registerDefaultTasks()
 
-	// Start all tasks
+	// Start all tasks with SafeGo panic recovery (BG13)
 	s.tasksMu.RLock()
 	for _, task := range s.tasks {
-		go s.runTask(task)
+		t := task // capture loop variable
+		observability.SafeGo("cron-task-"+t.name, func() {
+			s.runTask(t)
+		})
 	}
 	s.tasksMu.RUnlock()
 
@@ -163,9 +167,11 @@ func (s *cronService) RegisterTask(name string, interval time.Duration, task fun
 		zap.String("name", name),
 		zap.Duration("interval", interval))
 
-	// If already running, start the task
+	// If already running, start the task with SafeGo panic recovery (BG13)
 	if s.running {
-		go s.runTask(ct)
+		observability.SafeGo("cron-task-"+ct.name, func() {
+			s.runTask(ct)
+		})
 	}
 }
 

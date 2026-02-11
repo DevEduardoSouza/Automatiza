@@ -7,8 +7,10 @@ import (
 
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
 )
@@ -109,9 +111,28 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 
 	totalGroups := len(groupInfos)
 
+	// W38: Validate instance ID format before processing
+	instanceIDStr := fmt.Sprintf("%d", instance.ID)
+	if instance.ID <= 0 {
+		validationErr := fmt.Errorf("invalid instance ID format: %d for instance %s", instance.ID, data.InstanceName)
+		observability.LogAndCapture(w.logger, sentry.LevelError, "Invalid instance ID format", validationErr, map[string]string{
+			"module":       "groups_sync",
+			"instanceName": data.InstanceName,
+			"userID":       data.UserID,
+		})
+		return validationErr
+	}
+
 	// 4. Get participants for each group to determine admin status
 	groups := make([]models.Group, 0, len(groupInfos))
 	for i, gi := range groupInfos {
+		// W22: Check for context cancellation at the beginning of each iteration
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		var description *string
 		if gi.Description != "" {
 			description = &gi.Description
@@ -121,11 +142,25 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 			WAGroupID:    gi.ID,
 			Name:         gi.Subject,
 			Description:  description,
-			InstanceID:   fmt.Sprintf("%d", instance.ID),
+			InstanceID:   instanceIDStr,
 			UserID:       data.UserID,
 			AdminOnly:    gi.Announce,
 			MembersCount: gi.Size,
 		}
+
+		// W21: Add Sentry breadcrumb before participant fetch
+		sentry.AddBreadcrumb(&sentry.Breadcrumb{
+			Category: "groups_sync",
+			Message:  fmt.Sprintf("Fetching participants for group %s (%s)", gi.Subject, gi.ID),
+			Level:    sentry.LevelInfo,
+			Data: map[string]interface{}{
+				"groupID":      gi.ID,
+				"groupName":    gi.Subject,
+				"instanceName": data.InstanceName,
+				"index":        i,
+				"total":        totalGroups,
+			},
+		})
 
 		// Check if user is admin in this group
 		participants, err := w.whatsappProvider.GetGroupParticipants(ctx, data.InstanceName, gi.ID)
@@ -198,6 +233,11 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 		// Emit SSE progress event for each group processed
 		if w.progressPub != nil && totalGroups > 0 {
 			progress := int((float64(i+1) / float64(totalGroups)) * 100)
+			w.logger.Info("[groups_sync_worker] Publishing intermediate progress",
+				zap.String("jobId", taskID),
+				zap.Int("progress", progress),
+				zap.Int("current", i+1),
+				zap.Int("total", totalGroups))
 			w.progressPub.PublishJobProgress(data.UserID, map[string]any{
 				"jobType": "groups_sync",
 				"jobId":   taskID,
@@ -224,6 +264,11 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 
 	// Emit final SSE event with completion stats
 	if w.progressPub != nil {
+		w.logger.Info("[groups_sync_worker] Publishing final completion event",
+			zap.String("jobId", taskID),
+			zap.String("status", "completed"),
+			zap.Int("newGroups", syncResult.Created),
+			zap.Int("updatedGroups", syncResult.Updated))
 		w.progressPub.PublishJobProgress(data.UserID, map[string]any{
 			"jobType":       "groups_sync",
 			"jobId":         taskID,

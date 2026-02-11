@@ -29,7 +29,9 @@ import (
 
 	"automatiza-go/internal/config"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -259,8 +261,12 @@ func (s *wahaService) CheckStatus(ctx context.Context, instanceName string) (str
 }
 
 func (s *wahaService) ReconnectInstance(ctx context.Context, instanceName string) (*models.QRCode, error) {
-	// Stop the session first
-	_, _ = s.doRequest(ctx, "POST", "/api/sessions/"+instanceName+"/stop", nil)
+	// Stop the session first (best-effort; capture failure for observability)
+	if _, stopErr := s.doRequest(ctx, "POST", "/api/sessions/"+instanceName+"/stop", nil); stopErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to stop session before reconnect", stopErr, map[string]string{
+			"module": "waha-service", "operation": "session_stop", "instance": instanceName,
+		})
+	}
 
 	// Start it again
 	_, err := s.doRequest(ctx, "POST", "/api/sessions/"+instanceName+"/start", nil)

@@ -14,6 +14,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -39,9 +40,10 @@ const wahaSignatureHeader = "X-WAHA-SIGNATURE"
 // Clients can send their own trace ID in this header, otherwise one is generated.
 const traceIDHeader = "X-Trace-ID"
 
-// Maximum allowed webhook body size (1MB).
+// Maximum allowed webhook body size (10MB).
 // This prevents memory exhaustion attacks from oversized payloads.
-const maxWebhookBodySize = 1 << 20 // 1MB
+// 10MB is conservative for webhooks since media is sent via URL, not inline.
+const maxWebhookBodySize = 10 << 20 // 10MB
 
 // Task type for webhook processing in Asynq.
 const TaskTypeWAHAWebhook = "whatsapp:waha_webhook"
@@ -134,9 +136,17 @@ func (h *WAHAWebhookHandler) HandleWebhook(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxWebhookBodySize)
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		// Check if it's a size limit error
-		if err.Error() == "http: request body too large" {
-			logger.Warn("webhook body too large", zap.String("ip", c.ClientIP()))
+		// W13: Use errors.As instead of string comparison for MaxBytesError
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			logger.Warn("webhook body too large",
+				zap.String("ip", c.ClientIP()),
+				zap.Int64("limit", maxBytesErr.Limit))
+			observability.CaptureWithTags(fmt.Errorf("webhook body too large: %w", err), map[string]string{
+				"module":   "waha-webhook",
+				"security": "body_too_large",
+				"ip":       c.ClientIP(),
+			})
 			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "payload too large"})
 			return
 		}
@@ -172,6 +182,15 @@ func (h *WAHAWebhookHandler) HandleWebhook(c *gin.Context) {
 			zap.String("reason", result.Reason),
 			zap.String("ip", c.ClientIP()),
 		)
+		// B22: Capture HMAC failure with security tags
+		observability.CaptureWithTags(
+			fmt.Errorf("webhook HMAC validation failed: %s", result.Reason),
+			map[string]string{
+				"module":   "waha-webhook",
+				"security": "hmac_failure",
+				"ip":       c.ClientIP(),
+			},
+		)
 		// Return 401 Unauthorized for invalid signatures
 		// Do NOT return 200 - this would prevent retries for legitimate requests
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
@@ -191,6 +210,11 @@ func (h *WAHAWebhookHandler) HandleWebhook(c *gin.Context) {
 			zap.Error(err),
 			zap.Int("body_size", len(body)),
 		)
+		// B24: Capture JSON parse error with tags
+		observability.CaptureWithTags(fmt.Errorf("webhook JSON parse failed: %w", err), map[string]string{
+			"module":  "waha-webhook",
+			"webhook": "parse_error",
+		})
 		// Already ACKed, just log and return
 		return
 	}
@@ -230,6 +254,12 @@ func (h *WAHAWebhookHandler) HandleWebhook(c *gin.Context) {
 			zap.String("event_id", eventID),
 			zap.Error(err),
 		)
+		// B25: Capture idempotency check failure
+		observability.CaptureWithTags(fmt.Errorf("webhook idempotency check failed: %w", err), map[string]string{
+			"module":   "waha-webhook",
+			"webhook":  "idempotency_failure",
+			"event_id": eventID,
+		})
 		// Don't return - try to enqueue anyway, the worker will handle deduplication
 	}
 
@@ -276,6 +306,12 @@ func (h *WAHAWebhookHandler) HandleWebhook(c *gin.Context) {
 			zap.String("event_id", eventID),
 			zap.Error(err),
 		)
+		// B26: Enqueue failure is Critical — events will be lost
+		observability.CaptureMessage(sentry.LevelFatal, "webhook enqueue failed — event may be lost", map[string]string{
+			"module":   "waha-webhook",
+			"webhook":  "enqueue_failure",
+			"event_id": eventID,
+		})
 
 		// Step 9: Mark as failed in DB with sanitized error message
 		// Don't expose internal error details in database
@@ -309,6 +345,13 @@ func (h *WAHAWebhookHandler) markEventFailed(ctx context.Context, eventID, error
 			zap.String("original_error", errorMessage),
 			zap.Error(err),
 		)
+		// B27: Capture mark-failed error with event_id context
+		observability.CaptureWithScope(fmt.Errorf("failed to mark webhook event as failed: %w", err), func(scope *sentry.Scope) {
+			scope.SetTag("module", "waha-webhook")
+			scope.SetTag("webhook", "mark_failed_error")
+			scope.SetExtra("event_id", eventID)
+			scope.SetExtra("original_error", errorMessage)
+		})
 	}
 }
 
@@ -342,11 +385,14 @@ func extractEventID(event *WAHAWebhookEvent) string {
 }
 
 // generateFallbackEventID generates a fallback event ID when none is provided.
-// This uses a combination of timestamp, session, and event type to create a
-// reasonably unique ID. Not ideal for idempotency but prevents complete data loss.
+// W14: Uses crypto/rand for uniqueness instead of timestamp-only.
 func generateFallbackEventID(session, eventType string) string {
-	ts := time.Now().UnixNano()
-	return fmt.Sprintf("%d:%s:%s", ts, session, eventType)
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to timestamp if crypto/rand fails
+		return fmt.Sprintf("%d:%s:%s", time.Now().UnixNano(), session, eventType)
+	}
+	return fmt.Sprintf("%s:%s:%s:%s", hex.EncodeToString(b), session, eventType, time.Now().Format("20060102T150405"))
 }
 
 // truncateBytes truncates a byte slice to a maximum length, adding "..." if truncated.

@@ -14,6 +14,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,8 +25,100 @@ import (
 	"sync"
 	"time"
 
+	"automatiza-go/internal/observability"
+
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
+
+// =============================================================================
+// Retry Configuration
+// =============================================================================
+
+// retryConfig holds configuration for HTTP request retries with exponential backoff.
+type retryConfig struct {
+	maxRetries int
+	baseDelay  time.Duration
+	maxDelay   time.Duration
+}
+
+// defaultRetryConfig returns the default retry configuration: 3 retries, 100ms-3s backoff.
+func defaultRetryConfig() retryConfig {
+	return retryConfig{
+		maxRetries: 3,
+		baseDelay:  100 * time.Millisecond,
+		maxDelay:   3 * time.Second,
+	}
+}
+
+// isRetryableError returns true if the error is a transient network error that can be retried.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Timeout errors
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false // don't retry context deadline exceeded from caller
+	}
+
+	// Network errors (DNS, connection refused, reset, etc.)
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout()
+	}
+
+	// Connection-level errors
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+
+	// Check for common transient patterns in error strings
+	errStr := err.Error()
+	transientPatterns := []string{
+		"connection refused",
+		"connection reset",
+		"broken pipe",
+		"EOF",
+		"no such host",
+		"i/o timeout",
+	}
+	for _, pattern := range transientPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isRetryableStatusCode returns true if the HTTP status code indicates a transient server error.
+func isRetryableStatusCode(statusCode int) bool {
+	switch statusCode {
+	case http.StatusTooManyRequests,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+// backoffDelay calculates the delay for a given retry attempt using exponential backoff with jitter.
+func backoffDelay(attempt int, cfg retryConfig) time.Duration {
+	delay := float64(cfg.baseDelay) * math.Pow(2, float64(attempt))
+	if delay > float64(cfg.maxDelay) {
+		delay = float64(cfg.maxDelay)
+	}
+	// Add jitter: random value between 0 and delay
+	jitter := rand.Float64() * delay
+	return time.Duration(jitter)
+}
+
+// maxDownloadBodySize is the maximum allowed response body size for download operations (50 MB).
+const maxDownloadBodySize int64 = 50 * 1024 * 1024
 
 // =============================================================================
 // Configuration
@@ -82,6 +177,11 @@ type WahaAdapter struct {
 
 	// Circuit breaker for status checks
 	circuitBreaker *circuitBreaker
+
+	// retryEnabled controls whether network retries with backoff are enabled.
+	// Controlled by WAHA_RETRY_ENABLED env var (default: true).
+	retryEnabled bool
+	retryCfg     retryConfig
 }
 
 // circuitBreaker implements circuit breaker pattern for status checks.
@@ -147,10 +247,20 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 		logger = zap.NewNop()
 	}
 
-	// Warn if WAHA API URL is not HTTPS in production
+	namedLogger := logger.Named("waha-adapter")
+
+	// W39: HTTPS enforcement in production — warn and capture in Sentry
 	if os.Getenv("NODE_ENV") == "production" && !strings.HasPrefix(cfg.APIURL, "https://") {
-		logger.Warn("WAHA API URL is not HTTPS in production — communication is not encrypted",
+		namedLogger.Warn("WAHA API URL is not HTTPS in production — communication is not encrypted",
 			zap.String("url", cfg.APIURL))
+		observability.CaptureMessage(sentry.LevelWarning, "WAHA API URL is not HTTPS in production — communication is not encrypted",
+			map[string]string{"module": "waha-adapter", "security": "no-tls", "url": cfg.APIURL})
+	}
+
+	// W40: Alert Sentry Critical when HMAC is disabled in production
+	if os.Getenv("NODE_ENV") == "production" && cfg.WebhookSecret == "" {
+		observability.CaptureMessage(sentry.LevelFatal, "HMAC validation disabled in production — webhooks accept payloads from ANY source",
+			map[string]string{"module": "waha-adapter", "security": "hmac-disabled"})
 	}
 
 	httpTimeout := cfg.HTTPTimeout
@@ -163,19 +273,36 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 		statusCacheTTL = 5 * time.Second
 	}
 
+	// C6: Configure HTTP transport with connection pool limits
+	transport := &http.Transport{
+		MaxIdleConns:    100,
+		MaxConnsPerHost: 20,
+		IdleConnTimeout: 90 * time.Second,
+	}
+
+	// N3: Retry enabled by default, controllable via env var for rollback
+	retryEnabled := true
+	if v := os.Getenv("WAHA_RETRY_ENABLED"); v == "false" || v == "0" {
+		retryEnabled = false
+		namedLogger.Info("WAHA retry with backoff is DISABLED via WAHA_RETRY_ENABLED env var")
+	}
+
 	return &WahaAdapter{
 		apiURL:         cfg.APIURL,
 		apiKey:         cfg.APIKey,
 		webhookBaseURL: cfg.WebhookBaseURL,
 		webhookSecret:  cfg.WebhookSecret,
 		httpClient: &http.Client{
-			Timeout: httpTimeout,
+			Timeout:   httpTimeout,
+			Transport: transport,
 		},
-		logger:         logger.Named("waha-adapter"),
+		logger:         namedLogger,
 		mapper:         NewMapper(),
 		statusCache:    make(map[string]*statusCacheEntry),
 		statusCacheTTL: statusCacheTTL,
 		circuitBreaker: newCircuitBreaker(3, 15*time.Second), // 3 failures = 15s backoff
+		retryEnabled:   retryEnabled,
+		retryCfg:       defaultRetryConfig(),
 	}, nil
 }
 
@@ -186,55 +313,108 @@ var _ WhatsAppProvider = (*WahaAdapter)(nil)
 // HTTP Helper Methods
 // =============================================================================
 
-// doRequest performs an HTTP request to the WAHA API.
+// doRequest performs an HTTP request to the WAHA API with optional retry on transient errors.
 func (a *WahaAdapter) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
-	var bodyReader io.Reader
+	// Marshal body once (if present) so retries reuse the same bytes
+	var jsonBody []byte
 	if body != nil {
-		jsonBody, err := json.Marshal(body)
+		var err error
+		jsonBody, err = json.Marshal(body)
 		if err != nil {
 			return nil, NewProviderError(ErrCodeInvalidInput, "failed to marshal request body", err)
 		}
-		bodyReader = bytes.NewReader(jsonBody)
 	}
 
 	reqURL := a.apiURL + path
-	req, err := http.NewRequestWithContext(ctx, method, reqURL, bodyReader)
-	if err != nil {
-		return nil, NewProviderError(ErrCodeNetworkError, "failed to create request", err)
+	maxAttempts := 1
+	if a.retryEnabled {
+		maxAttempts = a.retryCfg.maxRetries + 1
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Api-Key", a.apiKey)
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			// Wait with exponential backoff + jitter before retrying
+			delay := backoffDelay(attempt-1, a.retryCfg)
+			a.logger.Warn("retrying WAHA request after transient error",
+				zap.String("method", method),
+				zap.String("path", path),
+				zap.Int("attempt", attempt+1),
+				zap.Duration("delay", delay),
+				zap.Error(lastErr))
 
-	resp, err := a.httpClient.Do(req)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, NewProviderError(ErrCodeTimeout, "request timed out", err)
+			select {
+			case <-ctx.Done():
+				return nil, NewProviderError(ErrCodeTimeout, "request canceled during retry backoff", ctx.Err())
+			case <-time.After(delay):
+			}
 		}
-		if errors.Is(err, context.Canceled) {
-			return nil, NewProviderError(ErrCodeTimeout, "request canceled", err)
+
+		var bodyReader io.Reader
+		if jsonBody != nil {
+			bodyReader = bytes.NewReader(jsonBody)
 		}
-		return nil, NewProviderError(ErrCodeNetworkError, "request failed", err)
-	}
-	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, NewProviderError(ErrCodeNetworkError, "failed to read response", err)
+		req, err := http.NewRequestWithContext(ctx, method, reqURL, bodyReader)
+		if err != nil {
+			return nil, NewProviderError(ErrCodeNetworkError, "failed to create request", err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Api-Key", a.apiKey)
+
+		resp, err := a.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+
+			// Don't retry on context cancellation from the caller
+			if errors.Is(err, context.Canceled) {
+				return nil, NewProviderError(ErrCodeTimeout, "request canceled", err)
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil, NewProviderError(ErrCodeTimeout, "request timed out", err)
+			}
+
+			// Retry on transient network errors
+			if a.retryEnabled && attempt < maxAttempts-1 && isRetryableError(err) {
+				continue
+			}
+
+			return nil, NewProviderError(ErrCodeNetworkError, "request failed", err)
+		}
+
+		respBody, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			lastErr = readErr
+			if a.retryEnabled && attempt < maxAttempts-1 {
+				continue
+			}
+			return nil, NewProviderError(ErrCodeNetworkError, "failed to read response", readErr)
+		}
+
+		// Retry on transient HTTP status codes (429, 502, 503, 504)
+		if a.retryEnabled && attempt < maxAttempts-1 && isRetryableStatusCode(resp.StatusCode) {
+			lastErr = fmt.Errorf("transient HTTP %d from WAHA", resp.StatusCode)
+			continue
+		}
+
+		// Log response for all send operations
+		if strings.HasPrefix(path, "/api/send") {
+			a.logger.Info("WAHA API response OK",
+				zap.String("path", path),
+				zap.Int("statusCode", resp.StatusCode))
+		}
+
+		if resp.StatusCode >= 400 {
+			return nil, a.handleErrorResponse(resp.StatusCode, path, respBody)
+		}
+
+		return respBody, nil
 	}
 
-	// Log response for all send operations
-	if strings.HasPrefix(path, "/api/send") {
-		a.logger.Info("WAHA API response OK",
-			zap.String("path", path),
-			zap.Int("statusCode", resp.StatusCode))
-	}
-
-	if resp.StatusCode >= 400 {
-		return nil, a.handleErrorResponse(resp.StatusCode, path, respBody)
-	}
-
-	return respBody, nil
+	// Exhausted all retries
+	return nil, NewProviderError(ErrCodeNetworkError, fmt.Sprintf("request failed after %d attempts", maxAttempts), lastErr)
 }
 
 // handleErrorResponse converts HTTP error responses to ProviderError.
@@ -378,7 +558,11 @@ func (a *WahaAdapter) GetSessionStatus(ctx context.Context, sessionName string) 
 		return nil, NewProviderError(ErrCodeProviderError, "service temporarily unavailable (circuit breaker open)", nil)
 	}
 
-	resp, err := a.doRequest(ctx, http.MethodGet, "/api/sessions/"+url.PathEscape(sessionName), nil)
+	// N2: 10s timeout for status checks
+	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	resp, err := a.doRequest(statusCtx, http.MethodGet, "/api/sessions/"+url.PathEscape(sessionName), nil)
 	if err != nil {
 		a.circuitBreaker.recordFailure()
 		return nil, fmt.Errorf("failed to get session status: %w", err)
@@ -773,10 +957,25 @@ func (a *WahaAdapter) DemoteMember(ctx context.Context, input DemoteMemberInput)
 }
 
 // parseMemberOperationResult parses the WAHA response for member add/remove operations.
+// W2: Detects empty body responses that silently assume success, which can mask
+// promote/demote failures and lead to data corruption.
 func (a *WahaAdapter) parseMemberOperationResult(resp []byte, requestedNumbers []string) (*MemberOperationResult, error) {
 	// WAHA may return different response formats depending on version.
-	// If the response is empty or just a success status, assume all succeeded.
+	// If the response is empty or just a success status, assume all succeeded
+	// but log a warning — empty body means we cannot confirm individual results.
 	if len(resp) == 0 {
+		observability.LogAndCapture(
+			a.logger,
+			sentry.LevelWarning,
+			"WAHA member operation returned empty body — assuming success without confirmation (potential data corruption)",
+			fmt.Errorf("empty response body for member operation on %d numbers", len(requestedNumbers)),
+			map[string]string{
+				"module":           "waha-adapter",
+				"flow":             "member-operation",
+				"requested_count":  strconv.Itoa(len(requestedNumbers)),
+				"data_integrity":   "unverified",
+			},
+		)
 		return &MemberOperationResult{
 			SuccessCount:  len(requestedNumbers),
 			FailedNumbers: []string{},
@@ -790,6 +989,10 @@ func (a *WahaAdapter) parseMemberOperationResult(resp []byte, requestedNumbers [
 	}
 	if err := json.Unmarshal(resp, &participantResults); err != nil {
 		// If parsing fails, assume all succeeded (WAHA returned success HTTP status)
+		a.logger.Warn("failed to parse member operation response — assuming success",
+			zap.Int("requestedCount", len(requestedNumbers)),
+			zap.Int("responseLen", len(resp)),
+			zap.Error(err))
 		return &MemberOperationResult{
 			SuccessCount:  len(requestedNumbers),
 			FailedNumbers: []string{},
@@ -1154,9 +1357,13 @@ func (a *WahaAdapter) DownloadMedia(ctx context.Context, input DownloadMediaInpu
 		zap.String("session", input.SessionName),
 		zap.String("mediaID", input.MediaID))
 
+	// N2: 30s timeout for download operations
+	dlCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
 	// WAHA media download endpoint: GET /api/{session}/media/{mediaId}
 	reqURL := fmt.Sprintf("%s/api/%s/media/%s", a.apiURL, url.PathEscape(input.SessionName), url.PathEscape(input.MediaID))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, NewProviderError(ErrCodeNetworkError, "failed to create request", err)
 	}
@@ -1168,9 +1375,11 @@ func (a *WahaAdapter) DownloadMedia(ctx context.Context, input DownloadMediaInpu
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// N1: Limit download body size to 50 MB to prevent memory exhaustion
+	limitedBody := http.MaxBytesReader(nil, resp.Body, maxDownloadBodySize)
+	body, err := io.ReadAll(limitedBody)
 	if err != nil {
-		return nil, NewProviderError(ErrCodeNetworkError, "failed to read media response", err)
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to read media response (may exceed 50MB limit)", err)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -1226,7 +1435,11 @@ func (a *WahaAdapter) DownloadMediaByURL(ctx context.Context, mediaURL string) (
 		zap.String("originalURL", mediaURL),
 		zap.String("rewrittenURL", reqURL))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	// N2: 30s timeout for download operations
+	dlCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, NewProviderError(ErrCodeNetworkError, "failed to create request", err)
 	}
@@ -1238,9 +1451,11 @@ func (a *WahaAdapter) DownloadMediaByURL(ctx context.Context, mediaURL string) (
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// N1: Limit download body size to 50 MB to prevent memory exhaustion
+	limitedBody := http.MaxBytesReader(nil, resp.Body, maxDownloadBodySize)
+	body, err := io.ReadAll(limitedBody)
 	if err != nil {
-		return nil, NewProviderError(ErrCodeNetworkError, "failed to read media response", err)
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to read media response (may exceed 50MB limit)", err)
 	}
 
 	if resp.StatusCode >= 400 {

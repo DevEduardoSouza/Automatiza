@@ -4,11 +4,14 @@ import (
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/middleware"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/services/coupons"
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -71,7 +74,20 @@ func (h *ContactsHandler) Extract(c *gin.Context) {
 		middleware.RespondError(c, http.StatusServiceUnavailable, "WhatsApp provider não configurado")
 		return
 	}
-	instance, _ := h.deps.InstanceRepo.GetInstanceByUserAndName(c.Request.Context(), user.ID, req.InstanceName)
+	instance, err := h.deps.InstanceRepo.GetInstanceByUserAndName(c.Request.Context(), user.ID, req.InstanceName)
+	if err != nil {
+		// S24: Capture instance lookup errors
+		observability.LogAndCapture(h.deps.Logger, sentry.LevelWarning,
+			"Failed to get instance by user and name",
+			fmt.Errorf("GetInstanceByUserAndName user=%s instance=%s: %w", user.ID, req.InstanceName, err),
+			map[string]string{
+				"module":       "contacts-handler",
+				"userID":       user.ID,
+				"instanceName": req.InstanceName,
+			})
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar instância")
+		return
+	}
 	if instance == nil {
 		middleware.RespondError(c, http.StatusNotFound, "Instância não encontrada")
 		return
@@ -401,14 +417,19 @@ func (h *WebhooksHandler) WhatsApp(c *gin.Context) {
 	}
 
 	if h.deps.MonitoringService != nil {
-		go func() {
+		// S67: Use SafeGo for panic recovery in monitoring goroutine
+		observability.SafeGo("monitoring-processor", func() {
 			ctx := context.Background()
 			if err := h.deps.MonitoringService.ProcessIncomingMessage(ctx, &msg); err != nil {
-				h.deps.Logger.Error("Failed to process WhatsApp message",
-					zap.String("instanceName", msg.InstanceName),
-					zap.Error(err))
+				observability.LogAndCapture(h.deps.Logger, sentry.LevelError,
+					"Failed to process WhatsApp message",
+					fmt.Errorf("process incoming message instance=%s: %w", msg.InstanceName, err),
+					map[string]string{
+						"module":       "webhooks-handler",
+						"instanceName": msg.InstanceName,
+					})
 			}
-		}()
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"received": true})
@@ -642,7 +663,18 @@ func (h *AdminHandler) ShopeeAffiliateAudit(c *gin.Context) {
 }
 
 func (h *AdminHandler) SystemEvents(c *gin.Context) {
-	events, _ := h.deps.SystemEventRepo.GetRecent(c.Request.Context(), 100)
+	events, err := h.deps.SystemEventRepo.GetRecent(c.Request.Context(), 100)
+	if err != nil {
+		// S27: Capture system events retrieval errors
+		observability.LogAndCapture(h.deps.Logger, sentry.LevelWarning,
+			"Failed to get recent system events",
+			fmt.Errorf("GetRecent system events: %w", err),
+			map[string]string{
+				"module": "admin-handler",
+			})
+		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao buscar eventos do sistema")
+		return
+	}
 	middleware.RespondSuccess(c, map[string]interface{}{"events": events})
 }
 

@@ -21,7 +21,9 @@ import (
 	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
+	"automatiza-go/internal/observability"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -359,6 +361,11 @@ func (s *Service) ReconcileChat(ctx context.Context, sessionName, chatID string)
 	// Get or create checkpoint
 	checkpoint, err := s.checkpointRepo.GetOrCreate(ctx, sessionName, chatID)
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to get or create reconciliation checkpoint", err, map[string]string{
+			"module":  "reconciliation",
+			"session": sessionName,
+			"chat":    chatID,
+		})
 		return fmt.Errorf("failed to get checkpoint: %w", err)
 	}
 
@@ -367,6 +374,11 @@ func (s *Service) ReconcileChat(ctx context.Context, sessionName, chatID string)
 		if errors.Is(err, ErrAlreadyRunning) {
 			return err
 		}
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to mark reconciliation checkpoint as running", err, map[string]string{
+			"module":  "reconciliation",
+			"session": sessionName,
+			"chat":    chatID,
+		})
 		return fmt.Errorf("failed to mark checkpoint as running: %w", err)
 	}
 
@@ -401,20 +413,28 @@ func (s *Service) ReconcileChat(ctx context.Context, sessionName, chatID string)
 
 	// Update checkpoint status based on result
 	if reconcileErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelFatal, "Reconciliation failed after all retry attempts", reconcileErr, map[string]string{
+			"module":      "reconciliation",
+			"session":     sessionName,
+			"chat":        chatID,
+			"max_retries": fmt.Sprintf("%d", s.config.MaxRetries),
+		})
 		if err := s.checkpointRepo.MarkFailed(ctx, sessionName, chatID); err != nil {
-			s.logger.Error("Failed to mark checkpoint as failed",
-				zap.String("session", sessionName),
-				zap.String("chat", chatID),
-				zap.Error(err))
+			observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to mark reconciliation checkpoint as failed", err, map[string]string{
+				"module":  "reconciliation",
+				"session": sessionName,
+				"chat":    chatID,
+			})
 		}
 		return fmt.Errorf("reconciliation failed after %d attempts: %w", s.config.MaxRetries, reconcileErr)
 	}
 
 	if err := s.checkpointRepo.MarkIdle(ctx, sessionName, chatID); err != nil {
-		s.logger.Error("Failed to mark checkpoint as idle",
-			zap.String("session", sessionName),
-			zap.String("chat", chatID),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to mark reconciliation checkpoint as idle", err, map[string]string{
+			"module":  "reconciliation",
+			"session": sessionName,
+			"chat":    chatID,
+		})
 	}
 
 	s.logger.Info("Chat reconciliation completed",
@@ -458,6 +478,11 @@ func (s *Service) doReconcile(ctx context.Context, sessionName, chatID string, c
 			Filter:        filter,
 		})
 		if err != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to fetch messages during reconciliation", err, map[string]string{
+				"module":  "reconciliation",
+				"session": sessionName,
+				"chat":    chatID,
+			})
 			return fmt.Errorf("failed to fetch messages: %w", err)
 		}
 
@@ -492,10 +517,11 @@ func (s *Service) doReconcile(ctx context.Context, sessionName, chatID string, c
 		// Update checkpoint after each batch
 		if lastTimestamp > 0 {
 			if err := s.checkpointRepo.UpdateCheckpoint(ctx, sessionName, chatID, lastTimestamp, lastMessageID); err != nil {
-				s.logger.Error("Failed to update checkpoint",
-					zap.String("session", sessionName),
-					zap.String("chat", chatID),
-					zap.Error(err))
+				observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to update reconciliation checkpoint after batch", err, map[string]string{
+					"module":  "reconciliation",
+					"session": sessionName,
+					"chat":    chatID,
+				})
 			}
 		}
 
@@ -578,9 +604,10 @@ func (s *Service) checkAndReconcile(ctx context.Context) {
 		if s.config.HealthCheckEnabled {
 			healthy, err := s.checkAndRestartSession(ctx, sessionName)
 			if err != nil {
-				s.logger.Error("Failed to check/restart session",
-					zap.String("session", sessionName),
-					zap.Error(err))
+				observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to check/restart session during reconciliation watchdog", err, map[string]string{
+					"module":  "reconciliation",
+					"session": sessionName,
+				})
 			}
 			if !healthy {
 				// Session is unhealthy and couldn't be restarted, skip reconciliation
@@ -589,7 +616,10 @@ func (s *Service) checkAndReconcile(ctx context.Context) {
 		}
 
 		// Fetch all chats for this session and reconcile each
-		go s.reconcileSession(ctx, sessionName)
+		sessionCopy := sessionName
+		observability.SafeGo("reconciliation.reconcileSession."+sessionCopy, func() {
+			s.reconcileSession(ctx, sessionCopy)
+		})
 	}
 }
 
@@ -677,9 +707,10 @@ func (s *Service) tryRestartSession(ctx context.Context, sessionName string) (bo
 
 	err := s.provider.RestartSession(ctx, sessionName)
 	if err != nil {
-		s.logger.Error("Failed to restart session",
-			zap.String("session", sessionName),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to restart WAHA session during reconciliation", err, map[string]string{
+			"module":  "reconciliation",
+			"session": sessionName,
+		})
 		return false, err
 	}
 
@@ -724,19 +755,21 @@ func (s *Service) resetRestartAttempts(sessionName string) {
 func (s *Service) reconcileSession(ctx context.Context, sessionName string) {
 	checkpoints, err := s.checkpointRepo.GetBySession(ctx, sessionName)
 	if err != nil {
-		s.logger.Error("Failed to get checkpoints for session",
-			zap.String("session", sessionName),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to get checkpoints for reconciliation session", err, map[string]string{
+			"module":  "reconciliation",
+			"session": sessionName,
+		})
 		return
 	}
 
 	for _, cp := range checkpoints {
 		if err := s.ReconcileChat(ctx, cp.SessionName, cp.ChatID); err != nil {
 			if !errors.Is(err, ErrAlreadyRunning) {
-				s.logger.Error("Failed to reconcile chat",
-					zap.String("session", cp.SessionName),
-					zap.String("chat", cp.ChatID),
-					zap.Error(err))
+				observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to reconcile chat in session", err, map[string]string{
+					"module":  "reconciliation",
+					"session": cp.SessionName,
+					"chat":    cp.ChatID,
+				})
 			}
 		}
 	}
@@ -759,6 +792,9 @@ func (s *Service) OnStartup(ctx context.Context) error {
 
 	sessionChats, err := s.checkpointRepo.GetActiveSessionsChats(ctx)
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to get active sessions for startup reconciliation", err, map[string]string{
+			"module": "reconciliation",
+		})
 		return fmt.Errorf("failed to get active session/chats: %w", err)
 	}
 
@@ -776,7 +812,9 @@ func (s *Service) OnStartup(ctx context.Context) error {
 
 	for _, sc := range sessionChats {
 		wg.Add(1)
-		go func(sessionName, chatID string) {
+		sessionName := sc.SessionName
+		chatID := sc.ChatID
+		observability.SafeGo("reconciliation.startup."+sessionName+":"+chatID, func() {
 			defer wg.Done()
 
 			if err := s.ReconcileChat(ctx, sessionName, chatID); err != nil {
@@ -784,7 +822,7 @@ func (s *Service) OnStartup(ctx context.Context) error {
 					errChan <- fmt.Errorf("failed to reconcile %s:%s: %w", sessionName, chatID, err)
 				}
 			}
-		}(sc.SessionName, sc.ChatID)
+		})
 	}
 
 	// Wait for all reconciliations to complete
@@ -794,7 +832,9 @@ func (s *Service) OnStartup(ctx context.Context) error {
 	// Log any errors but don't fail startup
 	var errCount int
 	for err := range errChan {
-		s.logger.Error("Startup reconciliation error", zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Startup reconciliation error", err, map[string]string{
+			"module": "reconciliation",
+		})
 		errCount++
 	}
 
@@ -820,7 +860,9 @@ func (s *Service) ReconcileSession(ctx context.Context, sessionName string) erro
 	s.logger.Info("Triggering manual session reconciliation",
 		zap.String("session", sessionName))
 
-	go s.reconcileSession(ctx, sessionName)
+	observability.SafeGo("reconciliation.manualReconcileSession."+sessionName, func() {
+		s.reconcileSession(ctx, sessionName)
+	})
 	return nil
 }
 

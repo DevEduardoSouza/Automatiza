@@ -14,12 +14,15 @@ import (
 	"automatiza-go/internal/auth"
 	adminv1 "automatiza-go/internal/gen/admin/v1"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/repository/postgres"
 	"automatiza-go/internal/services/email"
 	"automatiza-go/internal/services/loadbalancer"
 
 	"connectrpc.com/connect"
+	"github.com/getsentry/sentry-go"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -44,6 +47,7 @@ type AdminHandler struct {
 	waProvider        whatsapp.WhatsAppProvider
 	emailService      email.Service
 	webhookBaseURL    string
+	logger            *zap.Logger
 }
 
 // WebhookLogRepository interface for webhook logs
@@ -169,6 +173,13 @@ func WithCategoryRepo(repo repository.CategoryRepository) AdminHandlerOption {
 	}
 }
 
+// WithAdminLogger sets the logger for the admin handler.
+func WithAdminLogger(logger *zap.Logger) AdminHandlerOption {
+	return func(h *AdminHandler) {
+		h.logger = logger
+	}
+}
+
 // requireAdmin checks if the user is an admin and returns an error if not.
 func (h *AdminHandler) requireAdmin(ctx context.Context) error {
 	user := GetUserFromContext(ctx)
@@ -186,6 +197,14 @@ func (h *AdminHandler) requireAdmin(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// getLogger returns the handler logger, defaulting to a no-op logger if not configured.
+func (h *AdminHandler) getLogger() *zap.Logger {
+	if h.logger != nil {
+		return h.logger
+	}
+	return zap.NewNop()
 }
 
 // GetObservability returns comprehensive observability data.
@@ -454,7 +473,13 @@ func (h *AdminHandler) GetShopeeAffiliateAudit(
 				// Get profile for enrichment (with cache)
 				profile, ok := profileCache[log.UserID]
 				if !ok {
-					profile, _ = h.profileRepo.GetProfile(ctx, log.UserID)
+					var profileErr error
+					profile, profileErr = h.profileRepo.GetProfile(ctx, log.UserID)
+					if profileErr != nil {
+						observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to enrich profile in shopee audit", profileErr, map[string]string{
+							"module": "admin", "operation": "profile_enrichment", "user_id": log.UserID,
+						})
+					}
 					profileCache[log.UserID] = profile
 				}
 
@@ -733,9 +758,18 @@ func (h *AdminHandler) SimulateKiwifyWebhook(
 		// Log failed simulation
 		if h.webhookLogWriteRepo != nil {
 			errMsg := fmt.Sprintf("Webhook processing failed: %v", err)
-			logEntry, _ := h.webhookLogWriteRepo.Create(ctx, "kiwify", &event, &email, nil, nil)
+			logEntry, createErr := h.webhookLogWriteRepo.Create(ctx, "kiwify", &event, &email, nil, nil)
+			if createErr != nil {
+				observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create webhook simulation log", createErr, map[string]string{
+					"module": "admin", "operation": "webhook_simulation", "event": event,
+				})
+			}
 			if logEntry != nil {
-				_ = h.webhookLogWriteRepo.UpdateStatus(ctx, logEntry.ID, "failed", &errMsg)
+				if updateErr := h.webhookLogWriteRepo.UpdateStatus(ctx, logEntry.ID, "failed", &errMsg); updateErr != nil {
+					observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to update webhook simulation log status", updateErr, map[string]string{
+						"module": "admin", "operation": "webhook_simulation", "status": "failed",
+					})
+				}
 			}
 		}
 		return connect.NewResponse(&adminv1.SimulateKiwifyWebhookResponse{
@@ -757,9 +791,18 @@ func (h *AdminHandler) SimulateKiwifyWebhook(
 		if result.Plan != "" {
 			plan = &result.Plan
 		}
-		logEntry, _ := h.webhookLogWriteRepo.Create(ctx, "kiwify", &result.Event, &email, plan, nil)
+		logEntry, createErr := h.webhookLogWriteRepo.Create(ctx, "kiwify", &result.Event, &email, plan, nil)
+		if createErr != nil {
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create webhook simulation log", createErr, map[string]string{
+				"module": "admin", "operation": "webhook_simulation", "event": result.Event,
+			})
+		}
 		if logEntry != nil {
-			_ = h.webhookLogWriteRepo.UpdateStatus(ctx, logEntry.ID, "processed", nil)
+			if updateErr := h.webhookLogWriteRepo.UpdateStatus(ctx, logEntry.ID, "processed", nil); updateErr != nil {
+				observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to update webhook simulation log status", updateErr, map[string]string{
+					"module": "admin", "operation": "webhook_simulation", "status": "processed",
+				})
+			}
 		}
 	}
 
@@ -793,7 +836,12 @@ func (h *AdminHandler) GetSystemEvents(
 
 	protoEvents := make([]*adminv1.SystemEvent, len(events))
 	for i, e := range events {
-		meta, _ := structpb.NewStruct(e.Payload)
+		meta, metaErr := structpb.NewStruct(e.Payload)
+		if metaErr != nil {
+			observability.CaptureWithTags(fmt.Errorf("failed to convert system event payload to struct: %w", metaErr), map[string]string{
+				"module": "admin", "operation": "event_payload_conversion", "event_id": fmt.Sprintf("%d", e.ID),
+			})
+		}
 		protoEvents[i] = &adminv1.SystemEvent{
 			Id:        fmt.Sprintf("%d", e.ID),
 			Scope:     e.EventType,
@@ -862,19 +910,27 @@ func (h *AdminHandler) ResetUserPassword(
 			adminEmail = currentUser.Email
 			adminID = currentUser.ID
 		}
-		_ = h.systemEventRepo.Create(ctx, "admin_reset_password", map[string]interface{}{
+		if auditErr := h.systemEventRepo.Create(ctx, "admin_reset_password", map[string]interface{}{
 			"target_user_id":    userID,
 			"target_user_email": profile.Email,
 			"admin_id":          adminID,
 			"admin_email":       adminEmail,
-		})
+		}); auditErr != nil {
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create audit trail for password reset", auditErr, map[string]string{
+				"module": "admin", "operation": "audit_trail", "event_type": "admin_reset_password",
+			})
+		}
 	}
 
 	// Send email notification with new password (best effort - don't fail if email fails)
 	if h.emailService != nil {
 		// Build password reset notification email
 		emailBody := buildPasswordResetNotificationHTML(profile.Email, newPassword)
-		_ = h.emailService.SendCustomEmail(ctx, profile.Email, "🔐 Sua senha foi resetada - Automatiza", emailBody)
+		if emailErr := h.emailService.SendCustomEmail(ctx, profile.Email, "Sua senha foi resetada - Automatiza", emailBody); emailErr != nil {
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to send password reset email", emailErr, map[string]string{
+				"module": "admin", "operation": "email_send", "user_id": userID,
+			})
+		}
 	}
 
 	return connect.NewResponse(&adminv1.ResetUserPasswordResponse{
@@ -1322,8 +1378,11 @@ func (h *AdminHandler) ListAdminUsers(
 	// Fetch profile info for each admin
 	protoAdmins := make([]*adminv1.AdminUser, 0, len(adminRoles))
 	for _, role := range adminRoles {
-		profile, err := h.profileRepo.GetProfile(ctx, role.UserID)
-		if err != nil {
+		profile, profileErr := h.profileRepo.GetProfile(ctx, role.UserID)
+		if profileErr != nil {
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to enrich admin profile", profileErr, map[string]string{
+				"module": "admin", "operation": "profile_enrichment", "user_id": role.UserID,
+			})
 			continue // Skip if profile not found
 		}
 
@@ -1473,7 +1532,12 @@ func (h *AdminHandler) ListUsers(
 	// Convert to proto and get roles for each user
 	users := make([]*adminv1.User, len(profiles))
 	for i, p := range profiles {
-		roles, _ := h.userRoleRepo.GetAllUserRoles(ctx, p.ID)
+		roles, rolesErr := h.userRoleRepo.GetAllUserRoles(ctx, p.ID)
+		if rolesErr != nil {
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to get user roles during list", rolesErr, map[string]string{
+				"module": "admin", "operation": "roles", "user_id": p.ID,
+			})
+		}
 		users[i] = profileToUserProto(p, roles)
 	}
 
@@ -1504,7 +1568,12 @@ func (h *AdminHandler) CreateUser(
 	}
 
 	// Check if user already exists
-	existing, _ := h.profileRepo.GetProfileByEmail(ctx, email)
+	existing, dupErr := h.profileRepo.GetProfileByEmail(ctx, email)
+	if dupErr != nil {
+		observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to check for duplicate user during creation", dupErr, map[string]string{
+			"module": "admin", "operation": "duplicate_check",
+		})
+	}
 	if existing != nil {
 		return nil, connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("user with email %s already exists", email))
 	}
@@ -1548,13 +1617,21 @@ func (h *AdminHandler) CreateUser(
 		name := email
 		if err := h.emailService.SendWelcomeEmail(ctx, email, name, tempPassword); err != nil {
 			// Log but don't fail - user was created
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to send welcome email for new user", err, map[string]string{
+				"module": "admin", "operation": "email_send", "user_id": createdProfile.ID,
+			})
 			responsePassword = &tempPassword
 		}
 	} else {
 		responsePassword = &tempPassword
 	}
 
-	roles, _ := h.userRoleRepo.GetAllUserRoles(ctx, createdProfile.ID)
+	roles, rolesErr := h.userRoleRepo.GetAllUserRoles(ctx, createdProfile.ID)
+	if rolesErr != nil {
+		observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to get roles for created user", rolesErr, map[string]string{
+			"module": "admin", "operation": "roles", "user_id": createdProfile.ID,
+		})
+	}
 
 	return connect.NewResponse(&adminv1.CreateUserResponse{
 		User:              profileToUserProto(createdProfile, roles),
@@ -1611,7 +1688,12 @@ func (h *AdminHandler) UpdateUserRole(
 	}
 
 	// Get updated roles
-	roles, _ := h.userRoleRepo.GetAllUserRoles(ctx, userID)
+	roles, rolesErr := h.userRoleRepo.GetAllUserRoles(ctx, userID)
+	if rolesErr != nil {
+		observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to get updated roles", rolesErr, map[string]string{
+			"module": "admin", "operation": "roles", "user_id": userID,
+		})
+	}
 
 	return connect.NewResponse(&adminv1.UpdateUserRoleResponse{
 		Success: true,
@@ -1690,25 +1772,33 @@ func (h *AdminHandler) UnlockUserAccount(
 			details["reason"] = reason
 		}
 
-		_, _ = h.actionHistoryRepo.Create(
+		if _, auditErr := h.actionHistoryRepo.Create(
 			ctx,
 			adminID, // Use admin's ID as the actor
 			models.ActionTypeAdminUnlockAccount,
 			fmt.Sprintf("Admin %s unlocked account for user %s (previous status: %s)", adminEmail, profile.Email, *previousBillingStatus),
 			details,
-		)
+		); auditErr != nil {
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create audit trail for account unlock", auditErr, map[string]string{
+				"module": "admin", "operation": "audit_trail", "event_type": "admin_unlock_account",
+			})
+		}
 	}
 
 	// Also log to system events for observability
 	if h.systemEventRepo != nil {
-		_ = h.systemEventRepo.Create(ctx, "admin_unlock_account", map[string]interface{}{
+		if sysErr := h.systemEventRepo.Create(ctx, "admin_unlock_account", map[string]interface{}{
 			"target_user_id":          userID,
 			"target_user_email":       profile.Email,
 			"previous_billing_status": *previousBillingStatus,
 			"admin_id":                adminID,
 			"admin_email":             adminEmail,
 			"reason":                  req.Msg.GetReason(),
-		})
+		}); sysErr != nil {
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create system event for account unlock", sysErr, map[string]string{
+				"module": "admin", "operation": "audit_trail", "event_type": "admin_unlock_account",
+			})
+		}
 	}
 
 	return connect.NewResponse(&adminv1.UnlockUserAccountResponse{
@@ -1916,7 +2006,12 @@ func (h *AdminHandler) GetUserInvestigation(
 	}
 
 	// Get user roles
-	roles, _ := h.userRoleRepo.GetAllUserRoles(ctx, userID)
+	roles, rolesErr := h.userRoleRepo.GetAllUserRoles(ctx, userID)
+	if rolesErr != nil {
+		observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to get user roles for investigation", rolesErr, map[string]string{
+			"module": "admin", "operation": "roles", "user_id": userID,
+		})
+	}
 
 	return connect.NewResponse(&adminv1.GetUserInvestigationResponse{
 		User:              profileToUserProto(profile, roles),
@@ -1972,7 +2067,7 @@ func (h *AdminHandler) AdminBulkUpdateAutomationStatus(
 	// Log the action
 	currentUser := GetUserFromContext(ctx)
 	if h.systemEventRepo != nil && currentUser != nil {
-		_ = h.systemEventRepo.Create(ctx, "admin_bulk_update_automations", map[string]interface{}{
+		if auditErr := h.systemEventRepo.Create(ctx, "admin_bulk_update_automations", map[string]interface{}{
 			"target_user_id":    userID,
 			"target_user_email": profile.Email,
 			"target_status":     targetStatus,
@@ -1980,7 +2075,11 @@ func (h *AdminHandler) AdminBulkUpdateAutomationStatus(
 			"updated_count":     count,
 			"admin_id":          currentUser.ID,
 			"admin_email":       currentUser.Email,
-		})
+		}); auditErr != nil {
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create audit trail for bulk automation update", auditErr, map[string]string{
+				"module": "admin", "operation": "audit_trail", "event_type": "admin_bulk_update_automations",
+			})
+		}
 	}
 
 	return connect.NewResponse(&adminv1.AdminBulkUpdateAutomationStatusResponse{
@@ -2058,7 +2157,7 @@ func (h *AdminHandler) AdminSpreadAutomationSchedule(
 	// Log the action
 	currentUser := GetUserFromContext(ctx)
 	if h.systemEventRepo != nil && currentUser != nil {
-		_ = h.systemEventRepo.Create(ctx, "admin_spread_automation_schedule", map[string]interface{}{
+		if auditErr := h.systemEventRepo.Create(ctx, "admin_spread_automation_schedule", map[string]interface{}{
 			"target_user_id":    userID,
 			"target_user_email": profile.Email,
 			"spread_minutes":    spreadMinutes,
@@ -2066,7 +2165,11 @@ func (h *AdminHandler) AdminSpreadAutomationSchedule(
 			"updated_count":     len(targetAutomations),
 			"admin_id":          currentUser.ID,
 			"admin_email":       currentUser.Email,
-		})
+		}); auditErr != nil {
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create audit trail for automation schedule spread", auditErr, map[string]string{
+				"module": "admin", "operation": "audit_trail", "event_type": "admin_spread_automation_schedule",
+			})
+		}
 	}
 
 	return connect.NewResponse(&adminv1.AdminSpreadAutomationScheduleResponse{
@@ -2138,10 +2241,14 @@ func (h *AdminHandler) AdminBlockUser(
 		if err != nil {
 			// Log but don't fail the request
 			if h.systemEventRepo != nil {
-				_ = h.systemEventRepo.Create(ctx, "admin_block_user_pause_failed", map[string]interface{}{
+				if auditErr := h.systemEventRepo.Create(ctx, "admin_block_user_pause_failed", map[string]interface{}{
 					"user_id": userID,
 					"error":   err.Error(),
-				})
+				}); auditErr != nil {
+					observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create audit trail for block user pause failure", auditErr, map[string]string{
+						"module": "admin", "operation": "audit_trail", "event_type": "admin_block_user_pause_failed",
+					})
+				}
 			}
 		} else {
 			pausedCount = int32(count)
@@ -2150,7 +2257,7 @@ func (h *AdminHandler) AdminBlockUser(
 
 	// Log the action
 	if h.systemEventRepo != nil && currentUser != nil {
-		_ = h.systemEventRepo.Create(ctx, "admin_block_user", map[string]interface{}{
+		if auditErr := h.systemEventRepo.Create(ctx, "admin_block_user", map[string]interface{}{
 			"target_user_id":     userID,
 			"target_user_email":  profile.Email,
 			"reason":             reason,
@@ -2159,15 +2266,29 @@ func (h *AdminHandler) AdminBlockUser(
 			"paused_automations": pausedCount,
 			"admin_id":           currentUser.ID,
 			"admin_email":        currentUser.Email,
-		})
+		}); auditErr != nil {
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create audit trail for block user", auditErr, map[string]string{
+				"module": "admin", "operation": "audit_trail", "event_type": "admin_block_user",
+			})
+		}
 	}
 
 	// Fetch updated profile for response
-	updatedProfile, _ := h.profileRepo.GetProfile(ctx, userID)
+	updatedProfile, updProfileErr := h.profileRepo.GetProfile(ctx, userID)
+	if updProfileErr != nil {
+		observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to fetch updated profile after block", updProfileErr, map[string]string{
+			"module": "admin", "operation": "profile_enrichment", "user_id": userID,
+		})
+	}
 	if updatedProfile == nil {
 		updatedProfile = profile
 	}
-	roles, _ := h.userRoleRepo.GetAllUserRoles(ctx, userID)
+	roles, rolesErr := h.userRoleRepo.GetAllUserRoles(ctx, userID)
+	if rolesErr != nil {
+		observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to get user roles after block", rolesErr, map[string]string{
+			"module": "admin", "operation": "roles", "user_id": userID,
+		})
+	}
 
 	return connect.NewResponse(&adminv1.AdminBlockUserResponse{
 		User:              profileToUserProto(updatedProfile, roles),

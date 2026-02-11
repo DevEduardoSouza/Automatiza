@@ -5,6 +5,7 @@ package redirect
 import (
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"context"
 	"errors"
@@ -202,6 +203,14 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 				zap.String("groupName", group.Name),
 				zap.Bool("isAdmin", group.IsAdmin),
 				zap.Error(err))
+			// W37: Capture invite code failure with Sentry tags
+			observability.CaptureWithTags(err, map[string]string{
+				"module":      "redirect",
+				"flow":        "invite-code",
+				"sessionName": instance.InstanceID,
+				"waGroupID":   group.WAGroupID,
+				"groupName":   group.Name,
+			})
 			return &models.ProcessRedirectResult{
 				Success: false,
 				Error:   "failed to get invite code - check if WhatsApp session is connected",

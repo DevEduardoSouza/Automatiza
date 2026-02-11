@@ -10,6 +10,7 @@ import (
 	"automatiza-go/internal/auth"
 	"automatiza-go/internal/lib/crypto"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/email"
 	"context"
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -124,9 +126,11 @@ func (s *kiwifyService) ProcessWebhook(ctx context.Context, payload *models.Kiwi
 	// Determine plan based on product
 	plan, err := s.mapProductToPlan(ctx, data.ProductName, data.ProductID)
 	if err != nil {
-		s.logger.Error("Failed to map product to plan",
-			zap.String("product", data.ProductName),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to map Kiwify product to plan", err, map[string]string{
+			"external_service": "kiwify",
+			"product":          data.ProductName,
+			"product_id":       data.ProductID,
+		})
 		plan = "starter" // Default fallback
 	}
 
@@ -167,9 +171,10 @@ func (s *kiwifyService) ProcessWebhook(ctx context.Context, payload *models.Kiwi
 	// Get existing profile with billing fields
 	existingProfile, existingBilling, err := s.profileRepo.GetProfileByEmailWithBilling(ctx, data.Email)
 	if err != nil {
-		s.logger.Error("Failed to get profile",
-			zap.String("email", data.Email),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to get profile during Kiwify webhook processing", err, map[string]string{
+			"external_service": "kiwify",
+			"event":           data.Event,
+		})
 		return nil, fmt.Errorf("failed to get profile: %w", err)
 	}
 
@@ -459,18 +464,25 @@ func (s *kiwifyService) mapProductToPlan(ctx context.Context, productName, produ
 		// Try to extract ID from URL if needed
 		searchID := productID
 		if strings.Contains(productID, "pay.kiwify.com.br/") {
-			re := regexp.MustCompile(`pay\.kiwify\.com\.br/([A-Za-z0-9]+)`)
-			matches := re.FindStringSubmatch(productID)
-			if len(matches) > 1 {
-				searchID = matches[1]
+			re, regexErr := regexp.Compile(`pay\.kiwify\.com\.br/([A-Za-z0-9]+)`)
+			if regexErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to compile Kiwify product ID regex", regexErr, map[string]string{
+					"external_service": "kiwify",
+				})
+			} else {
+				matches := re.FindStringSubmatch(productID)
+				if len(matches) > 1 {
+					searchID = matches[1]
+				}
 			}
 		}
 
 		plan, err := s.planRepo.GetByKiwifyProductID(ctx, searchID)
 		if err != nil {
-			s.logger.Warn("Error looking up plan by Kiwify product ID",
-				zap.String("productID", searchID),
-				zap.Error(err))
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Error looking up plan by Kiwify product ID", err, map[string]string{
+				"external_service": "kiwify",
+				"product_id":       searchID,
+			})
 		}
 		if plan != nil {
 			return plan.Slug, nil
@@ -523,6 +535,10 @@ func (s *kiwifyService) handlePurchaseApproved(
 		"plan": plan,
 	})
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to update user plan from Kiwify webhook", err, map[string]string{
+			"external_service": "kiwify",
+			"event":           data.Event,
+		})
 		return nil, fmt.Errorf("failed to update plan: %w", err)
 	}
 
@@ -572,9 +588,10 @@ func (s *kiwifyService) handlePurchaseApproved(
 
 	err = s.profileRepo.UpdateBillingStatus(ctx, profile.ID, newBilling)
 	if err != nil {
-		s.logger.Warn("Failed to update billing status",
-			zap.String("userID", profile.ID),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to update billing status from Kiwify webhook", err, map[string]string{
+			"external_service": "kiwify",
+			"event":           data.Event,
+		})
 	}
 
 	return &models.KiwifyWebhookResult{
@@ -619,15 +636,20 @@ func (s *kiwifyService) handleRefundOrLate(
 
 	err := s.profileRepo.UpdateBillingStatus(ctx, profile.ID, billing)
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to suspend account from Kiwify webhook", err, map[string]string{
+			"external_service": "kiwify",
+			"event":           data.Event,
+		})
 		return nil, fmt.Errorf("failed to suspend account: %w", err)
 	}
 
 	// Pause all active automations
 	err = s.profileRepo.PauseUserAutomations(ctx, profile.ID)
 	if err != nil {
-		s.logger.Warn("Failed to pause automations",
-			zap.String("userID", profile.ID),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to pause automations from Kiwify webhook", err, map[string]string{
+			"external_service": "kiwify",
+			"event":           data.Event,
+		})
 	}
 
 	return &models.KiwifyWebhookResult{
@@ -656,9 +678,10 @@ func (s *kiwifyService) handleSubscriptionCanceled(
 		"billing_next_payment_at": nil,
 	})
 	if err != nil {
-		s.logger.Warn("Failed to clear next payment date",
-			zap.String("userID", profile.ID),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to clear next payment date from Kiwify webhook", err, map[string]string{
+			"external_service": "kiwify",
+			"event":           data.Event,
+		})
 	}
 
 	return &models.KiwifyWebhookResult{
@@ -686,12 +709,20 @@ func (s *kiwifyService) handleNewUserPurchase(
 	// Generate a temporary password
 	tempPassword, err := crypto.GenerateTemporaryPassword()
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to generate temporary password for Kiwify new user", err, map[string]string{
+			"external_service": "kiwify",
+			"event":           data.Event,
+		})
 		return nil, fmt.Errorf("failed to generate password: %w", err)
 	}
 
 	// Hash the password
 	passwordHash, err := auth.HashPassword(tempPassword)
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to hash password for Kiwify new user", err, map[string]string{
+			"external_service": "kiwify",
+			"event":           data.Event,
+		})
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
@@ -706,6 +737,10 @@ func (s *kiwifyService) handleNewUserPurchase(
 
 	createdProfile, err := s.profileRepo.CreateProfile(ctx, profile)
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to create profile from Kiwify webhook", err, map[string]string{
+			"external_service": "kiwify",
+			"event":           data.Event,
+		})
 		return nil, fmt.Errorf("failed to create profile: %w", err)
 	}
 
@@ -713,9 +748,10 @@ func (s *kiwifyService) handleNewUserPurchase(
 	// This is required for the user to be able to login
 	err = s.profileRepo.CreateUserCredentials(ctx, userID, passwordHash)
 	if err != nil {
-		s.logger.Error("Failed to create user credentials",
-			zap.String("userID", userID),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to create user credentials from Kiwify webhook", err, map[string]string{
+			"external_service": "kiwify",
+			"event":           data.Event,
+		})
 		// Don't fail - profile was created, user can be fixed manually
 	}
 
@@ -723,9 +759,10 @@ func (s *kiwifyService) handleNewUserPurchase(
 	if s.userRoleRepo != nil {
 		err = s.userRoleRepo.SetUserRole(ctx, userID, "user")
 		if err != nil {
-			s.logger.Error("Failed to set user role",
-				zap.String("userID", userID),
-				zap.Error(err))
+			observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to set user role from Kiwify webhook", err, map[string]string{
+				"external_service": "kiwify",
+				"event":           data.Event,
+			})
 			// Don't fail - profile was created, role can be fixed manually
 		}
 	}
@@ -739,9 +776,9 @@ func (s *kiwifyService) handleNewUserPurchase(
 
 		err = s.emailService.SendWelcomeEmail(ctx, data.Email, name, tempPassword)
 		if err != nil {
-			s.logger.Error("Failed to send welcome email",
-				zap.String("email", data.Email),
-				zap.Error(err))
+			observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to send welcome email from Kiwify webhook", err, map[string]string{
+				"external_service": "kiwify",
+			})
 			// Don't fail the webhook - user was created successfully
 		}
 	}

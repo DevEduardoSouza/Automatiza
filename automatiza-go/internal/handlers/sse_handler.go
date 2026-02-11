@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"automatiza-go/internal/observability"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -105,8 +107,8 @@ func NewSSEHub(logger *zap.Logger) *SSEHub {
 		done:       make(chan struct{}),
 	}
 
-	// Start the hub's run loop
-	go hub.run()
+	// Start the hub's run loop with panic recovery
+	observability.SafeGo("sse-hub", hub.run)
 
 	return hub
 }
@@ -157,13 +159,21 @@ func (h *SSEHub) run() {
 			// If event has a specific userID, only send to that user
 			if event.UserID != "" {
 				if client, ok := h.clients[event.UserID]; ok {
+					h.logger.Info("[sse-hub] Sending event to client",
+						zap.String("eventType", string(event.Type)),
+						zap.String("userID", event.UserID))
 					select {
 					case client.channel <- event:
 					default:
-						// Channel full, skip this event
-						h.logger.Warn("SSE client channel full, dropping event",
-							zap.String("userID", event.UserID),
-							zap.String("eventType", string(event.Type)))
+						// W28: Client channel full — Warning with rate-limiting
+						observability.LogAndCapture(h.logger, sentry.LevelWarning,
+							"SSE client channel full, dropping event",
+							fmt.Errorf("client channel saturated for user %s, event %s", event.UserID, event.Type),
+							map[string]string{
+								"module":    "sse-hub",
+								"userID":    event.UserID,
+								"eventType": string(event.Type),
+							})
 					}
 				}
 			} else {
@@ -172,10 +182,15 @@ func (h *SSEHub) run() {
 					select {
 					case client.channel <- event:
 					default:
-						// Channel full, skip this event
-						h.logger.Warn("SSE client channel full, dropping event",
-							zap.String("userID", client.userID),
-							zap.String("eventType", string(event.Type)))
+						// W28: Client channel full — Warning with rate-limiting
+						observability.LogAndCapture(h.logger, sentry.LevelWarning,
+							"SSE client channel full, dropping event",
+							fmt.Errorf("client channel saturated for user %s, event %s", client.userID, event.Type),
+							map[string]string{
+								"module":    "sse-hub",
+								"userID":    client.userID,
+								"eventType": string(event.Type),
+							})
 					}
 				}
 			}
@@ -209,11 +224,22 @@ func (h *SSEHub) Publish(event SSEEvent) {
 		event.Timestamp = time.Now().UnixMilli()
 	}
 
+	h.logger.Info("[sse-hub] Publish called",
+		zap.String("eventType", string(event.Type)),
+		zap.String("userID", event.UserID))
+
 	select {
 	case h.broadcast <- event:
 	default:
-		h.logger.Warn("SSE broadcast channel full, dropping event",
-			zap.String("eventType", string(event.Type)))
+		// W29: Broadcast channel full — Critical (affects ALL users)
+		observability.LogAndCapture(h.logger, sentry.LevelFatal,
+			"SSE broadcast channel full, dropping event",
+			fmt.Errorf("broadcast channel saturated, event %s dropped", event.Type),
+			map[string]string{
+				"module":    "sse-hub",
+				"eventType": string(event.Type),
+				"severity":  "critical",
+			})
 	}
 }
 
@@ -279,6 +305,9 @@ func (h *SSEHub) PublishHistoryChange(userID, historyID, status string) {
 // PublishJobProgress sends a job progress event to the job owner.
 // Used by workers to emit real-time progress updates during long-running tasks.
 func (h *SSEHub) PublishJobProgress(userID string, data map[string]any) {
+	h.logger.Info("[sse-hub] PublishJobProgress called",
+		zap.String("userID", userID),
+		zap.Any("eventType", SSEEventJobStatus))
 	h.Publish(SSEEvent{
 		Type:   SSEEventJobStatus,
 		UserID: userID,
@@ -403,6 +432,10 @@ func (h *SSEHandler) writeEvent(w gin.ResponseWriter, event SSEEvent) {
 		return
 	}
 
+	h.logger.Info("[sse-handler] writeEvent",
+		zap.String("eventType", string(event.Type)),
+		zap.String("userID", event.UserID))
+
 	// SSE format: "event: <type>\ndata: <json>\n\n"
 	// Ignore errors - connection may be closed by client
 	_, _ = fmt.Fprintf(w, "event: %s\n", event.Type)
@@ -440,9 +473,14 @@ func (n *SSEStatusNotifier) ProcessStatus(ctx context.Context, sessionName, stat
 	// Resolve session name to user ID
 	userID, err := n.userResolver(sessionName)
 	if err != nil {
-		n.logger.Warn("Failed to resolve user ID for session",
-			zap.String("session", sessionName),
-			zap.Error(err))
+		// W31: Status notifier errors captured
+		observability.LogAndCapture(n.logger, sentry.LevelWarning,
+			"Failed to resolve user ID for session",
+			fmt.Errorf("resolve user for session %s: %w", sessionName, err),
+			map[string]string{
+				"module":  "sse-status-notifier",
+				"session": sessionName,
+			})
 		// Don't return error - SSE notification is optional
 		return nil
 	}

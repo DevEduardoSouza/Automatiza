@@ -3,12 +3,14 @@
 package middleware
 
 import (
+	"automatiza-go/internal/observability"
 	"context"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -197,6 +199,9 @@ func WebhookRateLimitMiddleware(config *WebhookRateLimiterConfig) gin.HandlerFun
 					zap.String("ip", ip),
 					zap.Duration("retry_after", retryAfter))
 			}
+			// N16: Capture rate limit violations in Sentry for observability
+			observability.CaptureMessage(sentry.LevelWarning, "webhook rate limit exceeded",
+				map[string]string{"module": "webhook-rate-limiter", "ip": ip})
 
 			c.Header("Retry-After", retryAfter.String())
 			c.JSON(http.StatusTooManyRequests, gin.H{

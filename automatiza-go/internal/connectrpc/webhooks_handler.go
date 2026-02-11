@@ -7,11 +7,14 @@ import (
 
 	webhooksv1 "automatiza-go/internal/gen/webhooks/v1"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/repository/postgres"
 	"automatiza-go/internal/services/kiwify"
 
 	"connectrpc.com/connect"
+	"github.com/getsentry/sentry-go"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -20,14 +23,16 @@ type WebhooksHandler struct {
 	userRoleRepo   repository.UserRoleRepository
 	kiwifyService  kiwify.Service
 	webhookLogRepo postgres.WebhookLogRepository
+	logger         *zap.Logger
 }
 
 // NewWebhooksHandler creates a new webhooks handler.
-func NewWebhooksHandler(userRoleRepo repository.UserRoleRepository, kiwifyService kiwify.Service, webhookLogRepo postgres.WebhookLogRepository) *WebhooksHandler {
+func NewWebhooksHandler(userRoleRepo repository.UserRoleRepository, kiwifyService kiwify.Service, webhookLogRepo postgres.WebhookLogRepository, logger *zap.Logger) *WebhooksHandler {
 	return &WebhooksHandler{
 		userRoleRepo:   userRoleRepo,
 		kiwifyService:  kiwifyService,
 		webhookLogRepo: webhookLogRepo,
+		logger:         logger,
 	}
 }
 
@@ -72,9 +77,18 @@ func (h *WebhooksHandler) ProcessKiwifyWebhook(
 				email = &payload.Customer.Email
 			}
 			eventType := payload.WebhookEventType
-			logEntry, _ := h.webhookLogRepo.Create(ctx, "kiwify", &eventType, email, nil, nil)
+			logEntry, createErr := h.webhookLogRepo.Create(ctx, "kiwify", &eventType, email, nil, nil)
+			if createErr != nil {
+				observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to create webhook log entry", createErr, map[string]string{
+					"module": "webhooks", "operation": "webhook_log_create", "event_type": eventType,
+				})
+			}
 			if logEntry != nil {
-				_ = h.webhookLogRepo.UpdateStatus(ctx, logEntry.ID, "failed", &errMsg)
+				if updateErr := h.webhookLogRepo.UpdateStatus(ctx, logEntry.ID, "failed", &errMsg); updateErr != nil {
+					observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to update webhook log status", updateErr, map[string]string{
+						"module": "webhooks", "operation": "webhook_log_update_status", "status": "failed",
+					})
+				}
 			}
 		}
 		return connect.NewResponse(&webhooksv1.ProcessKiwifyWebhookResponse{
@@ -93,9 +107,18 @@ func (h *WebhooksHandler) ProcessKiwifyWebhook(
 		if result.Plan != "" {
 			plan = &result.Plan
 		}
-		logEntry, _ := h.webhookLogRepo.Create(ctx, "kiwify", &result.Event, email, plan, nil)
+		logEntry, createErr := h.webhookLogRepo.Create(ctx, "kiwify", &result.Event, email, plan, nil)
+		if createErr != nil {
+			observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to create webhook log entry", createErr, map[string]string{
+				"module": "webhooks", "operation": "webhook_log_create", "event_type": result.Event,
+			})
+		}
 		if logEntry != nil {
-			_ = h.webhookLogRepo.UpdateStatus(ctx, logEntry.ID, "processed", nil)
+			if updateErr := h.webhookLogRepo.UpdateStatus(ctx, logEntry.ID, "processed", nil); updateErr != nil {
+				observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to update webhook log status", updateErr, map[string]string{
+					"module": "webhooks", "operation": "webhook_log_update_status", "status": "processed",
+				})
+			}
 		}
 	}
 
@@ -155,9 +178,18 @@ func (h *WebhooksHandler) SimulateKiwifyWebhook(
 		errMsg := fmt.Sprintf("simulation failed: %v", err)
 		// Log failed simulation
 		if h.webhookLogRepo != nil {
-			logEntry, _ := h.webhookLogRepo.Create(ctx, "kiwify", &event, &email, nil, nil)
+			logEntry, createErr := h.webhookLogRepo.Create(ctx, "kiwify", &event, &email, nil, nil)
+			if createErr != nil {
+				observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to create webhook simulation log entry", createErr, map[string]string{
+					"module": "webhooks", "operation": "webhook_log_create", "context": "simulation",
+				})
+			}
 			if logEntry != nil {
-				_ = h.webhookLogRepo.UpdateStatus(ctx, logEntry.ID, "failed", &errMsg)
+				if updateErr := h.webhookLogRepo.UpdateStatus(ctx, logEntry.ID, "failed", &errMsg); updateErr != nil {
+					observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to update webhook simulation log status", updateErr, map[string]string{
+						"module": "webhooks", "operation": "webhook_log_update_status", "context": "simulation",
+					})
+				}
 			}
 		}
 		return connect.NewResponse(&webhooksv1.SimulateKiwifyWebhookResponse{
@@ -172,9 +204,18 @@ func (h *WebhooksHandler) SimulateKiwifyWebhook(
 		if result.Plan != "" {
 			plan = &result.Plan
 		}
-		logEntry, _ := h.webhookLogRepo.Create(ctx, "kiwify", &result.Event, &email, plan, nil)
+		logEntry, createErr := h.webhookLogRepo.Create(ctx, "kiwify", &result.Event, &email, plan, nil)
+		if createErr != nil {
+			observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to create webhook simulation log entry", createErr, map[string]string{
+				"module": "webhooks", "operation": "webhook_log_create", "context": "simulation",
+			})
+		}
 		if logEntry != nil {
-			_ = h.webhookLogRepo.UpdateStatus(ctx, logEntry.ID, "processed", nil)
+			if updateErr := h.webhookLogRepo.UpdateStatus(ctx, logEntry.ID, "processed", nil); updateErr != nil {
+				observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to update webhook simulation log status", updateErr, map[string]string{
+					"module": "webhooks", "operation": "webhook_log_update_status", "context": "simulation",
+				})
+			}
 		}
 	}
 

@@ -15,8 +15,10 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/crypto"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -84,7 +86,13 @@ func (s *mlService) CreateAffiliateLink(ctx context.Context, originURL, userID s
 	}
 
 	// Check if we already have this link in database
-	existing, _ := s.mlLinkRepo.GetByOriginalURL(ctx, userID, originURL)
+	existing, dbCheckErr := s.mlLinkRepo.GetByOriginalURL(ctx, userID, originURL)
+	if dbCheckErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to check existing ML affiliate link in database", dbCheckErr, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "getByOriginalURL",
+		})
+	}
 	if existing != nil {
 		return &models.MLAffiliateLink{
 			OriginalURL:   existing.OriginalURL,
@@ -113,18 +121,28 @@ func (s *mlService) CreateAffiliateLink(ctx context.Context, originURL, userID s
 
 	// Save to database (best effort - don't fail if DB write fails)
 	if s.mlLinkRepo != nil {
-		_ = s.mlLinkRepo.Create(ctx, &models.MLLinkEntry{
+		if dbErr := s.mlLinkRepo.Create(ctx, &models.MLLinkEntry{
 			UserID:      userID,
 			OriginalURL: originURL,
 			ShortURL:    affiliateLink,
 			ProductID:   productID,
 			CreatedAt:   time.Now().UTC().Format(time.RFC3339),
-		})
+		}); dbErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to save ML affiliate link to database", dbErr, map[string]string{
+				"external_service": "mercadolivre",
+				"endpoint":        "db_save_link",
+			})
+		}
 	}
 
 	// Cache for 6 hours (matching Node.js for parity)
 	if s.cache != nil {
-		_ = s.cache.SetJSON(ctx, cacheKey, result, linkCacheTTL)
+		if cacheErr := s.cache.SetJSON(ctx, cacheKey, result, linkCacheTTL); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to cache ML affiliate link", cacheErr, map[string]string{
+				"external_service": "mercadolivre",
+				"endpoint":        "cache_set_link",
+			})
+		}
 	}
 
 	return result, nil
@@ -148,9 +166,15 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 		} else {
 			csrf = newCSRF
 			// Update stored credentials with new CSRF (best-effort)
-			go func() {
-				_ = s.SaveCredentials(context.Background(), userID, creds.Cookie, csrf)
-			}()
+			csrfCopy := csrf
+			observability.SafeGo("ml.saveCredentials.initialCSRF", func() {
+				if saveErr := s.SaveCredentials(context.Background(), userID, creds.Cookie, csrfCopy); saveErr != nil {
+					observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to save initial CSRF credentials", saveErr, map[string]string{
+						"external_service": "mercadolivre",
+						"endpoint":        "saveCredentials",
+					})
+				}
+			})
 		}
 	}
 
@@ -164,7 +188,15 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 			"tag":  "", // Tag is embedded in the cookie session
 		}
 
-		jsonPayload, _ := json.Marshal(payload)
+		jsonPayload, marshalErr := json.Marshal(payload)
+		if marshalErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal ML createLink payload", marshalErr, map[string]string{
+				"external_service": "mercadolivre",
+				"endpoint":        "createLink",
+			})
+			return nil, nil, fmt.Errorf("failed to marshal createLink payload: %w", marshalErr)
+		}
+
 		req, err := http.NewRequestWithContext(ctx, "POST", createLinkEndpoint, bytes.NewReader(jsonPayload))
 		if err != nil {
 			return nil, nil, err
@@ -178,13 +210,28 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 		req.Header.Set("Referer", referer)
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36")
 
+		span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("POST "+createLinkEndpoint))
+		span.SetTag("external_service", "mercadolivre")
+		span.SetTag("endpoint", "createLink")
 		resp, err := s.httpClient.Do(req)
+		span.Finish()
 		if err != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "ML createLink HTTP request failed", err, map[string]string{
+				"external_service": "mercadolivre",
+				"endpoint":        "createLink",
+			})
 			return nil, nil, fmt.Errorf("failed to create short link: %w", err)
 		}
 		defer resp.Body.Close()
 
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
+		if readErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to read ML createLink response body", readErr, map[string]string{
+				"external_service": "mercadolivre",
+				"endpoint":        "createLink",
+			})
+			return nil, nil, fmt.Errorf("failed to read createLink response: %w", readErr)
+		}
 		return resp, body, nil
 	}
 
@@ -209,9 +256,15 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 		s.logger.Info("CSRF refreshed successfully, retrying request")
 
 		// Update stored credentials with new CSRF (best-effort, async)
-		go func() {
-			_ = s.SaveCredentials(context.Background(), userID, creds.Cookie, csrf)
-		}()
+		csrfRetry := csrf
+		observability.SafeGo("ml.saveCredentials.csrfRefresh", func() {
+			if saveErr := s.SaveCredentials(context.Background(), userID, creds.Cookie, csrfRetry); saveErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to save refreshed CSRF credentials", saveErr, map[string]string{
+					"external_service": "mercadolivre",
+					"endpoint":        "saveCredentials",
+				})
+			}
+		})
 
 		// Retry with new CSRF
 		resp, body, err = doRequest(csrf)
@@ -224,7 +277,13 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 		s.logger.Warn("ML createLink non-200",
 			zap.Int("status", resp.StatusCode),
 			zap.String("body", string(body[:min(len(body), 300)])))
-		return "", fmt.Errorf("ML API error %d: session may have expired", resp.StatusCode)
+		httpErr := fmt.Errorf("ML API error %d: session may have expired", resp.StatusCode)
+		observability.LogAndCapture(s.logger, sentry.LevelError, "ML createLink returned non-200 status", httpErr, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "createLink",
+			"http_status":     fmt.Sprintf("%d", resp.StatusCode),
+		})
+		return "", httpErr
 	}
 
 	// Parse ML API response: { status: 200, urls: [{ original_url, long_url, short_url }] }
@@ -238,6 +297,10 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal ML createLink response", err, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "createLink",
+		})
 		return "", fmt.Errorf("failed to parse ML response: %w", err)
 	}
 
@@ -276,8 +339,11 @@ func (s *mlService) GetProductPreview(ctx context.Context, originURL, userID str
 		}
 	}
 
-	// Load credentials for authenticated request
-	creds, _ := s.LoadCredentials(ctx, userID)
+	// Load credentials for authenticated request (optional - preview works without auth)
+	creds, credsErr := s.LoadCredentials(ctx, userID)
+	if credsErr != nil {
+		s.logger.Debug("ML credentials not available for preview (optional)", zap.Error(credsErr))
+	}
 
 	// Fetch product page
 	req, err := http.NewRequestWithContext(ctx, "GET", cleanURL, nil)
@@ -291,8 +357,16 @@ func (s *mlService) GetProductPreview(ctx context.Context, originURL, userID str
 		req.Header.Set("Cookie", creds.Cookie)
 	}
 
+	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("GET "+cleanURL))
+	span.SetTag("external_service", "mercadolivre")
+	span.SetTag("endpoint", "productPreview")
 	resp, err := s.httpClient.Do(req)
+	span.Finish()
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to fetch ML product preview", err, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "productPreview",
+		})
 		return nil, fmt.Errorf("failed to fetch product: %w", err)
 	}
 	defer resp.Body.Close()
@@ -305,12 +379,24 @@ func (s *mlService) GetProductPreview(ctx context.Context, originURL, userID str
 			Currency:  "BRL",
 		}
 		if s.cache != nil {
-			_ = s.cache.SetJSON(ctx, cacheKey, emptyPreview, previewCacheTTLEmpty)
+			if cacheErr := s.cache.SetJSON(ctx, cacheKey, emptyPreview, previewCacheTTLEmpty); cacheErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to cache empty ML preview", cacheErr, map[string]string{
+					"external_service": "mercadolivre",
+					"endpoint":        "cache_set_preview",
+				})
+			}
 		}
 		return emptyPreview, nil
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 5<<20)) // 5MB limit for HTML pages
+	if readErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to read ML product preview response body", readErr, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "productPreview",
+		})
+		return nil, fmt.Errorf("failed to read product page: %w", readErr)
+	}
 	htmlContent := string(body)
 
 	// Parse HTML for product info using full extraction logic
@@ -323,7 +409,12 @@ func (s *mlService) GetProductPreview(ctx context.Context, originURL, userID str
 		if hasUsefulData {
 			ttl = previewCacheTTLUseful
 		}
-		_ = s.cache.SetJSON(ctx, cacheKey, preview, ttl)
+		if cacheErr := s.cache.SetJSON(ctx, cacheKey, preview, ttl); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to cache ML product preview", cacheErr, map[string]string{
+				"external_service": "mercadolivre",
+				"endpoint":        "cache_set_preview",
+			})
+		}
 	}
 
 	return preview, nil
@@ -419,6 +510,10 @@ func (s *mlService) parseProductFromHTML(html, originURL, productID string) *mod
 func (s *mlService) LoadCredentials(ctx context.Context, userID string) (*models.MLCredentials, error) {
 	dbCreds, err := s.mlCredsRepo.Get(ctx, userID)
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to get ML credentials from repository", err, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "loadCredentials",
+		})
 		return nil, err
 	}
 	if dbCreds == nil {
@@ -429,10 +524,18 @@ func (s *mlService) LoadCredentials(ctx context.Context, userID string) (*models
 	var creds models.MLCredentials
 	var blob crypto.EncryptedBlobV1
 	if err := json.Unmarshal([]byte(dbCreds.EncryptedData), &blob); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal ML encrypted credentials blob", err, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "loadCredentials",
+		})
 		return nil, fmt.Errorf("failed to parse encrypted credentials: %w", err)
 	}
 
 	if err := crypto.DecryptJSONV1(&blob, s.encryptionKey, &creds); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to decrypt ML credentials", err, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "loadCredentials",
+		})
 		return nil, fmt.Errorf("failed to decrypt credentials: %w", err)
 	}
 
@@ -448,15 +551,30 @@ func (s *mlService) SaveCredentials(ctx context.Context, userID, cookie, csrf st
 	// Encrypt credentials
 	blob, err := crypto.EncryptJSONV1(creds, s.encryptionKey)
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to encrypt ML credentials", err, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "saveCredentials",
+		})
 		return fmt.Errorf("failed to encrypt credentials: %w", err)
 	}
 
 	encryptedData, err := json.Marshal(blob)
 	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal ML encrypted blob", err, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "saveCredentials",
+		})
 		return fmt.Errorf("failed to marshal encrypted blob: %w", err)
 	}
 
-	return s.mlCredsRepo.Save(ctx, userID, string(encryptedData))
+	if saveErr := s.mlCredsRepo.Save(ctx, userID, string(encryptedData)); saveErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to save ML credentials to repository", saveErr, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":        "saveCredentials",
+		})
+		return saveErr
+	}
+	return nil
 }
 
 func (s *mlService) IsConnected(ctx context.Context, userID string) (bool, error) {

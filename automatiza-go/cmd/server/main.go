@@ -207,6 +207,12 @@ func main() {
 
 	var wahaAdapter whatsapp.WhatsAppProvider
 	if wahaAPIURL != "" && wahaAPIKey != "" {
+		// W27: Validate WebhookSecret is not empty in production
+		if cfg.IsProduction() && cfg.WebhookSecret == "" {
+			sentry.CaptureException(fmt.Errorf("CRITICAL: WebhookSecret is empty in production — webhooks are unprotected"))
+			logger.Error("WebhookSecret is empty in production — HMAC validation will be disabled")
+		}
+
 		adapter, err := whatsapp.NewWahaAdapter(whatsapp.WahaAdapterConfig{
 			APIURL:         wahaAPIURL,
 			APIKey:         wahaAPIKey,
@@ -829,7 +835,7 @@ func main() {
 	connectServer.RegisterService(jobsPath, jobsHTTPHandler)
 
 	// Register webhooks service handler (no auth for external webhooks, admin check internal)
-	webhooksHandler := connectrpc.NewWebhooksHandler(userRoleRepo, kiwifyService, repos.WebhookLog)
+	webhooksHandler := connectrpc.NewWebhooksHandler(userRoleRepo, kiwifyService, repos.WebhookLog, logger)
 	webhooksPath, webhooksHTTPHandler := webhooksv1connect.NewWebhooksServiceHandler(webhooksHandler)
 	connectServer.RegisterService(webhooksPath, webhooksHTTPHandler)
 
@@ -1148,23 +1154,23 @@ func runWorker(
 		config.NewModuleLogger(logger, "message_queue_worker"),
 	)
 
-	// Register handlers
-	queueServer.RegisterHandler(workers.TypeSendMessage, messageWorker.ProcessTaskWrapper())
-	queueServer.RegisterHandler(workers.TypeSyncGroups, groupsSyncWorker.ProcessTaskWrapper())
-	queueServer.RegisterHandler(workers.TypeWAHAWebhook, webhookConsumerWorker)
+	// Register handlers (wrapped with SentryAsynqMiddleware for error capture + panic recovery)
+	queueServer.RegisterHandler(workers.TypeSendMessage, observability.SentryAsynqMiddleware("message", messageWorker.ProcessTaskWrapper()))
+	queueServer.RegisterHandler(workers.TypeSyncGroups, observability.SentryAsynqMiddleware("groups_sync", groupsSyncWorker.ProcessTaskWrapper()))
+	queueServer.RegisterHandler(workers.TypeWAHAWebhook, observability.SentryAsynqMiddleware("webhook_consumer", webhookConsumerWorker))
 
 	// Register message queue worker handlers for typed messages
 	// These handle messages enqueued via MessageQueueWorker.Enqueue* methods
-	queueServer.RegisterHandler(workers.TypeMessageText, messageQueueWorker)
-	queueServer.RegisterHandler(workers.TypeMessageAudio, messageQueueWorker)
-	queueServer.RegisterHandler(workers.TypeMessageImage, messageQueueWorker)
-	queueServer.RegisterHandler(workers.TypeMessagePoll, messageQueueWorker)
+	queueServer.RegisterHandler(workers.TypeMessageText, observability.SentryAsynqMiddleware("message_queue", messageQueueWorker))
+	queueServer.RegisterHandler(workers.TypeMessageAudio, observability.SentryAsynqMiddleware("message_queue", messageQueueWorker))
+	queueServer.RegisterHandler(workers.TypeMessageImage, observability.SentryAsynqMiddleware("message_queue", messageQueueWorker))
+	queueServer.RegisterHandler(workers.TypeMessagePoll, observability.SentryAsynqMiddleware("message_queue", messageQueueWorker))
 	logger.Info("Message queue worker registered for typed message handling")
 
 	// Register reconciliation handlers if service is available
 	if reconciliationWorker != nil {
-		queueServer.RegisterHandler(workers.TypeReconcileChat, asynq.HandlerFunc(reconciliationWorker.ProcessChatWrapper()))
-		queueServer.RegisterHandler(workers.TypeReconcileSession, asynq.HandlerFunc(reconciliationWorker.ProcessSessionWrapper()))
+		queueServer.RegisterHandler(workers.TypeReconcileChat, observability.SentryAsynqMiddleware("reconciliation", asynq.HandlerFunc(reconciliationWorker.ProcessChatWrapper())))
+		queueServer.RegisterHandler(workers.TypeReconcileSession, observability.SentryAsynqMiddleware("reconciliation", asynq.HandlerFunc(reconciliationWorker.ProcessSessionWrapper())))
 		logger.Info("Reconciliation worker registered")
 	}
 
