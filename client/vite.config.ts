@@ -1,5 +1,6 @@
 import path from 'node:path';
 import react from '@vitejs/plugin-react';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { componentTagger } from 'lovable-tagger';
 import { defineConfig } from 'vite';
 
@@ -36,6 +37,20 @@ export default defineConfig(({ mode }) => ({
       },
     }),
     mode === 'development' && componentTagger(),
+    // Sentry source map upload (production builds only)
+    mode === 'production' &&
+      sentryVitePlugin({
+        org: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT,
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+        release: {
+          name: process.env.SENTRY_RELEASE,
+        },
+        sourcemaps: {
+          filesToDeleteAfterUpload: ['./dist/**/*.map'],
+        },
+        telemetry: false,
+      }),
   ].filter(Boolean),
   resolve: {
     alias: {
@@ -43,6 +58,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
+    sourcemap: 'hidden',
     rollupOptions: {
       output: {
         manualChunks: {
