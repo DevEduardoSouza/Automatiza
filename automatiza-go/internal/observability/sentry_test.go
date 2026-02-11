@@ -34,12 +34,43 @@ func TestRedactPII_Email(t *testing.T) {
 }
 
 func TestRedactPII_Phone(t *testing.T) {
+	// Long phone numbers (>9 chars) are partially masked: first 5 + last 4 preserved
 	event := &sentry.Event{
 		Message: "sent message to +5511999887766",
 	}
 	result := redactPII(event)
-	assert.NotContains(t, result.Message, "5511999887766")
-	assert.Contains(t, result.Message, "[PHONE_REDACTED]")
+	assert.NotContains(t, result.Message, "999887")
+	assert.Contains(t, result.Message, "+5511")  // Country + area code preserved
+	assert.Contains(t, result.Message, "7766")   // Last 4 digits preserved
+	assert.Contains(t, result.Message, "*****")   // Middle portion masked
+}
+
+func TestRedactPII_PhoneShort(t *testing.T) {
+	// Phone with 10 digits: first 5 + 1 star + last 4
+	event := &sentry.Event{
+		Message: "call 1234567890",
+	}
+	result := redactPII(event)
+	assert.Contains(t, result.Message, "12345*7890") // 10 chars: 5 + 1 star + 4
+}
+
+func TestMaskPhonePartial(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"+5511999887766", "+5511*****7766"}, // 14 chars: 5 + 5 stars + 4
+		{"5511999887766", "55119****7766"},    // 13 chars: 5 + 4 stars + 4
+		{"1234567890", "12345*7890"},          // 10 chars: 5 + 1 star + 4
+		{"123456789", "[PHONE_REDACTED]"},     // exactly 9 chars: fully redacted
+		{"12345678", "[PHONE_REDACTED]"},      // below 9 chars: fully redacted
+		{"+5511912345678", "+5511*****5678"},  // 14 chars: 5 + 5 stars + 4
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			assert.Equal(t, tt.expected, maskPhonePartial(tt.input))
+		})
+	}
 }
 
 func TestRedactPII_Bearer(t *testing.T) {

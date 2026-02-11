@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,9 +10,13 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 )
+
+// pgCodeDeadlockDetected is the PostgreSQL SQLSTATE code for deadlock detection (40P01).
+const pgCodeDeadlockDetected = "40P01"
 
 // DB represents a PostgreSQL database connection pool
 type DB struct {
@@ -86,25 +91,44 @@ func NewDB(ctx context.Context, cfg *Config, logger *zap.Logger) (*DB, error) {
 
 	db := &DB{pool: pool, logger: logger}
 
-	// Start pool stat monitoring goroutine
+	// Start pool stat monitoring goroutine with context awareness (T3.9)
 	observability.SafeGo("db-pool-monitor", func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
-		for range ticker.C {
-			stat := pool.Stat()
-			utilization := float64(stat.AcquiredConns()) / float64(stat.MaxConns())
-			if utilization > 0.8 {
-				observability.LogAndCapture(logger, sentry.LevelWarning,
-					"database pool utilization above 80%", nil,
-					map[string]string{
-						"module":        "postgres",
-						"flow":          "pool-monitor",
-						"acquired":      fmt.Sprintf("%d", stat.AcquiredConns()),
-						"max":           fmt.Sprintf("%d", stat.MaxConns()),
-						"idle":          fmt.Sprintf("%d", stat.IdleConns()),
-						"total":         fmt.Sprintf("%d", stat.TotalConns()),
-						"utilization_pct": fmt.Sprintf("%.0f", utilization*100),
-					})
+		for {
+			select {
+			case <-ctx.Done():
+				logger.Info("DB pool monitor shutting down")
+				return
+			case <-ticker.C:
+				stat := pool.Stat()
+				utilization := float64(stat.AcquiredConns()) / float64(stat.MaxConns())
+				if utilization > 0.8 {
+					observability.LogAndCapture(logger, sentry.LevelWarning,
+						"database pool utilization above 80%", nil,
+						map[string]string{
+							"module":          "postgres",
+							"flow":            "pool-monitor",
+							"acquired":        fmt.Sprintf("%d", stat.AcquiredConns()),
+							"max":             fmt.Sprintf("%d", stat.MaxConns()),
+							"idle":            fmt.Sprintf("%d", stat.IdleConns()),
+							"total":           fmt.Sprintf("%d", stat.TotalConns()),
+							"utilization_pct": fmt.Sprintf("%.0f", utilization*100),
+						})
+				}
+
+				// T3.9: Warn if total acquired connections is abnormally high
+				if stat.TotalConns() > 50000 {
+					observability.LogAndCapture(logger, sentry.LevelWarning,
+						"database pool total connections abnormally high",
+						fmt.Errorf("pool has %d total connections (max: %d)", stat.TotalConns(), stat.MaxConns()),
+						map[string]string{
+							"module": "postgres",
+							"flow":   "pool-monitor",
+							"total":  fmt.Sprintf("%d", stat.TotalConns()),
+							"max":    fmt.Sprintf("%d", stat.MaxConns()),
+						})
+				}
 			}
 		}
 	})
@@ -147,6 +171,20 @@ func (db *DB) WithTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
 				zap.Error(rbErr),
 				zap.Error(err))
 		}
+
+		// T3.9: Detect PostgreSQL deadlocks (40P01) and capture in Sentry
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgCodeDeadlockDetected {
+			observability.LogAndCapture(db.logger, sentry.LevelWarning,
+				"PostgreSQL deadlock detected in transaction",
+				fmt.Errorf("deadlock (40P01): %w", err),
+				map[string]string{
+					"module":     "postgres",
+					"flow":       "transaction",
+					"error_code": pgErr.Code,
+				})
+		}
+
 		return err
 	}
 

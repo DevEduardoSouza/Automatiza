@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"automatiza-go/internal/config"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/services/email"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -71,7 +73,7 @@ func NewAuthService(cfg *AuthServiceConfig) *AuthService {
 		client: cfg.DB,
 	}
 
-	sessionStore := NewRedisSessionStore(cfg.Redis, sessionDB, cfg.CookieConfig)
+	sessionStore := NewRedisSessionStore(cfg.Redis, sessionDB, cfg.CookieConfig, cfg.Logger)
 
 	// Use custom rate limit config if provided, otherwise use defaults
 	rateLimitCfg := cfg.RateLimitConfig
@@ -132,7 +134,11 @@ func (s *AuthService) Login(ctx context.Context, email, password, ipAddress, use
 	creds, err := s.getCredentials(ctx, email)
 	if err != nil {
 		// Increment rate limit on failure
-		_, _ = s.rateLimiter.Increment(ctx, rateLimitKey)
+		if _, rlErr := s.rateLimiter.Increment(ctx, rateLimitKey); rlErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "rate limiter increment failed on login credential error", rlErr, map[string]string{
+				"module": "auth", "operation": "login_rate_limit_increment", "flow": "credential_failure",
+			})
+		}
 		return nil, ErrInvalidCredentials
 	}
 
@@ -152,31 +158,40 @@ func (s *AuthService) Login(ctx context.Context, email, password, ipAddress, use
 	pwResult, err := VerifyPasswordWithMigration(password, creds.PasswordHash)
 	if err != nil || !pwResult.Valid {
 		// Increment failed attempts
-		_ = s.incrementFailedAttempts(ctx, creds.UserID)
-		_, _ = s.rateLimiter.Increment(ctx, rateLimitKey)
+		if faErr := s.incrementFailedAttempts(ctx, creds.UserID); faErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "failed to increment failed login attempts", faErr, map[string]string{
+				"module": "auth", "operation": "increment_failed_attempts", "user_id": creds.UserID,
+			})
+		}
+		if _, rlErr := s.rateLimiter.Increment(ctx, rateLimitKey); rlErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "rate limiter increment failed on password failure", rlErr, map[string]string{
+				"module": "auth", "operation": "login_rate_limit_increment", "flow": "password_failure",
+			})
+		}
 		return nil, ErrInvalidCredentials
 	}
 
 	// Migrate bcrypt hash to Argon2id if needed (transparent upgrade)
 	if pwResult.NeedsMigration {
-		go func() {
+		userID := creds.UserID
+		observability.SafeGo("auth-password-migration", func() {
 			bgCtx := context.Background()
-			newHash, err := HashPassword(password)
-			if err != nil {
-				s.logger.Warn("Failed to hash password for migration",
-					zap.String("userID", creds.UserID),
-					zap.Error(err))
+			newHash, hashErr := HashPassword(password)
+			if hashErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to hash password for migration", hashErr, map[string]string{
+					"module": "auth", "operation": "password_migration", "user_id": userID,
+				})
 				return
 			}
-			if err := s.updatePassword(bgCtx, creds.UserID, newHash); err != nil {
-				s.logger.Warn("Failed to migrate password hash to Argon2id",
-					zap.String("userID", creds.UserID),
-					zap.Error(err))
+			if upErr := s.updatePassword(bgCtx, userID, newHash); upErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to migrate password hash to argon2id", upErr, map[string]string{
+					"module": "auth", "operation": "password_migration", "user_id": userID,
+				})
 			} else {
 				s.logger.Info("Successfully migrated password hash from bcrypt to Argon2id",
-					zap.String("userID", creds.UserID))
+					zap.String("userID", userID))
 			}
-		}()
+		})
 	}
 
 	// Get user profile
@@ -186,8 +201,16 @@ func (s *AuthService) Login(ctx context.Context, email, password, ipAddress, use
 	}
 
 	// Reset failed attempts on successful login
-	_ = s.resetFailedAttempts(ctx, creds.UserID)
-	_ = s.rateLimiter.Reset(ctx, rateLimitKey)
+	if rfErr := s.resetFailedAttempts(ctx, creds.UserID); rfErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to reset failed login attempts", rfErr, map[string]string{
+			"module": "auth", "operation": "reset_failed_attempts", "user_id": creds.UserID,
+		})
+	}
+	if rlErr := s.rateLimiter.Reset(ctx, rateLimitKey); rlErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "rate limiter reset failed after successful login", rlErr, map[string]string{
+			"module": "auth", "operation": "login_rate_limit_reset",
+		})
+	}
 
 	// Create session
 	session, refreshToken, csrfToken, err := s.sessionStore.Create(ctx, user.ID, SessionMetadata{
@@ -229,7 +252,11 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 	}
 
 	// Check if email already exists (after hashing to prevent timing leak)
-	existing, _ := s.getUserByEmail(ctx, email)
+	existing, existErr := s.getUserByEmail(ctx, email)
+	if existErr != nil && !errors.Is(existErr, ErrUserNotFound) {
+		// Propagate unexpected DB errors; ErrUserNotFound means email is available
+		return nil, fmt.Errorf("failed to check existing email: %w", existErr)
+	}
 	if existing != nil {
 		return nil, ErrEmailAlreadyExists
 	}
@@ -246,14 +273,15 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 	}
 
 	// Generate and send verification email (async)
-	go func() {
+	profileID := profile.ID
+	observability.SafeGo("auth-verification-email", func() {
 		bgCtx := context.Background()
-		if err := s.sendVerificationEmail(bgCtx, profile.ID, email); err != nil {
-			s.logger.Error("Failed to send verification email",
-				zap.String("userID", profile.ID),
-				zap.Error(err))
+		if sendErr := s.sendVerificationEmail(bgCtx, profileID, email); sendErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "failed to send verification email", sendErr, map[string]string{
+				"module": "auth", "operation": "send_verification_email", "user_id": profileID,
+			})
 		}
-	}()
+	})
 
 	return &RegisterResult{
 		User: &User{
@@ -317,8 +345,12 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, sessionID string) (*Us
 		return nil, nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Update activity
-	_ = s.sessionStore.UpdateActivity(ctx, sessionID)
+	// Update activity (fire-and-forget, never blocks request)
+	if actErr := s.sessionStore.UpdateActivity(ctx, sessionID); actErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to update session activity", actErr, map[string]string{
+			"module": "auth", "operation": "update_activity", "session_id": sessionID,
+		})
+	}
 
 	return user, session, nil
 }
@@ -392,14 +424,16 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 	}
 
 	// Send email (async, only if user exists)
-	go func() {
+	resetUserEmail := user.Email
+	resetUserID := user.ID
+	observability.SafeGo("auth-reset-email", func() {
 		bgCtx := context.Background()
-		if err := s.sendPasswordResetEmail(bgCtx, user.Email, token); err != nil {
-			s.logger.Error("Failed to send password reset email",
-				zap.String("userID", user.ID),
-				zap.Error(err))
+		if sendErr := s.sendPasswordResetEmail(bgCtx, resetUserEmail, token); sendErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "failed to send password reset email", sendErr, map[string]string{
+				"module": "auth", "operation": "send_reset_email", "user_id": resetUserID,
+			})
 		}
-	}()
+	})
 
 	return nil
 }
@@ -429,10 +463,18 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 	}
 
 	// Mark token as used
-	_ = s.markPasswordResetTokenUsed(ctx, HashToken(token))
+	if markErr := s.markPasswordResetTokenUsed(ctx, HashToken(token)); markErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to mark password reset token as used", markErr, map[string]string{
+			"module": "auth", "operation": "mark_reset_token_used", "security": "token_reuse_risk",
+		})
+	}
 
 	// Revoke all sessions for security
-	_, _ = s.sessionStore.RevokeAllForUser(ctx, userID)
+	if _, revokeErr := s.sessionStore.RevokeAllForUser(ctx, userID); revokeErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "CRITICAL: failed to revoke sessions after password reset", revokeErr, map[string]string{
+			"module": "auth", "operation": "revoke_sessions_after_reset", "user_id": userID, "security": "session_persistence_risk",
+		})
+	}
 
 	return nil
 }
@@ -473,7 +515,11 @@ func (s *AuthService) ChangePassword(ctx context.Context, sessionID, currentPass
 	}
 
 	// Revoke other sessions (keep current)
-	_, _ = s.sessionStore.RevokeAllExcept(ctx, session.UserID, sessionID)
+	if _, revokeErr := s.sessionStore.RevokeAllExcept(ctx, session.UserID, sessionID); revokeErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "CRITICAL: failed to revoke other sessions after password change", revokeErr, map[string]string{
+			"module": "auth", "operation": "revoke_sessions_after_change", "user_id": session.UserID, "security": "session_persistence_risk",
+		})
+	}
 
 	return nil
 }
@@ -492,7 +538,11 @@ func (s *AuthService) VerifyEmail(ctx context.Context, token string) (*User, err
 	}
 
 	// Mark token as used
-	_ = s.markEmailVerificationTokenUsed(ctx, HashToken(token))
+	if markErr := s.markEmailVerificationTokenUsed(ctx, HashToken(token)); markErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to mark email verification token as used", markErr, map[string]string{
+			"module": "auth", "operation": "mark_verification_token_used", "security": "token_reuse_risk",
+		})
+	}
 
 	// Get updated user
 	return s.getUser(ctx, userID)
@@ -605,8 +655,18 @@ func (s *AuthService) getCredentials(ctx context.Context, email string) (*Creden
 	}
 
 	if creds[0].LockedUntil != nil {
-		t, _ := time.Parse(time.RFC3339, *creds[0].LockedUntil)
-		result.LockedUntil = &t
+		t, parseErr := time.Parse(time.RFC3339, *creds[0].LockedUntil)
+		if parseErr != nil {
+			// CRITICAL: Invalid LockedUntil means brute-force protection could be bypassed.
+			// Treat as locked (fail-closed) and report.
+			observability.LogAndCapture(s.logger, sentry.LevelError, "CRITICAL: invalid LockedUntil timestamp format, treating as locked", parseErr, map[string]string{
+				"module": "auth", "operation": "parse_locked_until", "security": "brute_force_bypass_risk",
+			})
+			lockedFallback := time.Now().Add(30 * time.Minute)
+			result.LockedUntil = &lockedFallback
+		} else {
+			result.LockedUntil = &t
+		}
 	}
 
 	return result, nil
@@ -639,8 +699,16 @@ func (s *AuthService) getCredentialsByUserID(ctx context.Context, userID string)
 	}
 
 	if creds[0].LockedUntil != nil {
-		t, _ := time.Parse(time.RFC3339, *creds[0].LockedUntil)
-		result.LockedUntil = &t
+		t, parseErr := time.Parse(time.RFC3339, *creds[0].LockedUntil)
+		if parseErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "CRITICAL: invalid LockedUntil timestamp format, treating as locked", parseErr, map[string]string{
+				"module": "auth", "operation": "parse_locked_until", "security": "brute_force_bypass_risk",
+			})
+			lockedFallback := time.Now().Add(30 * time.Minute)
+			result.LockedUntil = &lockedFallback
+		} else {
+			result.LockedUntil = &t
+		}
 	}
 
 	return result, nil
@@ -671,18 +739,28 @@ func (s *AuthService) getUser(ctx context.Context, userID string) (*User, error)
 
 	// Get role
 	var roles []roleRow
-	_ = s.db.From("user_roles").
+	if rolesErr := s.db.From("user_roles").
 		Select("role").
 		Eq("user_id", userID).
 		Limit(1).
-		Execute(ctx, &roles)
+		Execute(ctx, &roles); rolesErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to query user roles, defaulting to 'user'", rolesErr, map[string]string{
+			"module": "auth", "operation": "get_user_roles", "user_id": userID,
+		})
+	}
 
 	role := "user"
 	if len(roles) > 0 {
 		role = roles[0].Role
 	}
 
-	createdAt, _ := time.Parse(time.RFC3339, profiles[0].CreatedAt)
+	createdAt, parseErr := time.Parse(time.RFC3339, profiles[0].CreatedAt)
+	if parseErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to parse user createdAt timestamp", parseErr, map[string]string{
+			"module": "auth", "operation": "parse_created_at", "user_id": userID,
+		})
+		createdAt = time.Now()
+	}
 
 	user := &User{
 		ID:            profiles[0].ID,
@@ -895,7 +973,13 @@ func (s *AuthService) validatePasswordResetToken(ctx context.Context, tokenHash 
 		return "", ErrInvalidToken
 	}
 
-	expiresAt, _ := time.Parse(time.RFC3339, token.ExpiresAt)
+	expiresAt, parseErr := time.Parse(time.RFC3339, token.ExpiresAt)
+	if parseErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "invalid password reset token ExpiresAt format, rejecting token", parseErr, map[string]string{
+			"module": "auth", "operation": "parse_reset_token_expiry", "security": "token_expiry_bypass_risk",
+		})
+		return "", ErrInvalidToken
+	}
 	if time.Now().After(expiresAt) {
 		return "", ErrInvalidToken
 	}
@@ -954,7 +1038,13 @@ func (s *AuthService) validateEmailVerificationToken(ctx context.Context, tokenH
 		return "", ErrInvalidToken
 	}
 
-	expiresAt, _ := time.Parse(time.RFC3339, token.ExpiresAt)
+	expiresAt, parseErr := time.Parse(time.RFC3339, token.ExpiresAt)
+	if parseErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "invalid email verification token ExpiresAt format, rejecting token", parseErr, map[string]string{
+			"module": "auth", "operation": "parse_verification_token_expiry", "security": "token_expiry_bypass_risk",
+		})
+		return "", ErrInvalidToken
+	}
 	if time.Now().After(expiresAt) {
 		return "", ErrInvalidToken
 	}
@@ -989,8 +1079,13 @@ func (s *AuthService) sendVerificationEmail(ctx context.Context, userID, userEma
 
 	// Send email if service is available
 	if s.emailService != nil {
-		// Get user name for personalization
-		user, _ := s.getUser(ctx, userID)
+		// Get user name for personalization (non-critical, continue without name on failure)
+		user, userErr := s.getUser(ctx, userID)
+		if userErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to get user for email personalization", userErr, map[string]string{
+				"module": "auth", "operation": "get_user_for_verification_email", "user_id": userID,
+			})
+		}
 		name := ""
 		if user != nil {
 			name = user.DisplayName
@@ -1023,8 +1118,13 @@ func (s *AuthService) sendPasswordResetEmail(ctx context.Context, userEmail, tok
 
 	// Send email if service is available
 	if s.emailService != nil {
-		// Get user name for personalization
-		user, _ := s.getUserByEmail(ctx, userEmail)
+		// Get user name for personalization (non-critical, continue without name on failure)
+		user, userErr := s.getUserByEmail(ctx, userEmail)
+		if userErr != nil && !errors.Is(userErr, ErrUserNotFound) {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to get user for reset email personalization", userErr, map[string]string{
+				"module": "auth", "operation": "get_user_for_reset_email",
+			})
+		}
 		name := ""
 		if user != nil {
 			name = user.DisplayName
@@ -1077,17 +1177,22 @@ func (s *AuthService) SendMagicLink(ctx context.Context, email string) error {
 	}
 
 	// Increment rate limit
-	_, _ = s.rateLimiter.Increment(ctx, rateLimitKey)
+	if _, rlErr := s.rateLimiter.Increment(ctx, rateLimitKey); rlErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "CRITICAL: magic link rate limiter increment failed", rlErr, map[string]string{
+			"module": "auth", "operation": "magic_link_rate_limit_increment", "security": "rate_limit_bypass_risk",
+		})
+	}
 
 	// Send email (async)
-	go func() {
+	magicEmail := email
+	observability.SafeGo("auth-magic-link-email", func() {
 		bgCtx := context.Background()
-		if err := s.sendMagicLinkEmail(bgCtx, email, token); err != nil {
-			s.logger.Error("Failed to send magic link email",
-				zap.String("email", email),
-				zap.Error(err))
+		if sendErr := s.sendMagicLinkEmail(bgCtx, magicEmail, token); sendErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelError, "failed to send magic link email", sendErr, map[string]string{
+				"module": "auth", "operation": "send_magic_link_email",
+			})
 		}
-	}()
+	})
 
 	return nil
 }
@@ -1115,7 +1220,11 @@ func (s *AuthService) VerifyMagicLink(ctx context.Context, token, ipAddress, use
 	}
 
 	// Mark token as used
-	_ = s.markMagicLinkTokenUsed(ctx, HashToken(token))
+	if markErr := s.markMagicLinkTokenUsed(ctx, HashToken(token)); markErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to mark magic link token as used", markErr, map[string]string{
+			"module": "auth", "operation": "mark_magic_link_token_used", "security": "token_reuse_risk",
+		})
+	}
 
 	// Create session
 	session, refreshToken, csrfToken, err := s.sessionStore.Create(ctx, user.ID, SessionMetadata{
@@ -1176,7 +1285,13 @@ func (s *AuthService) validateMagicLinkToken(ctx context.Context, tokenHash stri
 		return "", ErrInvalidToken
 	}
 
-	expiresAt, _ := time.Parse(time.RFC3339, token.ExpiresAt)
+	expiresAt, parseErr := time.Parse(time.RFC3339, token.ExpiresAt)
+	if parseErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "invalid magic link token ExpiresAt format, rejecting token", parseErr, map[string]string{
+			"module": "auth", "operation": "parse_magic_link_token_expiry", "security": "token_expiry_bypass_risk",
+		})
+		return "", ErrInvalidToken
+	}
 	if time.Now().After(expiresAt) {
 		return "", ErrInvalidToken
 	}
@@ -1200,8 +1315,13 @@ func (s *AuthService) sendMagicLinkEmail(ctx context.Context, email, token strin
 
 	// Send email if service is available
 	if s.emailService != nil {
-		// Get user name for personalization
-		user, _ := s.getUserByEmail(ctx, email)
+		// Get user name for personalization (non-critical, continue without name on failure)
+		user, userErr := s.getUserByEmail(ctx, email)
+		if userErr != nil && !errors.Is(userErr, ErrUserNotFound) {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to get user for magic link email personalization", userErr, map[string]string{
+				"module": "auth", "operation": "get_user_for_magic_link_email",
+			})
+		}
 		name := ""
 		if user != nil {
 			name = user.DisplayName
@@ -1312,9 +1432,21 @@ func (a *DBSessionAdapter) GetSession(ctx context.Context, sessionID string) (*S
 	}
 
 	row := rows[0]
-	expiresAt, _ := time.Parse(time.RFC3339, row.ExpiresAt)
-	createdAt, _ := time.Parse(time.RFC3339, row.CreatedAt)
-	lastActivityAt, _ := time.Parse(time.RFC3339, row.LastActivityAt)
+	expiresAt, err := time.Parse(time.RFC3339, row.ExpiresAt)
+	if err != nil {
+		observability.CaptureMessage(sentry.LevelWarning, "invalid session ExpiresAt timestamp", map[string]string{
+			"module": "auth", "operation": "parse_session_expires_at", "session_id": row.ID,
+		})
+		expiresAt = time.Now()
+	}
+	createdAt, err := time.Parse(time.RFC3339, row.CreatedAt)
+	if err != nil {
+		createdAt = time.Now()
+	}
+	lastActivityAt, err := time.Parse(time.RFC3339, row.LastActivityAt)
+	if err != nil {
+		lastActivityAt = time.Now()
+	}
 
 	session := &Session{
 		ID:               row.ID,
@@ -1336,8 +1468,10 @@ func (a *DBSessionAdapter) GetSession(ctx context.Context, sessionID string) (*S
 		session.UserAgent = *row.UserAgent
 	}
 	if row.RevokedAt != nil {
-		revokedAt, _ := time.Parse(time.RFC3339, *row.RevokedAt)
-		session.RevokedAt = &revokedAt
+		revokedAt, parseErr := time.Parse(time.RFC3339, *row.RevokedAt)
+		if parseErr == nil {
+			session.RevokedAt = &revokedAt
+		}
 	}
 
 	return session, nil
@@ -1370,9 +1504,18 @@ func (a *DBSessionAdapter) GetSessionsByUserID(ctx context.Context, userID strin
 
 	sessions := make([]*Session, 0, len(rows))
 	for _, row := range rows {
-		expiresAt, _ := time.Parse(time.RFC3339, row.ExpiresAt)
-		createdAt, _ := time.Parse(time.RFC3339, row.CreatedAt)
-		lastActivityAt, _ := time.Parse(time.RFC3339, row.LastActivityAt)
+		expiresAt, parseErr := time.Parse(time.RFC3339, row.ExpiresAt)
+		if parseErr != nil {
+			expiresAt = time.Now()
+		}
+		createdAt, parseErr := time.Parse(time.RFC3339, row.CreatedAt)
+		if parseErr != nil {
+			createdAt = time.Now()
+		}
+		lastActivityAt, parseErr := time.Parse(time.RFC3339, row.LastActivityAt)
+		if parseErr != nil {
+			lastActivityAt = time.Now()
+		}
 
 		session := &Session{
 			ID:               row.ID,
@@ -1394,8 +1537,10 @@ func (a *DBSessionAdapter) GetSessionsByUserID(ctx context.Context, userID strin
 			session.UserAgent = *row.UserAgent
 		}
 		if row.RevokedAt != nil {
-			revokedAt, _ := time.Parse(time.RFC3339, *row.RevokedAt)
-			session.RevokedAt = &revokedAt
+			revokedAt, rvParseErr := time.Parse(time.RFC3339, *row.RevokedAt)
+			if rvParseErr == nil {
+				session.RevokedAt = &revokedAt
+			}
 		}
 
 		sessions = append(sessions, session)
@@ -1453,9 +1598,13 @@ func (a *DBSessionAdapter) RevokeSessionsExcept(ctx context.Context, userID, exc
 	nullUpdates := map[string]any{
 		"revoked_at": nil,
 	}
-	_ = a.client.Update("sessions", nullUpdates).
+	if workaroundErr := a.client.Update("sessions", nullUpdates).
 		Eq("id", exceptSessionID).
-		Execute(ctx, nil)
+		Execute(ctx, nil); workaroundErr != nil {
+		observability.CaptureWithTags(workaroundErr, map[string]string{
+			"module": "auth", "operation": "restore_excepted_session", "session_id": exceptSessionID,
+		})
+	}
 
 	return -1, err
 }

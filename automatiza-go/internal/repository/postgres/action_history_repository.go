@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"context"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
@@ -31,7 +33,16 @@ func (r *actionHistoryRepository) Create(ctx context.Context, userID, actionType
 
 	var detailsJSON []byte
 	if details != nil {
-		detailsJSON, _ = json.Marshal(details)
+		var marshalErr error
+		detailsJSON, marshalErr = json.Marshal(details)
+		if marshalErr != nil {
+			observability.LogAndCapture(r.logger, sentry.LevelWarning,
+				"Failed to marshal action history details",
+				marshalErr, map[string]string{
+					"module": "action_history", "operation": "create_marshal",
+				})
+			detailsJSON = []byte("null")
+		}
 	}
 
 	query := `
@@ -83,7 +94,16 @@ func (r *actionHistoryRepository) Update(ctx context.Context, historyID string, 
 		// Handle JSON fields
 		if key == "details" {
 			if detailsMap, ok := value.(map[string]interface{}); ok {
-				jsonBytes, _ := json.Marshal(detailsMap)
+				jsonBytes, marshalErr := json.Marshal(detailsMap)
+				if marshalErr != nil {
+					observability.LogAndCapture(r.logger, sentry.LevelWarning,
+						"Failed to marshal action history update details",
+						marshalErr, map[string]string{
+							"module": "action_history", "operation": "update_marshal",
+							"history_id": historyID,
+						})
+					jsonBytes = []byte("null")
+				}
 				value = string(jsonBytes)
 			}
 		}
@@ -135,7 +155,14 @@ func (r *actionHistoryRepository) GetByID(ctx context.Context, historyID string)
 
 	if detailsJSON != nil {
 		var details map[string]interface{}
-		_ = json.Unmarshal(detailsJSON, &details)
+		if unmarshalErr := json.Unmarshal(detailsJSON, &details); unmarshalErr != nil {
+			observability.LogAndCapture(r.logger, sentry.LevelWarning,
+				"Failed to unmarshal action history details",
+				unmarshalErr, map[string]string{
+					"module": "action_history", "operation": "get_by_id_unmarshal",
+					"history_id": historyID,
+				})
+		}
 		h.Details = details
 	}
 
@@ -185,7 +212,13 @@ func (r *actionHistoryRepository) GetUserHistory(ctx context.Context, userID str
 
 		if detailsJSON != nil {
 			var details map[string]interface{}
-			_ = json.Unmarshal(detailsJSON, &details)
+			if unmarshalErr := json.Unmarshal(detailsJSON, &details); unmarshalErr != nil {
+				observability.LogAndCapture(r.logger, sentry.LevelWarning,
+					"Failed to unmarshal action history details",
+					unmarshalErr, map[string]string{
+						"module": "action_history", "operation": "get_user_history_unmarshal",
+					})
+			}
 			h.Details = details
 		}
 
@@ -323,7 +356,13 @@ func (r *actionHistoryRepository) GetByActionType(ctx context.Context, userID, a
 
 		if detailsJSON != nil {
 			var details map[string]interface{}
-			_ = json.Unmarshal(detailsJSON, &details)
+			if unmarshalErr := json.Unmarshal(detailsJSON, &details); unmarshalErr != nil {
+				observability.LogAndCapture(r.logger, sentry.LevelWarning,
+					"Failed to unmarshal action history details",
+					unmarshalErr, map[string]string{
+						"module": "action_history", "operation": "get_by_action_type_unmarshal",
+					})
+			}
 			h.Details = details
 		}
 
@@ -442,7 +481,13 @@ func (r *actionHistoryRepository) GetUserHistoryFiltered(ctx context.Context, re
 
 		if detailsJSON != nil {
 			var details map[string]interface{}
-			_ = json.Unmarshal(detailsJSON, &details)
+			if unmarshalErr := json.Unmarshal(detailsJSON, &details); unmarshalErr != nil {
+				observability.LogAndCapture(r.logger, sentry.LevelWarning,
+					"Failed to unmarshal action history details",
+					unmarshalErr, map[string]string{
+						"module": "action_history", "operation": "get_filtered_unmarshal",
+					})
+			}
 			h.Details = details
 		}
 

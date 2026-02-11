@@ -181,10 +181,15 @@ func (r *webhookEventsRepository) IncrementRetryCount(ctx context.Context, event
 	return nil
 }
 
-// GetPendingEvents retrieves events that need processing (received or failed with retries remaining)
+// GetPendingEvents retrieves events that need processing (received or failed with retries remaining).
+// T3.9: Hard limit of 1000 results to prevent unbounded memory allocation.
 func (r *webhookEventsRepository) GetPendingEvents(ctx context.Context, limit int) ([]models.WebhookEventRecord, error) {
+	const maxLimit = 1000
 	if limit <= 0 {
 		limit = 100
+	}
+	if limit > maxLimit {
+		limit = maxLimit
 	}
 
 	query := `
@@ -207,10 +212,15 @@ func (r *webhookEventsRepository) GetPendingEvents(ctx context.Context, limit in
 	return r.scanWebhookEvents(rows)
 }
 
-// GetFailedEvents retrieves failed events for retry/DLQ analysis
+// GetFailedEvents retrieves failed events for retry/DLQ analysis.
+// T3.9: Hard limit of 1000 results to prevent unbounded memory allocation.
 func (r *webhookEventsRepository) GetFailedEvents(ctx context.Context, limit int) ([]models.WebhookEventRecord, error) {
+	const maxLimit = 1000
 	if limit <= 0 {
 		limit = 100
+	}
+	if limit > maxLimit {
+		limit = maxLimit
 	}
 
 	query := `

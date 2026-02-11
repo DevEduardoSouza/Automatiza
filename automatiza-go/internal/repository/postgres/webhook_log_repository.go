@@ -1,10 +1,13 @@
 package postgres
 
 import (
+	"automatiza-go/internal/observability"
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -47,7 +50,17 @@ func (r *webhookLogRepository) Create(ctx context.Context, source string, eventT
 
 	var payloadJSON []byte
 	if payload != nil {
-		payloadJSON, _ = json.Marshal(payload)
+		var marshalErr error
+		payloadJSON, marshalErr = json.Marshal(payload)
+		if marshalErr != nil {
+			observability.LogAndCapture(r.logger, sentry.LevelWarning,
+				"Failed to marshal webhook log payload",
+				marshalErr, map[string]string{
+					"module": "webhook_log", "operation": "create_marshal",
+					"source": source,
+				})
+			payloadJSON = []byte("null")
+		}
 	}
 
 	query := `
@@ -133,7 +146,14 @@ func (r *webhookLogRepository) GetRecent(ctx context.Context, source string, lim
 		}
 
 		if payloadJSON != nil {
-			_ = json.Unmarshal(payloadJSON, &log.Payload)
+			if unmarshalErr := json.Unmarshal(payloadJSON, &log.Payload); unmarshalErr != nil {
+				observability.LogAndCapture(r.logger, sentry.LevelWarning,
+					"Failed to unmarshal webhook log payload",
+					unmarshalErr, map[string]string{
+						"module": "webhook_log", "operation": "get_recent_unmarshal",
+						"log_id": fmt.Sprintf("%d", log.ID),
+					})
+			}
 		}
 		if processedAt != nil {
 			t := processedAt.Format(time.RFC3339)

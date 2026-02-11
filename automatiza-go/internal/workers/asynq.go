@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	mathrand "math/rand"
+	mathrand "math/rand/v2"
 	"strconv"
 	"time"
 

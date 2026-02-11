@@ -18,7 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 	"sync"
 	"time"

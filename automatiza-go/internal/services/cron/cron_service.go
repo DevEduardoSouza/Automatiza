@@ -1,12 +1,14 @@
 package cron
 
 import (
-	"automatiza-go/internal/observability"
-	"automatiza-go/internal/services/jobs"
 	"context"
 	"sync"
 	"time"
 
+	"automatiza-go/internal/observability"
+	"automatiza-go/internal/services/jobs"
+
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -65,6 +67,7 @@ type cronService struct {
 	startedAt           time.Time
 	ctx                 context.Context
 	cancel              context.CancelFunc
+	wg                  sync.WaitGroup // tracks running goroutines for graceful shutdown
 }
 
 // NewCronService creates a new cron service
@@ -112,7 +115,9 @@ func (s *cronService) Start() {
 	s.tasksMu.RLock()
 	for _, task := range s.tasks {
 		t := task // capture loop variable
+		s.wg.Add(1)
 		observability.SafeGo("cron-task-"+t.name, func() {
+			defer s.wg.Done()
 			s.runTask(t)
 		})
 	}
@@ -124,18 +129,17 @@ func (s *cronService) Start() {
 
 func (s *cronService) Stop() {
 	s.tasksMu.Lock()
-	defer s.tasksMu.Unlock()
-
 	if !s.running {
+		s.tasksMu.Unlock()
 		return
 	}
 
-	// Cancel context
+	// Cancel context to signal all goroutines
 	if s.cancel != nil {
 		s.cancel()
 	}
 
-	// Stop all task tickers
+	// Stop all task tickers and signal stop channels
 	for _, task := range s.tasks {
 		if task.ticker != nil {
 			task.ticker.Stop()
@@ -146,6 +150,11 @@ func (s *cronService) Stop() {
 	}
 
 	s.running = false
+	s.tasksMu.Unlock()
+
+	// Wait for all goroutines to finish outside the lock to avoid deadlock
+	// (goroutines acquire tasksMu in executeTask)
+	s.wg.Wait()
 	s.logger.Info("Cron service stopped")
 }
 
@@ -169,7 +178,9 @@ func (s *cronService) RegisterTask(name string, interval time.Duration, task fun
 
 	// If already running, start the task with SafeGo panic recovery (BG13)
 	if s.running {
+		s.wg.Add(1)
 		observability.SafeGo("cron-task-"+ct.name, func() {
+			defer s.wg.Done()
 			s.runTask(ct)
 		})
 	}
@@ -249,9 +260,11 @@ func (s *cronService) executeTask(task *cronTask) {
 	s.tasksMu.Unlock()
 
 	if err != nil {
-		s.logger.Error("Cron task failed",
-			zap.String("task", task.name),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Cron task failed", err,
+			map[string]string{
+				"module": "cron",
+				"task":   task.name,
+			})
 	} else {
 		s.logger.Debug("Cron task completed",
 			zap.String("task", task.name))

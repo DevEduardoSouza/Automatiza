@@ -10,9 +10,11 @@ import (
 
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/lib/text"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/workers"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -162,24 +164,32 @@ func (s *messageService) SendText(ctx context.Context, input SendTextInput) (*wh
 
 	result, err := s.provider.SendText(ctx, providerInput)
 	if err != nil {
-		// Update history with failure
+		// Update history with failure (fire-and-forget)
 		if historyID != "" && s.historyRepo != nil {
-			_ = s.historyRepo.Update(ctx, historyID, map[string]interface{}{
+			if histErr := s.historyRepo.Update(ctx, historyID, map[string]interface{}{
 				"status":       "failed",
 				"error":        err.Error(),
 				"completed_at": time.Now().UTC().Format(time.RFC3339),
-			})
+			}); histErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update failed (fire-and-forget)", histErr, map[string]string{
+					"module": "whatsapp", "operation": "send_text_history_fail_update",
+				})
+			}
 		}
 		return nil, fmt.Errorf("failed to send text message: %w", err)
 	}
 
-	// Update history with success
+	// Update history with success (fire-and-forget)
 	if historyID != "" && s.historyRepo != nil {
-		_ = s.historyRepo.Update(ctx, historyID, map[string]interface{}{
+		if histErr := s.historyRepo.Update(ctx, historyID, map[string]interface{}{
 			"status":       "completed",
 			"message_id":   result.ID,
 			"completed_at": time.Now().UTC().Format(time.RFC3339),
-		})
+		}); histErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update failed (fire-and-forget)", histErr, map[string]string{
+				"module": "whatsapp", "operation": "send_text_history_success_update",
+			})
+		}
 	}
 
 	s.logger.Info("Text message sent successfully",
@@ -248,21 +258,29 @@ func (s *messageService) SendImage(ctx context.Context, input SendImageInput) (*
 	result, err := s.provider.SendImage(ctx, providerInput)
 	if err != nil {
 		if historyID != "" && s.historyRepo != nil {
-			_ = s.historyRepo.Update(ctx, historyID, map[string]interface{}{
+			if histErr := s.historyRepo.Update(ctx, historyID, map[string]interface{}{
 				"status":       "failed",
 				"error":        err.Error(),
 				"completed_at": time.Now().UTC().Format(time.RFC3339),
-			})
+			}); histErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update failed (fire-and-forget)", histErr, map[string]string{
+					"module": "whatsapp", "operation": "send_image_history_fail_update",
+				})
+			}
 		}
 		return nil, fmt.Errorf("failed to send image message: %w", err)
 	}
 
 	if historyID != "" && s.historyRepo != nil {
-		_ = s.historyRepo.Update(ctx, historyID, map[string]interface{}{
+		if histErr := s.historyRepo.Update(ctx, historyID, map[string]interface{}{
 			"status":       "completed",
 			"message_id":   result.ID,
 			"completed_at": time.Now().UTC().Format(time.RFC3339),
-		})
+		}); histErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update failed (fire-and-forget)", histErr, map[string]string{
+				"module": "whatsapp", "operation": "send_image_history_success_update",
+			})
+		}
 	}
 
 	s.logger.Info("Image message sent successfully",
@@ -317,21 +335,29 @@ func (s *messageService) SendVoice(ctx context.Context, input SendVoiceInput) (*
 	result, err := s.provider.SendVoice(ctx, providerInput)
 	if err != nil {
 		if historyID != "" && s.historyRepo != nil {
-			_ = s.historyRepo.Update(ctx, historyID, map[string]interface{}{
+			if histErr := s.historyRepo.Update(ctx, historyID, map[string]interface{}{
 				"status":       "failed",
 				"error":        err.Error(),
 				"completed_at": time.Now().UTC().Format(time.RFC3339),
-			})
+			}); histErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update failed (fire-and-forget)", histErr, map[string]string{
+					"module": "whatsapp", "operation": "send_voice_history_fail_update",
+				})
+			}
 		}
 		return nil, fmt.Errorf("failed to send voice message: %w", err)
 	}
 
 	if historyID != "" && s.historyRepo != nil {
-		_ = s.historyRepo.Update(ctx, historyID, map[string]interface{}{
+		if histErr := s.historyRepo.Update(ctx, historyID, map[string]interface{}{
 			"status":       "completed",
 			"message_id":   result.ID,
 			"completed_at": time.Now().UTC().Format(time.RFC3339),
-		})
+		}); histErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update failed (fire-and-forget)", histErr, map[string]string{
+				"module": "whatsapp", "operation": "send_voice_history_success_update",
+			})
+		}
 	}
 
 	s.logger.Info("Voice message sent successfully",
@@ -397,21 +423,29 @@ func (s *messageService) SendPoll(ctx context.Context, input SendPollInput) (*wh
 	result, err := s.provider.SendPoll(ctx, providerInput)
 	if err != nil {
 		if historyID != "" && s.historyRepo != nil {
-			_ = s.historyRepo.Update(ctx, historyID, map[string]interface{}{
+			if histErr := s.historyRepo.Update(ctx, historyID, map[string]interface{}{
 				"status":       "failed",
 				"error":        err.Error(),
 				"completed_at": time.Now().UTC().Format(time.RFC3339),
-			})
+			}); histErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update failed (fire-and-forget)", histErr, map[string]string{
+					"module": "whatsapp", "operation": "send_poll_history_fail_update",
+				})
+			}
 		}
 		return nil, fmt.Errorf("failed to send poll message: %w", err)
 	}
 
 	if historyID != "" && s.historyRepo != nil {
-		_ = s.historyRepo.Update(ctx, historyID, map[string]interface{}{
+		if histErr := s.historyRepo.Update(ctx, historyID, map[string]interface{}{
 			"status":       "completed",
 			"message_id":   result.ID,
 			"completed_at": time.Now().UTC().Format(time.RFC3339),
-		})
+		}); histErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update failed (fire-and-forget)", histErr, map[string]string{
+				"module": "whatsapp", "operation": "send_poll_history_success_update",
+			})
+		}
 	}
 
 	s.logger.Info("Poll message sent successfully",

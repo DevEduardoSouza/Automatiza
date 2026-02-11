@@ -3,7 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"time"
 
@@ -339,21 +339,34 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 		}
 	}()
 
-	// Create action history entry
-	history, _ := s.historyRepo.Create(ctx, userID, "automation_run", "Executando automacao: "+automation.Name, map[string]interface{}{
+	// Create action history entry (fire-and-forget)
+	history, histCreateErr := s.historyRepo.Create(ctx, userID, "automation_run", "Executando automacao: "+automation.Name, map[string]interface{}{
 		"automation_id": automationID,
 		"type":          automation.GetType(),
 	})
+	if histCreateErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "history create failed (fire-and-forget)", histCreateErr, map[string]string{
+			"module": "automation", "operation": "run_automation_history_create",
+		})
+	}
 
 	var historyID string
 	if history != nil {
 		historyID = history.ID
 		// Set target_count based on configured groups and mark as running
 		targetGroups := automation.GetTargetGroups()
-		_ = s.historyRepo.Update(ctx, historyID, map[string]interface{}{
+		if histErr := s.historyRepo.Update(ctx, historyID, map[string]interface{}{
 			"target_count": int32(len(targetGroups)),
-		})
-		_ = s.historyRepo.MarkRunning(ctx, historyID)
+		}); histErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update failed (fire-and-forget)", histErr, map[string]string{
+				"module": "automation", "operation": "run_automation_history_target_count",
+			})
+		}
+		if histErr := s.historyRepo.MarkRunning(ctx, historyID); histErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "history mark running failed (fire-and-forget)", histErr, map[string]string{
+				"module": "automation", "operation": "run_automation_history_mark_running",
+			})
+		}
 		s.logger.Info("History entry created",
 			zap.String("automationID", automation.ID),
 			zap.String("historyID", historyID),
@@ -381,19 +394,27 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 		result, err = s.executeSearchAutomation(ctx, automation, historyID)
 	}
 
-	// Update history with status and counters
+	// Update history with status and counters (fire-and-forget)
 	if historyID != "" {
 		status := "completed"
 		if err != nil {
 			status = "failed"
 		}
-		_ = s.historyRepo.Update(ctx, historyID, map[string]interface{}{
+		if histErr := s.historyRepo.Update(ctx, historyID, map[string]interface{}{
 			"status":       status,
 			"completed_at": time.Now().UTC().Format(time.RFC3339),
-		})
+		}); histErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update failed (fire-and-forget)", histErr, map[string]string{
+				"module": "automation", "operation": "run_automation_history_status_update",
+			})
+		}
 		// Update counters from result if available
 		if result != nil && result.MessagesSent > 0 {
-			_ = s.historyRepo.UpdateCounts(ctx, historyID, int32(result.MessagesSent), 0)
+			if histErr := s.historyRepo.UpdateCounts(ctx, historyID, int32(result.MessagesSent), 0); histErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelWarning, "history update counts failed (fire-and-forget)", histErr, map[string]string{
+					"module": "automation", "operation": "run_automation_history_update_counts",
+				})
+			}
 		}
 	}
 
@@ -578,7 +599,12 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 
 			// Check backpressure
 			if s.backpressure != nil {
-				can, _, _ := s.backpressure.CanEnqueue(ctx, automation.UserID)
+				can, _, bpErr := s.backpressure.CanEnqueue(ctx, automation.UserID)
+				if bpErr != nil {
+					observability.LogAndCapture(s.logger, sentry.LevelWarning, "backpressure check failed, allowing enqueue", bpErr, map[string]string{
+						"module": "automation", "operation": "backpressure_check", "user_id": automation.UserID,
+					})
+				}
 				if !can {
 					s.logger.Info("Offer skipped: backpressure",
 						zap.String("automationID", automation.ID),
@@ -622,7 +648,11 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 
 			// Record backpressure
 			if s.backpressure != nil {
-				_ = s.backpressure.RecordEnqueue(ctx, automation.UserID)
+				if bpErr := s.backpressure.RecordEnqueue(ctx, automation.UserID); bpErr != nil {
+					observability.LogAndCapture(s.logger, sentry.LevelWarning, "backpressure record failed", bpErr, map[string]string{
+						"module": "automation", "operation": "backpressure_record", "user_id": automation.UserID,
+					})
+				}
 			}
 		}
 	}
@@ -646,7 +676,7 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 	// Select random CTA if available
 	cta := ""
 	if len(automation.CTAs) > 0 {
-		cta = automation.CTAs[rand.Intn(len(automation.CTAs))]
+		cta = automation.CTAs[rand.IntN(len(automation.CTAs))]
 	}
 
 	// Build coupon info
@@ -716,7 +746,11 @@ func (s *automationService) markAsSent(ctx context.Context, userID, groupID, can
 	}
 
 	cacheKey := fmt.Sprintf("dedup:%s:%s:%s", userID, groupID, canonicalKey)
-	_ = s.cache.Set(ctx, cacheKey, "1", time.Duration(hours)*time.Hour)
+	if cacheErr := s.cache.Set(ctx, cacheKey, "1", time.Duration(hours)*time.Hour); cacheErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "dedup cache set failed", cacheErr, map[string]string{
+			"module": "automation", "operation": "mark_as_sent_cache", "cache_policy": "fail-open",
+		})
+	}
 }
 
 func (s *automationService) logDispatch(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg string) {

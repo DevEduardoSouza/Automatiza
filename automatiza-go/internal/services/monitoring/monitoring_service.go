@@ -2,11 +2,11 @@ package monitoring
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"regexp"
 	"strings"
 	"time"
@@ -104,7 +104,11 @@ func (s *monitoringService) ProcessIncomingMessage(ctx context.Context, msg *mod
 		s.logger.Debug("Duplicate message ID detected, skipping")
 		return nil
 	}
-	_ = s.cache.Set(ctx, msgKey, "1", 10*time.Minute)
+	if cacheErr := s.cache.Set(ctx, msgKey, "1", 10*time.Minute); cacheErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to set message ID dedup cache key", cacheErr, map[string]string{
+			"module": "monitoring", "operation": "msg_dedup_set", "cache_policy": "fail-open",
+		})
+	}
 
 	// 6. Find matching monitoring automations for this group
 	automations, err := s.findMatchingAutomations(ctx, msg.InstanceName, msg.RemoteJID)
@@ -255,7 +259,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 
 		// Apply delay
-		delay := 1 + rand.Intn(3) // 1-3 seconds random
+		delay := 1 + rand.IntN(3) // 1-3 seconds random
 		if automation.DelaySeconds != nil && *automation.DelaySeconds > 0 {
 			delay = *automation.DelaySeconds
 		}
@@ -352,7 +356,7 @@ func (s *monitoringService) categorizeLinks(links []string) (shopeeLinks, mlLink
 
 func (s *monitoringService) buildContentKey(instanceName, groupID, body string) string {
 	// Create a hash of the content for deduplication
-	hash := md5.Sum([]byte(instanceName + ":" + groupID + ":" + body))
+	hash := sha256.Sum256([]byte(instanceName + ":" + groupID + ":" + body))
 	return "content:" + hex.EncodeToString(hash[:])
 }
 
@@ -366,7 +370,11 @@ func (s *monitoringService) isDuplicateContent(ctx context.Context, key string) 
 
 func (s *monitoringService) markContentProcessed(ctx context.Context, key string) {
 	if s.cache != nil {
-		_ = s.cache.Set(ctx, key, "1", 2*time.Minute)
+		if cacheErr := s.cache.Set(ctx, key, "1", 2*time.Minute); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to set content dedup cache key", cacheErr, map[string]string{
+				"module": "monitoring", "operation": "content_dedup_set", "cache_policy": "fail-open",
+			})
+		}
 	}
 }
 
@@ -394,7 +402,7 @@ func (s *monitoringService) extractCanonicalKey(links []string) string {
 
 	// Fallback to first link hash
 	if len(links) > 0 {
-		hash := md5.Sum([]byte(links[0]))
+		hash := sha256.Sum256([]byte(links[0]))
 		return "link:" + hex.EncodeToString(hash[:8])
 	}
 
@@ -417,7 +425,11 @@ func (s *monitoringService) markProductSent(ctx context.Context, userID, groupID
 	}
 
 	cacheKey := fmt.Sprintf("prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
-	_ = s.cache.Set(ctx, cacheKey, "1", time.Duration(hours)*time.Hour)
+	if cacheErr := s.cache.Set(ctx, cacheKey, "1", time.Duration(hours)*time.Hour); cacheErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to set product dedup cache key", cacheErr, map[string]string{
+			"module": "monitoring", "operation": "product_dedup_set", "cache_policy": "fail-open",
+		})
+	}
 }
 
 func (s *monitoringService) logDispatch(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg string) {

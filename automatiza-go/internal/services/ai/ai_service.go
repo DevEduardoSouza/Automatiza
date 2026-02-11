@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -339,11 +340,20 @@ func (s *aiService) callAI(ctx context.Context, prompt, systemPrompt string) (st
 	resp, err := s.httpClient.Do(req)
 	span.Finish()
 	if err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "AI API HTTP request failed", err, map[string]string{
-			"external_service":         "ai",
-			"endpoint":                 s.apiURL,
+		// N5: Detect timeout pattern explicitly for observability
+		level := sentry.LevelError
+		msg := "AI API HTTP request failed"
+		tags := map[string]string{
+			"external_service":          "ai",
+			"endpoint":                  s.apiURL,
 			"circuit_breaker_candidate": "true",
-		})
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			tags["error_pattern"] = "timeout"
+			msg = "AI API timeout"
+			level = sentry.LevelWarning
+		}
+		observability.LogAndCapture(s.logger, level, msg, err, tags)
 		return "", fmt.Errorf("failed to call AI API: %w", err)
 	}
 	defer resp.Body.Close()

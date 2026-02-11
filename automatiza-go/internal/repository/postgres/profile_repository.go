@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"context"
 	"encoding/base64"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
@@ -215,7 +217,16 @@ func (r *profileRepository) UpdatePassword(ctx context.Context, userID, password
 		SET password_hash = $1, updated_at = $2
 		WHERE id = $3
 	`
-	_, _ = r.db.pool.Exec(ctx, profileQuery, passwordHash, now, userID)
+	_, profileErr := r.db.pool.Exec(ctx, profileQuery, passwordHash, now, userID)
+	if profileErr != nil {
+		observability.LogAndCapture(r.logger, sentry.LevelError,
+			"CRITICAL: Failed to sync password hash to profiles table",
+			profileErr, map[string]string{
+				"module": "profile", "operation": "update_password_profile_sync",
+				"user_id": userID,
+			})
+		return fmt.Errorf("sync password to profiles: %w", profileErr)
+	}
 
 	return nil
 }

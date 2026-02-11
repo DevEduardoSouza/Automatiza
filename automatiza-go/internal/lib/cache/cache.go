@@ -3,18 +3,30 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"automatiza-go/internal/observability"
+
+	"github.com/getsentry/sentry-go"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
+
+// localCacheSizeWarningThreshold defines the max number of entries in the local cache
+// before emitting a Sentry warning (T3.9).
+const localCacheSizeWarningThreshold = 10000
 
 // Cache provides a two-tier caching system (local + Redis)
 type Cache struct {
 	redis      *redis.Client
 	localCache *sync.Map
+	localCount atomic.Int64 // T3.9: approximate count for monitoring
 	prefix     string
 	disabled   bool
+	logger     *zap.Logger
 }
 
 type localEntry struct {
@@ -22,13 +34,73 @@ type localEntry struct {
 	expiresAt time.Time
 }
 
-// NewCache creates a new cache instance
+// NewCache creates a new cache instance.
+// For cache size monitoring, use NewCacheWithLogger instead.
 func NewCache(redisClient *redis.Client, prefix string, disabled bool) *Cache {
-	return &Cache{
+	return NewCacheWithLogger(redisClient, prefix, disabled, nil, context.Background())
+}
+
+// NewCacheWithLogger creates a new cache instance with logger and context for monitoring.
+// The context controls the lifetime of the background cleanup/monitoring goroutine (T3.9).
+func NewCacheWithLogger(redisClient *redis.Client, prefix string, disabled bool, logger *zap.Logger, ctx context.Context) *Cache {
+	c := &Cache{
 		redis:      redisClient,
 		localCache: &sync.Map{},
 		prefix:     prefix,
 		disabled:   disabled,
+		logger:     logger,
+	}
+
+	// T3.9: Start periodic local cache cleanup and size monitoring
+	observability.SafeGo("cache-local-monitor-"+prefix, func() {
+		c.localCacheMonitorLoop(ctx)
+	})
+
+	return c
+}
+
+// localCacheMonitorLoop periodically cleans expired local entries and monitors size (T3.9).
+func (c *Cache) localCacheMonitorLoop(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			var count int64
+			now := time.Now()
+			c.localCache.Range(func(key, value any) bool {
+				entry, ok := value.(*localEntry)
+				if ok && now.After(entry.expiresAt) {
+					c.localCache.Delete(key)
+				} else {
+					count++
+				}
+				return true
+			})
+			c.localCount.Store(count)
+
+			if count > localCacheSizeWarningThreshold {
+				msg := fmt.Sprintf("local cache '%s' exceeds threshold: %d entries (threshold: %d)", c.prefix, count, localCacheSizeWarningThreshold)
+				if c.logger != nil {
+					observability.LogAndCapture(c.logger, sentry.LevelWarning, msg, nil,
+						map[string]string{
+							"module": "cache",
+							"prefix": c.prefix,
+							"count":  fmt.Sprintf("%d", count),
+						})
+				} else {
+					observability.CaptureMessage(sentry.LevelWarning, msg,
+						map[string]string{
+							"module": "cache",
+							"prefix": c.prefix,
+							"count":  fmt.Sprintf("%d", count),
+						})
+				}
+			}
+		}
 	}
 }
 

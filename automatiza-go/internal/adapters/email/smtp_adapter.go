@@ -1,6 +1,7 @@
 package email
 
 import (
+	"automatiza-go/internal/observability"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -116,9 +117,10 @@ func (a *smtpAdapter) send(ctx context.Context, to, subject, htmlBody string) er
 	}
 
 	// Use a channel to handle connection with context
+	// SQ48: SafeGo for panic recovery in SMTP goroutine
 	errChan := make(chan error, 1)
 
-	go func() {
+	observability.SafeGo("smtp-email-send", func() {
 		var err error
 		if a.config.Port == 465 {
 			// Direct TLS (SSL) connection for port 465
@@ -128,7 +130,7 @@ func (a *smtpAdapter) send(ctx context.Context, to, subject, htmlBody string) er
 			err = a.sendWithSTARTTLS(addr, tlsConfig, to, msg)
 		}
 		errChan <- err
-	}()
+	})
 
 	select {
 	case <-ctx.Done():

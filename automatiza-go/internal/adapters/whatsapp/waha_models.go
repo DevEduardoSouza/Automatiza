@@ -8,8 +8,13 @@ package whatsapp
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
+
+	"automatiza-go/internal/observability"
+
+	"github.com/getsentry/sentry-go"
 )
 
 // =============================================================================
@@ -91,6 +96,13 @@ type wahaGroup struct {
 	IsAdmin      bool
 }
 
+// unmarshalField is a helper that unmarshals a JSON field and tracks errors.
+func unmarshalField(v json.RawMessage, dst interface{}, errCount *int) {
+	if err := json.Unmarshal(v, dst); err != nil {
+		*errCount++
+	}
+}
+
 // UnmarshalJSON handles both GOWS engine format (PascalCase) and WEBJS/NOWEB DTO format (camelCase).
 // GOWS returns: {JID, Name, Topic, OwnerJID, IsAnnounce, IsLocked, Participants, MemberAddMode, ...}
 // DTO returns:  {id, subject, description, invite, membersCanSendMessages, participants, ...}
@@ -100,98 +112,109 @@ func (g *wahaGroup) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	var errCount int
+
 	// ID: "id" (DTO) or "JID" (GOWS)
 	if v, ok := raw["id"]; ok {
-		_ = json.Unmarshal(v, &g.ID)
+		unmarshalField(v, &g.ID, &errCount)
 	} else if v, ok := raw["JID"]; ok {
-		_ = json.Unmarshal(v, &g.ID)
+		unmarshalField(v, &g.ID, &errCount)
 	}
 
 	// Subject: "subject" (DTO) or "Name" (GOWS)
 	if v, ok := raw["subject"]; ok {
-		_ = json.Unmarshal(v, &g.Subject)
+		unmarshalField(v, &g.Subject, &errCount)
 	} else if v, ok := raw["Name"]; ok {
-		_ = json.Unmarshal(v, &g.Subject)
+		unmarshalField(v, &g.Subject, &errCount)
 	}
 
 	// Description: "description" (DTO) or "desc" (legacy) or "Topic" (GOWS)
 	if v, ok := raw["description"]; ok {
-		_ = json.Unmarshal(v, &g.Description)
+		unmarshalField(v, &g.Description, &errCount)
 	} else if v, ok := raw["desc"]; ok {
-		_ = json.Unmarshal(v, &g.Description)
+		unmarshalField(v, &g.Description, &errCount)
 	} else if v, ok := raw["Topic"]; ok {
-		_ = json.Unmarshal(v, &g.Description)
+		unmarshalField(v, &g.Description, &errCount)
 	}
 
 	// Picture
 	if v, ok := raw["picture"]; ok {
-		_ = json.Unmarshal(v, &g.Picture)
+		unmarshalField(v, &g.Picture, &errCount)
 	}
 
 	// Owner: "owner" (DTO) or "OwnerJID" (GOWS)
 	if v, ok := raw["owner"]; ok {
-		_ = json.Unmarshal(v, &g.Owner)
+		unmarshalField(v, &g.Owner, &errCount)
 	} else if v, ok := raw["OwnerJID"]; ok {
-		_ = json.Unmarshal(v, &g.Owner)
+		unmarshalField(v, &g.Owner, &errCount)
 	}
 
 	// Announce: "announce" (legacy) or "IsAnnounce" (GOWS) or inverted "membersCanSendMessages" (DTO)
 	if v, ok := raw["announce"]; ok {
-		_ = json.Unmarshal(v, &g.Announce)
+		unmarshalField(v, &g.Announce, &errCount)
 	} else if v, ok := raw["IsAnnounce"]; ok {
-		_ = json.Unmarshal(v, &g.Announce)
+		unmarshalField(v, &g.Announce, &errCount)
 	} else if v, ok := raw["membersCanSendMessages"]; ok {
 		var canSend bool
-		_ = json.Unmarshal(v, &canSend)
+		unmarshalField(v, &canSend, &errCount)
 		g.Announce = !canSend
 	}
 
 	// Restrict: "restrict" (legacy) or "IsLocked" (GOWS)
 	if v, ok := raw["restrict"]; ok {
-		_ = json.Unmarshal(v, &g.Restrict)
+		unmarshalField(v, &g.Restrict, &errCount)
 	} else if v, ok := raw["IsLocked"]; ok {
-		_ = json.Unmarshal(v, &g.Restrict)
+		unmarshalField(v, &g.Restrict, &errCount)
 	}
 
 	// Size
 	if v, ok := raw["size"]; ok {
-		_ = json.Unmarshal(v, &g.Size)
+		unmarshalField(v, &g.Size, &errCount)
 	}
 
 	// Participants: "participants" (DTO) or "Participants" (GOWS) — case-insensitive match handled by key check
 	if v, ok := raw["participants"]; ok {
-		_ = json.Unmarshal(v, &g.Participants)
+		unmarshalField(v, &g.Participants, &errCount)
 	} else if v, ok := raw["Participants"]; ok {
-		_ = json.Unmarshal(v, &g.Participants)
+		unmarshalField(v, &g.Participants, &errCount)
 	}
 
 	// Creation
 	if v, ok := raw["creation"]; ok {
-		_ = json.Unmarshal(v, &g.Creation)
+		unmarshalField(v, &g.Creation, &errCount)
 	}
 
 	// InviteCode: "inviteCode" (legacy) or "invite" (DTO)
 	if v, ok := raw["inviteCode"]; ok {
-		_ = json.Unmarshal(v, &g.InviteCode)
+		unmarshalField(v, &g.InviteCode, &errCount)
 	} else if v, ok := raw["invite"]; ok {
-		_ = json.Unmarshal(v, &g.InviteCode)
+		unmarshalField(v, &g.InviteCode, &errCount)
 	}
 
 	// IsAdmin / IsSuperAdmin
 	if v, ok := raw["isAdmin"]; ok {
-		_ = json.Unmarshal(v, &g.IsAdmin)
+		unmarshalField(v, &g.IsAdmin, &errCount)
 	} else if v, ok := raw["IsAdmin"]; ok {
-		_ = json.Unmarshal(v, &g.IsAdmin)
+		unmarshalField(v, &g.IsAdmin, &errCount)
 	}
 	if v, ok := raw["isSuperAdmin"]; ok {
-		_ = json.Unmarshal(v, &g.IsSuperAdmin)
+		unmarshalField(v, &g.IsSuperAdmin, &errCount)
 	} else if v, ok := raw["IsSuperAdmin"]; ok {
-		_ = json.Unmarshal(v, &g.IsSuperAdmin)
+		unmarshalField(v, &g.IsSuperAdmin, &errCount)
 	}
 
 	// Derive Size from Participants if not set
 	if g.Size == 0 && len(g.Participants) > 0 {
 		g.Size = len(g.Participants)
+	}
+
+	if errCount > 0 {
+		observability.CaptureMessage(sentry.LevelWarning,
+			fmt.Sprintf("wahaGroup UnmarshalJSON: %d field(s) failed to unmarshal", errCount),
+			map[string]string{
+				"module": "whatsapp", "operation": "waha_group_unmarshal",
+				"group_id": g.ID,
+			})
 	}
 
 	return nil
@@ -215,30 +238,32 @@ func (p *wahaParticipant) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	var errCount int
+
 	// ID: "id" (DTO) or "JID" (GOWS)
 	if v, ok := raw["id"]; ok {
-		_ = json.Unmarshal(v, &p.ID)
+		unmarshalField(v, &p.ID, &errCount)
 	} else if v, ok := raw["JID"]; ok {
-		_ = json.Unmarshal(v, &p.ID)
+		unmarshalField(v, &p.ID, &errCount)
 	}
 
 	// Admin status: check booleans first (GOWS embedded), then role (DTO endpoint)
 	if v, ok := raw["IsAdmin"]; ok {
-		_ = json.Unmarshal(v, &p.IsAdmin)
+		unmarshalField(v, &p.IsAdmin, &errCount)
 	} else if v, ok := raw["isAdmin"]; ok {
-		_ = json.Unmarshal(v, &p.IsAdmin)
+		unmarshalField(v, &p.IsAdmin, &errCount)
 	}
 	if v, ok := raw["IsSuperAdmin"]; ok {
-		_ = json.Unmarshal(v, &p.IsSuperAdmin)
+		unmarshalField(v, &p.IsSuperAdmin, &errCount)
 	} else if v, ok := raw["isSuperAdmin"]; ok {
-		_ = json.Unmarshal(v, &p.IsSuperAdmin)
+		unmarshalField(v, &p.IsSuperAdmin, &errCount)
 	}
 
 	// Derive from role if booleans are not set (DTO format uses role field)
 	if !p.IsAdmin && !p.IsSuperAdmin {
 		if v, ok := raw["role"]; ok {
 			var role string
-			_ = json.Unmarshal(v, &role)
+			unmarshalField(v, &role, &errCount)
 			p.IsSuperAdmin = role == "superadmin"
 			p.IsAdmin = role == "admin" || role == "superadmin"
 		}
@@ -246,9 +271,18 @@ func (p *wahaParticipant) UnmarshalJSON(data []byte) error {
 
 	// PhoneNumber: "pn" (DTO v2) or "PhoneNumber" (GOWS)
 	if v, ok := raw["pn"]; ok {
-		_ = json.Unmarshal(v, &p.PhoneNumber)
+		unmarshalField(v, &p.PhoneNumber, &errCount)
 	} else if v, ok := raw["PhoneNumber"]; ok {
-		_ = json.Unmarshal(v, &p.PhoneNumber)
+		unmarshalField(v, &p.PhoneNumber, &errCount)
+	}
+
+	if errCount > 0 {
+		observability.CaptureMessage(sentry.LevelWarning,
+			fmt.Sprintf("wahaParticipant UnmarshalJSON: %d field(s) failed to unmarshal", errCount),
+			map[string]string{
+				"module": "whatsapp", "operation": "waha_participant_unmarshal",
+				"participant_id": p.ID,
+			})
 	}
 
 	return nil

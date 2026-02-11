@@ -297,7 +297,7 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 			Transport: transport,
 		},
 		logger:         namedLogger,
-		mapper:         NewMapper(),
+		mapper:         newMapperWithLogger(namedLogger),
 		statusCache:    make(map[string]*statusCacheEntry),
 		statusCacheTTL: statusCacheTTL,
 		circuitBreaker: newCircuitBreaker(3, 15*time.Second), // 3 failures = 15s backoff

@@ -591,6 +591,14 @@ func (s *Service) checkAndReconcile(ctx context.Context) {
 
 	now := time.Now()
 	for sessionName, lastEvent := range sessions {
+		// T3.9: Check context cancellation between session iterations
+		select {
+		case <-ctx.Done():
+			s.logger.Info("checkAndReconcile interrupted by context cancellation")
+			return
+		default:
+		}
+
 		silence := now.Sub(lastEvent)
 		if silence < s.config.SilenceTimeout {
 			continue
@@ -763,6 +771,15 @@ func (s *Service) reconcileSession(ctx context.Context, sessionName string) {
 	}
 
 	for _, cp := range checkpoints {
+		// T3.9: Check context cancellation between checkpoint iterations
+		select {
+		case <-ctx.Done():
+			s.logger.Info("reconcileSession interrupted by context cancellation",
+				zap.String("session", sessionName))
+			return
+		default:
+		}
+
 		if err := s.ReconcileChat(ctx, cp.SessionName, cp.ChatID); err != nil {
 			if !errors.Is(err, ErrAlreadyRunning) {
 				observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to reconcile chat in session", err, map[string]string{

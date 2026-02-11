@@ -2,12 +2,14 @@ package postgres
 
 import (
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"context"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
@@ -112,8 +114,17 @@ func (r *couponRepository) CreateCoupon(ctx context.Context, userID string, data
 
 	var expiresAt *time.Time
 	if data.ExpiresAt != nil {
-		t, _ := time.Parse(time.RFC3339, *data.ExpiresAt)
-		expiresAt = &t
+		t, parseErr := time.Parse(time.RFC3339, *data.ExpiresAt)
+		if parseErr != nil {
+			observability.LogAndCapture(r.logger, sentry.LevelWarning,
+				"Failed to parse coupon expires_at timestamp",
+				parseErr, map[string]string{
+					"module": "coupon", "operation": "create_parse_expires_at",
+					"raw_value": *data.ExpiresAt,
+				})
+		} else {
+			expiresAt = &t
+		}
 	}
 
 	query := `

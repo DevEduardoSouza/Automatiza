@@ -1,15 +1,17 @@
 package urlsafety
 
 import (
+	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/observability"
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
 
-	"automatiza-go/internal/lib/cache"
-
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -146,9 +148,15 @@ func (s *Service) evaluateURL(ctx context.Context, originalURL string) URLInfo {
 			info.FinalHost = finalHost
 			host = finalHost
 		} else {
-			s.logger.Warn("Failed to resolve redirect",
-				zap.String("url", originalURL),
-				zap.Error(err))
+			// BG10: Fail-open with Sentry Warning — URL allowed through despite check failure
+			observability.LogAndCapture(s.logger, sentry.LevelWarning,
+				"URL safety fail-open: redirect resolution failed, allowing original URL",
+				fmt.Errorf("resolve redirect for %s: %w", originalURL, err),
+				map[string]string{
+					"module":   "url-safety",
+					"flow":     "fail-open",
+					"original": originalURL,
+				})
 			// Continue with original host
 			info.Final = originalURL
 			info.FinalHost = host

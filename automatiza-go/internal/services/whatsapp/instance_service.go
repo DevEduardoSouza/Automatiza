@@ -15,8 +15,10 @@ import (
 
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -253,9 +255,9 @@ func (s *instanceService) LogoutInstance(ctx context.Context, instanceName strin
 	}
 	if instance != nil {
 		if err := s.repo.UpdateInstanceStatus(ctx, instance.ID, models.InstanceStatusDisconnected); err != nil {
-			s.logger.Warn("Failed to update instance status after logout",
-				zap.String("instanceName", instanceName),
-				zap.Error(err))
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "instance status update failed after logout (fire-and-forget)", err, map[string]string{
+				"module": "whatsapp", "operation": "logout_instance_status_update", "instanceName": instanceName,
+			})
 		}
 	}
 

@@ -4,14 +4,27 @@ package whatsapp
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
+
+// maskPhone partially masks a phone number for safe logging.
+// Preserves the first 5 characters (country + area code) and the last 4,
+// masking the middle portion. Example: "+5511999887766" -> "+5511*****7766".
+func maskPhone(phone string) string {
+	if len(phone) <= 9 {
+		return "****"
+	}
+	return phone[:5] + strings.Repeat("*", len(phone)-9) + phone[len(phone)-4:]
+}
 
 // GroupsService handles WhatsApp group operations.
 // It orchestrates between the WhatsApp provider (adapter) and the database.
@@ -234,14 +247,14 @@ func (s *groupsService) UpdateGroupSubject(ctx context.Context, sessionName, gro
 		return fmt.Errorf("failed to update group subject: %w", err)
 	}
 
-	// Update in database
+	// Update in database (fire-and-forget)
 	if err := s.repo.UpdateGroup(ctx, groupID, map[string]interface{}{
 		"name":       subject,
 		"updated_at": time.Now().UTC().Format(time.RFC3339),
 	}); err != nil {
-		s.logger.Warn("Failed to update group subject in database",
-			zap.String("groupID", groupID),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "group DB sync failed (fire-and-forget)", err, map[string]string{
+			"module": "whatsapp", "operation": "update_group_subject_db", "groupID": groupID,
+		})
 	}
 
 	return nil
@@ -263,14 +276,14 @@ func (s *groupsService) UpdateGroupDescription(ctx context.Context, sessionName,
 		return fmt.Errorf("failed to update group description: %w", err)
 	}
 
-	// Update in database
+	// Update in database (fire-and-forget)
 	if err := s.repo.UpdateGroup(ctx, groupID, map[string]interface{}{
 		"description": description,
 		"updated_at":  time.Now().UTC().Format(time.RFC3339),
 	}); err != nil {
-		s.logger.Warn("Failed to update group description in database",
-			zap.String("groupID", groupID),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "group DB sync failed (fire-and-forget)", err, map[string]string{
+			"module": "whatsapp", "operation": "update_group_description_db", "groupID": groupID,
+		})
 	}
 
 	return nil
@@ -307,14 +320,14 @@ func (s *groupsService) SetGroupAnnouncement(ctx context.Context, sessionName, g
 		return fmt.Errorf("failed to set group announcement mode: %w", err)
 	}
 
-	// Update in database
+	// Update in database (fire-and-forget)
 	if err := s.repo.UpdateGroup(ctx, groupID, map[string]interface{}{
 		"admin_only": announce,
 		"updated_at": time.Now().UTC().Format(time.RFC3339),
 	}); err != nil {
-		s.logger.Warn("Failed to update group announcement mode in database",
-			zap.String("groupID", groupID),
-			zap.Error(err))
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "group DB sync failed (fire-and-forget)", err, map[string]string{
+			"module": "whatsapp", "operation": "set_group_announcement_db", "groupID": groupID,
+		})
 	}
 
 	return nil
@@ -429,7 +442,7 @@ func (s *groupsService) PromoteMember(ctx context.Context, sessionName, groupID,
 
 	s.logger.Info("Member promoted to admin",
 		zap.String("groupID", groupID),
-		zap.String("phoneNumber", phoneNumber))
+		zap.String("phoneNumber", maskPhone(phoneNumber)))
 
 	return nil
 }
@@ -452,7 +465,7 @@ func (s *groupsService) DemoteMember(ctx context.Context, sessionName, groupID, 
 
 	s.logger.Info("Member demoted from admin",
 		zap.String("groupID", groupID),
-		zap.String("phoneNumber", phoneNumber))
+		zap.String("phoneNumber", maskPhone(phoneNumber)))
 
 	return nil
 }

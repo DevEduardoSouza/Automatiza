@@ -2,11 +2,14 @@ package postgres
 
 import (
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -28,7 +31,17 @@ func (r *systemEventRepository) Create(ctx context.Context, eventType string, pa
 
 	var payloadJSON []byte
 	if payload != nil {
-		payloadJSON, _ = json.Marshal(payload)
+		var marshalErr error
+		payloadJSON, marshalErr = json.Marshal(payload)
+		if marshalErr != nil {
+			observability.LogAndCapture(r.logger, sentry.LevelWarning,
+				"Failed to marshal system event payload",
+				marshalErr, map[string]string{
+					"module": "system_event", "operation": "create_marshal",
+					"event_type": eventType,
+				})
+			payloadJSON = []byte("null")
+		}
 	}
 
 	query := `
@@ -77,7 +90,14 @@ func (r *systemEventRepository) GetRecent(ctx context.Context, limit int) ([]mod
 		}
 
 		if payloadJSON != nil {
-			_ = json.Unmarshal(payloadJSON, &e.Payload)
+			if unmarshalErr := json.Unmarshal(payloadJSON, &e.Payload); unmarshalErr != nil {
+				observability.LogAndCapture(r.logger, sentry.LevelWarning,
+					"Failed to unmarshal system event payload",
+					unmarshalErr, map[string]string{
+						"module": "system_event", "operation": "get_recent_unmarshal",
+						"event_id": fmt.Sprintf("%d", e.ID),
+					})
+			}
 		}
 
 		e.CreatedAt = createdAt.Format(time.RFC3339)
@@ -119,7 +139,14 @@ func (r *systemEventRepository) GetByType(ctx context.Context, eventType string,
 		}
 
 		if payloadJSON != nil {
-			_ = json.Unmarshal(payloadJSON, &e.Payload)
+			if unmarshalErr := json.Unmarshal(payloadJSON, &e.Payload); unmarshalErr != nil {
+				observability.LogAndCapture(r.logger, sentry.LevelWarning,
+					"Failed to unmarshal system event payload",
+					unmarshalErr, map[string]string{
+						"module": "system_event", "operation": "get_by_type_unmarshal",
+						"event_id": fmt.Sprintf("%d", e.ID),
+					})
+			}
 		}
 
 		e.CreatedAt = createdAt.Format(time.RFC3339)

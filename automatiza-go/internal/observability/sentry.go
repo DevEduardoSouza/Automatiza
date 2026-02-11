@@ -177,10 +177,20 @@ func redactPII(event *sentry.Event) *sentry.Event {
 // redactString applies PII patterns to a string.
 func redactString(s string) string {
 	s = piiPatterns.email.ReplaceAllString(s, "[EMAIL_REDACTED]")
-	s = piiPatterns.phone.ReplaceAllString(s, "[PHONE_REDACTED]")
+	s = piiPatterns.phone.ReplaceAllStringFunc(s, maskPhonePartial)
 	s = piiPatterns.bearer.ReplaceAllString(s, "[TOKEN_REDACTED]")
 	s = piiPatterns.password.ReplaceAllString(s, "[SECRET_REDACTED]")
 	return s
+}
+
+// maskPhonePartial preserves the first 5 characters (country + area code) and last 4,
+// masking the middle portion. Example: "+5511999887766" -> "+5511*****7766".
+// For short numbers (<= 9 chars) it falls back to full redaction.
+func maskPhonePartial(phone string) string {
+	if len(phone) <= 9 {
+		return "[PHONE_REDACTED]"
+	}
+	return phone[:5] + strings.Repeat("*", len(phone)-9) + phone[len(phone)-4:]
 }
 
 // SafeGo runs a function in a goroutine with panic recovery and Sentry capture.

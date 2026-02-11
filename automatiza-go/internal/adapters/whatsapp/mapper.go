@@ -7,10 +7,23 @@
 package whatsapp
 
 import (
-	"log"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 )
+
+// mapperLogger is a package-level logger for the mapper.
+// Initialized lazily; callers in this package that need structured logging
+// should use this instead of the standard log package.
+var mapperLogger = zap.NewNop()
+
+// SetMapperLogger configures the structured logger for mapper functions.
+func SetMapperLogger(l *zap.Logger) {
+	if l != nil {
+		mapperLogger = l.Named("mapper")
+	}
+}
 
 // Mapper handles conversion between WAHA types and domain types.
 // Using a struct allows for future extension (e.g., adding configuration or logging).
@@ -21,15 +34,24 @@ func NewMapper() *Mapper {
 	return &Mapper{}
 }
 
+// newMapperWithLogger creates a new Mapper and sets the package-level structured logger.
+func newMapperWithLogger(logger *zap.Logger) *Mapper {
+	SetMapperLogger(logger)
+	return &Mapper{}
+}
+
 // stripDataURIPrefix removes the "data:...;base64," prefix from a base64 string if present.
 func stripDataURIPrefix(data string) string {
 	if idx := strings.Index(data, ";base64,"); idx != -1 {
 		prefix := data[:idx+8]
 		stripped := data[idx+8:]
-		log.Printf("[DEBUG stripDataURIPrefix] found prefix=%q strippedLen=%d", prefix, len(stripped))
+		mapperLogger.Debug("stripDataURIPrefix: found prefix",
+			zap.String("prefix", prefix),
+			zap.Int("strippedLen", len(stripped)))
 		return stripped
 	}
-	log.Printf("[DEBUG stripDataURIPrefix] no prefix found, dataLen=%d", len(data))
+	mapperLogger.Debug("stripDataURIPrefix: no prefix found",
+		zap.Int("dataLen", len(data)))
 	return data
 }
 

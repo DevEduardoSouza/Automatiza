@@ -2,11 +2,13 @@ package postgres
 
 import (
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"context"
 	"errors"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
@@ -203,8 +205,24 @@ func (r *settingsRepository) UpdateDispatchText(ctx context.Context, dispatchTex
 		WHERE id = $5
 	`
 
-	name, _ := updates["name"].(string)
-	body, _ := updates["body"].(string)
+	name, nameOk := updates["name"].(string)
+	if !nameOk && updates["name"] != nil {
+		observability.CaptureMessage(sentry.LevelWarning,
+			"Unexpected type for dispatch text 'name' field in update",
+			map[string]string{
+				"module": "settings", "operation": "update_dispatch_text",
+				"dispatch_text_id": dispatchTextID,
+			})
+	}
+	body, bodyOk := updates["body"].(string)
+	if !bodyOk && updates["body"] != nil {
+		observability.CaptureMessage(sentry.LevelWarning,
+			"Unexpected type for dispatch text 'body' field in update",
+			map[string]string{
+				"module": "settings", "operation": "update_dispatch_text",
+				"dispatch_text_id": dispatchTextID,
+			})
+	}
 
 	// Handle is_active - need to use pointer to allow COALESCE
 	var isActive *bool

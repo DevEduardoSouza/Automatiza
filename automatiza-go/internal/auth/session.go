@@ -8,7 +8,11 @@ import (
 	"net"
 	"time"
 
+	"automatiza-go/internal/observability"
+
+	"github.com/getsentry/sentry-go"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 var (
@@ -105,6 +109,7 @@ type RedisSessionStore struct {
 	db           SessionDB
 	cookieConfig *CookieConfig
 	prefix       string
+	logger       *zap.Logger
 }
 
 // SessionDB defines the database operations for sessions.
@@ -135,12 +140,13 @@ type SessionDB interface {
 }
 
 // NewRedisSessionStore creates a new Redis-backed session store.
-func NewRedisSessionStore(redisClient *redis.Client, db SessionDB, cookieConfig *CookieConfig) *RedisSessionStore {
+func NewRedisSessionStore(redisClient *redis.Client, db SessionDB, cookieConfig *CookieConfig, logger *zap.Logger) *RedisSessionStore {
 	return &RedisSessionStore{
 		redis:        redisClient,
 		db:           db,
 		cookieConfig: cookieConfig,
 		prefix:       "session",
+		logger:       logger,
 	}
 }
 
@@ -183,11 +189,11 @@ func (s *RedisSessionStore) Create(ctx context.Context, userID string, metadata 
 		return nil, "", "", fmt.Errorf("failed to create session in database: %w", err)
 	}
 
-	// Cache in Redis
-	if err := s.cacheSession(ctx, session); err != nil {
-		// Log error but don't fail - database is source of truth
-		// The session will be fetched from DB on next request
-		_ = err
+	// Cache in Redis (fail-open: DB is source of truth)
+	if cacheErr := s.cacheSession(ctx, session); cacheErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "session cache write failed after create (fail-open)", cacheErr, map[string]string{
+			"module": "auth", "operation": "cache_session_create", "session_id": session.ID, "cache_policy": "fail-open",
+		})
 	}
 
 	return session, refreshToken, csrfToken, nil
@@ -220,8 +226,12 @@ func (s *RedisSessionStore) Get(ctx context.Context, sessionID string) (*Session
 		return nil, ErrSessionExpired
 	}
 
-	// Update cache
-	_ = s.cacheSession(ctx, session)
+	// Update cache (fail-open: DB is source of truth)
+	if cacheErr := s.cacheSession(ctx, session); cacheErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "session cache write failed after db fetch (fail-open)", cacheErr, map[string]string{
+			"module": "auth", "operation": "cache_session_get", "session_id": session.ID, "cache_policy": "fail-open",
+		})
+	}
 
 	return session, nil
 }
@@ -279,8 +289,12 @@ func (s *RedisSessionStore) Refresh(ctx context.Context, sessionID, refreshToken
 		return nil, "", "", fmt.Errorf("failed to update session: %w", err)
 	}
 
-	// Update cache
-	_ = s.cacheSession(ctx, session)
+	// Update cache (fail-open: DB is source of truth)
+	if cacheErr := s.cacheSession(ctx, session); cacheErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "session cache write failed after refresh (fail-open)", cacheErr, map[string]string{
+			"module": "auth", "operation": "cache_session_refresh", "session_id": session.ID, "cache_policy": "fail-open",
+		})
+	}
 
 	return session, newRefreshToken, newCSRFToken, nil
 }
@@ -394,8 +408,12 @@ func (s *RedisSessionStore) GetCSRFToken(ctx context.Context, sessionID string) 
 		return "", fmt.Errorf("failed to update session: %w", err)
 	}
 
-	// Update cache
-	_ = s.cacheSession(ctx, session)
+	// Update cache (fail-open: DB is source of truth)
+	if cacheErr := s.cacheSession(ctx, session); cacheErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "session cache write failed after csrf rotation (fail-open)", cacheErr, map[string]string{
+			"module": "auth", "operation": "cache_session_csrf", "session_id": session.ID, "cache_policy": "fail-open",
+		})
+	}
 
 	return csrfToken, nil
 }
@@ -443,7 +461,11 @@ func (s *RedisSessionStore) getFromCache(ctx context.Context, sessionID string) 
 // removeFromCache removes a session from Redis cache.
 func (s *RedisSessionStore) removeFromCache(ctx context.Context, sessionID string) {
 	key := s.cacheKey(sessionID)
-	_ = s.redis.Del(ctx, key)
+	if delErr := s.redis.Del(ctx, key).Err(); delErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "session cache delete failed (fail-open)", delErr, map[string]string{
+			"module": "auth", "operation": "cache_delete", "session_id": sessionID, "cache_policy": "fail-open",
+		})
+	}
 }
 
 // cacheKey generates the Redis key for a session.

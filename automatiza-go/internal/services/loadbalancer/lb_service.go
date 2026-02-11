@@ -9,8 +9,10 @@ import (
 
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -112,7 +114,11 @@ func (s *lbService) GetServerForUser(ctx context.Context, userID string) (*model
 
 	// Cache for 5 minutes
 	if s.cache != nil && server != nil {
-		_ = s.cache.SetJSON(ctx, cacheKey, server, 5*time.Minute)
+		if cacheErr := s.cache.SetJSON(ctx, cacheKey, server, 5*time.Minute); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelInfo, "Failed to cache user-server mapping", cacheErr, map[string]string{
+				"module": "loadbalancer", "operation": "user_server_cache_set", "cache_policy": "fail-open",
+			})
+		}
 	}
 
 	return server, nil
@@ -149,7 +155,11 @@ func (s *lbService) AssignUserToServer(ctx context.Context, userID string) (*mod
 
 	// Invalidate cache
 	if s.cache != nil {
-		_ = s.cache.Delete(ctx, fmt.Sprintf("user_server:%s", userID))
+		if cacheErr := s.cache.Delete(ctx, fmt.Sprintf("user_server:%s", userID)); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelInfo, "Failed to invalidate user-server cache after assignment", cacheErr, map[string]string{
+				"module": "loadbalancer", "operation": "user_server_cache_delete_assign", "cache_policy": "fail-open",
+			})
+		}
 	}
 
 	return server, nil
@@ -180,7 +190,11 @@ func (s *lbService) MigrateUser(ctx context.Context, userID, targetServerID stri
 
 	// Invalidate cache
 	if s.cache != nil {
-		_ = s.cache.Delete(ctx, fmt.Sprintf("user_server:%s", userID))
+		if cacheErr := s.cache.Delete(ctx, fmt.Sprintf("user_server:%s", userID)); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelInfo, "Failed to invalidate user-server cache after migration", cacheErr, map[string]string{
+				"module": "loadbalancer", "operation": "user_server_cache_delete_migrate", "cache_policy": "fail-open",
+			})
+		}
 	}
 
 	s.logger.Info("Migrated user to new server",
@@ -198,7 +212,11 @@ func (s *lbService) RemoveUserServer(ctx context.Context, userID string) error {
 
 	// Invalidate cache
 	if s.cache != nil {
-		_ = s.cache.Delete(ctx, fmt.Sprintf("user_server:%s", userID))
+		if cacheErr := s.cache.Delete(ctx, fmt.Sprintf("user_server:%s", userID)); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelInfo, "Failed to invalidate user-server cache after removal", cacheErr, map[string]string{
+				"module": "loadbalancer", "operation": "user_server_cache_delete_remove", "cache_policy": "fail-open",
+			})
+		}
 	}
 
 	s.logger.Info("Removed user server mapping", zap.String("userID", userID))
@@ -339,7 +357,11 @@ func (s *lbService) loadServers(ctx context.Context) ([]models.WahaServer, error
 		var configuredServers []models.WahaServer
 		if err := json.Unmarshal([]byte(serversJSON), &configuredServers); err == nil && len(configuredServers) > 0 {
 			if s.cache != nil {
-				_ = s.cache.SetJSON(ctx, cacheKey, configuredServers, time.Minute)
+				if cacheErr := s.cache.SetJSON(ctx, cacheKey, configuredServers, time.Minute); cacheErr != nil {
+					observability.LogAndCapture(s.logger, sentry.LevelInfo, "Failed to cache configured server list", cacheErr, map[string]string{
+						"module": "loadbalancer", "operation": "server_list_cache_set", "cache_policy": "fail-open",
+					})
+				}
 			}
 			return configuredServers, nil
 		}
@@ -361,7 +383,11 @@ func (s *lbService) loadServers(ctx context.Context) ([]models.WahaServer, error
 
 	// Cache for 1 minute
 	if s.cache != nil {
-		_ = s.cache.SetJSON(ctx, cacheKey, servers, time.Minute)
+		if cacheErr := s.cache.SetJSON(ctx, cacheKey, servers, time.Minute); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelInfo, "Failed to cache default server list", cacheErr, map[string]string{
+				"module": "loadbalancer", "operation": "default_server_list_cache_set", "cache_policy": "fail-open",
+			})
+		}
 	}
 
 	return servers, nil

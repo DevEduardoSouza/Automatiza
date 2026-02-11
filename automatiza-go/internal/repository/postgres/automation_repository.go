@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"context"
 	"encoding/json"
@@ -9,9 +10,38 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
+
+// marshalJSONField marshals a value to JSON, logging and capturing errors.
+// Returns the JSON bytes or the provided fallback on error.
+func marshalJSONField(logger *zap.Logger, val interface{}, fieldName string, fallback []byte) []byte {
+	b, err := json.Marshal(val)
+	if err != nil {
+		observability.LogAndCapture(logger, sentry.LevelWarning,
+			"Failed to marshal automation JSON field",
+			err, map[string]string{
+				"module": "automation", "operation": "marshal_field",
+				"field": fieldName,
+			})
+		return fallback
+	}
+	return b
+}
+
+// unmarshalJSONField unmarshals JSON bytes into dst, logging and capturing errors.
+func unmarshalJSONField(logger *zap.Logger, data []byte, dst interface{}, fieldName, automationID string) {
+	if err := json.Unmarshal(data, dst); err != nil {
+		observability.LogAndCapture(logger, sentry.LevelWarning,
+			"Failed to unmarshal automation JSON field",
+			err, map[string]string{
+				"module": "automation", "operation": "unmarshal_field",
+				"field": fieldName, "automation_id": automationID,
+			})
+	}
+}
 
 type automationRepository struct {
 	db     *DB
@@ -108,16 +138,17 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 	now := time.Now().UTC()
 
 	// Convert arrays to JSON
-	groupIDsJSON, _ := json.Marshal(data.GroupIDs)
-	sendGroupsJSON, _ := json.Marshal(data.SendGroups)
-	monitorGroupIDsJSON, _ := json.Marshal(data.MonitorGroupIDs)
-	categoriesJSON, _ := json.Marshal(data.Categories)
-	storesJSON, _ := json.Marshal(data.Stores)
-	scheduleDaysJSON, _ := json.Marshal(data.ScheduleDays)
+	emptyArr := []byte("[]")
+	groupIDsJSON := marshalJSONField(r.logger, data.GroupIDs, "group_ids", emptyArr)
+	sendGroupsJSON := marshalJSONField(r.logger, data.SendGroups, "send_groups", emptyArr)
+	monitorGroupIDsJSON := marshalJSONField(r.logger, data.MonitorGroupIDs, "monitor_group_ids", emptyArr)
+	categoriesJSON := marshalJSONField(r.logger, data.Categories, "categories", emptyArr)
+	storesJSON := marshalJSONField(r.logger, data.Stores, "stores", emptyArr)
+	scheduleDaysJSON := marshalJSONField(r.logger, data.ScheduleDays, "schedule_days", emptyArr)
 
 	var monitoringRulesJSON []byte
 	if data.MonitoringTextRules != nil {
-		monitoringRulesJSON, _ = json.Marshal(data.MonitoringTextRules)
+		monitoringRulesJSON = marshalJSONField(r.logger, data.MonitoringTextRules, "monitoring_text_rules", []byte("null"))
 	}
 
 	query := `
@@ -164,7 +195,7 @@ func (r *automationRepository) UpdateAutomation(ctx context.Context, automationI
 	for _, key := range []string{"group_ids", "send_groups", "monitor_group_ids", "categories", "stores", "schedule_days"} {
 		if val, ok := updates[key]; ok {
 			if arr, ok := val.([]string); ok {
-				jsonBytes, _ := json.Marshal(arr)
+				jsonBytes := marshalJSONField(r.logger, arr, key, []byte("[]"))
 				updates[key] = string(jsonBytes)
 			}
 		}
@@ -173,7 +204,7 @@ func (r *automationRepository) UpdateAutomation(ctx context.Context, automationI
 	// Convert monitoring_text_rules to JSON
 	if val, ok := updates["monitoring_text_rules"]; ok {
 		if rules, ok := val.(*models.MonitoringTextRules); ok {
-			jsonBytes, _ := json.Marshal(rules)
+			jsonBytes := marshalJSONField(r.logger, rules, "monitoring_text_rules", []byte("null"))
 			updates["monitoring_text_rules"] = string(jsonBytes)
 		}
 	}
@@ -243,7 +274,7 @@ func (r *automationRepository) GetMonitoringAutomationsForGroup(ctx context.Cont
 		  AND monitor_group_ids @> $1::jsonb
 	`
 
-	groupIDJSON, _ := json.Marshal([]string{waGroupID})
+	groupIDJSON := marshalJSONField(r.logger, []string{waGroupID}, "monitor_group_filter", []byte(`[""]`))
 
 	rows, err := r.db.Query(ctx, query, string(groupIDJSON))
 	if err != nil {
@@ -281,28 +312,28 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 		return nil, err
 	}
 
-	// Unmarshal JSON arrays (ignore errors - use empty arrays on failure)
+	// Unmarshal JSON arrays with error capture
 	if groupIDsJSON != nil {
-		_ = json.Unmarshal(groupIDsJSON, &a.GroupIDs)
+		unmarshalJSONField(r.logger, groupIDsJSON, &a.GroupIDs, "group_ids", a.ID)
 	}
 	if sendGroupsJSON != nil {
-		_ = json.Unmarshal(sendGroupsJSON, &a.SendGroups)
+		unmarshalJSONField(r.logger, sendGroupsJSON, &a.SendGroups, "send_groups", a.ID)
 	}
 	if monitorGroupIDsJSON != nil {
-		_ = json.Unmarshal(monitorGroupIDsJSON, &a.MonitorGroupIDs)
+		unmarshalJSONField(r.logger, monitorGroupIDsJSON, &a.MonitorGroupIDs, "monitor_group_ids", a.ID)
 	}
 	if categoriesJSON != nil {
-		_ = json.Unmarshal(categoriesJSON, &a.Categories)
+		unmarshalJSONField(r.logger, categoriesJSON, &a.Categories, "categories", a.ID)
 	}
 	if storesJSON != nil {
-		_ = json.Unmarshal(storesJSON, &a.Stores)
+		unmarshalJSONField(r.logger, storesJSON, &a.Stores, "stores", a.ID)
 	}
 	if scheduleDaysJSON != nil {
-		_ = json.Unmarshal(scheduleDaysJSON, &a.ScheduleDays)
+		unmarshalJSONField(r.logger, scheduleDaysJSON, &a.ScheduleDays, "schedule_days", a.ID)
 	}
 	if monitoringRulesJSON != nil {
 		var rules models.MonitoringTextRules
-		_ = json.Unmarshal(monitoringRulesJSON, &rules)
+		unmarshalJSONField(r.logger, monitoringRulesJSON, &rules, "monitoring_text_rules", a.ID)
 		a.MonitoringTextRules = &rules
 	}
 
@@ -358,28 +389,28 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 			return nil, err
 		}
 
-		// Unmarshal JSON arrays (ignore errors - use empty arrays on failure)
+		// Unmarshal JSON arrays with error capture
 		if groupIDsJSON != nil {
-			_ = json.Unmarshal(groupIDsJSON, &a.GroupIDs)
+			unmarshalJSONField(r.logger, groupIDsJSON, &a.GroupIDs, "group_ids", a.ID)
 		}
 		if sendGroupsJSON != nil {
-			_ = json.Unmarshal(sendGroupsJSON, &a.SendGroups)
+			unmarshalJSONField(r.logger, sendGroupsJSON, &a.SendGroups, "send_groups", a.ID)
 		}
 		if monitorGroupIDsJSON != nil {
-			_ = json.Unmarshal(monitorGroupIDsJSON, &a.MonitorGroupIDs)
+			unmarshalJSONField(r.logger, monitorGroupIDsJSON, &a.MonitorGroupIDs, "monitor_group_ids", a.ID)
 		}
 		if categoriesJSON != nil {
-			_ = json.Unmarshal(categoriesJSON, &a.Categories)
+			unmarshalJSONField(r.logger, categoriesJSON, &a.Categories, "categories", a.ID)
 		}
 		if storesJSON != nil {
-			_ = json.Unmarshal(storesJSON, &a.Stores)
+			unmarshalJSONField(r.logger, storesJSON, &a.Stores, "stores", a.ID)
 		}
 		if scheduleDaysJSON != nil {
-			_ = json.Unmarshal(scheduleDaysJSON, &a.ScheduleDays)
+			unmarshalJSONField(r.logger, scheduleDaysJSON, &a.ScheduleDays, "schedule_days", a.ID)
 		}
 		if monitoringRulesJSON != nil {
 			var rules models.MonitoringTextRules
-			_ = json.Unmarshal(monitoringRulesJSON, &rules)
+			unmarshalJSONField(r.logger, monitoringRulesJSON, &rules, "monitoring_text_rules", a.ID)
 			a.MonitoringTextRules = &rules
 		}
 

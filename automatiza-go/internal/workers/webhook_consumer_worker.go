@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"automatiza-go/internal/metrics"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/reconciliation"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
 )
@@ -160,6 +162,13 @@ func NewWebhookConsumerWorker(config WebhookConsumerWorkerConfig) *WebhookConsum
 //  5. On success: mark as processed
 //  6. On failure: check retry count and handle accordingly
 func (w *WebhookConsumerWorker) ProcessTask(ctx context.Context, task *asynq.Task) error {
+	// T3.9: Check context cancellation before processing
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	// 1. Parse task payload
 	var data WebhookJobData
 	if err := json.Unmarshal(task.Payload(), &data); err != nil {
@@ -259,6 +268,13 @@ func (w *WebhookConsumerWorker) ProcessTask(ctx context.Context, task *asynq.Tas
 
 // routeEvent routes the webhook event to the appropriate processor.
 func (w *WebhookConsumerWorker) routeEvent(ctx context.Context, data *WebhookJobData) error {
+	// T3.9: Check context cancellation before routing
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	eventType := strings.ToLower(data.Event)
 
 	switch {
@@ -469,6 +485,18 @@ func (w *WebhookConsumerWorker) handleProcessingError(
 			zap.String("eventID", data.EventID),
 			zap.String("eventType", data.Event),
 			zap.Int("retryCount", retryCount))
+
+		// T3.9: Capture DLQ events in Sentry for alerting
+		observability.LogAndCapture(logger, sentry.LevelError,
+			"Webhook event moved to DLQ after max retries",
+			fmt.Errorf("DLQ: event %s (%s) failed after %d retries: %w", data.EventID, data.Event, retryCount, processErr),
+			map[string]string{
+				"module":     "webhook-consumer",
+				"eventID":    data.EventID,
+				"eventType":  data.Event,
+				"session":    data.Session,
+				"retryCount": fmt.Sprintf("%d", retryCount),
+			})
 
 		// Mark as DLQ in database
 		if err := w.webhookEventsRepo.MarkDLQ(ctx, data.EventID, processErr.Error()); err != nil {

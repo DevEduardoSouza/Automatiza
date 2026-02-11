@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"strconv"
@@ -285,11 +286,13 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("JWT_SECRET is required")
 	}
 
-	// Warn (but don't fail) for security-related missing config
+	// Warn (but don't fail) for security-related missing config.
+	// Uses structured log via the standard library's slog since Sentry may not
+	// be initialized yet at config-load time.
 	if cfg.IsProduction() && cfg.WebhookSecret == "" {
-		// Import observability for Sentry capture is not viable here
-		// since Sentry may not be initialized yet. Use fmt.Fprintf instead.
-		fmt.Fprintf(os.Stderr, "[WARN] WEBHOOK_SECRET is empty in production — HMAC validation disabled\n")
+		slog.Warn("WEBHOOK_SECRET is empty in production — HMAC validation disabled",
+			slog.String("module", "config"),
+			slog.String("security", "hmac-disabled"))
 	}
 
 	return nil

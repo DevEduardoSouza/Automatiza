@@ -3,7 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"time"
 
@@ -293,7 +293,7 @@ func (s *automationService) buildListModeMessage(
 	// Select random CTA if available
 	cta := ""
 	if len(automation.CTAs) > 0 {
-		cta = automation.CTAs[rand.Intn(len(automation.CTAs))]
+		cta = automation.CTAs[rand.IntN(len(automation.CTAs))]
 	}
 
 	// Build ML offer variables with all fields for parity

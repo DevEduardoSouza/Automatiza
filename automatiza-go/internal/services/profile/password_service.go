@@ -13,8 +13,10 @@ import (
 
 	"automatiza-go/internal/adapters/email"
 	"automatiza-go/internal/auth"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -140,8 +142,18 @@ func (s *PasswordService) RequestPasswordReset(ctx context.Context, input Reques
 	}
 
 	// 8. Increment rate limit counters (best effort - don't fail if counter update fails)
-	_ = s.rateLimitRepo.Increment(ctx, input.Email, "email")
-	_ = s.rateLimitRepo.Increment(ctx, input.IPAddress, "ip")
+	if err := s.rateLimitRepo.Increment(ctx, input.Email, "email"); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "rate limit increment failed for password reset", err, map[string]string{
+			"module":    "auth",
+			"operation": "rate_limit_increment_email",
+		})
+	}
+	if err := s.rateLimitRepo.Increment(ctx, input.IPAddress, "ip"); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "rate limit increment failed for password reset", err, map[string]string{
+			"module":    "auth",
+			"operation": "rate_limit_increment_ip",
+		})
+	}
 
 	s.logger.Info("password reset requested",
 		zap.String("userID", profile.ID),
@@ -227,7 +239,14 @@ func (s *PasswordService) ResetPassword(ctx context.Context, input ResetPassword
 	}
 
 	// 7. Send confirmation email
-	profile, _ := s.profileRepo.GetProfile(ctx, tokenRecord.UserID)
+	profile, err := s.profileRepo.GetProfile(ctx, tokenRecord.UserID)
+	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "failed to fetch profile for password reset confirmation email", err, map[string]string{
+			"module":    "auth",
+			"operation": "get_profile_for_reset_confirmation",
+			"userID":    tokenRecord.UserID,
+		})
+	}
 	if profile != nil {
 		if err := s.emailProvider.SendPasswordChangedEmail(ctx, email.PasswordChangedEmailInput{
 			To:        profile.Email,

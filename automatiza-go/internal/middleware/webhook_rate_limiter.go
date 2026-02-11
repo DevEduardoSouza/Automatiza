@@ -64,7 +64,8 @@ type rateLimitEntry struct {
 }
 
 // newWebhookRateLimiter creates a new webhook rate limiter.
-func newWebhookRateLimiter(config *WebhookRateLimiterConfig) *webhookRateLimiter {
+// The provided context controls the lifetime of the cleanup goroutine.
+func newWebhookRateLimiter(config *WebhookRateLimiterConfig, ctx context.Context) *webhookRateLimiter {
 	if config == nil {
 		config = DefaultWebhookRateLimitConfig()
 	}
@@ -74,26 +75,34 @@ func newWebhookRateLimiter(config *WebhookRateLimiterConfig) *webhookRateLimiter
 		memStore: make(map[string]*rateLimitEntry),
 	}
 
-	// Start cleanup goroutine for in-memory store
-	go rl.cleanupLoop()
+	// Start cleanup goroutine for in-memory store with context cancellation (T3.9)
+	observability.SafeGo("webhook-rate-limiter-cleanup", func() {
+		rl.cleanupLoop(ctx)
+	})
 
 	return rl
 }
 
 // cleanupLoop periodically removes expired entries from the in-memory store.
-func (rl *webhookRateLimiter) cleanupLoop() {
+// Respects context cancellation for graceful shutdown (T3.9).
+func (rl *webhookRateLimiter) cleanupLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		rl.memStoreMu.Lock()
-		now := time.Now()
-		for k, v := range rl.memStore {
-			if now.After(v.resetAt) {
-				delete(rl.memStore, k)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			rl.memStoreMu.Lock()
+			now := time.Now()
+			for k, v := range rl.memStore {
+				if now.After(v.resetAt) {
+					delete(rl.memStore, k)
+				}
 			}
+			rl.memStoreMu.Unlock()
 		}
-		rl.memStoreMu.Unlock()
 	}
 }
 
@@ -109,8 +118,10 @@ func (rl *webhookRateLimiter) check(ip string) (allowed bool, remaining int, ret
 }
 
 // checkRedis performs rate limiting using Redis.
+// Uses context.WithTimeout (T3.9) to prevent indefinite blocking on Redis.
 func (rl *webhookRateLimiter) checkRedis(ip string) (bool, int, time.Duration) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	key := rl.config.KeyPrefix + ":ip:" + ip
 
 	pipe := rl.config.RedisClient.Pipeline()
@@ -181,8 +192,16 @@ func (rl *webhookRateLimiter) checkMemory(ip string) (bool, int, time.Duration) 
 }
 
 // WebhookRateLimitMiddleware creates a Gin middleware for webhook rate limiting.
+// The cleanup goroutine uses a background context; for server-lifetime control,
+// use WebhookRateLimitMiddlewareWithContext.
 func WebhookRateLimitMiddleware(config *WebhookRateLimiterConfig) gin.HandlerFunc {
-	limiter := newWebhookRateLimiter(config)
+	return WebhookRateLimitMiddlewareWithContext(config, context.Background())
+}
+
+// WebhookRateLimitMiddlewareWithContext creates a Gin middleware for webhook rate limiting.
+// The ctx parameter controls the lifetime of the background cleanup goroutine (T3.9).
+func WebhookRateLimitMiddlewareWithContext(config *WebhookRateLimiterConfig, ctx context.Context) gin.HandlerFunc {
+	limiter := newWebhookRateLimiter(config, ctx)
 
 	return func(c *gin.Context) {
 		ip := c.ClientIP()

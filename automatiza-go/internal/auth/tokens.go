@@ -9,34 +9,47 @@ import (
 	"fmt"
 	"sync"
 
+	"automatiza-go/internal/observability"
+
+	"github.com/getsentry/sentry-go"
 	"github.com/google/uuid"
 )
 
 // tokenHMACKey holds the server-side secret key for HMAC operations.
 // This MUST be set via InitTokenHMAC before using HashToken functions.
+// Protected by sync.Once to guarantee thread-safe, single initialization.
 var (
-	tokenHMACKey   []byte
-	tokenHMACKeyMu sync.RWMutex
+	tokenHMACKey  []byte
+	tokenHMACOnce sync.Once
+	tokenHMACErr  error
 )
 
 // InitTokenHMAC initializes the HMAC key for token hashing.
 // The key should be at least 32 bytes (256 bits) for security.
 // This MUST be called at application startup with a secret from config.
+// Uses sync.Once to ensure thread-safe, exactly-once initialization.
+// Subsequent calls are no-ops (the first key wins).
 func InitTokenHMAC(key []byte) error {
-	if len(key) < 32 {
-		return fmt.Errorf("HMAC key must be at least 32 bytes, got %d", len(key))
-	}
-	tokenHMACKeyMu.Lock()
-	defer tokenHMACKeyMu.Unlock()
-	tokenHMACKey = make([]byte, len(key))
-	copy(tokenHMACKey, key)
-	return nil
+	tokenHMACOnce.Do(func() {
+		if len(key) < 32 {
+			tokenHMACErr = fmt.Errorf("HMAC key must be at least 32 bytes, got %d", len(key))
+			observability.CaptureMessage(sentry.LevelError, "HMAC key initialization failed: key too short",
+				map[string]string{
+					"module":   "auth",
+					"flow":     "token-hmac-init",
+					"key_size": fmt.Sprintf("%d", len(key)),
+				})
+			return
+		}
+		tokenHMACKey = make([]byte, len(key))
+		copy(tokenHMACKey, key)
+	})
+	return tokenHMACErr
 }
 
 // getHMACKey returns the current HMAC key.
+// Returns nil if InitTokenHMAC was not called or failed.
 func getHMACKey() []byte {
-	tokenHMACKeyMu.RLock()
-	defer tokenHMACKeyMu.RUnlock()
 	return tokenHMACKey
 }
 

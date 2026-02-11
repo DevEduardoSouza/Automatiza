@@ -9,8 +9,10 @@ import (
 	apperrors "automatiza-go/internal/errors"
 	"automatiza-go/internal/lib/urlvalidation"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -364,7 +366,15 @@ func (s *service) BulkCreateItems(ctx context.Context, userID string, input Bulk
 
 	existingURLs := make(map[string]bool)
 	for _, item := range existingItems {
-		normalized, _ := urlvalidation.NormalizeURL(item.OriginURL)
+		normalized, normErr := urlvalidation.NormalizeURL(item.OriginURL)
+		if normErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning,
+				"Failed to normalize existing item URL, using original",
+				normErr, map[string]string{
+					"module": "ml_link_lists", "operation": "bulk_create_normalize_existing",
+				})
+			normalized = item.OriginURL
+		}
 		existingURLs[normalized] = true
 	}
 
@@ -373,7 +383,15 @@ func (s *service) BulkCreateItems(ctx context.Context, userID string, input Bulk
 	skippedDuplicates := make([]string, 0)
 
 	for _, rawURL := range uniqueURLs {
-		normalized, _ := urlvalidation.NormalizeURL(rawURL)
+		normalized, normErr := urlvalidation.NormalizeURL(rawURL)
+		if normErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning,
+				"Failed to normalize URL for dedup check, using original",
+				normErr, map[string]string{
+					"module": "ml_link_lists", "operation": "bulk_create_normalize_dedup",
+				})
+			normalized = rawURL
+		}
 		if existingURLs[normalized] {
 			skippedDuplicates = append(skippedDuplicates, rawURL)
 		} else {
@@ -397,7 +415,15 @@ func (s *service) BulkCreateItems(ctx context.Context, userID string, input Bulk
 	// Build items
 	items := make([]models.MlLinkListItem, len(newURLs))
 	for i, rawURL := range newURLs {
-		normalized, _ := urlvalidation.NormalizeURL(rawURL)
+		normalized, normErr := urlvalidation.NormalizeURL(rawURL)
+		if normErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning,
+				"Failed to normalize URL for item creation, using original",
+				normErr, map[string]string{
+					"module": "ml_link_lists", "operation": "bulk_create_normalize_item",
+				})
+			normalized = rawURL
+		}
 		items[i] = models.MlLinkListItem{
 			ListID:     input.ListID,
 			OriginURL:  normalized,
