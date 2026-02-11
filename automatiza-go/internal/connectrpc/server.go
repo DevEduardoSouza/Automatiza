@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"automatiza-go/internal/auth"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
 	"connectrpc.com/connect"
@@ -58,20 +59,24 @@ func (s *Server) RegisterService(path string, handler http.Handler) {
 }
 
 // DefaultInterceptors returns the standard set of interceptors for ConnectRPC services.
+// Chain order: Recovery -> Tracing -> Sentry -> Logging -> Validation
 func (s *Server) DefaultInterceptors() []connect.Interceptor {
 	return []connect.Interceptor{
-		NewRecoveryInterceptor(s.logger),
+		observability.NewSentryRecoveryInterceptor(),
 		NewTracingInterceptor(s.logger),
+		observability.NewSentryInterceptor(),
 		NewLoggingInterceptor(s.logger),
 		NewValidationInterceptor(),
 	}
 }
 
 // AuthInterceptors returns interceptors including authentication and suspension check.
+// Chain order: Recovery -> Tracing -> Sentry -> Logging -> Auth -> Suspension -> CSRF -> Validation
 func (s *Server) AuthInterceptors() []connect.Interceptor {
 	return []connect.Interceptor{
-		NewRecoveryInterceptor(s.logger),
+		observability.NewSentryRecoveryInterceptor(),
 		NewTracingInterceptor(s.logger),
+		observability.NewSentryInterceptor(),
 		NewLoggingInterceptor(s.logger),
 		NewAuthInterceptor(s.authService, s.cookieConfig),
 		NewSuspensionInterceptor(s.suspensionChecker, s.logger),
@@ -84,8 +89,9 @@ func (s *Server) AuthInterceptors() []connect.Interceptor {
 // Use this for endpoints that suspended users should still be able to access.
 func (s *Server) AuthInterceptorsWithoutSuspension() []connect.Interceptor {
 	return []connect.Interceptor{
-		NewRecoveryInterceptor(s.logger),
+		observability.NewSentryRecoveryInterceptor(),
 		NewTracingInterceptor(s.logger),
+		observability.NewSentryInterceptor(),
 		NewLoggingInterceptor(s.logger),
 		NewAuthInterceptor(s.authService, s.cookieConfig),
 		NewCSRFInterceptor(s.authService),

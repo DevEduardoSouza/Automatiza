@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"automatiza-go/internal/observability"
+
+	"github.com/getsentry/sentry-go"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -192,7 +195,14 @@ func (r *RateLimiter) Increment(ctx context.Context, key string) (*RateLimitResu
 		return nil, fmt.Errorf("failed to increment rate limit: %w", err)
 	}
 
-	count := int(result.(int64))
+	countInt64, ok := result.(int64)
+	if !ok {
+		observability.CaptureMessage(sentry.LevelError, "rate limiter: unexpected type from Redis Eval result",
+			map[string]string{"module": "rate-limiter", "expected": "int64", "got": fmt.Sprintf("%T", result)})
+		// Fail open: allow the request rather than panic
+		return &RateLimitResult{Allowed: true, Remaining: r.config.MaxAttempts}, nil
+	}
+	count := int(countInt64)
 	remaining := r.config.MaxAttempts - count
 	if remaining < 0 {
 		remaining = 0

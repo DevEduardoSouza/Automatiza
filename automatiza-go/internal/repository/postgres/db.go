@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"automatiza-go/internal/observability"
+
+	"github.com/getsentry/sentry-go"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
@@ -56,6 +59,14 @@ func NewDB(ctx context.Context, cfg *Config, logger *zap.Logger) (*DB, error) {
 	poolConfig.MaxConnIdleTime = 5 * time.Minute
 	poolConfig.HealthCheckPeriod = 1 * time.Minute
 
+	// Set statement_timeout to prevent runaway queries (30s default)
+	if poolConfig.ConnConfig.RuntimeParams == nil {
+		poolConfig.ConnConfig.RuntimeParams = make(map[string]string)
+	}
+	if _, exists := poolConfig.ConnConfig.RuntimeParams["statement_timeout"]; !exists {
+		poolConfig.ConnConfig.RuntimeParams["statement_timeout"] = "30000"
+	}
+
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
@@ -73,7 +84,32 @@ func NewDB(ctx context.Context, cfg *Config, logger *zap.Logger) (*DB, error) {
 		zap.String("database", cfg.Database),
 	)
 
-	return &DB{pool: pool, logger: logger}, nil
+	db := &DB{pool: pool, logger: logger}
+
+	// Start pool stat monitoring goroutine
+	observability.SafeGo("db-pool-monitor", func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			stat := pool.Stat()
+			utilization := float64(stat.AcquiredConns()) / float64(stat.MaxConns())
+			if utilization > 0.8 {
+				observability.LogAndCapture(logger, sentry.LevelWarning,
+					"database pool utilization above 80%", nil,
+					map[string]string{
+						"module":        "postgres",
+						"flow":          "pool-monitor",
+						"acquired":      fmt.Sprintf("%d", stat.AcquiredConns()),
+						"max":           fmt.Sprintf("%d", stat.MaxConns()),
+						"idle":          fmt.Sprintf("%d", stat.IdleConns()),
+						"total":         fmt.Sprintf("%d", stat.TotalConns()),
+						"utilization_pct": fmt.Sprintf("%.0f", utilization*100),
+					})
+			}
+		}
+	})
+
+	return db, nil
 }
 
 // Close closes the database connection pool

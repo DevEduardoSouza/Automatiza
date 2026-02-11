@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"go.uber.org/zap"
@@ -61,6 +63,10 @@ func ErrorHandler(logger *zap.Logger, isDevelopment bool) gin.HandlerFunc {
 			// Handle ApiError
 			var apiErr *ApiError
 			if errors.As(err, &apiErr) {
+				// Capture 5xx ApiErrors with Sentry
+				if apiErr.StatusCode >= 500 {
+					captureGinError(c, err)
+				}
 				response := models.ApiResponse[any]{
 					Success: false,
 					Error:   apiErr.Message,
@@ -92,6 +98,9 @@ func ErrorHandler(logger *zap.Logger, isDevelopment bool) gin.HandlerFunc {
 				zap.String("path", c.Request.URL.Path),
 				zap.String("method", c.Request.Method),
 			)
+
+			// Capture all unhandled errors (500) with Sentry
+			captureGinError(c, err)
 
 			// Generic error response
 			response := models.ApiResponse[any]{
@@ -184,6 +193,17 @@ func joinStrings(strs []string, sep string) string {
 		result += sep + strs[i]
 	}
 	return result
+}
+
+// captureGinError captures an error in Sentry using the hub from sentrygin context.
+func captureGinError(c *gin.Context, err error) {
+	if hub := sentrygin.GetHubFromContext(c); hub != nil {
+		hub.WithScope(func(scope *sentry.Scope) {
+			scope.SetTag("path", c.Request.URL.Path)
+			scope.SetTag("method", c.Request.Method)
+			hub.CaptureException(err)
+		})
+	}
 }
 
 // HandleError adds an error to the context

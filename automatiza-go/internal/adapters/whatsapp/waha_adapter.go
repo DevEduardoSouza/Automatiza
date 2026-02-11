@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -144,6 +145,12 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 
 	if logger == nil {
 		logger = zap.NewNop()
+	}
+
+	// Warn if WAHA API URL is not HTTPS in production
+	if os.Getenv("NODE_ENV") == "production" && !strings.HasPrefix(cfg.APIURL, "https://") {
+		logger.Warn("WAHA API URL is not HTTPS in production — communication is not encrypted",
+			zap.String("url", cfg.APIURL))
 	}
 
 	httpTimeout := cfg.HTTPTimeout

@@ -17,13 +17,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/metrics"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/workers"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -80,9 +83,13 @@ func NewWAHAWebhookHandler(
 ) *WAHAWebhookHandler {
 	validator := whatsapp.NewHMACValidator(hmacKey)
 
-	// Warn if HMAC validation is disabled
+	// Alert if HMAC validation is disabled in production
 	if !validator.IsEnabled() {
 		logger.Warn("WAHA webhook HMAC validation is disabled - this is not recommended for production")
+		if os.Getenv("NODE_ENV") == "production" {
+			observability.CaptureMessage(sentry.LevelError, "WAHA HMAC validation disabled in production",
+				map[string]string{"security": "hmac-disabled", "module": "waha-webhook"})
+		}
 	}
 
 	return &WAHAWebhookHandler{

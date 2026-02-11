@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -40,6 +42,7 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/middleware"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/repository/postgres"
 	"automatiza-go/internal/services/ai"
@@ -64,6 +67,8 @@ import (
 	emailadapter "automatiza-go/internal/adapters/email"
 	profileservice "automatiza-go/internal/services/profile"
 
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-gonic/gin"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
@@ -84,13 +89,36 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize Sentry BEFORE logger so early panics are captured
+	if cfg.SentryDSN != "" {
+		if err := observability.InitSentry(observability.SentryConfig{
+			DSN:         cfg.SentryDSN,
+			Environment: cfg.NodeEnv,
+			Release:     "automatiza-go@" + buildVersion(),
+			Debug:       cfg.IsDevelopment(),
+			SampleRate:  1.0,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to initialize Sentry: %v\n", err)
+			// Non-fatal: continue without Sentry
+		}
+	}
+	defer sentry.Flush(2 * time.Second)
+
+	// WaitGroup available for tracking background goroutines
+	wg := &sync.WaitGroup{}
+	_ = wg // available for SafeGo callers that need coordination
+
 	// Create logger
 	logger, err := config.NewLogger(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() { _ = logger.Sync() }()
+	defer func() {
+		if syncErr := logger.Sync(); syncErr != nil {
+			observability.LogAndCapture(logger, sentry.LevelWarning, "logger sync failed on shutdown", syncErr, map[string]string{"module": "main", "flow": "shutdown"})
+		}
+	}()
 
 	logger.Info("Starting application",
 		zap.String("env", cfg.NodeEnv),
@@ -116,12 +144,23 @@ func main() {
 		logger.Warn("Failed to connect to Redis, continuing without cache",
 			zap.Error(err))
 	} else {
-		defer func() { _ = redisClient.Close() }()
+		defer func() {
+			if err := redisClient.Close(); err != nil {
+				observability.LogAndCapture(logger, sentry.LevelWarning, "redis close failed on shutdown", err,
+					map[string]string{"module": "main", "flow": "shutdown"})
+			}
+		}()
 	}
 
 	// Create PostgreSQL connection
 	pgCfg := cfg.GetPostgresConfig()
-	port, _ := strconv.Atoi(pgCfg.Port)
+	port, portErr := strconv.Atoi(pgCfg.Port)
+	if portErr != nil {
+		logger.Error("Invalid DB_PORT value, must be a number", zap.String("port", pgCfg.Port), zap.Error(portErr))
+		sentry.CaptureException(fmt.Errorf("startup: invalid DB_PORT %q: %w", pgCfg.Port, portErr))
+		sentry.Flush(2 * time.Second)
+		os.Exit(1)
+	}
 	db, err := postgres.NewDB(context.Background(), &postgres.Config{
 		Host:     pgCfg.Host,
 		Port:     port,
@@ -132,7 +171,10 @@ func main() {
 		MaxConns: int32(pgCfg.MaxConns),
 	}, config.NewModuleLogger(logger, "postgres"))
 	if err != nil {
-		logger.Fatal("Failed to connect to PostgreSQL", zap.Error(err))
+		logger.Error("Failed to connect to PostgreSQL", zap.Error(err))
+		sentry.CaptureException(fmt.Errorf("startup: failed to connect to PostgreSQL: %w", err))
+		sentry.Flush(2 * time.Second)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -172,7 +214,10 @@ func main() {
 			WebhookSecret:  cfg.WebhookSecret,
 		}, config.NewModuleLogger(logger, "waha-adapter"))
 		if err != nil {
-			logger.Fatal("Failed to create WAHA adapter", zap.Error(err))
+			logger.Error("Failed to create WAHA adapter", zap.Error(err))
+			sentry.CaptureException(fmt.Errorf("startup: failed to create WAHA adapter: %w", err))
+			sentry.Flush(2 * time.Second)
+			os.Exit(1)
 		}
 		wahaAdapter = adapter
 	} else {
@@ -220,7 +265,12 @@ func main() {
 
 	// Create queue client (needed for services)
 	queueClient := workers.NewQueueClient(redisAddr, config.NewModuleLogger(logger, "queue"))
-	defer func() { _ = queueClient.Close() }()
+	defer func() {
+		if err := queueClient.Close(); err != nil {
+			observability.LogAndCapture(logger, sentry.LevelWarning, "queue client close failed on shutdown", err,
+				map[string]string{"module": "main", "flow": "shutdown"})
+		}
+	}()
 
 	// Create services
 	shopeeService := shopee.NewShopeeService(
@@ -417,8 +467,8 @@ func main() {
 		ctx, cancelBridge := context.WithCancel(context.Background())
 		defer cancelBridge()
 		if err := bridge.Subscribe(ctx); err != nil {
-			logger.Warn("Failed to start Redis SSE bridge, SSE from worker will not be relayed",
-				zap.Error(err))
+			observability.LogAndCapture(logger, sentry.LevelError, "failed to start Redis SSE bridge", err,
+				map[string]string{"module": "sse-bridge", "flow": "startup"})
 		} else {
 			logger.Info("Redis SSE bridge started (server-side subscriber)")
 		}
@@ -427,7 +477,10 @@ func main() {
 	// Create DB clients (for auth service - uses PostgreSQL directly)
 	dbClients, err := config.NewDBClients(cfg)
 	if err != nil {
-		logger.Fatal("Failed to create DB clients", zap.Error(err))
+		logger.Error("Failed to create DB clients", zap.Error(err))
+		sentry.CaptureException(fmt.Errorf("startup: failed to create DB clients: %w", err))
+		sentry.Flush(2 * time.Second)
+		os.Exit(1)
 	}
 
 	// Create dependencies
@@ -476,7 +529,8 @@ func main() {
 
 	router := gin.New()
 
-	// Add middleware
+	// Add middleware (sentrygin FIRST to capture panics and request context)
+	router.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
 	router.Use(gin.Recovery())
 	router.Use(middleware.LoggingMiddleware(logger))
 	router.Use(middleware.RequestIDMiddleware())
@@ -535,7 +589,12 @@ func main() {
 
 	// Create asynq inspector for GetSyncStatus polling endpoint
 	asynqInspectorServer := asynq.NewInspector(asynq.RedisClientOpt{Addr: redisAddr})
-	defer func() { _ = asynqInspectorServer.Close() }()
+	defer func() {
+		if err := asynqInspectorServer.Close(); err != nil {
+			observability.LogAndCapture(logger, sentry.LevelWarning, "asynq inspector close failed on shutdown", err,
+				map[string]string{"module": "main", "flow": "shutdown"})
+		}
+	}()
 
 	// Create sync progress reader for real-time progress from Redis
 	var syncProgressReader *handlers.RedisSyncProgressReader
@@ -850,14 +909,17 @@ func main() {
 	}
 
 	// Start server in goroutine
-	go func() {
+	observability.SafeGo("http-server", func() {
 		logger.Info("Starting HTTP server",
 			zap.String("addr", srv.Addr))
 
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Failed to start server", zap.Error(err))
+			logger.Error("Failed to start server", zap.Error(err))
+			sentry.CaptureException(fmt.Errorf("http server failed: %w", err))
+			sentry.Flush(2 * time.Second)
+			os.Exit(1)
 		}
-	}()
+	})
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
@@ -1009,13 +1071,14 @@ func runWorker(
 		)
 
 		// Run startup backfill in background to avoid blocking worker startup
-		go func() {
+		observability.SafeGo("backfill-startup", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
 
 			result, err := backfillSvc.RunOnStartup(ctx)
 			if err != nil {
-				logger.Error("Startup backfill failed", zap.Error(err))
+				observability.LogAndCapture(logger, sentry.LevelError, "startup backfill failed", err,
+					map[string]string{"module": "backfill", "flow": "startup"})
 				return
 			}
 
@@ -1033,7 +1096,7 @@ func runWorker(
 					zap.Int("reconciliationsEnqueued", result.ReconciliationsEnqueued),
 					zap.Duration("duration", result.Duration))
 			}
-		}()
+		})
 	}
 
 	// Create webhook consumer worker with SSE integration and monitoring processor
@@ -1059,11 +1122,21 @@ func runWorker(
 
 	// Create asynq inspector for queue monitoring (used by MessageQueueWorker for backpressure)
 	asynqInspector := asynq.NewInspector(asynq.RedisClientOpt{Addr: redisAddr})
-	defer func() { _ = asynqInspector.Close() }()
+	defer func() {
+		if err := asynqInspector.Close(); err != nil {
+			observability.LogAndCapture(logger, sentry.LevelWarning, "asynq inspector close failed on shutdown", err,
+				map[string]string{"module": "worker", "flow": "shutdown"})
+		}
+	}()
 
 	// Create asynq client for enqueueing tasks (used by MessageQueueWorker)
 	asynqClient := asynq.NewClient(asynq.RedisClientOpt{Addr: redisAddr})
-	defer func() { _ = asynqClient.Close() }()
+	defer func() {
+		if err := asynqClient.Close(); err != nil {
+			observability.LogAndCapture(logger, sentry.LevelWarning, "asynq client close failed on shutdown", err,
+				map[string]string{"module": "worker", "flow": "shutdown"})
+		}
+	}()
 
 	// Create message queue worker for new message types (text, audio, image, poll)
 	// This worker handles messages enqueued with type-specific task types for better routing
@@ -1096,11 +1169,14 @@ func runWorker(
 	}
 
 	// Start server
-	go func() {
+	observability.SafeGo("queue-server", func() {
 		if err := queueServer.Start(); err != nil {
-			logger.Fatal("Failed to start queue server", zap.Error(err))
+			logger.Error("Failed to start queue server", zap.Error(err))
+			sentry.CaptureException(fmt.Errorf("queue server failed: %w", err))
+			sentry.Flush(2 * time.Second)
+			os.Exit(1)
 		}
-	}()
+	})
 
 	// Wait for interrupt
 	quit := make(chan os.Signal, 1)
@@ -1110,4 +1186,21 @@ func runWorker(
 	logger.Info("Shutting down worker...")
 	queueServer.Shutdown()
 	logger.Info("Worker exited")
+}
+
+// buildVersion returns the build version from Go's debug info.
+func buildVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	for _, s := range info.Settings {
+		if s.Key == "vcs.revision" {
+			if len(s.Value) > 8 {
+				return s.Value[:8]
+			}
+			return s.Value
+		}
+	}
+	return info.Main.Version
 }

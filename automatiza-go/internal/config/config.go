@@ -103,6 +103,9 @@ type Config struct {
 	// Kiwify
 	KiwifyWebhookToken string `mapstructure:"KIWIFY_WEBHOOK_TOKEN"`
 
+	// Sentry
+	SentryDSN string `mapstructure:"SENTRY_DSN"`
+
 	// Timezone
 	Timezone string `mapstructure:"TZ"`
 }
@@ -263,7 +266,32 @@ func applyEnvOverrides(cfg *Config) {
 }
 
 func validateConfig(cfg *Config) error {
-	// PostgreSQL connection is validated when NewDBClients is called
+	// Validate required database fields
+	if cfg.DBHost == "" {
+		return fmt.Errorf("DB_HOST is required")
+	}
+	if cfg.DBUser == "" {
+		return fmt.Errorf("DB_USER is required")
+	}
+	if cfg.DBPassword == "" {
+		return fmt.Errorf("DB_PASSWORD is required")
+	}
+	if cfg.DBName == "" {
+		return fmt.Errorf("DB_NAME is required")
+	}
+
+	// Validate JWT secret
+	if cfg.JWTSecret == "" {
+		return fmt.Errorf("JWT_SECRET is required")
+	}
+
+	// Warn (but don't fail) for security-related missing config
+	if cfg.IsProduction() && cfg.WebhookSecret == "" {
+		// Import observability for Sentry capture is not viable here
+		// since Sentry may not be initialized yet. Use fmt.Fprintf instead.
+		fmt.Fprintf(os.Stderr, "[WARN] WEBHOOK_SECRET is empty in production — HMAC validation disabled\n")
+	}
+
 	return nil
 }
 

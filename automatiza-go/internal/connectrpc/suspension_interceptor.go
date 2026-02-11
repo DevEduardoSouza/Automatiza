@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
+	"github.com/getsentry/sentry-go"
 	"connectrpc.com/connect"
 	"go.uber.org/zap"
 )
@@ -85,7 +87,9 @@ func (i *SuspensionInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryF
 				zap.String("procedure", procedure),
 				zap.Error(err))
 			// Fail open to avoid blocking users due to internal errors
-			// but log for monitoring
+			observability.CaptureWithTags(fmt.Errorf("suspension check fail-open: %w", err), map[string]string{
+				"module": "suspension", "flow": "check", "user_id": user.ID,
+			})
 			return next(ctx, req)
 		}
 
@@ -131,6 +135,9 @@ func (i *SuspensionInterceptor) WrapStreamingHandler(next connect.StreamingHandl
 				zap.String("userID", user.ID),
 				zap.String("procedure", procedure),
 				zap.Error(err))
+			observability.CaptureWithTags(fmt.Errorf("suspension check fail-open (streaming): %w", err), map[string]string{
+				"module": "suspension", "flow": "check-streaming", "user_id": user.ID,
+			})
 			return next(ctx, conn)
 		}
 
@@ -232,6 +239,9 @@ func (c *DBSuspensionChecker) GetBillingStatus(ctx context.Context, userID strin
 			zap.String("userID", userID),
 			zap.Error(err))
 		// Fail open - don't block users due to internal errors
+		observability.LogAndCapture(c.logger, sentry.LevelWarning, "suspension profile lookup fail-open", err, map[string]string{
+			"module": "suspension", "flow": "billing-check", "user_id": userID,
+		})
 		return BillingStatusActive, nil
 	}
 
