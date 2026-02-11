@@ -1,5 +1,4 @@
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -94,18 +93,21 @@ export function JobsTable({
         header: <span className="text-right block">{t('pages.jobs.table.actions')}</span>,
         render: (job: Job) => (
           <div className="flex items-center justify-end gap-1">
-            <Button variant="ghost" size="sm" onClick={() => onEditJob(job)}>
+            <button
+              type="button"
+              onClick={() => onEditJob(job)}
+              className="cursor-pointer rounded-full px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+            >
               {t('pages.jobs.table.edit')}
-            </Button>
+            </button>
             {(job.status === 'pending' || job.status === 'failed') && (
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
+                type="button"
                 onClick={() => onDeleteJob(job.id)}
-                className="text-destructive hover:text-destructive"
+                className="cursor-pointer rounded-full p-1.5 text-destructive transition-colors hover:bg-destructive/10"
               >
                 <Trash2 className="h-4 w-4" />
-              </Button>
+              </button>
             )}
           </div>
         ),
@@ -158,18 +160,21 @@ export function JobsTable({
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => onEditJob(job)}>
+                  <button
+                    type="button"
+                    onClick={() => onEditJob(job)}
+                    className="cursor-pointer rounded-full px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+                  >
                     {t('pages.jobs.table.edit')}
-                  </Button>
+                  </button>
                   {(job.status === 'pending' || job.status === 'failed') && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <button
+                      type="button"
                       onClick={() => onDeleteJob(job.id)}
-                      className="text-destructive hover:text-destructive"
+                      className="cursor-pointer rounded-full p-1.5 text-destructive transition-colors hover:bg-destructive/10"
                     >
                       <Trash2 className="h-4 w-4" />
-                    </Button>
+                    </button>
                   )}
                 </div>
               </TableCell>

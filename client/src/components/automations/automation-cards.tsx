@@ -1,10 +1,9 @@
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { formatDelayCompact, getModeKey, getModeVariant } from '@/lib/automation-formatters';
 import type { Automation } from '@/types/automation';
 import { format } from 'date-fns';
-import { Edit, FileText, Play, RotateCcw, Trash2 } from 'lucide-react';
+import { FileText, Play, RotateCcw, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const colors = {
@@ -44,11 +43,11 @@ export function AutomationCards({
   const { t } = useTranslation();
 
   return (
-    <div className="md:hidden space-y-3">
+    <div className="md:hidden space-y-3 xs:space-y-4">
       {automations.map((auto) => (
         <div
           key={auto.id}
-          className="rounded-xl xs:rounded-2xl border p-3 xs:p-4 space-y-3"
+          className="rounded-xl xs:rounded-2xl border p-3 xs:p-4 sm:p-5 space-y-3"
           style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
         >
           <div className="flex items-start justify-between gap-2">
@@ -82,52 +81,55 @@ export function AutomationCards({
           </div>
 
           <div
-            className="flex gap-1 xs:gap-2 pt-2 border-t flex-wrap"
+            className="flex flex-col xs:flex-row gap-2 pt-2 border-t"
             style={{ borderColor: colors.wineBorder }}
           >
-            <Button variant="outline" size="sm" onClick={() => onEdit(auto)} className="flex-1 min-w-0 xs:min-w-[100px]">
-              <Edit className="h-3 w-3 mr-1" />
+            <button
+              type="button"
+              onClick={() => onEdit(auto)}
+              className="flex-1 inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+            >
               {t('pages.offerAutomations.actions.editShort')}
-            </Button>
+            </button>
             {auto.mode === 'search' && (
               <>
                 {auto.stores.includes('shopee') && (
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <button
+                    type="button"
                     onClick={() => onPreview(auto)}
                     disabled={loadingPreview}
-                    className="flex-1 min-w-0 xs:min-w-[100px]"
+                    className="flex-1 inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <FileText className="h-3 w-3 mr-1" />
+                    <FileText className="h-3 w-3" />
                     {t('pages.offerAutomations.actions.previewShort')}
-                  </Button>
+                  </button>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
+                <button
+                  type="button"
                   onClick={() => onRunNow(auto)}
                   disabled={runningId === auto.id || auto.status !== 'active'}
-                  className="flex-1 min-w-0 xs:min-w-[100px]"
+                  className="flex-1 inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Play
-                    className={`h-3 w-3 mr-1 ${runningId === auto.id ? 'animate-pulse' : ''}`}
-                  />
+                  <Play className={`h-3 w-3 ${runningId === auto.id ? 'animate-pulse' : ''}`} />
                   {t('pages.offerAutomations.actions.runNowShort')}
-                </Button>
+                </button>
               </>
             )}
-            <Button
-              variant="outline"
-              size="sm"
+            <button
+              type="button"
               onClick={() => onResetHistory(auto.id, auto.name)}
               disabled={resettingId === auto.id}
+              className="inline-flex cursor-pointer items-center justify-center rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RotateCcw className={`h-3 w-3 ${resettingId === auto.id ? 'animate-spin' : ''}`} />
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => onDelete(auto.id)}>
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(auto.id)}
+              className="inline-flex cursor-pointer items-center justify-center rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-red-300 bg-white text-destructive shadow-sm hover:-translate-y-0.5 hover:border-red-400 hover:shadow-md"
+            >
               <Trash2 className="h-3 w-3" />
-            </Button>
+            </button>
           </div>
         </div>
       ))}

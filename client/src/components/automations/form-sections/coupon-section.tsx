@@ -19,8 +19,8 @@ export function CouponSelector({ formData, setFormData, availableCoupons }: Coup
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-2">
-      <Label>{t('pages.offerAutomations.form.coupon')}</Label>
+    <div className="space-y-1.5 xs:space-y-2">
+      <Label className="cursor-pointer">{t('pages.offerAutomations.form.coupon')}</Label>
       <p className="text-xs" style={{ color: 'rgba(141, 45, 83, 0.6)' }}>
         {t('pages.offerAutomations.form.couponHint')}
       </p>
@@ -28,7 +28,7 @@ export function CouponSelector({ formData, setFormData, availableCoupons }: Coup
         value={formData.coupon_id || undefined}
         onValueChange={(value) => setFormData((prev) => ({ ...prev, coupon_id: value || null }))}
       >
-        <SelectTrigger>
+        <SelectTrigger className="cursor-pointer">
           <SelectValue placeholder={t('pages.offerAutomations.form.noCoupon')} />
         </SelectTrigger>
         <SelectContent>
@@ -38,7 +38,7 @@ export function CouponSelector({ formData, setFormData, availableCoupons }: Coup
               return formData.stores.includes(coupon.store as StoreKey);
             })
             .map((coupon) => (
-              <SelectItem key={coupon.id} value={coupon.id}>
+              <SelectItem key={coupon.id} value={coupon.id} className="cursor-pointer">
                 {coupon.code} - {coupon.title}
               </SelectItem>
             ))}

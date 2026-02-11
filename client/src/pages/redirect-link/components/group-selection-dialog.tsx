@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -7,7 +6,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from 'react-i18next';
 import type { Group } from '../types';
@@ -21,6 +19,8 @@ interface GroupSelectionDialogProps {
   onSearchChange: (value: string) => void;
   onToggleSelection: (groupId: string) => void;
   onApply: () => void;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
 }
 
 export function GroupSelectionDialog({
@@ -32,6 +32,8 @@ export function GroupSelectionDialog({
   onSearchChange,
   onToggleSelection,
   onApply,
+  onSelectAll,
+  onDeselectAll,
 }: GroupSelectionDialogProps) {
   const { t } = useTranslation();
 
@@ -55,13 +57,35 @@ export function GroupSelectionDialog({
           <DialogDescription>{t('pages.redirectLink.dialog.description')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <Input
+          <input
             placeholder={t('pages.redirectLink.dialog.searchPlaceholder')}
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="mb-2"
+            className="mb-2 w-full rounded-2xl !border-2 !border-gray-300 bg-gray-50 px-4 py-2 text-xs xs:py-2.5 xs:text-sm lg:py-3 lg:text-base text-gray-900 placeholder-gray-400 outline-none transition-all hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30"
           />
-          <div className="border rounded-lg p-4 space-y-2 max-h-64 overflow-y-auto">
+          <div className="flex items-center justify-between text-xs px-1">
+            <span className="text-muted-foreground">
+              {selectedIds.length} {t('pages.redirectLink.dialog.selectedCount')}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={onSelectAll}
+                className="text-[#520B27] hover:underline cursor-pointer font-medium"
+              >
+                {t('pages.redirectLink.dialog.selectAll')}
+              </button>
+              <span className="text-muted-foreground">|</span>
+              <button
+                type="button"
+                onClick={onDeselectAll}
+                className="text-[#520B27] hover:underline cursor-pointer font-medium"
+              >
+                {t('pages.redirectLink.dialog.deselectAll')}
+              </button>
+            </div>
+          </div>
+          <div className="border rounded-lg p-4 space-y-2 max-h-80 sm:max-h-96 overflow-y-auto">
             {searchTerm === '' && groups.length > 0 && (
               <>
                 {filteredFavorites.length > 0 && (
@@ -134,9 +158,18 @@ export function GroupSelectionDialog({
               </div>
             ))}
           </div>
-          <Button onClick={onApply} className="w-full">
-            {t('pages.redirectLink.dialog.apply')}
-          </Button>
+          <button
+            type="button"
+            onClick={onApply}
+            className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+              <div className="auth-btn-glow__glow absolute inset-0" />
+            </div>
+            <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+              {t('pages.redirectLink.dialog.apply')}
+            </span>
+          </button>
         </div>
       </DialogContent>
     </Dialog>

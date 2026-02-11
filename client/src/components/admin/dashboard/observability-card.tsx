@@ -1,5 +1,4 @@
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -112,16 +111,21 @@ export function ObservabilityCard({ data, loading, onRefresh }: ObservabilityCar
             {t('admin.dashboard.observability.description')}
           </p>
         </div>
-        <Button variant="outline" onClick={onRefresh} disabled={loading}>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+        >
           {loading ? (
-            <span className="flex items-center gap-2">
+            <>
               <Loader2 className="h-4 w-4 animate-spin" />
               {t('admin.dashboard.loadBalancer.refreshing')}
-            </span>
+            </>
           ) : (
             t('admin.dashboard.loadBalancer.refresh')
           )}
-        </Button>
+        </button>
       </div>
       <div className="space-y-3 xs:space-y-4">
         {data ? (

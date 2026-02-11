@@ -20,38 +20,44 @@ export function PriorityFilterSection({ formData, setFormData }: PriorityFilterS
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:gap-6">
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.priority')}</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.priority')}</Label>
         <Select
           value={formData.priority}
           onValueChange={(v) => setFormData((prev) => ({ ...prev, priority: v as PriorityType }))}
         >
-          <SelectTrigger>
+          <SelectTrigger className="cursor-pointer">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="discount">
+            <SelectItem value="discount" className="cursor-pointer">
               {t('pages.offerAutomations.priorities.discount')}
             </SelectItem>
-            <SelectItem value="price">{t('pages.offerAutomations.priorities.price')}</SelectItem>
-            <SelectItem value="commission">
+            <SelectItem value="price" className="cursor-pointer">
+              {t('pages.offerAutomations.priorities.price')}
+            </SelectItem>
+            <SelectItem value="commission" className="cursor-pointer">
               {t('pages.offerAutomations.priorities.commission')}
             </SelectItem>
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.filterType')}</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.filterType')}</Label>
         <Select
           value={formData.filter_type}
           onValueChange={(v) => setFormData((prev) => ({ ...prev, filter_type: v as FilterType }))}
         >
-          <SelectTrigger>
+          <SelectTrigger className="cursor-pointer">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="light">{t('pages.offerAutomations.filterTypes.light')}</SelectItem>
-            <SelectItem value="heavy">{t('pages.offerAutomations.filterTypes.heavy')}</SelectItem>
+            <SelectItem value="light" className="cursor-pointer">
+              {t('pages.offerAutomations.filterTypes.light')}
+            </SelectItem>
+            <SelectItem value="heavy" className="cursor-pointer">
+              {t('pages.offerAutomations.filterTypes.heavy')}
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -69,8 +75,8 @@ export function FiltersSection({ formData, setFormData }: FiltersSectionProps) {
 
   return (
     <div className="grid grid-cols-3 gap-4 lg:gap-6">
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.minDiscount')}</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.minDiscount')}</Label>
         <Input
           type="number"
           min="0"
@@ -84,8 +90,8 @@ export function FiltersSection({ formData, setFormData }: FiltersSectionProps) {
           }
         />
       </div>
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.minPrice')}</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.minPrice')}</Label>
         <Input
           type="number"
           min="0"
@@ -99,8 +105,8 @@ export function FiltersSection({ formData, setFormData }: FiltersSectionProps) {
           }
         />
       </div>
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.maxPrice')}</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.maxPrice')}</Label>
         <Input
           type="number"
           min="0"

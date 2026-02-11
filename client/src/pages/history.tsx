@@ -6,7 +6,7 @@ import {
   HistoryTable,
 } from '@/components/history';
 import { useHistory } from '@/hooks/use-history';
-import { FileText } from 'lucide-react';
+import { FileText, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const HistoryIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -22,6 +22,8 @@ const HistoryIcon = ({ className, style }: { className?: string; style?: React.C
     strokeLinejoin="round"
     className={className}
     style={style}
+    role="img"
+    aria-label="History"
   >
     <path d="M19 10.5V9.99995C19 6.22876 18.9999 4.34311 17.8284 3.17154C16.6568 2 14.7712 2 11 2C7.22889 2 5.34326 2.00006 4.17169 3.17159C3.00015 4.34315 3.00013 6.22872 3.0001 9.99988L3.00006 14.5C3.00003 17.7874 3.00002 19.4312 3.90794 20.5375C4.07418 20.7401 4.25992 20.9258 4.46249 21.0921C5.56883 22 7.21255 22 10.5 22" />
     <path d="M7 7H15M7 11H11" />
@@ -32,11 +34,13 @@ const HistoryIcon = ({ className, style }: { className?: string; style?: React.C
 const colors = {
   wine: '#8D2D53',
   wineBg: 'rgba(141, 45, 83, 0.08)',
+  wineBgHover: 'rgba(141, 45, 83, 0.12)',
   wineBorder: 'rgba(141, 45, 83, 0.2)',
   wineText: '#8D2D53',
   wineTextLight: 'rgba(141, 45, 83, 0.7)',
   wineTextMuted: 'rgba(141, 45, 83, 0.6)',
   iconBg: 'rgba(141, 45, 83, 0.1)',
+  iconBgHover: 'rgba(141, 45, 83, 0.15)',
 };
 
 /**
@@ -64,11 +68,23 @@ export default function History() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="h-8 w-8 animate-spin rounded-full border-4 border-t-transparent"
-          style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
-        />
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
+          style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
+        >
+          <div className="flex items-center justify-center min-h-[300px] xs:min-h-[350px] sm:min-h-[400px]">
+            <div className="text-center space-y-4">
+              <div
+                className="h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
+                style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
+              />
+              <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                {t('pages.history.loading')}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -112,6 +128,42 @@ export default function History() {
 
             <HistoryStatsCards stats={stats} />
 
+            {/* Filters Card */}
+            <div
+              className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
+              style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
+            >
+              <div className="flex items-center gap-2 xs:gap-3 mb-4 xs:mb-5 sm:mb-6">
+                <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
+                  <Search
+                    className="w-4 h-4 xs:w-5 xs:h-5"
+                    style={{ color: colors.wine }}
+                    aria-hidden="true"
+                  />
+                </div>
+                <div>
+                  <span
+                    className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                    style={{ color: colors.wineTextLight }}
+                  >
+                    {t('pages.history.filters.title')}
+                  </span>
+                  <p
+                    className="text-xs xs:text-sm tracking-tight"
+                    style={{ color: colors.wineTextMuted }}
+                  >
+                    {t('pages.history.filters.subtitle')}
+                  </p>
+                </div>
+              </div>
+              <HistoryFilters
+                filters={filters}
+                onFiltersChange={setFilters}
+                onClearFilters={clearFilters}
+              />
+            </div>
+
+            {/* Table Card */}
             <div
               className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
@@ -130,12 +182,15 @@ export default function History() {
                   </div>
                   <div>
                     <span
-                      className="text-xs xs:text-sm lg:text-base font-semibold uppercase tracking-[0.1em] xs:tracking-[0.12em]"
-                      style={{ color: colors.wineText }}
+                      className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                      style={{ color: colors.wineTextLight }}
                     >
                       {t('pages.history.table.title')}
                     </span>
-                    <p className="text-xs xs:text-sm lg:text-base mt-0.5" style={{ color: colors.wineTextMuted }}>
+                    <p
+                      className="text-xs xs:text-sm tracking-tight"
+                      style={{ color: colors.wineTextMuted }}
+                    >
                       {t('pages.history.table.description')}
                     </p>
                   </div>
@@ -146,14 +201,14 @@ export default function History() {
                   disabled={history.length === 0}
                 />
               </div>
-              <HistoryFilters
-                filters={filters}
-                onFiltersChange={setFilters}
-                onClearFilters={clearFilters}
-              />
               {history.length === 0 && !loading ? (
-                <div className="text-center py-8 lg:py-12" style={{ color: colors.wineTextMuted }}>
-                  {t('pages.history.table.empty')}
+                <div className="flex flex-col items-center justify-center py-8 xs:py-10 sm:py-12">
+                  <FileText
+                    className="h-10 w-10 xs:h-12 xs:w-12 mb-3 xs:mb-4"
+                    style={{ color: colors.wineTextMuted }}
+                    aria-hidden="true"
+                  />
+                  <p style={{ color: colors.wineTextMuted }}>{t('pages.history.table.empty')}</p>
                 </div>
               ) : (
                 <HistoryTable

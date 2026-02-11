@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import { VirtualTable } from '@/components/ui/virtual-table';
 import type { DispatchLog, DispatchStatus } from '@/types/dispatch-log';
 import { STORES, isInstanceMissingError } from '@/types/dispatch-log';
@@ -116,7 +115,8 @@ export function LogsVirtualTable({ logs, getGroupName }: LogsVirtualTableProps) 
           href={getProductHref(log)}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1 text-xs text-primary hover:underline"
+          className="flex items-center gap-1 text-xs hover:underline"
+          style={{ color: colors.wine }}
         >
           {t('pages.automationLogs.table.viewProduct')}
           <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -181,9 +181,13 @@ export function LogsVirtualTable({ logs, getGroupName }: LogsVirtualTableProps) 
           >
             <span className="truncate">{log.error}</span>
             {isInstanceMissingError(log.error) ? (
-              <Button variant="link" className="h-auto p-0 text-xs" asChild>
-                <Link to="/whatsapp">{t('pages.automationLogs.table.reconnect')}</Link>
-              </Button>
+              <Link
+                to="/whatsapp"
+                className="shrink-0 text-xs font-medium hover:underline"
+                style={{ color: colors.wine }}
+              >
+                {t('pages.automationLogs.table.reconnect')}
+              </Link>
             ) : null}
           </div>
         );

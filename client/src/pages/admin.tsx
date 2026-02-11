@@ -8,7 +8,8 @@ import {
   UsersTab,
 } from '@/components/admin';
 import { ErrorBoundary } from '@/components/error-boundary';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const AdminIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -46,6 +47,9 @@ const colors = {
  */
 export default function Admin() {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState('dashboard');
+
+  const tabs = ['dashboard', 'users', 'plans', 'categories', 'team', 'emails', 'settings'] as const;
 
   return (
     <ErrorBoundary>
@@ -82,54 +86,31 @@ export default function Admin() {
               </div>
             </div>
 
-            <Tabs defaultValue="dashboard" className="space-y-4 xs:space-y-5 sm:space-y-6">
-              <TabsList
-                className="grid grid-cols-4 md:grid-cols-7 h-auto gap-1 xs:gap-1.5"
+            <div className="h-px w-full" style={{ backgroundColor: colors.wineBorder }} />
+
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 xs:space-y-5 sm:space-y-6">
+              <div
+                className="flex flex-wrap gap-1.5 xs:gap-2"
+                role="tablist"
                 aria-label={t('admin.title')}
               >
-                <TabsTrigger
-                  value="dashboard"
-                  className="text-xs xs:text-[13px] md:text-sm px-2 md:px-3"
-                >
-                  {t('admin.tabs.dashboard')}
-                </TabsTrigger>
-                <TabsTrigger
-                  value="users"
-                  className="text-xs xs:text-[13px] md:text-sm px-2 md:px-3"
-                >
-                  {t('admin.tabs.users')}
-                </TabsTrigger>
-                <TabsTrigger
-                  value="plans"
-                  className="text-xs xs:text-[13px] md:text-sm px-2 md:px-3"
-                >
-                  {t('admin.tabs.plans')}
-                </TabsTrigger>
-                <TabsTrigger
-                  value="categories"
-                  className="text-xs xs:text-[13px] md:text-sm px-2 md:px-3"
-                >
-                  {t('admin.tabs.categories')}
-                </TabsTrigger>
-                <TabsTrigger
-                  value="team"
-                  className="text-xs xs:text-[13px] md:text-sm px-2 md:px-3"
-                >
-                  {t('admin.tabs.team')}
-                </TabsTrigger>
-                <TabsTrigger
-                  value="emails"
-                  className="text-xs xs:text-[13px] md:text-sm px-2 md:px-3"
-                >
-                  {t('admin.tabs.emails')}
-                </TabsTrigger>
-                <TabsTrigger
-                  value="settings"
-                  className="text-xs xs:text-[13px] md:text-sm px-2 md:px-3"
-                >
-                  {t('admin.tabs.settings')}
-                </TabsTrigger>
-              </TabsList>
+                {tabs.map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`inline-flex cursor-pointer items-center justify-center rounded-full px-3 xs:px-4 py-1.5 xs:py-2 text-xs xs:text-sm font-semibold transition-all ${
+                      activeTab === tab
+                        ? 'bg-[#8D2D53] text-white shadow-sm hover:bg-[#8D2D53]/90'
+                        : 'border border-gray-300 bg-white text-[#8D2D53] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md'
+                    }`}
+                  >
+                    {t(`admin.tabs.${tab}`)}
+                  </button>
+                ))}
+              </div>
 
               <TabsContent value="dashboard">
                 <DashboardTab />

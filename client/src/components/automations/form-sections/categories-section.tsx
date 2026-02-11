@@ -378,7 +378,7 @@ export function CategoriesSection({
         (c) => SLUG_TO_REFINEMENT_KEY[c.slug] === key || c.name === fallback.category
       );
 
-      if (apiCat && apiCat.hasRefinements && apiCat.subcategories.length > 0 && !useFallback) {
+      if (apiCat?.hasRefinements && apiCat.subcategories.length > 0 && !useFallback) {
         // Use API data
         const { groups, allKeys } = buildRefinementDataFromApi(apiCat);
         sections.push({
@@ -409,8 +409,8 @@ export function CategoriesSection({
   }, [apiCategories, useFallback, t]);
 
   return (
-    <div className="space-y-2">
-      <Label>{t('pages.offerAutomations.form.categories')}</Label>
+    <div className="space-y-1.5 xs:space-y-2">
+      <Label className="cursor-pointer">{t('pages.offerAutomations.form.categories')}</Label>
       <p className="text-xs text-muted-foreground">
         {t('pages.offerAutomations.form.categoriesHint', { general: GENERAL_CATEGORY })}
       </p>

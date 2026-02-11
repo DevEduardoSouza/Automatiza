@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -65,10 +64,19 @@ export default function PlansTab() {
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={() => handleOpenDialog()} className="w-full md:w-auto">
-                <Plus className="h-4 w-4 mr-2" />
-                {t('admin.plans.newPlan')}
-              </Button>
+              <button
+                type="button"
+                onClick={() => handleOpenDialog()}
+                className="auth-btn-glow relative inline-flex w-full md:w-auto cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold text-white transition-all"
+              >
+                <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+                  <div className="auth-btn-glow__glow absolute inset-0" />
+                </div>
+                <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+                  <Plus className="h-4 w-4" />
+                  {t('admin.plans.newPlan')}
+                </span>
+              </button>
             </DialogTrigger>
             <DialogContent
               className="max-w-2xl max-h-[90vh] overflow-y-auto"
@@ -95,8 +103,16 @@ export default function PlansTab() {
         </div>
         <div className="space-y-3 xs:space-y-4">
           {loading ? (
-            <div className="text-center py-6 xs:py-8 text-sm" role="status" aria-live="polite">
-              {t('common.loading')}
+            <div className="flex items-center justify-center py-6 xs:py-8" role="status" aria-live="polite">
+              <div className="text-center space-y-4">
+                <div
+                  className="h-8 w-8 xs:h-10 xs:w-10 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
+                  style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
+                />
+                <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                  {t('common.loading')}
+                </p>
+              </div>
             </div>
           ) : plans.length === 0 ? (
             <div

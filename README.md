@@ -27,7 +27,7 @@ Crie um plano de implementação para: leia as docs do waha plus com engine gows
 
 # MELHORAR PLANO
 
-Aplique o checklist que vou fornecer no plano *migration/prompts/paridade/01-auth-migration.md*:
+Aplique o checklist que vou fornecer no plano *.context/plans/sentry-integration.md*:
 
 ## REFINAMENTO DE PLANOS:
 - [ ] Defina a estrutura organizacional de pastas (frontend e backend) indicando onde ficam: pages, components, hooks, services/api, schemas/validators, routes/controllers/use-cases, db/migrations, shared/utils
@@ -178,8 +178,7 @@ Baseado na paginação da tabela de *Grupos* da página */groups* preciso que im
 
 
 
-
-
+"fastMode": true,
 
 
 
@@ -198,7 +197,7 @@ No card *Total de Membros* na pagina dashboard, coloque o seguinte icone: <svg x
 
 
 
-Sem quebrar nenhum breakpoint do tailwind, apenas adicionando novos. Ajuste o modal *Agendar Nova Ação* da página */jobs* para ficar extremamente responsiva, principalmente em dispositivos moveis e em telas grandes
+Sem quebrar nenhum breakpoint do tailwind, apenas adicionando novos. Ajuste o modal *Novo Texto de Disparo* da página */dispatch-texts* para ficar extremamente responsiva, principalmente em dispositivos moveis e em telas grandes
 
 Melhore ainda mais a responsividade da pagina */dashboard*, ainda está quebrando em alguns tamanhos de tela, como muito pegueno e tamanhos medios
 
@@ -215,3 +214,60 @@ Melhore ainda mais a responsividade da pagina */dashboard*, ainda está quebrand
     <path d="M8.00002 8C8.00002 7.42459 8.00002 7.17765 8.04465 6.92457C8.21993 5.93047 8.89355 5.09255 9.83302 4.70001C10.0723 4.60003 10.3559 4.53526 10.9232 4.40573L13.6508 3.78286C17.0405 3.00882 18.7353 2.6218 19.8677 3.51317C21 4.40454 21 6.1257 21 9.56803L21 14.432C21 17.8743 21 19.5955 19.8676 20.4868C18.7353 21.3782 17.0405 20.9912 13.6508 20.2171L10.9232 19.5943C10.3559 19.4647 10.0723 19.4 9.833 19.3C8.89353 18.9074 8.21991 18.0695 8.04462 17.0754C8 16.8224 8 16.5754 8 16" />
     <path d="M13 9C13 9 16 11.2095 16 12C16 12.7906 13 15 13 15M15.5 12H3" />
 </svg>
+
+
+
+
+
+Padronize os buttons e os inputs da página */redirect* com base nos buttons da página */auth*
+
+
+
+
+
+
+Baseado nas páginas: */dashboard* - */whatsapp* - */groups* - */jobs* - */redirect* estilize a página: */admin* para seguir o mesmo padrão visual
+
+
+
+
+
+
+
+Valide a Phase 1 do plano `.context/plans/sentry-integration.md` usando o "Checklist de
+  Conclusão" (seção que começa na linha 2153).
+
+  Instruções:
+  1. Leia a seção "### Phase 1” dentro do "Checklist de Conclusão" no plano.
+  2. Para CADA item `- [ ]` do checklist da Phase 1:
+     a. Localize o arquivo/código correspondente no codebase (use grep/glob).
+     b. Verifique se a implementação existe e está correta conforme descrito.
+     c. Marque como ✅ (implementado corretamente), ⚠️  (implementado parcialmente — descreva o
+  gap), ou ❌ (não implementado).
+  3. Adicionalmente, execute estas auditorias automáticas conforme a Phase:
+     - **Phase 1-3 (Backend):** `grep -r "_ = err" automatiza-go/` | `grep -r "if err != nil {}"
+  automatiza-go/` — deve retornar ZERO resultados nos arquivos tocados.
+     - **Phase 4-5 (Frontend):** `grep -r "catch {}" client/src/` | `grep -r "catch (e) {}"
+  client/src/` — deve retornar ZERO catch blocks vazios nos arquivos tocados.
+     - **Phase 5 específico:** `grep -r "localStorage\." client/src/` — deve retornar ZERO uso
+  direto (apenas safeLocalStorage). `grep -r "navigator.clipboard" client/src/` — deve retornar
+  ZERO uso direto (apenas safeClipboard).
+     - **Phase 6:** Execute TODOS os testes listados no checklist (Teste: ...) e reporte
+  pass/fail.
+  4. Valide também contra o "Risk Assessment" (linha 2025) — para cada risco CRITICO/ALTO da
+  Phase, confirme que a mitigação está implementada.
+  5. Gere um relatório final no formato:
+
+     ## Relatório de Validação — Phase 1
+
+     | # | Item do Checklist | Status | Evidência/Gap |
+     |---|-------------------|--------|---------------|
+     | 1 | [texto do item]   | ✅/⚠️ /❌ | [arquivo:linha ou descrição do gap] |
+
+     **Resumo:** X/Y items ✅ | Z items ⚠️  | W items ❌
+     **Auditorias grep:** PASS/FAIL (detalhes)
+     **Riscos CRITICOS mitigados:** X/Y
+
+     **Veredicto:** APROVADA / REPROVADA (listar items bloqueantes)
+
+  6. Se REPROVADA, liste exatamente o que falta implementar para aprovar.

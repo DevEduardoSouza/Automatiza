@@ -1,4 +1,3 @@
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -28,18 +27,28 @@ export function ListModeConfig({
 
   return (
     <div className="space-y-4">
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription>{t('pages.offerAutomations.form.listModeInfo')}</AlertDescription>
-      </Alert>
+      <div
+        className="rounded-xl border px-4 py-3 text-sm"
+        style={{
+          backgroundColor: 'rgba(141, 45, 83, 0.06)',
+          borderColor: 'rgba(141, 45, 83, 0.15)',
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <Info className="h-4 w-4 mt-0.5 shrink-0" style={{ color: 'rgba(141, 45, 83, 0.6)' }} />
+          <p style={{ color: 'rgba(141, 45, 83, 0.8)' }}>
+            {t('pages.offerAutomations.form.listModeInfo')}
+          </p>
+        </div>
+      </div>
 
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.linkList')} *</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.linkList')} *</Label>
         <Select
           value={String(formData.ml_link_list_id || '')}
           onValueChange={(v) => setFormData((prev) => ({ ...prev, ml_link_list_id: v || null }))}
         >
-          <SelectTrigger>
+          <SelectTrigger className="cursor-pointer">
             <SelectValue
               placeholder={
                 loadingMlLinkLists
@@ -50,12 +59,12 @@ export function ListModeConfig({
           </SelectTrigger>
           <SelectContent>
             {mlLinkLists.length === 0 ? (
-              <SelectItem value="__empty__" disabled>
+              <SelectItem value="__empty__" disabled className="cursor-pointer">
                 {t('pages.offerAutomations.form.noListsFound')}
               </SelectItem>
             ) : (
               mlLinkLists.map((l) => (
-                <SelectItem key={l.id} value={l.id}>
+                <SelectItem key={l.id} value={l.id} className="cursor-pointer">
                   {l.name}
                 </SelectItem>
               ))

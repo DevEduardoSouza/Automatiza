@@ -1,5 +1,4 @@
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Clock, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -79,18 +78,21 @@ export function JobsMobileList({
               </div>
             </div>
             <div className="flex flex-col xs:flex-row gap-2">
-              <Button variant="outline" size="sm" onClick={() => onEditJob(job)} className="flex-1">
+              <button
+                type="button"
+                onClick={() => onEditJob(job)}
+                className="flex-1 inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+              >
                 {t('pages.jobs.table.editSchedule')}
-              </Button>
+              </button>
               {(job.status === 'pending' || job.status === 'failed') && (
-                <Button
-                  variant="outline"
-                  size="sm"
+                <button
+                  type="button"
                   onClick={() => onDeleteJob(job.id)}
-                  className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                  className="inline-flex cursor-pointer items-center justify-center rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-red-300 bg-white text-destructive shadow-sm hover:-translate-y-0.5 hover:border-red-400 hover:shadow-md"
                 >
                   <Trash2 className="h-4 w-4" />
-                </Button>
+                </button>
               )}
             </div>
           </div>

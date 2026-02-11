@@ -8,7 +8,7 @@
 ## /jobs
 
 - [x] Erro de UI/UX: ao clicar na bolinha, a acao nao funciona; so dispara ao clicar no nome
-- [ ] Erro ao criar agendamento (400 Bad Request)
+- [x] Erro ao criar agendamento (400 Bad Request)
 
 
 ## /offer-automations (Divulgacoes de IA)

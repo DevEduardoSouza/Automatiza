@@ -1,6 +1,5 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { AlertCircle, ArrowDown, ArrowUp, Check } from 'lucide-react';
@@ -74,7 +73,7 @@ export function PriorityMobileCards({
                     <Label htmlFor={`limit-${group.id}`} className="text-xs">
                       {t('pages.redirectLink.priority.clickLimit')}
                     </Label>
-                    <Input
+                    <input
                       id={`limit-${group.id}`}
                       type="number"
                       min="1"
@@ -84,7 +83,7 @@ export function PriorityMobileCards({
                         const newLimit = Number.parseInt(e.target.value, 10) || 0;
                         onClickLimitChange(group.id, newLimit);
                       }}
-                      className="w-full"
+                      className="w-full rounded-2xl !border-2 !border-gray-300 bg-gray-50 px-4 py-2 text-xs xs:py-2.5 xs:text-sm lg:py-3 lg:text-base outline-none transition-all hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30"
                     />
                   </div>
                 )}

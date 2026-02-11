@@ -21,16 +21,16 @@ export function TimeWindowInputs({ formData, setFormData }: TimeWindowInputsProp
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:gap-6">
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.startTime')}</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.startTime')}</Label>
         <Input
           type="time"
           value={formData.start_time}
           onChange={(e) => setFormData((prev) => ({ ...prev, start_time: e.target.value }))}
         />
       </div>
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.endTime')}</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.endTime')}</Label>
         <Input
           type="time"
           value={formData.end_time}
@@ -50,8 +50,8 @@ export function IntervalSelector({ formData, setFormData }: IntervalSelectorProp
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-2">
-      <Label>{t('pages.offerAutomations.form.interval')}</Label>
+    <div className="space-y-1.5 xs:space-y-2">
+      <Label className="cursor-pointer">{t('pages.offerAutomations.form.interval')}</Label>
       <Select
         value={String(formData.interval_minutes)}
         onValueChange={(v) =>
@@ -61,12 +61,12 @@ export function IntervalSelector({ formData, setFormData }: IntervalSelectorProp
           }))
         }
       >
-        <SelectTrigger>
+        <SelectTrigger className="cursor-pointer">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {INTERVALS.map((i) => (
-            <SelectItem key={i} value={String(i)}>
+            <SelectItem key={i} value={String(i)} className="cursor-pointer">
               {i} {t('common.minutes')}
             </SelectItem>
           ))}

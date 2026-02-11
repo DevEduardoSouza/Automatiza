@@ -11,7 +11,7 @@ Automatiza follows a modern client-server architecture with a React TypeScript f
 The platform uses a **modular monolith** frontend with a **microservices-ready** backend:
 
 - **Frontend**: Single-page React application with feature-based module organization
-- **Backend**: Go services with Protocol Buffer contracts
+- **Backend**: Go 1.24 with **Gin** (HTTP router) + **ConnectRPC** (gRPC-Web API layer) and Protocol Buffer contracts
 - **Communication**: Connect-RPC over HTTP (gRPC-web compatible)
 - **WhatsApp Integration**: Evolution API / WAHA for WhatsApp Web automation
 

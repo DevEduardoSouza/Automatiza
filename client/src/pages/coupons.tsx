@@ -1,15 +1,12 @@
 import { ErrorBoundary } from '@/components/error-boundary';
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -26,7 +23,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
 import { useCoupons } from '@/hooks/use-coupons';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -57,7 +53,10 @@ const CouponsIcon = ({ className, style }: { className?: string; style?: React.C
     strokeLinejoin="round"
     className={className}
     style={style}
+    role="img"
+    aria-hidden="true"
   >
+    <title>Coupons</title>
     <path d="M10.9961 10H11.0111M10.9998 16H11.0148" />
     <path d="M7 13H15" />
     <circle cx="1.5" cy="1.5" r="1.5" transform="matrix(1 0 0 -1 16 8)" />
@@ -76,6 +75,9 @@ const colors = {
   iconBg: 'rgba(141, 45, 83, 0.1)',
   iconBgHover: 'rgba(141, 45, 83, 0.15)',
 };
+
+const inputClasses =
+  'w-full rounded-2xl !border-2 !border-gray-300 bg-gray-50 px-4 py-2 text-xs xs:py-2.5 xs:text-sm lg:py-3 lg:text-base text-gray-900 placeholder-gray-400 outline-none transition-all hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30';
 
 type DiscountType = 'fixed' | 'percent';
 
@@ -113,12 +115,12 @@ export default function Coupons() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col w-full h-full">
+      <div className="coupons-page flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10 xl:p-12"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-9 xl:space-y-10">
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-10">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2 xs:gap-3">
                 <div
@@ -148,19 +150,29 @@ export default function Coupons() {
               </div>
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button onClick={() => handleOpenDialog()}>
-                    <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                    {t('pages.coupons.newCoupon')}
-                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDialog()}
+                    className="auth-btn-glow relative w-full xs:w-auto xs:flex-1 md:flex-none inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all"
+                  >
+                    <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+                      <div className="auth-btn-glow__glow absolute inset-0" />
+                    </div>
+                    <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+                      <Plus className="h-4 w-4" aria-hidden="true" />
+                      <span className="hidden sm:inline">{t('pages.coupons.newCoupon')}</span>
+                      <span className="sm:hidden">{t('pages.coupons.newCoupon')}</span>
+                    </span>
+                  </button>
                 </DialogTrigger>
-                <DialogContent className="max-w-2xl xl:max-w-3xl 2xl:max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-w-[calc(100vw-2.5rem)] xs:max-w-[calc(100vw-3rem)] sm:max-w-[calc(100vw-4rem)] md:max-w-2xl xl:max-w-3xl 2xl:max-w-4xl max-h-[85vh] xs:max-h-[90vh] overflow-y-auto p-4 xs:p-5 sm:p-6 rounded-xl xs:rounded-2xl">
                   <DialogHeader>
-                    <DialogTitle>
+                    <DialogTitle className="text-base xs:text-lg md:text-xl">
                       {editingCoupon
                         ? t('pages.coupons.editTitle')
                         : t('pages.coupons.createTitle')}
                     </DialogTitle>
-                    <DialogDescription>
+                    <DialogDescription className="text-xs xs:text-sm">
                       {editingCoupon
                         ? t('pages.coupons.editDescription')
                         : t('pages.coupons.createDescription')}
@@ -172,7 +184,7 @@ export default function Coupons() {
                         <Label htmlFor="code">
                           {t('pages.coupons.form.code')} <span className="text-red-500">*</span>
                         </Label>
-                        <Input
+                        <input
                           id="code"
                           value={formData.code}
                           onChange={(e) =>
@@ -183,6 +195,7 @@ export default function Coupons() {
                           }
                           placeholder={t('pages.coupons.form.codePlaceholder')}
                           required
+                          className={inputClasses}
                         />
                       </div>
                       <div className="space-y-2">
@@ -211,12 +224,13 @@ export default function Coupons() {
                       <Label htmlFor="title">
                         {t('common.description')} <span className="text-red-500">*</span>
                       </Label>
-                      <Input
+                      <input
                         id="title"
                         value={formData.title}
                         onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                         placeholder={t('pages.coupons.form.titlePlaceholder')}
                         required
+                        className={inputClasses}
                       />
                     </div>
 
@@ -224,7 +238,7 @@ export default function Coupons() {
                       <Label htmlFor="affiliate_link">
                         {t('pages.coupons.form.affiliateLink')}
                       </Label>
-                      <Input
+                      <input
                         id="affiliate_link"
                         type="url"
                         value={formData.affiliate_link}
@@ -232,17 +246,39 @@ export default function Coupons() {
                           setFormData({ ...formData, affiliate_link: e.target.value })
                         }
                         placeholder={t('pages.coupons.form.affiliateLinkPlaceholder')}
+                        className={inputClasses}
                       />
                     </div>
 
                     <div
-                      className="rounded-xl border p-4 xs:p-5 sm:p-6 lg:p-7 xl:p-8"
+                      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8"
                       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
                     >
-                      <div className="mb-3">
-                        <span className="text-base font-semibold" style={{ color: '#18181b' }}>
-                          {t('pages.coupons.form.type')}
-                        </span>
+                      <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
+                        <div
+                          className="p-1.5 xs:p-2 rounded-lg"
+                          style={{ backgroundColor: colors.iconBg }}
+                        >
+                          <Tag
+                            className="w-4 h-4 xs:w-5 xs:h-5"
+                            style={{ color: colors.wine }}
+                            aria-hidden="true"
+                          />
+                        </div>
+                        <div>
+                          <span
+                            className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                            style={{ color: colors.wineTextLight }}
+                          >
+                            {t('pages.coupons.form.type')}
+                          </span>
+                          <p
+                            className="text-xs xs:text-sm tracking-tight"
+                            style={{ color: colors.wineTextMuted }}
+                          >
+                            {t('pages.coupons.form.discountDescription')}
+                          </p>
+                        </div>
                       </div>
                       <div className="space-y-4">
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6">
@@ -273,7 +309,7 @@ export default function Coupons() {
 
                           <div className="space-y-2">
                             <Label>{t('pages.coupons.form.discount')}</Label>
-                            <Input
+                            <input
                               type="number"
                               inputMode="decimal"
                               value={formData.discount_value ?? ''}
@@ -284,6 +320,7 @@ export default function Coupons() {
                                 })
                               }
                               placeholder={t('pages.coupons.form.discountPlaceholder')}
+                              className={inputClasses}
                             />
                           </div>
                         </div>
@@ -291,7 +328,7 @@ export default function Coupons() {
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6">
                           <div className="space-y-2">
                             <Label>{t('pages.coupons.form.maxDiscount')}</Label>
-                            <Input
+                            <input
                               type="number"
                               inputMode="decimal"
                               value={formData.max_discount ?? ''}
@@ -302,12 +339,13 @@ export default function Coupons() {
                                 })
                               }
                               placeholder={t('pages.coupons.form.maxDiscountPlaceholder')}
+                              className={inputClasses}
                             />
                           </div>
 
                           <div className="space-y-2">
                             <Label>{t('pages.coupons.form.minProductPrice')}</Label>
-                            <Input
+                            <input
                               type="number"
                               inputMode="decimal"
                               value={formData.min_product_price ?? ''}
@@ -318,13 +356,14 @@ export default function Coupons() {
                                 })
                               }
                               placeholder={t('pages.coupons.form.minProductPricePlaceholder')}
+                              className={inputClasses}
                             />
                           </div>
                         </div>
 
                         <div className="space-y-2">
                           <Label>{t('pages.coupons.form.couponText')}</Label>
-                          <Textarea
+                          <textarea
                             value={formData.coupon_text ?? ''}
                             onChange={(e) =>
                               setFormData({
@@ -333,6 +372,7 @@ export default function Coupons() {
                               })
                             }
                             rows={3}
+                            className={`${inputClasses} resize-none`}
                           />
                         </div>
                       </div>
@@ -341,7 +381,7 @@ export default function Coupons() {
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6">
                       <div className="space-y-2">
                         <Label htmlFor="expires_at">{t('pages.coupons.form.validUntil')}</Label>
-                        <Input
+                        <input
                           id="expires_at"
                           type="datetime-local"
                           value={
@@ -357,6 +397,7 @@ export default function Coupons() {
                                 : null,
                             })
                           }
+                          className={inputClasses}
                         />
                       </div>
                       <div className="space-y-2">
@@ -384,24 +425,37 @@ export default function Coupons() {
                       </div>
                     </div>
 
-                    <DialogFooter className="gap-2 lg:gap-3 xl:gap-4">
-                      <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                    <div className="flex flex-col-reverse xs:flex-row justify-end gap-2 lg:gap-3 xl:gap-4">
+                      <button
+                        type="button"
+                        onClick={handleCloseDialog}
+                        className="inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+                      >
                         {t('common.cancel')}
-                      </Button>
-                      <Button type="submit" disabled={isPending}>
-                        {editingCoupon ? t('common.update') : t('common.create')}
-                      </Button>
-                    </DialogFooter>
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isPending}
+                        className="auth-btn-glow relative inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:pointer-events-none disabled:opacity-50"
+                      >
+                        <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+                          <div className="auth-btn-glow__glow absolute inset-0" />
+                        </div>
+                        <span className="relative z-[2] font-semibold select-none">
+                          {editingCoupon ? t('common.update') : t('common.create')}
+                        </span>
+                      </button>
+                    </div>
                   </form>
                 </DialogContent>
               </Dialog>
             </div>
 
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-7 xl:p-8"
+              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
-              <div className="flex items-center gap-2 xs:gap-3 mb-4 xs:mb-5">
+              <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
                 <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
                   <Search
                     className="w-4 h-4 xs:w-5 xs:h-5"
@@ -409,24 +463,32 @@ export default function Coupons() {
                     aria-hidden="true"
                   />
                 </div>
-                <span
-                  className="text-xs xs:text-sm font-semibold uppercase tracking-[0.1em]"
-                  style={{ color: colors.wineText }}
-                >
-                  {t('common.filter')}
-                </span>
+                <div>
+                  <span
+                    className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                    style={{ color: colors.wineTextLight }}
+                  >
+                    {t('common.filter')}
+                  </span>
+                  <p
+                    className="text-xs xs:text-sm tracking-tight"
+                    style={{ color: colors.wineTextMuted }}
+                  >
+                    {t('pages.coupons.filterDescription')}
+                  </p>
+                </div>
               </div>
               <div className="space-y-4">
                 <div className="relative">
                   <Search
-                    className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+                    className="absolute left-3 xs:left-4 top-1/2 h-4 w-4 -translate-y-1/2"
                     style={{ color: colors.wineTextMuted }}
                   />
-                  <Input
+                  <input
                     placeholder={t('pages.coupons.searchPlaceholder')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
+                    className={`${inputClasses} pl-9 xs:pl-11`}
                   />
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6">
@@ -465,32 +527,54 @@ export default function Coupons() {
             </div>
 
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-7 xl:p-8"
+              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
-              <div className="mb-4 xs:mb-5">
-                <span className="text-base font-semibold" style={{ color: '#18181b' }}>
-                  {t('pages.coupons.table.title')}
-                </span>
-                <p className="text-sm mt-1" style={{ color: colors.wineTextMuted }}>
-                  {filteredCoupons.length} {t('pages.coupons.title')}
-                </p>
+              <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
+                <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
+                  <Tag
+                    className="w-4 h-4 xs:w-5 xs:h-5"
+                    style={{ color: colors.wine }}
+                    aria-hidden="true"
+                  />
+                </div>
+                <div>
+                  <span
+                    className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                    style={{ color: colors.wineTextLight }}
+                  >
+                    {t('pages.coupons.table.title')}
+                  </span>
+                  <p
+                    className="text-xs xs:text-sm tracking-tight"
+                    style={{ color: colors.wineTextMuted }}
+                  >
+                    {filteredCoupons.length} {t('pages.coupons.title')}
+                  </p>
+                </div>
               </div>
               {loading ? (
                 <div className="flex items-center justify-center py-12">
-                  <div
-                    className="h-8 w-8 animate-spin rounded-full border-4 border-t-transparent"
-                    style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
-                  />
+                  <div className="text-center space-y-4">
+                    <div
+                      className="h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
+                      style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
+                    />
+                    <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                      {t('pages.coupons.loading')}
+                    </p>
+                  </div>
                 </div>
               ) : filteredCoupons.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 lg:py-16 xl:py-20">
                   <Tag
-                    className="h-12 w-12 lg:h-14 lg:w-14 mb-4"
-                    style={{ color: colors.wineTextMuted }}
+                    className="h-12 w-12 lg:h-14 lg:w-14 mb-4 opacity-20"
+                    style={{ color: colors.wine }}
                     aria-hidden="true"
                   />
-                  <p className="lg:text-lg" style={{ color: colors.wineTextMuted }}>{t('pages.coupons.empty')}</p>
+                  <p className="text-sm md:text-base" style={{ color: colors.wineTextMuted }}>
+                    {t('pages.coupons.empty')}
+                  </p>
                 </div>
               ) : (
                 <>
@@ -514,17 +598,19 @@ export default function Coupons() {
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <code className="font-mono font-semibold">{coupon.code}</code>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
+                                <button
+                                  type="button"
                                   onClick={() => handleCopyCode(coupon.code)}
                                   aria-label={t('pages.coupons.actions.copyCode')}
+                                  className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-accent"
                                 >
                                   <Copy className="h-3 w-3" aria-hidden="true" />
-                                </Button>
+                                </button>
                               </div>
                             </TableCell>
-                            <TableCell className="max-w-xs xl:max-w-sm 2xl:max-w-md truncate">{coupon.title}</TableCell>
+                            <TableCell className="max-w-xs xl:max-w-sm 2xl:max-w-md truncate">
+                              {coupon.title}
+                            </TableCell>
                             <TableCell>
                               <span
                                 className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium border"
@@ -593,39 +679,39 @@ export default function Coupons() {
                               )}
                             </TableCell>
                             <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-2 xl:gap-3">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
                                   onClick={() => handleToggleActive(coupon)}
                                   aria-label={
                                     coupon.is_active
                                       ? t('pages.coupons.actions.deactivate')
                                       : t('pages.coupons.actions.activate')
                                   }
+                                  className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-accent"
                                 >
                                   {coupon.is_active ? (
                                     <XCircle className="h-4 w-4" aria-hidden="true" />
                                   ) : (
                                     <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                                   )}
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => handleOpenDialog(coupon)}
                                   aria-label={t('pages.coupons.actions.edit')}
+                                  className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-accent"
                                 >
                                   <Edit className="h-4 w-4" aria-hidden="true" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => handleDelete(coupon.id)}
                                   aria-label={t('pages.coupons.actions.delete')}
+                                  className="cursor-pointer rounded-full p-1.5 text-destructive transition-colors hover:bg-destructive/10"
                                 >
-                                  <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
-                                </Button>
+                                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                </button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -645,15 +731,17 @@ export default function Coupons() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-2">
-                              <code className="font-mono font-semibold text-lg xs:text-xl">{coupon.code}</code>
-                              <Button
-                                variant="ghost"
-                                size="sm"
+                              <code className="font-mono font-semibold text-lg xs:text-xl">
+                                {coupon.code}
+                              </code>
+                              <button
+                                type="button"
                                 onClick={() => handleCopyCode(coupon.code)}
                                 aria-label={t('pages.coupons.actions.copyCode')}
+                                className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-accent"
                               >
                                 <Copy className="h-3 w-3" aria-hidden="true" />
-                              </Button>
+                              </button>
                             </div>
                             <p
                               className="text-sm xs:text-base truncate mb-3"
@@ -720,41 +808,38 @@ export default function Coupons() {
                           </div>
                         </div>
                         <div className="flex items-center justify-end gap-2 xs:gap-3 mt-4 pt-4 border-t">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 min-w-0"
+                          <button
+                            type="button"
                             onClick={() => handleToggleActive(coupon)}
+                            className="flex-1 min-w-0 inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
                           >
                             {coupon.is_active ? (
                               <>
-                                <XCircle className="mr-1 h-4 w-4" aria-hidden="true" />
+                                <XCircle className="h-4 w-4" aria-hidden="true" />
                                 {t('pages.coupons.actions.deactivate')}
                               </>
                             ) : (
                               <>
-                                <CheckCircle2 className="mr-1 h-4 w-4" aria-hidden="true" />
+                                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                                 {t('pages.coupons.actions.activate')}
                               </>
                             )}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 min-w-0"
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleOpenDialog(coupon)}
+                            className="flex-1 min-w-0 inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
                           >
-                            <Edit className="mr-1 h-4 w-4" aria-hidden="true" />
+                            <Edit className="h-4 w-4" aria-hidden="true" />
                             {t('common.edit')}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleDelete(coupon.id)}
-                            className="text-destructive hover:text-destructive"
+                            className="inline-flex cursor-pointer items-center justify-center rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-red-300 bg-white text-destructive shadow-sm hover:-translate-y-0.5 hover:border-red-400 hover:shadow-md"
                           >
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          </Button>
+                          </button>
                         </div>
                       </div>
                     ))}

@@ -74,11 +74,19 @@ export default function TeamTab() {
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="w-full md:w-auto">
-                <Plus className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">{t('admin.team.addAdmin')}</span>
-                <span className="sm:hidden">{t('admin.team.add')}</span>
-              </Button>
+              <button
+                type="button"
+                className="auth-btn-glow relative inline-flex w-full md:w-auto cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold text-white transition-all"
+              >
+                <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+                  <div className="auth-btn-glow__glow absolute inset-0" />
+                </div>
+                <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">{t('admin.team.addAdmin')}</span>
+                  <span className="sm:hidden">{t('admin.team.add')}</span>
+                </span>
+              </button>
             </DialogTrigger>
             <DialogContent className="max-w-md" aria-describedby="add-admin-dialog-description">
               <DialogHeader>
@@ -109,8 +117,16 @@ export default function TeamTab() {
         </div>
         <div className="space-y-3 xs:space-y-4">
           {loading ? (
-            <div className="text-center py-8 text-sm" role="status" aria-live="polite">
-              {t('common.loading')}
+            <div className="flex items-center justify-center py-6 xs:py-8" role="status" aria-live="polite">
+              <div className="text-center space-y-4">
+                <div
+                  className="h-8 w-8 xs:h-10 xs:w-10 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
+                  style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
+                />
+                <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                  {t('common.loading')}
+                </p>
+              </div>
             </div>
           ) : teamMembers.length === 0 ? (
             <div className="text-center py-8 text-sm" style={{ color: colors.wineTextMuted }}>
@@ -135,16 +151,15 @@ export default function TeamTab() {
                     </div>
                     <Badge className="text-xs">{t('admin.team.roles.admin')}</Badge>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
+                  <button
+                    type="button"
                     onClick={() => handleRemoveAdmin(member.id, member.email)}
-                    className="w-full"
+                    className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
                     aria-label={t('admin.team.removeAriaLabel', { email: member.email })}
                   >
-                    <Trash2 className="h-3 w-3 mr-1" />
+                    <Trash2 className="h-3 w-3" />
                     {t('common.delete')}
-                  </Button>
+                  </button>
                 </div>
               ))}
             </div>
@@ -170,14 +185,14 @@ export default function TeamTab() {
                         {format(new Date(member.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
+                        <button
+                          type="button"
                           onClick={() => handleRemoveAdmin(member.id, member.email)}
+                          className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
                           aria-label={t('admin.team.removeAriaLabel', { email: member.email })}
                         >
                           <Trash2 className="h-4 w-4" />
-                        </Button>
+                        </button>
                       </TableCell>
                     </TableRow>
                   ))}

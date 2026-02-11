@@ -1,4 +1,3 @@
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -20,29 +19,51 @@ export function StoresSelector({ formData, setFormData, activeStores }: StoresSe
   const { toast } = useToast();
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5 xs:space-y-2">
       <div className="flex items-start gap-2">
-        <Label>{t('pages.offerAutomations.form.stores')} *</Label>
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.stores')} *</Label>
       </div>
       {formData.mode === 'search' && activeStores.length < STORES.length && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            {t('pages.offerAutomations.storesInactive')}{' '}
-            <Link to="/affiliate-programs" className="font-semibold underline hover:text-primary">
-              {t('sidebar.affiliatePrograms')}
-            </Link>
-          </AlertDescription>
-        </Alert>
+        <div
+          className="rounded-xl border px-4 py-3 text-sm"
+          style={{
+            backgroundColor: 'rgba(141, 45, 83, 0.06)',
+            borderColor: 'rgba(141, 45, 83, 0.15)',
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle
+              className="h-4 w-4 mt-0.5 shrink-0"
+              style={{ color: 'rgba(141, 45, 83, 0.6)' }}
+            />
+            <p style={{ color: 'rgba(141, 45, 83, 0.8)' }}>
+              {t('pages.offerAutomations.storesInactive')}{' '}
+              <Link to="/affiliate-programs" className="font-semibold underline hover:text-primary">
+                {t('sidebar.affiliatePrograms')}
+              </Link>
+            </p>
+          </div>
+        </div>
       )}
 
       {formData.mode === 'monitor' && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            {t('pages.offerAutomations.form.monitorModeStoreHint')}
-          </AlertDescription>
-        </Alert>
+        <div
+          className="rounded-xl border px-4 py-3 text-sm"
+          style={{
+            backgroundColor: 'rgba(141, 45, 83, 0.06)',
+            borderColor: 'rgba(141, 45, 83, 0.15)',
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle
+              className="h-4 w-4 mt-0.5 shrink-0"
+              style={{ color: 'rgba(141, 45, 83, 0.6)' }}
+            />
+            <p style={{ color: 'rgba(141, 45, 83, 0.8)' }}>
+              {t('pages.offerAutomations.form.monitorModeStoreHint')}
+            </p>
+          </div>
+        </div>
       )}
       <Card>
         <CardContent className="pt-4 grid grid-cols-2 gap-3 lg:gap-4">

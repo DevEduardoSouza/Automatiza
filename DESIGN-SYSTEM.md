@@ -247,7 +247,7 @@ class="base xs:larger sm:even-larger md:desktop"
       id="input-id"
       type="text"
       placeholder="Placeholder..."
-      className="w-full py-2 pl-9 pr-3 text-xs xs:py-2.5 xs:pl-10 xs:pr-4 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none rounded-2xl !border-2 !border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30"
+      className="w-full py-2 pl-9 pr-3 text-xs xs:py-2.5 xs:pl-10 xs:pr-4 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none rounded-2xl border-2! border-gray-300! bg-gray-50 text-gray-900 placeholder-gray-400 hover:border-[#520B27]! focus:border-[#520B27]! focus:ring-1 focus:ring-[#3a0718]/30"
     />
   </div>
 </div>
@@ -270,7 +270,7 @@ class="base xs:larger sm:even-larger md:desktop"
   </div>
   <input
     type={showPassword ? 'text' : 'password'}
-    className="w-full py-2 pl-9 pr-10 text-xs xs:py-2.5 xs:pl-10 xs:pr-11 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none rounded-2xl !border-2 !border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30"
+    className="w-full py-2 pl-9 pr-10 text-xs xs:py-2.5 xs:pl-10 xs:pr-11 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none rounded-2xl border-2! border-gray-300! bg-gray-50 text-gray-900 placeholder-gray-400 hover:border-[#520B27]! focus:border-[#520B27]! focus:ring-1 focus:ring-[#3a0718]/30"
   />
   <button
     type="button"
@@ -287,12 +287,12 @@ class="base xs:larger sm:even-larger md:desktop"
 | Propriedade | Light Mode | Dark Mode |
 |-------------|------------|-----------|
 | Border radius | `rounded-2xl` | `rounded-lg` |
-| Border | `!border-2 !border-gray-300` | `ring-1 ring-gray-600/30` |
+| Border | `border-2! border-gray-300!` | `ring-1 ring-gray-600/30` |
 | Background | `bg-gray-50` | `bg-gray-900/50` |
 | Texto | `text-gray-900` | `text-gray-100` |
 | Placeholder | `placeholder-gray-400` | `placeholder-gray-500` |
-| Hover | `hover:!border-[#520B27]` | — |
-| Focus | `focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30` | `focus:ring-2 focus:ring-gray-400/50` |
+| Hover | `hover:border-[#520B27]!` | — |
+| Focus | `focus:border-[#520B27]! focus:ring-1 focus:ring-[#3a0718]/30` | `focus:ring-2 focus:ring-gray-400/50` |
 | Padding (base) | `py-2 pl-9 pr-3` | `py-2 pl-9 pr-3` |
 | Padding (xs) | `xs:py-2.5 xs:pl-10 xs:pr-4` | `xs:py-2.5 xs:pl-10 xs:pr-4` |
 | Padding (lg) | `lg:py-3` | `lg:py-3` |
@@ -331,10 +331,10 @@ Botão full-width com fundo escuro e efeito de glow animado no hover. Usado como
   aria-busy={loading}
   className="auth-btn-glow relative mt-6 inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
 >
-  <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+  <div className="auth-btn-glow__loader absolute inset-0 z-1 bg-transparent">
     <div className="auth-btn-glow__glow absolute inset-0" />
   </div>
-  <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+  <span className="relative z-2 flex items-center gap-2 font-semibold select-none">
     <Icon className="h-4 w-4" />
     {label}
   </span>
@@ -406,7 +406,7 @@ Botão outline full-width com elevação no hover. Usado como ação alternativa
 {/* Light Mode */}
 <button
   type="button"
-  className="inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold transition-all !border !border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:!border-gray-400 hover:shadow-md"
+  className="inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold transition-all border! border-gray-300! bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400! hover:shadow-md"
 >
   <Icon className="h-4 w-4" />
   {label}
@@ -429,7 +429,7 @@ Botão outline full-width com elevação no hover. Usado como ação alternativa
 | Border radius | `rounded-full` | `rounded-full` | `rounded-full` |
 | Background | Gradient escuro | `bg-white` | Gradient escuro (via `auth-btn-glow`) |
 | Texto | `text-white` | `text-[#520B27]` | `text-white` |
-| Border | `rgba(255,255,255,0.1)` | `!border-gray-300` | `rgba(255,255,255,0.1)` |
+| Border | `rgba(255,255,255,0.1)` | `border-gray-300!` | `rgba(255,255,255,0.1)` |
 | Hover | `translateY(-2px)` + glow | `translateY(-0.5)` + shadow | `translateY(-2px)` + glow |
 | Padding (base) | `px-4 py-2` | `px-4 py-2` | `px-4 py-2` |
 | Padding (xs) | `xs:px-5 xs:py-2.5` | `xs:px-5 xs:py-2.5` | `xs:px-5 xs:py-2.5` |

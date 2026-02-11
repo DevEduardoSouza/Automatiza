@@ -1,6 +1,5 @@
 import { LogsVirtualTable } from '@/components/automation-logs';
 import { ErrorBoundary } from '@/components/error-boundary';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -14,11 +13,15 @@ import { useAutomationLogs } from '@/hooks';
 import type { DispatchStatus } from '@/types/dispatch-log';
 import { STORES } from '@/types/dispatch-log';
 import { format } from 'date-fns';
-import { Download, ExternalLink, FileText, Search } from 'lucide-react';
+import { Download, ExternalLink, FileText, Info, List, Search } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 
-const AutomationLogsIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+const AutomationLogsIcon = ({
+  className,
+  style,
+}: { className?: string; style?: React.CSSProperties }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
@@ -31,6 +34,7 @@ const AutomationLogsIcon = ({ className, style }: { className?: string; style?: 
     strokeLinejoin="round"
     className={className}
     style={style}
+    aria-hidden="true"
   >
     <path d="M18 16L19.8398 17.5858C20.6133 18.2525 21 18.5858 21 19C21 19.4142 20.6133 19.7475 19.8398 20.4142L18 22" />
     <path d="M14 16L12.1602 17.5858C11.3867 18.2525 11 18.5858 11 19C11 19.4142 11.3867 19.7475 12.1602 20.4142L14 22" />
@@ -38,7 +42,6 @@ const AutomationLogsIcon = ({ className, style }: { className?: string; style?: 
     <path d="M3 12C3 10.159 4.49238 8.66667 6.33333 8.66667C6.99912 8.66667 7.78404 8.78333 8.43137 8.60988C9.00652 8.45576 9.45576 8.00652 9.60988 7.43136C9.78333 6.78404 9.66667 5.99912 9.66667 5.33333C9.66667 3.49238 11.1591 2 13 2" />
   </svg>
 );
-import { Link } from 'react-router';
 
 const colors = {
   wine: '#8D2D53',
@@ -114,11 +117,23 @@ export default function AutomationLogs() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-48 xs:h-56 sm:h-64">
+      <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="h-6 w-6 xs:h-8 xs:w-8 animate-spin rounded-full border-4 border-t-transparent"
-          style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
-        />
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 xl:p-10"
+          style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
+        >
+          <div className="flex items-center justify-center min-h-[300px] xs:min-h-[350px] sm:min-h-[400px]">
+            <div className="text-center space-y-4">
+              <div
+                className="h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
+                style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
+              />
+              <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                {t('pages.automationLogs.loading')}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -131,14 +146,15 @@ export default function AutomationLogs() {
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
           <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 xl:space-y-10">
+            {/* Header */}
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2 xs:gap-3">
                 <div
-                  className="p-1.5 xs:p-2 sm:p-2.5 rounded-lg xs:rounded-xl border"
+                  className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
                   style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
                 >
                   <AutomationLogsIcon
-                    className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7"
+                    className="w-5 h-5 xs:w-6 xs:h-6"
                     style={{ color: colors.wine }}
                     aria-hidden="true"
                   />
@@ -158,35 +174,49 @@ export default function AutomationLogs() {
                   </p>
                 </div>
               </div>
-              <Button
+              <button
+                type="button"
                 onClick={exportCSV}
-                variant="outline"
                 disabled={filteredLogs.length === 0}
-                className="w-full md:w-auto"
+                className="auth-btn-glow relative inline-flex w-full sm:w-auto cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Download className="h-4 w-4 mr-2" />
-                {t('pages.automationLogs.export.csv')}
-              </Button>
+                <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+                  <div className="auth-btn-glow__glow absolute inset-0" />
+                </div>
+                <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  {t('pages.automationLogs.export.csv')}
+                </span>
+              </button>
             </div>
 
+            {/* Filters Card */}
             <div
               className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
               <div className="flex items-center gap-2 xs:gap-3 mb-4 xs:mb-5 sm:mb-6">
-                <div className="p-1.5 xs:p-2 sm:p-2.5 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
+                <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
                   <Search
                     className="w-4 h-4 xs:w-5 xs:h-5"
                     style={{ color: colors.wine }}
                     aria-hidden="true"
                   />
                 </div>
-                <span
-                  className="text-xs xs:text-sm font-semibold uppercase tracking-[0.1em] xs:tracking-[0.12em]"
-                  style={{ color: colors.wineText }}
-                >
-                  {t('pages.automationLogs.filters.title')}
-                </span>
+                <div>
+                  <span
+                    className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                    style={{ color: colors.wineTextLight }}
+                  >
+                    {t('pages.automationLogs.filters.title')}
+                  </span>
+                  <p
+                    className="text-xs xs:text-sm tracking-tight"
+                    style={{ color: colors.wineTextMuted }}
+                  >
+                    {t('pages.automationLogs.filters.subtitle')}
+                  </p>
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 xs:gap-4">
                 <div className="space-y-2">
@@ -277,57 +307,87 @@ export default function AutomationLogs() {
               </div>
             </div>
 
+            {/* Queue Status Card */}
             <div
-              className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8 space-y-2 text-xs xs:text-sm"
+              className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div style={{ color: colors.wineTextMuted }}>
-                  <strong className="text-foreground">
-                    {t('pages.automationLogs.status.queued')}
-                  </strong>{' '}
-                  {t('pages.automationLogs.queue.explanation')}
-                  {queueStatus?.estimatedMinutes ? (
-                    <span>
-                      {' '}
-                      {t('pages.automationLogs.queue.estimate')}{' '}
-                      <strong className="text-foreground">
-                        {queueStatus.estimatedMinutes} {t('pages.automationLogs.queue.minutes')}
-                      </strong>
-                      .
-                    </span>
-                  ) : null}
+              <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
+                <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
+                  <Info
+                    className="w-4 h-4 xs:w-5 xs:h-5"
+                    style={{ color: colors.wine }}
+                    aria-hidden="true"
+                  />
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" asChild>
-                    <Link to="/whatsapp">{t('pages.automationLogs.queue.reconnect')}</Link>
-                  </Button>
+                <div>
+                  <span
+                    className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                    style={{ color: colors.wineTextLight }}
+                  >
+                    {t('pages.automationLogs.queue.title')}
+                  </span>
+                  <p
+                    className="text-xs xs:text-sm tracking-tight"
+                    style={{ color: colors.wineTextMuted }}
+                  >
+                    {t('pages.automationLogs.queue.subtitle')}
+                  </p>
                 </div>
               </div>
-              {queueStatus ? (
-                <div className="text-xs" style={{ color: colors.wineTextMuted }}>
-                  {t('pages.automationLogs.queue.waiting')}: {queueStatus.queue.queued} (
-                  {t('pages.automationLogs.queue.waitingLabel')}={queueStatus.queue.waiting},{' '}
-                  {t('pages.automationLogs.queue.delayedLabel')}={queueStatus.queue.delayed},{' '}
-                  {t('pages.automationLogs.queue.activeLabel')}={queueStatus.queue.active})
-                  {queueStatus.settings.limitPerMinute ? (
-                    <span>
-                      {' '}
-                      {t('pages.automationLogs.queue.limit')} {queueStatus.settings.limitPerMinute}
-                      {t('pages.automationLogs.queue.perMinute')}
-                    </span>
-                  ) : null}
-                  {queueStatus.settings.workerConcurrency ? (
-                    <span>
-                      {' '}
-                      {t('pages.automationLogs.queue.concurrency')}{' '}
-                      {queueStatus.settings.workerConcurrency}
-                    </span>
-                  ) : null}
+
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                    <strong className="text-foreground">
+                      {t('pages.automationLogs.status.queued')}
+                    </strong>{' '}
+                    {t('pages.automationLogs.queue.explanation')}
+                    {queueStatus?.estimatedMinutes ? (
+                      <span>
+                        {' '}
+                        {t('pages.automationLogs.queue.estimate')}{' '}
+                        <strong className="text-foreground">
+                          {queueStatus.estimatedMinutes} {t('pages.automationLogs.queue.minutes')}
+                        </strong>
+                        .
+                      </span>
+                    ) : null}
+                  </p>
+                  <Link
+                    to="/whatsapp"
+                    className="inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+                  >
+                    {t('pages.automationLogs.queue.reconnect')}
+                  </Link>
                 </div>
-              ) : null}
+                {queueStatus ? (
+                  <p className="text-xs" style={{ color: colors.wineTextMuted }}>
+                    {t('pages.automationLogs.queue.waiting')}: {queueStatus.queue.queued} (
+                    {t('pages.automationLogs.queue.waitingLabel')}={queueStatus.queue.waiting},{' '}
+                    {t('pages.automationLogs.queue.delayedLabel')}={queueStatus.queue.delayed},{' '}
+                    {t('pages.automationLogs.queue.activeLabel')}={queueStatus.queue.active})
+                    {queueStatus.settings.limitPerMinute ? (
+                      <span>
+                        {' '}
+                        {t('pages.automationLogs.queue.limit')}{' '}
+                        {queueStatus.settings.limitPerMinute}
+                        {t('pages.automationLogs.queue.perMinute')}
+                      </span>
+                    ) : null}
+                    {queueStatus.settings.workerConcurrency ? (
+                      <span>
+                        {' '}
+                        {t('pages.automationLogs.queue.concurrency')}{' '}
+                        {queueStatus.settings.workerConcurrency}
+                      </span>
+                    ) : null}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
+            {/* Table / Empty State */}
             {filteredLogs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 xs:py-10 sm:py-12">
                 <FileText
@@ -346,16 +406,35 @@ export default function AutomationLogs() {
                 className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
-                <div className="mb-4 xs:mb-5 sm:mb-6">
-                  <span className="text-sm xs:text-base font-semibold" style={{ color: '#18181b' }}>
-                    {t('pages.automationLogs.table.title')}
-                  </span>
-                  <p className="text-xs xs:text-sm mt-1" style={{ color: colors.wineTextMuted }}>
-                    {t('pages.automationLogs.table.description', {
-                      filtered: filteredLogs.length,
-                      total: logs.length,
-                    })}
-                  </p>
+                {/* Table Header */}
+                <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
+                  <div
+                    className="p-1.5 xs:p-2 rounded-lg"
+                    style={{ backgroundColor: colors.iconBg }}
+                  >
+                    <List
+                      className="w-4 h-4 xs:w-5 xs:h-5"
+                      style={{ color: colors.wine }}
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <div>
+                    <span
+                      className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                      style={{ color: colors.wineTextLight }}
+                    >
+                      {t('pages.automationLogs.table.title')}
+                    </span>
+                    <p
+                      className="text-xs xs:text-sm tracking-tight"
+                      style={{ color: colors.wineTextMuted }}
+                    >
+                      {t('pages.automationLogs.table.description', {
+                        filtered: filteredLogs.length,
+                        total: logs.length,
+                      })}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Desktop - Tabela Virtualizada */}
@@ -450,7 +529,8 @@ export default function AutomationLogs() {
                           href={getProductHref(log)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-1.5 xs:gap-2 text-xs text-primary hover:underline"
+                          className="flex items-center justify-center gap-1.5 xs:gap-2 text-xs hover:underline"
+                          style={{ color: colors.wine }}
                         >
                           <ExternalLink className="h-3 w-3" />
                           {t('pages.automationLogs.table.viewProduct')}
@@ -459,14 +539,36 @@ export default function AutomationLogs() {
                     </div>
                   ))}
                   {hasMoreMobileLogs && !showAllMobileCards && (
-                    <Button
-                      variant="outline"
-                      className="w-full"
+                    <button
+                      type="button"
                       onClick={() => setShowAllMobileCards(true)}
+                      className="inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
                     >
                       {t('common.showMore')} ({filteredLogs.length - MOBILE_CARDS_LIMIT}{' '}
                       {t('common.more')})
-                    </Button>
+                    </button>
+                  )}
+                </div>
+
+                {/* Table Footer */}
+                <div
+                  className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3 xs:gap-0 mt-4 pt-4 border-t"
+                  style={{ borderColor: colors.wineBorder }}
+                >
+                  <p className="text-sm" style={{ color: colors.wineTextMuted }}>
+                    {t('pages.automationLogs.table.showing', {
+                      filtered: filteredLogs.length,
+                      total: logs.length,
+                    })}
+                  </p>
+                  {hasMoreMobileLogs && !showAllMobileCards && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllMobileCards(true)}
+                      className="hidden md:inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+                    >
+                      {t('pages.automationLogs.table.loadMore')}
+                    </button>
                   )}
                 </div>
               </div>

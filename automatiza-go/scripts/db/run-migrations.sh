@@ -61,6 +61,7 @@ MIGRATION_FILES=(
     "027_webhook_logs_kiwify_fields.up.sql"
     "028_categories_table.up.sql"
     "029_automations_offer_texts_columns.up.sql"
+    "030_fix_reconciliation_checkpoints.up.sql"
 )
 
 for migration in "${MIGRATION_FILES[@]}"; do

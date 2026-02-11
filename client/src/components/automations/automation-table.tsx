@@ -1,5 +1,4 @@
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import {
   Table,
@@ -12,8 +11,12 @@ import {
 import { formatDelayWithI18n, getModeKey, getModeVariant } from '@/lib/automation-formatters';
 import type { Automation } from '@/types/automation';
 import { format } from 'date-fns';
-import { Edit, FileText, Play, RotateCcw, Trash2 } from 'lucide-react';
+import { FileText, Play, RotateCcw, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const colors = {
+  wineTextMuted: 'rgba(141, 45, 83, 0.6)',
+};
 
 interface AutomationTableProps {
   automations: Automation[];
@@ -92,60 +95,59 @@ export function AutomationTable({
                     : '-'}
               </TableCell>
               <TableCell>
-                <div className="flex gap-1 xl:gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                <div className="flex items-center gap-1 xl:gap-2">
+                  <button
+                    type="button"
                     onClick={() => onEdit(auto)}
-                    title={t('pages.offerAutomations.actions.edit')}
+                    className="cursor-pointer rounded-full px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
                   >
-                    <Edit className="h-4 w-4" />
-                  </Button>
+                    {t('pages.offerAutomations.actions.editShort')}
+                  </button>
                   {auto.mode === 'search' && (
                     <>
                       {auto.stores.includes('shopee') && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
+                        <button
+                          type="button"
                           onClick={() => onPreview(auto)}
                           disabled={loadingPreview}
+                          className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                           title={t('pages.offerAutomations.actions.preview')}
                         >
                           <FileText className="h-4 w-4" />
-                        </Button>
+                        </button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
+                      <button
+                        type="button"
                         onClick={() => onRunNow(auto)}
                         disabled={runningId === auto.id || auto.status !== 'active'}
+                        className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                         title={t('pages.offerAutomations.actions.runNow')}
                       >
                         <Play
                           className={`h-4 w-4 ${runningId === auto.id ? 'animate-pulse' : ''}`}
                         />
-                      </Button>
+                      </button>
                     </>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  <button
+                    type="button"
                     onClick={() => onResetHistory(auto.id, auto.name)}
                     disabled={resettingId === auto.id}
+                    className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                     title={t('pages.offerAutomations.actions.resetHistory')}
                   >
                     <RotateCcw
                       className={`h-4 w-4 ${resettingId === auto.id ? 'animate-spin' : ''}`}
                     />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => onDelete(auto.id)}
+                    className="cursor-pointer rounded-full p-1.5 text-destructive transition-colors hover:bg-destructive/10"
                     title={t('pages.offerAutomations.actions.delete')}
                   >
                     <Trash2 className="h-4 w-4" />
-                  </Button>
+                  </button>
                 </div>
               </TableCell>
             </TableRow>

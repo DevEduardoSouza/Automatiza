@@ -18,8 +18,8 @@ export function ModeSection({ formData, setFormData }: ModeSectionProps) {
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-2">
-      <Label>{t('pages.offerAutomations.form.mode')}</Label>
+    <div className="space-y-1.5 xs:space-y-2">
+      <Label className="cursor-pointer">{t('pages.offerAutomations.form.mode')}</Label>
       <Select
         value={formData.mode}
         onValueChange={(v) =>
@@ -50,13 +50,19 @@ export function ModeSection({ formData, setFormData }: ModeSectionProps) {
           })
         }
       >
-        <SelectTrigger>
+        <SelectTrigger className="cursor-pointer">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="search">{t('pages.offerAutomations.modes.search')}</SelectItem>
-          <SelectItem value="monitor">{t('pages.offerAutomations.modes.monitor')}</SelectItem>
-          <SelectItem value="list">{t('pages.offerAutomations.modes.list')}</SelectItem>
+          <SelectItem value="search" className="cursor-pointer">
+            {t('pages.offerAutomations.modes.search')}
+          </SelectItem>
+          <SelectItem value="monitor" className="cursor-pointer">
+            {t('pages.offerAutomations.modes.monitor')}
+          </SelectItem>
+          <SelectItem value="list" className="cursor-pointer">
+            {t('pages.offerAutomations.modes.list')}
+          </SelectItem>
         </SelectContent>
       </Select>
     </div>

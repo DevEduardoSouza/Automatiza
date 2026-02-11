@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import type { ActionHistory } from '@/types/action-history';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -104,9 +103,13 @@ export function HistoryMobileList({ history, getActionTypeLabel }: HistoryMobile
       ))}
 
       {hasMore && !showAll && (
-        <Button variant="outline" className="w-full" onClick={() => setShowAll(true)}>
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+        >
           {t('common.showMore')} ({history.length - MOBILE_CARDS_LIMIT} {t('common.more')})
-        </Button>
+        </button>
       )}
     </div>
   );

@@ -134,8 +134,8 @@ export function SendGroupsSelector({
   };
 
   return (
-    <div className="space-y-2">
-      <Label>
+    <div className="space-y-1.5 xs:space-y-2">
+      <Label className="cursor-pointer">
         {t('pages.offerAutomations.form.sendGroups')} *{' '}
         <span className="text-xs text-muted-foreground">
           ({formData.send_groups?.length || 0}/{MAX_SEND_GROUPS})
@@ -194,8 +194,8 @@ export function MonitorGroupsSelector({
   const selectedCount = formData.monitor_groups?.length || 0;
 
   return (
-    <div className="space-y-2">
-      <Label>
+    <div className="space-y-1.5 xs:space-y-2">
+      <Label className="cursor-pointer">
         {t('pages.offerAutomations.form.monitorGroups')}{' '}
         <span className="text-xs text-muted-foreground">
           ({selectedCount}/{MAX_MONITOR_GROUPS} {t('pages.offerAutomations.form.groupsSelected')})

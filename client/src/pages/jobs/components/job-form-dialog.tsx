@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -121,13 +120,21 @@ export function JobFormDialog({
   return (
     <Dialog open={dialogOpen} onOpenChange={onDialogOpenChange}>
       <DialogTrigger asChild>
-        <Button className="w-full xs:w-auto xs:flex-1 md:flex-none">
-          <Plus className="mr-2 h-4 w-4" />
-          <span className="hidden sm:inline">{t('pages.jobs.newJob')}</span>
-          <span className="sm:hidden">{t('pages.jobs.newJobShort')}</span>
-        </Button>
+        <button
+          type="button"
+          className="auth-btn-glow relative w-full xs:w-auto xs:flex-1 md:flex-none inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all"
+        >
+          <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+            <div className="auth-btn-glow__glow absolute inset-0" />
+          </div>
+          <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('pages.jobs.newJob')}</span>
+            <span className="sm:hidden">{t('pages.jobs.newJobShort')}</span>
+          </span>
+        </button>
       </DialogTrigger>
-      <DialogContent className="max-w-[calc(100vw-1rem)] xs:max-w-[calc(100vw-2rem)] sm:max-w-2xl xl:max-w-3xl 2xl:max-w-4xl max-h-[85vh] xs:max-h-[90vh] overflow-y-auto p-4 xs:p-5 sm:p-6">
+      <DialogContent className="max-w-[calc(100vw-2.5rem)] xs:max-w-[calc(100vw-3rem)] sm:max-w-[calc(100vw-4rem)] md:max-w-2xl xl:max-w-3xl 2xl:max-w-4xl max-h-[85vh] xs:max-h-[90vh] overflow-y-auto p-4 xs:p-5 sm:p-6 rounded-xl xs:rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-base xs:text-lg md:text-xl">
             {editingJobId ? t('pages.jobs.dialog.editTitle') : t('pages.jobs.dialog.createTitle')}
@@ -293,16 +300,26 @@ export function JobFormDialog({
             </div>
           )}
 
-          <Button onClick={onSubmit} className="w-full h-9 xs:h-10 lg:h-11 text-sm lg:text-base" disabled={isPending}>
-            <Calendar className="mr-1.5 xs:mr-2 h-3.5 w-3.5 xs:h-4 xs:w-4" />
-            {editingJobId
-              ? isPending
-                ? t('pages.jobs.form.saving')
-                : t('pages.jobs.form.save')
-              : isPending
-                ? t('pages.jobs.form.submitting')
-                : t('pages.jobs.form.submit')}
-          </Button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={isPending}
+            className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+              <div className="auth-btn-glow__glow absolute inset-0" />
+            </div>
+            <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+              <Calendar className="h-3.5 w-3.5 xs:h-4 xs:w-4" />
+              {editingJobId
+                ? isPending
+                  ? t('pages.jobs.form.saving')
+                  : t('pages.jobs.form.save')
+                : isPending
+                  ? t('pages.jobs.form.submitting')
+                  : t('pages.jobs.form.submit')}
+            </span>
+          </button>
         </div>
       </DialogContent>
     </Dialog>

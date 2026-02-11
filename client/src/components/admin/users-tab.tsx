@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Pagination,
@@ -135,49 +134,46 @@ export default function UsersTab() {
               />
             </div>
             <div
-              className="flex gap-2 flex-wrap"
+              className="flex gap-1.5 xs:gap-2 flex-wrap"
               role="group"
               aria-label={t('admin.users.statusFilter')}
             >
-              <Button
-                variant={statusFilter === 'all' ? 'default' : 'outline'}
-                onClick={() => {
-                  setStatusFilter('all');
-                  setCurrentPage(1);
-                }}
-                size="sm"
-                aria-pressed={statusFilter === 'all'}
-              >
-                {t('common.all')}
-              </Button>
-              <Button
-                variant={statusFilter === 'active' ? 'default' : 'outline'}
-                onClick={() => {
-                  setStatusFilter('active');
-                  setCurrentPage(1);
-                }}
-                size="sm"
-                aria-pressed={statusFilter === 'active'}
-              >
-                {t('common.active')}
-              </Button>
-              <Button
-                variant={statusFilter === 'inactive' ? 'default' : 'outline'}
-                onClick={() => {
-                  setStatusFilter('inactive');
-                  setCurrentPage(1);
-                }}
-                size="sm"
-                aria-pressed={statusFilter === 'inactive'}
-              >
-                {t('common.inactive')}
-              </Button>
+              {(['all', 'active', 'inactive'] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter(filter);
+                    setCurrentPage(1);
+                  }}
+                  aria-pressed={statusFilter === filter}
+                  className={`inline-flex cursor-pointer items-center justify-center rounded-full px-3 xs:px-4 py-1.5 xs:py-2 text-xs xs:text-sm font-semibold transition-all ${
+                    statusFilter === filter
+                      ? 'bg-[#8D2D53] text-white shadow-sm hover:bg-[#8D2D53]/90'
+                      : 'border border-gray-300 bg-white text-[#8D2D53] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md'
+                  }`}
+                >
+                  {filter === 'all'
+                    ? t('common.all')
+                    : filter === 'active'
+                      ? t('common.active')
+                      : t('common.inactive')}
+                </button>
+              ))}
             </div>
           </div>
 
           {loading ? (
-            <div className="text-center py-6 xs:py-8 text-sm" role="status" aria-live="polite">
-              {t('common.loading')}
+            <div className="flex items-center justify-center py-6 xs:py-8" role="status" aria-live="polite">
+              <div className="text-center space-y-4">
+                <div
+                  className="h-8 w-8 xs:h-10 xs:w-10 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
+                  style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
+                />
+                <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                  {t('common.loading')}
+                </p>
+              </div>
             </div>
           ) : filteredUsers.length === 0 ? (
             <div

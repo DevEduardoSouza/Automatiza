@@ -25,9 +25,9 @@ export function TextsSection({
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5 xs:space-y-2">
       <div className="flex justify-between items-center">
-        <Label>{t('pages.offerAutomations.form.texts')}</Label>
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.texts')}</Label>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={onSuggestTexts} disabled={suggestingText}>
             {suggestingText

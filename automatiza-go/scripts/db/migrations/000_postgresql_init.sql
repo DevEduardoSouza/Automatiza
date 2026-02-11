@@ -804,22 +804,21 @@ CREATE TABLE IF NOT EXISTS email_templates (
 );
 
 -- =============================================================================
--- Reconciliation Checkpoints
+-- Reconciliation Checkpoints (WAHA session-based)
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS reconciliation_checkpoints (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    checkpoint_type VARCHAR(50) NOT NULL,
-    last_processed_id VARCHAR(255),
-    last_processed_at TIMESTAMPTZ,
-    metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, checkpoint_type)
+    id SERIAL PRIMARY KEY,
+    session_name VARCHAR(128) NOT NULL,
+    chat_id VARCHAR(128) NOT NULL,
+    last_message_timestamp BIGINT NOT NULL DEFAULT 0,
+    last_message_id VARCHAR(128),
+    last_run_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status VARCHAR(20) NOT NULL DEFAULT 'idle' CHECK (status IN ('idle', 'running', 'failed')),
+    UNIQUE(session_name, chat_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_reconciliation_checkpoints_user_id ON reconciliation_checkpoints(user_id);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_checkpoints_session ON reconciliation_checkpoints(session_name);
 
 -- =============================================================================
 -- Apply updated_at Triggers

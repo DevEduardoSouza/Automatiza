@@ -28,8 +28,8 @@ export function MonitorDelayInput({
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-2">
-      <Label>{t('pages.offerAutomations.form.delay')}</Label>
+    <div className="space-y-1.5 xs:space-y-2">
+      <Label className="cursor-pointer">{t('pages.offerAutomations.form.delay')}</Label>
       <div className="flex gap-2">
         <Input
           type="number"
@@ -77,12 +77,16 @@ export function MonitorDelayInput({
             });
           }}
         >
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className="w-[140px] cursor-pointer">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="seconds">{t('common.seconds')}</SelectItem>
-            <SelectItem value="minutes">{t('common.minutes')}</SelectItem>
+            <SelectItem value="seconds" className="cursor-pointer">
+              {t('common.seconds')}
+            </SelectItem>
+            <SelectItem value="minutes" className="cursor-pointer">
+              {t('common.minutes')}
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>

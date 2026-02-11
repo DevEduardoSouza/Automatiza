@@ -1,6 +1,5 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -69,7 +68,7 @@ export function PriorityTable({
                 </TableCell>
                 {distributionStrategy === 'click_limit' && (
                   <TableCell>
-                    <Input
+                    <input
                       type="number"
                       min="1"
                       placeholder={t('pages.redirectLink.priority.clickLimitPlaceholder')}
@@ -78,7 +77,7 @@ export function PriorityTable({
                         const newLimit = Number.parseInt(e.target.value, 10) || 0;
                         onClickLimitChange(group.id, newLimit);
                       }}
-                      className="w-24"
+                      className="w-24 rounded-xl !border-2 !border-gray-300 bg-gray-50 px-2.5 py-1.5 text-sm outline-none transition-all hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30"
                     />
                   </TableCell>
                 )}

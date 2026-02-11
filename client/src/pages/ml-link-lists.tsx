@@ -14,7 +14,6 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -45,7 +44,10 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-const LinkListsIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+const LinkListsIcon = ({
+  className,
+  style,
+}: { className?: string; style?: React.CSSProperties }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
@@ -57,6 +59,7 @@ const LinkListsIcon = ({ className, style }: { className?: string; style?: React
     strokeLinecap="round"
     className={className}
     style={style}
+    aria-hidden="true"
   >
     <path d="M11 6L21 6" />
     <path d="M11 12L21 12" />
@@ -105,6 +108,7 @@ export default function MlLinkLists() {
     deleteListTarget,
     deleteItemTarget,
     resetConsumedDialogOpen,
+    savingList,
     setSelectedListId,
     setListDialogOpen,
     setListForm,
@@ -135,10 +139,10 @@ export default function MlLinkLists() {
     <ErrorBoundary>
       <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 xl:p-10"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 xl:space-y-10">
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-10">
             {/* Header */}
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2 xs:gap-3">
@@ -146,7 +150,10 @@ export default function MlLinkLists() {
                   className="p-1.5 xs:p-2 sm:p-2.5 rounded-lg xs:rounded-xl border"
                   style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
                 >
-                  <LinkListsIcon className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7" style={{ color: colors.wine }} />
+                  <LinkListsIcon
+                    className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7"
+                    style={{ color: colors.wine }}
+                  />
                 </div>
                 <div>
                   <h2
@@ -168,15 +175,15 @@ export default function MlLinkLists() {
                 <DialogTrigger asChild>
                   <Button
                     onClick={openCreateList}
-                    className="bg-[#8D2D53] text-white hover:bg-[#7a2747]"
+                    className="w-full xs:w-auto bg-[#8D2D53] text-white hover:bg-[#7a2747]"
                   >
                     <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
                     {t('pages.mlLinkLists.newList')}
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="w-[95vw] max-w-[95vw] xs:max-w-lg sm:max-w-xl md:max-w-2xl">
+                <DialogContent className="max-w-[calc(100vw-2rem)] xs:max-w-[calc(100vw-2.5rem)] sm:max-w-[calc(100vw-3rem)] md:max-w-2xl max-h-[85vh] xs:max-h-[90vh] overflow-y-auto p-4 xs:p-5 sm:p-6 rounded-xl xs:rounded-2xl text-black">
                   <DialogHeader>
-                    <DialogTitle>
+                    <DialogTitle className="text-base xs:text-lg md:text-xl xl:text-2xl text-black">
                       {editingList
                         ? t('pages.mlLinkLists.editTitle')
                         : t('pages.mlLinkLists.createTitle')}
@@ -185,20 +192,24 @@ export default function MlLinkLists() {
 
                   <div className="space-y-3 xs:space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="list-name">{t('pages.mlLinkLists.form.name')}</Label>
+                      <Label htmlFor="list-name" className="text-[#8D2D53]">
+                        {t('pages.mlLinkLists.form.name')}
+                      </Label>
                       <Input
                         id="list-name"
+                        className="text-black"
                         value={listForm.name}
                         onChange={(e) => setListForm((p) => ({ ...p, name: e.target.value }))}
                         placeholder={t('pages.mlLinkLists.form.namePlaceholder')}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="list-description">
+                      <Label htmlFor="list-description" className="text-[#8D2D53]">
                         {t('pages.mlLinkLists.form.description')}
                       </Label>
                       <Textarea
                         id="list-description"
+                        className="text-black"
                         value={listForm.description}
                         onChange={(e) =>
                           setListForm((p) => ({
@@ -225,22 +236,22 @@ export default function MlLinkLists() {
                     </div>
                   </div>
 
-                  <DialogFooter>
+                  <div className="flex flex-col-reverse xs:flex-row justify-end gap-2 xs:gap-3">
                     <Button variant="outline" onClick={() => setListDialogOpen(false)}>
                       {t('common.cancel')}
                     </Button>
-                    <Button onClick={saveList}>
+                    <Button onClick={saveList} disabled={savingList}>
                       <Check className="h-4 w-4 mr-2" aria-hidden="true" />
                       {t('common.save')}
                     </Button>
-                  </DialogFooter>
+                  </div>
                 </DialogContent>
               </Dialog>
             </div>
 
             {/* Info Alert - Brown Glassmorphism */}
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8"
               role="alert"
               style={{
                 backgroundColor: 'rgba(180, 120, 60, 0.08)',
@@ -282,12 +293,20 @@ export default function MlLinkLists() {
                   >
                     <List className="w-4 h-4 xs:w-5 xs:h-5" style={{ color: colors.wine }} />
                   </div>
-                  <span
-                    className="text-xs xs:text-sm font-semibold uppercase tracking-widest"
-                    style={{ color: colors.wineText }}
-                  >
-                    {t('pages.mlLinkLists.lists.title')}
-                  </span>
+                  <div>
+                    <span
+                      className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                      style={{ color: colors.wineTextLight }}
+                    >
+                      {t('pages.mlLinkLists.lists.title')}
+                    </span>
+                    <p
+                      className="text-xs xs:text-sm mt-0.5"
+                      style={{ color: colors.wineTextMuted }}
+                    >
+                      {t('pages.mlLinkLists.lists.description')}
+                    </p>
+                  </div>
                 </div>
                 <Button variant="outline" onClick={loadLists} disabled={loadingLists}>
                   <RefreshCcw className="h-4 w-4 mr-2" aria-hidden="true" />
@@ -304,7 +323,10 @@ export default function MlLinkLists() {
                     />
                   </div>
                 ) : lists.length === 0 ? (
-                  <p className="text-center py-6 xs:py-8 text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                  <p
+                    className="text-center py-6 xs:py-8 text-xs xs:text-sm"
+                    style={{ color: colors.wineTextMuted }}
+                  >
                     {t('pages.mlLinkLists.lists.empty')}
                   </p>
                 ) : (
@@ -361,14 +383,17 @@ export default function MlLinkLists() {
                       <LinkIcon className="w-4 h-4 xs:w-5 xs:h-5" style={{ color: colors.wine }} />
                     </div>
                     <span
-                      className="text-xs xs:text-sm font-semibold uppercase tracking-widest"
-                      style={{ color: colors.wineText }}
+                      className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                      style={{ color: colors.wineTextLight }}
                     >
                       {t('pages.mlLinkLists.items.title')}
                     </span>
                   </div>
                   {selectedList && (
-                    <div className="text-xs xs:text-sm mt-1" style={{ color: colors.wineTextMuted }}>
+                    <div
+                      className="text-xs xs:text-sm mt-1"
+                      style={{ color: colors.wineTextMuted }}
+                    >
                       {selectedList.description || t('pages.mlLinkLists.items.noDescription')}
                     </div>
                   )}
@@ -381,16 +406,33 @@ export default function MlLinkLists() {
 
               <div className="space-y-4 xs:space-y-5 sm:space-y-6">
                 {!selectedListId ? (
-                  <p className="text-center py-6 xs:py-8 text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                  <p
+                    className="text-center py-6 xs:py-8 text-xs xs:text-sm"
+                    style={{ color: colors.wineTextMuted }}
+                  >
                     {t('pages.mlLinkLists.items.selectList')}
                   </p>
                 ) : (
                   <>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 xs:gap-4 sm:gap-5 lg:gap-6">
                       <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <LinkIcon className="h-4 w-4" aria-hidden="true" />
-                          <div className="font-medium">{t('pages.mlLinkLists.items.addLink')}</div>
+                        <div className="flex items-center gap-2 xs:gap-3">
+                          <div
+                            className="p-1.5 xs:p-2 rounded-lg"
+                            style={{ backgroundColor: colors.iconBg }}
+                          >
+                            <LinkIcon
+                              className="w-4 h-4 xs:w-5 xs:h-5"
+                              style={{ color: colors.wine }}
+                              aria-hidden="true"
+                            />
+                          </div>
+                          <span
+                            className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                            style={{ color: colors.wineTextLight }}
+                          >
+                            {t('pages.mlLinkLists.items.addLink')}
+                          </span>
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="single-url">
@@ -466,11 +508,23 @@ export default function MlLinkLists() {
                       </div>
 
                       <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <LinkIcon className="h-4 w-4" aria-hidden="true" />
-                          <div className="font-medium">
-                            {t('pages.mlLinkLists.items.bulkImport')}
+                        <div className="flex items-center gap-2 xs:gap-3">
+                          <div
+                            className="p-1.5 xs:p-2 rounded-lg"
+                            style={{ backgroundColor: colors.iconBg }}
+                          >
+                            <LinkIcon
+                              className="w-4 h-4 xs:w-5 xs:h-5"
+                              style={{ color: colors.wine }}
+                              aria-hidden="true"
+                            />
                           </div>
+                          <span
+                            className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                            style={{ color: colors.wineTextLight }}
+                          >
+                            {t('pages.mlLinkLists.items.bulkImport')}
+                          </span>
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="bulk-text">
@@ -533,7 +587,7 @@ export default function MlLinkLists() {
 
                     {!loadingItems && items.length > 0 && availableCount === 0 && (
                       <div
-                        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+                        className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 lg:p-8"
                         role="alert"
                         style={{
                           backgroundColor: 'rgba(180, 120, 60, 0.08)',

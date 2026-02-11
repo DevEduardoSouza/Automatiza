@@ -40,8 +40,8 @@ function MonitorRuleHeader() {
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-1">
-      <Label>{t('pages.offerAutomations.form.textProcessing')}</Label>
+    <div className="space-y-1 xs:space-y-1.5">
+      <Label className="cursor-pointer">{t('pages.offerAutomations.form.textProcessing')}</Label>
       <p className="text-xs text-muted-foreground">
         {t('pages.offerAutomations.form.textProcessingHint')}
       </p>
@@ -60,8 +60,8 @@ function MonitorRulePrefixSuffix({ formData, setFormData, rules }: MonitorRulePr
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6">
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.prefix')}</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.prefix')}</Label>
         <Textarea
           rows={2}
           value={rules.prefixo}
@@ -77,8 +77,8 @@ function MonitorRulePrefixSuffix({ formData, setFormData, rules }: MonitorRulePr
           placeholder={t('pages.offerAutomations.form.prefixPlaceholder')}
         />
       </div>
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.suffix')}</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.suffix')}</Label>
         <Textarea
           rows={2}
           value={rules.sufixo}
@@ -144,8 +144,8 @@ function MonitorRuleCleanup({ formData, setFormData, rules }: MonitorRuleCleanup
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label>{t('pages.offerAutomations.form.removeTerms')}</Label>
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.removeTerms')}</Label>
         <Textarea
           rows={4}
           value={rules.remover_termos.join('\n')}
@@ -178,9 +178,9 @@ function MonitorRuleSubstitutions({ formData, setFormData, rules }: MonitorRuleS
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5 xs:space-y-2">
       <div className="flex items-center justify-between">
-        <Label>{t('pages.offerAutomations.form.substitutions')}</Label>
+        <Label className="cursor-pointer">{t('pages.offerAutomations.form.substitutions')}</Label>
         <Button
           type="button"
           variant="outline"

@@ -11,6 +11,14 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import {
+  GroupSelectionDialog,
+  HowItWorksCard,
+  LinkFormCard,
+  PriorityMobileCards,
+  PriorityTable,
+  SavedLinksCard,
+} from './components';
 
 const RedirectIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
   <svg
@@ -29,15 +37,6 @@ const RedirectIcon = ({ className, style }: { className?: string; style?: React.
     <path d="M10.9703 18.14L10.2565 18.8828C8.82526 20.3724 6.50471 20.3724 5.07345 18.8828C3.64218 17.3932 3.64218 14.9782 5.07345 13.4886L8.31287 10.1172C9.74413 8.62761 12.0647 8.6276 13.4959 10.1172C13.6904 10.3195 13.8584 10.539 14 10.7708" />
   </svg>
 );
-import {
-  GroupSelectionDialog,
-  HowItWorksCard,
-  LinkFormCard,
-  PriorityMobileCards,
-  PriorityTable,
-  SavedLinksCard,
-} from './components';
-
 const colors = {
   wine: '#8D2D53',
   wineBg: 'rgba(141, 45, 83, 0.08)',
@@ -76,6 +75,8 @@ export default function RedirectLinkPage() {
     startEditLink,
     cancelEdit,
     copyToClipboard,
+    selectAllGroups,
+    deselectAllGroups,
   } = useRedirectLink();
 
   const sensors = useSensors(
@@ -93,38 +94,38 @@ export default function RedirectLinkPage() {
 
   return (
     <ErrorBoundary>
-      <div className="redirect-link-page flex flex-col w-full h-full">
+      <div className="redirect-link-page flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
-          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8">
-            {/* Header */}
-            <div className="flex items-center gap-2 xs:gap-3">
-              <div
-                className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
-                style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
-              >
-                <RedirectIcon className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
-              </div>
-              <div>
-                <h2
-                  className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
-                  style={{ color: '#18181b' }}
-                >
-                  {t('pages.redirectLink.title')}
-                </h2>
-                <p
-                  className="text-xs xs:text-sm tracking-tight"
-                  style={{ color: colors.wineTextMuted }}
-                >
-                  {t('pages.redirectLink.subtitle')}
-                </p>
-              </div>
+          {/* Header */}
+          <div className="flex items-center gap-2 xs:gap-3 mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
+            <div
+              className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
+              style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
+            >
+              <RedirectIcon className="w-5 h-5 xs:w-6 xs:h-6" style={{ color: colors.wine }} />
             </div>
+            <div>
+              <h2
+                className="text-xl xs:text-2xl md:text-3xl xl:text-4xl font-semibold tracking-tight"
+                style={{ color: '#18181b' }}
+              >
+                {t('pages.redirectLink.title')}
+              </h2>
+              <p
+                className="text-xs xs:text-sm tracking-tight"
+                style={{ color: colors.wineTextMuted }}
+              >
+                {t('pages.redirectLink.subtitle')}
+              </p>
+            </div>
+          </div>
 
+          <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8">
             {/* Form + Saved Links Grid */}
-            <div className="grid gap-4 xs:gap-5 sm:gap-6 lg:grid-cols-2">
+            <div className="grid gap-4 xs:gap-5 sm:gap-6 lg:grid-cols-[1.2fr_1fr]">
               <LinkFormCard
                 linkName={linkName}
                 slug={slug}
@@ -149,62 +150,70 @@ export default function RedirectLinkPage() {
               />
             </div>
 
-            {/* Priority Card */}
-            <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
-              style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
-            >
-              <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
-                <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
-                  <List
-                    className="w-4 h-4 xs:w-5 xs:h-5"
-                    style={{ color: colors.wine }}
-                    aria-hidden="true"
-                  />
-                </div>
-                <div>
-                  <span
-                    className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
-                    style={{ color: colors.wineTextLight }}
-                  >
-                    {t('pages.redirectLink.priority.title')}
-                  </span>
-                  <p
-                    className="text-xs xs:text-sm tracking-tight"
-                    style={{ color: colors.wineTextMuted }}
-                  >
-                    <span className="hidden md:inline">
-                      {t('pages.redirectLink.priority.descriptionDesktop')}
-                    </span>
-                    <span className="md:hidden">
-                      {t('pages.redirectLink.priority.descriptionMobile')}
-                    </span>
-                  </p>
-                </div>
-              </div>
+            {/* Priority Card - only shown when groups are selected */}
+            {groupPriorities.length > 0 && (
+              <>
+                <div className="h-px" style={{ backgroundColor: colors.wineBorder }} />
 
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <PriorityTable
-                  groups={groupPriorities}
-                  distributionStrategy={distributionStrategy}
-                  onMoveUp={(index) => moveGroup(index, 'up')}
-                  onMoveDown={(index) => moveGroup(index, 'down')}
-                  onClickLimitChange={handleClickLimitChange}
-                />
+                <div
+                  className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+                  style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
+                >
+                  <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4">
+                    <div className="p-1.5 xs:p-2 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
+                      <List
+                        className="w-4 h-4 xs:w-5 xs:h-5"
+                        style={{ color: colors.wine }}
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div>
+                      <span
+                        className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+                        style={{ color: colors.wineTextLight }}
+                      >
+                        {t('pages.redirectLink.priority.title')}
+                      </span>
+                      <p
+                        className="text-xs xs:text-sm tracking-tight"
+                        style={{ color: colors.wineTextMuted }}
+                      >
+                        <span className="hidden md:inline">
+                          {t('pages.redirectLink.priority.descriptionDesktop')}
+                        </span>
+                        <span className="md:hidden">
+                          {t('pages.redirectLink.priority.descriptionMobile')}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
 
-                <PriorityMobileCards
-                  groups={groupPriorities}
-                  distributionStrategy={distributionStrategy}
-                  onMoveUp={(index) => moveGroup(index, 'up')}
-                  onMoveDown={(index) => moveGroup(index, 'down')}
-                  onClickLimitChange={handleClickLimitChange}
-                />
-              </DndContext>
-            </div>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <PriorityTable
+                      groups={groupPriorities}
+                      distributionStrategy={distributionStrategy}
+                      onMoveUp={(index) => moveGroup(index, 'up')}
+                      onMoveDown={(index) => moveGroup(index, 'down')}
+                      onClickLimitChange={handleClickLimitChange}
+                    />
+
+                    <PriorityMobileCards
+                      groups={groupPriorities}
+                      distributionStrategy={distributionStrategy}
+                      onMoveUp={(index) => moveGroup(index, 'up')}
+                      onMoveDown={(index) => moveGroup(index, 'down')}
+                      onClickLimitChange={handleClickLimitChange}
+                    />
+                  </DndContext>
+                </div>
+              </>
+            )}
+
+            <div className="h-px" style={{ backgroundColor: colors.wineBorder }} />
 
             <HowItWorksCard />
 
@@ -217,6 +226,8 @@ export default function RedirectLinkPage() {
               onSearchChange={setSearchTerm}
               onToggleSelection={toggleGroupSelection}
               onApply={applyGroupSelection}
+              onSelectAll={selectAllGroups}
+              onDeselectAll={deselectAllGroups}
             />
           </div>
         </div>

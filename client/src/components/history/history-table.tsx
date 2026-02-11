@@ -3,18 +3,18 @@ import type { ActionHistory } from '@/types/action-history';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HistoryStatusBadge } from './history-status-badge';
 
 const colors = {
   wineBorder: 'rgba(141, 45, 83, 0.2)',
   wineTextMuted: 'rgba(141, 45, 83, 0.6)',
+  rowHover: 'rgba(141, 45, 83, 0.04)',
 };
 
 interface HistoryTableProps {
   history: ActionHistory[];
-  // Pagination props
   currentPage: number;
   pageSize: number;
   totalCount: number;
@@ -35,34 +35,37 @@ export function HistoryTable({
   onPageChange,
 }: HistoryTableProps) {
   const { t } = useTranslation();
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
-  const getActionTypeLabel = (actionType: string) => {
-    const labels: Record<string, string> = {
-      close_groups: t('pages.history.actions.closeGroups'),
-      open_groups: t('pages.history.actions.openGroups'),
-      send_message: t('pages.history.actions.sendMessage'),
-      change_name: t('pages.history.actions.changeName'),
-      change_photo: t('pages.history.actions.changePhoto'),
-      change_description: t('pages.history.actions.changeDescription'),
-      import_groups: t('pages.history.actions.importGroups'),
-      message_sent: t('pages.history.actions.sendMessage'),
-      automation_run: t('pages.history.actions.automationRun'),
-      coupon_used: t('pages.history.actions.couponUsed'),
-      link_clicked: t('pages.history.actions.linkClicked'),
-      group_sync: t('pages.history.actions.importGroups'),
-      error: t('pages.history.actions.error'),
-      send_campaign: t('pages.history.actions.sendCampaign'),
-      generate_image: t('pages.history.actions.generateImage'),
-      add_member: t('pages.history.actions.addMember'),
-      remove_member: t('pages.history.actions.removeMember'),
-      promote_member: t('pages.history.actions.promoteMember'),
-      demote_member: t('pages.history.actions.demoteMember'),
-      leave_group: t('pages.history.actions.leaveGroup'),
-    };
-    return labels[actionType] || actionType;
-  };
+  const getActionTypeLabel = useCallback(
+    (actionType: string) => {
+      const labels: Record<string, string> = {
+        close_groups: t('pages.history.actions.closeGroups'),
+        open_groups: t('pages.history.actions.openGroups'),
+        send_message: t('pages.history.actions.sendMessage'),
+        change_name: t('pages.history.actions.changeName'),
+        change_photo: t('pages.history.actions.changePhoto'),
+        change_description: t('pages.history.actions.changeDescription'),
+        import_groups: t('pages.history.actions.importGroups'),
+        message_sent: t('pages.history.actions.sendMessage'),
+        automation_run: t('pages.history.actions.automationRun'),
+        coupon_used: t('pages.history.actions.couponUsed'),
+        link_clicked: t('pages.history.actions.linkClicked'),
+        group_sync: t('pages.history.actions.importGroups'),
+        error: t('pages.history.actions.error'),
+        send_campaign: t('pages.history.actions.sendCampaign'),
+        generate_image: t('pages.history.actions.generateImage'),
+        add_member: t('pages.history.actions.addMember'),
+        remove_member: t('pages.history.actions.removeMember'),
+        promote_member: t('pages.history.actions.promoteMember'),
+        demote_member: t('pages.history.actions.demoteMember'),
+        leave_group: t('pages.history.actions.leaveGroup'),
+      };
+      return labels[actionType] || actionType;
+    },
+    [t]
+  );
 
-  // Calculate display range for pagination info
   const startItem = (currentPage - 1) * pageSize + 1;
   const endItem = Math.min(currentPage * pageSize, totalCount);
 
@@ -148,7 +151,7 @@ export function HistoryTable({
         ),
       },
     ],
-    [t]
+    [t, getActionTypeLabel]
   );
 
   return (
@@ -157,7 +160,7 @@ export function HistoryTable({
       <div className="hidden md:block">
         <table className="w-full">
           <thead>
-            <tr className="border-b">
+            <tr className="border-b" style={{ borderColor: colors.wineBorder }}>
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -171,7 +174,16 @@ export function HistoryTable({
           </thead>
           <tbody>
             {history.map((item, index) => (
-              <tr key={item.id} className="border-b transition-colors hover:bg-muted/50">
+              <tr
+                key={item.id}
+                className="border-b transition-colors"
+                style={{
+                  borderColor: colors.wineBorder,
+                  backgroundColor: hoveredRow === item.id ? colors.rowHover : undefined,
+                }}
+                onMouseEnter={() => setHoveredRow(item.id)}
+                onMouseLeave={() => setHoveredRow(null)}
+              >
                 {columns.map((col) => (
                   <td key={col.key} className="p-4 align-middle">
                     {col.render(item, index)}
@@ -218,70 +230,65 @@ export function HistoryTable({
       </div>
 
       {/* Pagination Controls */}
-      <div className="flex flex-col xs:flex-row items-center justify-between gap-3 xs:gap-4 mt-4 lg:mt-6">
-        {/* Page info - left side */}
+      <div
+        className="flex flex-col xs:flex-row items-center justify-between gap-3 xs:gap-4 mt-4 pt-4 border-t"
+        style={{ borderColor: colors.wineBorder }}
+      >
         <div className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
           {totalCount > 0
             ? t('pages.history.pagination.showing', {
                 start: startItem,
                 end: endItem,
                 total: totalCount,
-                defaultValue: `Mostrando ${startItem}-${endItem} de ${totalCount} registros`,
               })
             : t('pages.history.table.empty')}
         </div>
 
-        {/* Page navigation - right side */}
         <div className="flex items-center gap-0.5 xs:gap-1">
-          {/* First page */}
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
             onClick={() => onPageChange(1)}
             disabled={currentPage === 1}
-            aria-label={t('pages.history.pagination.first', { defaultValue: 'Primeira página' })}
+            aria-label={t('pages.history.pagination.first')}
           >
             <ChevronsLeft className="h-4 w-4" />
           </Button>
 
-          {/* Previous page */}
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage === 1}
-            aria-label={t('pages.history.pagination.previous', { defaultValue: 'Página anterior' })}
+            aria-label={t('pages.history.pagination.previous')}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
 
-          {/* Page indicator */}
           <span className="px-2 xs:px-3 text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
             {currentPage} / {totalPages || 1}
           </span>
 
-          {/* Next page */}
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage === totalPages || totalPages === 0}
-            aria-label={t('pages.history.pagination.next', { defaultValue: 'Próxima página' })}
+            aria-label={t('pages.history.pagination.next')}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
 
-          {/* Last page */}
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
             onClick={() => onPageChange(totalPages)}
             disabled={currentPage === totalPages || totalPages === 0}
-            aria-label={t('pages.history.pagination.last', { defaultValue: 'Última página' })}
+            aria-label={t('pages.history.pagination.last')}
           >
             <ChevronsRight className="h-4 w-4" />
           </Button>

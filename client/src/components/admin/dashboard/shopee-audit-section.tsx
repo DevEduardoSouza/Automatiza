@@ -1,6 +1,5 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -70,11 +69,16 @@ export function ShopeeAuditSection({
               aria-label={t('admin.dashboard.shopeeAudit.days')}
             />
           </div>
-          <Button variant="outline" onClick={() => onRefresh()} disabled={auditLoading}>
+          <button
+            type="button"
+            onClick={() => onRefresh()}
+            disabled={auditLoading}
+            className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+          >
             {auditLoading
               ? t('admin.dashboard.loadBalancer.refreshing')
               : t('admin.dashboard.loadBalancer.refresh')}
-          </Button>
+          </button>
         </div>
       </div>
       <div className="space-y-3 xs:space-y-4">

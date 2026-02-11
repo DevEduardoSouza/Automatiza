@@ -1,5 +1,12 @@
 import type { MlLastTest } from '@/hooks/use-affiliate-programs';
+import { CheckCircle2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const colors = {
+  wine: '#8D2D53',
+  wineTextLight: 'rgba(141, 45, 83, 0.7)',
+  iconBg: 'rgba(141, 45, 83, 0.1)',
+};
 
 interface MlTestResultProps {
   result: MlLastTest;
@@ -22,7 +29,21 @@ export function MlTestResult({ result, formatSoldQuantity }: MlTestResultProps) 
       className="rounded-xl border p-3 xs:p-4 lg:p-5 space-y-2 xs:space-y-3 text-sm"
       style={{ backgroundColor: 'rgba(141, 45, 83, 0.08)', borderColor: 'rgba(141, 45, 83, 0.2)' }}
     >
-      <div className="font-medium">{t('pages.affiliatePrograms.ml.testResult')}</div>
+      <div className="flex items-center gap-2 xs:gap-3 mb-2">
+        <div className="p-1 xs:p-1.5 rounded-lg" style={{ backgroundColor: colors.iconBg }}>
+          <CheckCircle2
+            className="w-3.5 h-3.5 xs:w-4 xs:h-4"
+            style={{ color: colors.wine }}
+            aria-hidden="true"
+          />
+        </div>
+        <span
+          className="uppercase text-[10px] xs:text-xs tracking-[0.1em] font-semibold"
+          style={{ color: colors.wineTextLight }}
+        >
+          {t('pages.affiliatePrograms.ml.testResult')}
+        </span>
+      </div>
 
       {result.thumbnail && (
         <img
@@ -70,7 +91,9 @@ export function MlTestResult({ result, formatSoldQuantity }: MlTestResultProps) 
           )}
         </div>
       ) : (
-        <div style={{ color: 'rgba(141, 45, 83, 0.6)' }}>{t('pages.affiliatePrograms.ml.noTitlePrice')}</div>
+        <div style={{ color: 'rgba(141, 45, 83, 0.6)' }}>
+          {t('pages.affiliatePrograms.ml.noTitlePrice')}
+        </div>
       )}
 
       {result.shortUrl && (

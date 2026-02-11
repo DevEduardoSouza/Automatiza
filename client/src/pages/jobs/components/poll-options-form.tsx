@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -56,28 +55,25 @@ export function PollOptionsForm({
               className="cursor-text"
             />
             {pollOptions.length > 2 && (
-              <Button
+              <button
                 type="button"
-                variant="outline"
-                size="icon"
                 onClick={() => onRemoveOption(index)}
-                className="cursor-pointer"
+                className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-full h-9 w-9 xs:h-10 xs:w-10 border border-gray-300 bg-white text-[#520B27] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
               >
                 <Trash2 className="h-4 w-4" />
-              </Button>
+              </button>
             )}
           </div>
         ))}
         {pollOptions.length < 12 && (
-          <Button
+          <button
             type="button"
-            variant="outline"
             onClick={onAddOption}
-            className="w-full cursor-pointer text-xs xs:text-sm h-8 xs:h-10"
+            className="inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="h-4 w-4" />
             {t('pages.jobs.form.addOption')}
-          </Button>
+          </button>
         )}
       </div>
     </div>
