@@ -26,6 +26,7 @@ import {
   useJobsConnect,
 } from '@/hooks/use-jobs-connect';
 import { useToast } from '@/hooks/use-toast';
+import * as Sentry from '@sentry/react';
 import { AlertCircle, Plus, Search, Star, Upload, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -60,15 +61,36 @@ export function ScheduleMultipleGroups() {
     );
   };
 
+  /** WF40: Validate photo file type and size (max 5MB) before accepting */
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setGroupPhoto(file);
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
       toast({
-        title: t('pages.groups.schedule.photoSelected'),
-        description: file.name,
+        variant: 'destructive',
+        title: t('pages.groups.errors.invalidPhotoType'),
+        description: t('pages.groups.errors.invalidPhotoTypeMessage'),
       });
+      e.target.value = '';
+      return;
     }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        variant: 'destructive',
+        title: t('pages.groups.errors.photoTooLarge'),
+        description: t('pages.groups.errors.photoExceedsLimitSchedule'),
+      });
+      e.target.value = '';
+      return;
+    }
+
+    setGroupPhoto(file);
+    toast({
+      title: t('pages.groups.schedule.photoSelected'),
+      description: file.name,
+    });
   };
 
   const handleSchedule = async () => {
@@ -211,11 +233,14 @@ export function ScheduleMultipleGroups() {
       setSearchTerm('');
       setDialogOpen(false);
     } catch (error) {
-      const err = error as { message?: string };
+      Sentry.captureException(error, {
+        tags: { component: 'ScheduleMultipleGroups', action: 'handleSchedule' },
+        extra: { selectedGroupsCount: selectedGroups.length },
+      });
       toast({
         variant: 'destructive',
         title: t('pages.groups.schedule.errors.scheduleError'),
-        description: err.message || t('common.tryAgain'),
+        description: error instanceof Error ? error.message : t('common.tryAgain'),
       });
     }
   };
@@ -223,32 +248,40 @@ export function ScheduleMultipleGroups() {
   return (
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
       <DialogTrigger asChild>
-        <Button className="flex-1 md:flex-none bg-[#8D2D53] text-white hover:bg-[#7a2747]">
-          <Plus className="mr-2 h-4 w-4" />
-          <span className="hidden sm:inline">{t('pages.groups.schedule.scheduleButton')}</span>
-          <span className="sm:hidden">{t('pages.groups.schedule.scheduleButtonShort')}</span>
-        </Button>
+        <button
+          type="button"
+          className="auth-btn-glow relative inline-flex flex-1 md:flex-none cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+            <div className="auth-btn-glow__glow absolute inset-0" />
+          </div>
+          <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            <span className="hidden sm:inline">{t('pages.groups.schedule.scheduleButton')}</span>
+            <span className="sm:hidden">{t('pages.groups.schedule.scheduleButtonShort')}</span>
+          </span>
+        </button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100vw-2.5rem)] xs:max-w-[calc(100vw-3rem)] sm:max-w-[calc(100vw-4rem)] md:max-w-2xl xl:max-w-3xl 2xl:max-w-4xl max-h-[85vh] xs:max-h-[90vh] overflow-y-auto p-4 xs:p-5 sm:p-6 rounded-xl xs:rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="text-lg md:text-xl">
+          <DialogTitle className="text-base xs:text-lg md:text-xl xl:text-2xl">
             {t('pages.groups.schedule.title')}
           </DialogTitle>
-          <DialogDescription className="text-sm">
+          <DialogDescription className="text-xs xs:text-sm">
             {t('pages.groups.schedule.description')}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="space-y-3 xs:space-y-4 lg:space-y-5">
           <Alert>
             <AlertCircle className="h-4 w-4 shrink-0" />
-            <AlertDescription className="text-xs md:text-sm">
+            <AlertDescription className="text-xs xs:text-sm">
               <strong>{t('pages.groups.schedule.howItWorks.title')}</strong>{' '}
               {t('pages.groups.schedule.howItWorks.description')}
             </AlertDescription>
           </Alert>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+          <div className="grid gap-3 xs:gap-4 md:grid-cols-2">
+            <div className="space-y-1.5 xs:space-y-2">
               <Label htmlFor="date" className="cursor-pointer">
                 {t('pages.groups.schedule.date')}
               </Label>
@@ -260,7 +293,7 @@ export function ScheduleMultipleGroups() {
                 className="cursor-pointer"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5 xs:space-y-2">
               <Label htmlFor="time" className="cursor-pointer">
                 {t('pages.groups.schedule.time')}
               </Label>
@@ -274,7 +307,7 @@ export function ScheduleMultipleGroups() {
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5 xs:space-y-2">
             <Label className="cursor-default">{t('pages.groups.schedule.selectGroups')}</Label>
             <div className="relative mb-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -285,7 +318,7 @@ export function ScheduleMultipleGroups() {
                 className="pl-9 cursor-text"
               />
             </div>
-            <div className="border rounded-lg p-4 space-y-2 max-h-48 overflow-y-auto">
+            <div className="border rounded-lg p-2 xs:p-3 sm:p-4 space-y-1.5 xs:space-y-2 max-h-36 xs:max-h-44 sm:max-h-48 lg:max-h-64 xl:max-h-72 2xl:max-h-80 overflow-y-auto">
               {loadingGroups ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   {t('common.loading')}
@@ -301,7 +334,15 @@ export function ScheduleMultipleGroups() {
                     <div
                       key={group.id}
                       className="flex items-center space-x-2 cursor-pointer"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => toggleGroup(group.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleGroup(group.id);
+                        }
+                      }}
                     >
                       <Checkbox
                         id={`group-${group.id}`}
@@ -311,7 +352,7 @@ export function ScheduleMultipleGroups() {
                       />
                       <Label
                         htmlFor={`group-${group.id}`}
-                        className="text-sm font-normal cursor-pointer flex-1 flex items-center gap-1.5"
+                        className="text-xs xs:text-sm font-normal cursor-pointer flex-1 flex items-center gap-1.5 xs:gap-2"
                       >
                         {group.is_favorite && (
                           <Star className="h-3.5 w-3.5 fill-[#8D2D53] text-[#8D2D53]" />
@@ -327,7 +368,7 @@ export function ScheduleMultipleGroups() {
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5 xs:space-y-2">
             <Label htmlFor="groupName" className="cursor-pointer">
               {t('pages.groups.schedule.baseNameOptional')}
             </Label>
@@ -345,7 +386,7 @@ export function ScheduleMultipleGroups() {
             )}
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5 xs:space-y-2">
             <Label htmlFor="description" className="cursor-pointer">
               {t('pages.groups.schedule.descriptionOptional')}
             </Label>
@@ -355,11 +396,11 @@ export function ScheduleMultipleGroups() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="cursor-text"
+              className="cursor-text min-h-[60px] xs:min-h-[70px] lg:min-h-[100px] xl:min-h-[120px]"
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5 xs:space-y-2">
             <Label htmlFor="status" className="cursor-pointer">
               {t('pages.groups.schedule.statusOptional')}
             </Label>
@@ -384,11 +425,11 @@ export function ScheduleMultipleGroups() {
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5 xs:space-y-2">
             <Label htmlFor="groupPhoto" className="cursor-pointer">
               {t('pages.groups.schedule.photoOptional')}
             </Label>
-            <div className="flex gap-2">
+            <div className="flex gap-1.5 xs:gap-2">
               <Input
                 id="groupPhoto"
                 type="file"
@@ -401,7 +442,7 @@ export function ScheduleMultipleGroups() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="cursor-pointer"
+                  className="cursor-pointer rounded-full"
                   onClick={() => setGroupPhoto(null)}
                 >
                   <X className="h-4 w-4" />
@@ -409,14 +450,14 @@ export function ScheduleMultipleGroups() {
               )}
             </div>
             {groupPhoto && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1.5 xs:gap-2 text-xs xs:text-sm text-muted-foreground">
                 <Upload className="h-4 w-4" />
                 <span>{groupPhoto.name}</span>
               </div>
             )}
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5 xs:space-y-2">
             <Label htmlFor="message" className="cursor-pointer">
               {t('pages.groups.schedule.messageOptional')}
             </Label>
@@ -426,7 +467,7 @@ export function ScheduleMultipleGroups() {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={4}
-              className="cursor-text"
+              className="cursor-text min-h-[70px] xs:min-h-[80px] lg:min-h-[120px] xl:min-h-[140px]"
             />
             {message.includes('@todos') && (
               <Alert className="bg-blue-50 border-blue-200">
@@ -439,15 +480,21 @@ export function ScheduleMultipleGroups() {
             )}
           </div>
 
-          <Button
+          <button
+            type="button"
             onClick={handleSchedule}
-            className="w-full"
             disabled={selectedGroups.length === 0 || isCreatingJob}
+            className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isCreatingJob
-              ? t('common.loading')
-              : t('pages.groups.schedule.scheduleCount', { count: selectedGroups.length || 0 })}
-          </Button>
+            <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+              <div className="auth-btn-glow__glow absolute inset-0" />
+            </div>
+            <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+              {isCreatingJob
+                ? t('common.loading')
+                : t('pages.groups.schedule.scheduleCount', { count: selectedGroups.length || 0 })}
+            </span>
+          </button>
         </div>
       </DialogContent>
     </Dialog>

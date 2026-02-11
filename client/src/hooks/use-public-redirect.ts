@@ -1,4 +1,6 @@
+import { captureHookError } from '@/lib/sentry';
 import { redirectService } from '@/services/api.service';
+import * as Sentry from '@sentry/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
@@ -93,7 +95,9 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
       const data: RedirectResponse = await redirectService.processRedirectBySlug(slug as string);
 
       if (!data?.success) {
-        throw new Error(translateError(data?.error || '') || t('pages.publicRedirect.error.genericError'));
+        throw new Error(
+          translateError(data?.error || '') || t('pages.publicRedirect.error.genericError')
+        );
       }
 
       setGroupName(data.group_name || '');
@@ -107,6 +111,7 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
 
       setLoading(false);
     } catch (err: unknown) {
+      captureHookError(err, 'usePublicRedirect', 'handleRedirect');
       const errorMessage =
         err instanceof Error ? err.message : t('pages.publicRedirect.error.genericError');
       setError(errorMessage);
@@ -139,11 +144,14 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
           try {
             document.body.removeChild(iframe);
           } catch {
-            // ignore
+            Sentry.captureMessage(
+              'iframe removeChild failed in trySchemeWithoutNavigating',
+              'info'
+            );
           }
         }, 1500);
       } catch {
-        // ignore
+        Sentry.captureMessage('iframe scheme navigation failed', 'info');
       }
     };
 
@@ -157,7 +165,7 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
           window.location.href = `intent://chat.whatsapp.com/${inviteCode}#Intent;scheme=https;package=com.whatsapp;end`;
           return;
         } catch {
-          // ignore
+          Sentry.captureMessage('Android intent navigation failed', 'info');
         }
       }
     }
@@ -178,6 +186,7 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
     try {
       await navigator.clipboard.writeText(redirectUrl);
     } catch {
+      Sentry.captureMessage('clipboard API unavailable, falling back to execCommand', 'info');
       const ta = document.createElement('textarea');
       ta.value = redirectUrl;
       ta.style.position = 'fixed';
@@ -195,6 +204,7 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
       const win = window.open(redirectUrl, '_blank', 'noopener,noreferrer');
       if (!win) window.location.href = redirectUrl;
     } catch {
+      Sentry.captureMessage('window.open failed, falling back to location.href', 'info');
       window.location.href = redirectUrl;
     }
   }, [redirectUrl]);

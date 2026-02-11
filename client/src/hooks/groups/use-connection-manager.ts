@@ -1,5 +1,6 @@
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ConnectionStatus, UseConnectionManagerReturn } from './types';
@@ -44,7 +45,8 @@ export function useConnectionManager(loadGroups: () => Promise<void>): UseConnec
         setConnectionStatus('disconnected');
         setInstanceName(latestInstance.instance_id);
       }
-    } catch {
+    } catch (error: unknown) {
+      captureHookError(error, 'useConnectionManager', 'checkConnectionStatus');
       setConnectionStatus('disconnected');
     }
   }, [latestInstance]);
@@ -121,8 +123,8 @@ export function useConnectionManager(loadGroups: () => Promise<void>): UseConnec
                   loadGroups();
                 }, 1000);
               }
-            } catch {
-              // Ignore polling errors
+            } catch (error: unknown) {
+              captureHookError(error, 'useConnectionManager', 'pollReconnectStatus');
             }
           }, 3000);
 
@@ -139,6 +141,7 @@ export function useConnectionManager(loadGroups: () => Promise<void>): UseConnec
         throw new Error(data.error || t('pages.groups.errors.qrGeneration'));
       }
     } catch (error: unknown) {
+      captureHookError(error, 'useConnectionManager', 'handleReconnect');
       const errorMessage =
         error instanceof Error ? error.message : t('pages.groups.errors.reconnect');
       toast({

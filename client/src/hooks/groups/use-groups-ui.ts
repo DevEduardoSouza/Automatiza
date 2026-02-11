@@ -1,6 +1,7 @@
 import { useGroupsConnect } from '@/hooks/use-groups-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import type { Group } from '@/types/group';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -68,6 +69,7 @@ export function useGroupsUI({
 
       await loadGroups();
     } catch (error: unknown) {
+      captureHookError(error, 'useGroupsUI', 'handleSaveInviteCode');
       const errorMessage =
         error instanceof Error ? error.message : t('pages.groups.errors.saveInviteCode');
       toast({
@@ -96,6 +98,7 @@ export function useGroupsUI({
             : t('pages.groups.success.addedFavoriteMessage'),
         });
       } catch (error: unknown) {
+        captureHookError(error, 'useGroupsUI', 'toggleFavorite');
         // Revert optimistic update on error
         updateGroupOptimistic(groupId, { is_favorite: currentFavorite });
 

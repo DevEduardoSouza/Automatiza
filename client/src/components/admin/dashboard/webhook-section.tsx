@@ -1,5 +1,4 @@
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -20,6 +19,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { safeClipboard } from '@/lib/sentry';
 import { CheckCircle2, Copy, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -61,11 +61,15 @@ export function WebhookSection({ webhookLogs, onSimulate }: WebhookSectionProps)
 
   const webhookUrl = `${window.location.origin}/api/v1/webhooks/kiwify`;
 
-  const copyWebhookUrl = () => {
-    navigator.clipboard.writeText(webhookUrl);
-    setCopied(true);
-    toast.success(t('admin.dashboard.webhook.copySuccess'));
-    setTimeout(() => setCopied(false), 2000);
+  const copyWebhookUrl = async () => {
+    const success = await safeClipboard(webhookUrl);
+    if (success) {
+      setCopied(true);
+      toast.success(t('admin.dashboard.webhook.copySuccess'));
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast.error(t('common.clipboardUnavailable'));
+    }
   };
 
   const handleSimulateWebhook = async () => {
@@ -129,9 +133,13 @@ export function WebhookSection({ webhookLogs, onSimulate }: WebhookSectionProps)
         <div className="space-y-3 xs:space-y-4">
           <div className="flex flex-col sm:flex-row gap-2">
             <Input value={webhookUrl} readOnly className="font-mono text-xs md:text-sm" />
-            <Button onClick={copyWebhookUrl} variant="outline" size="icon" className="shrink-0">
+            <button
+              type="button"
+              onClick={copyWebhookUrl}
+              className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-full border border-gray-300 bg-white p-2 text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+            >
               {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            </Button>
+            </button>
           </div>
           <p className="text-xs md:text-sm" style={{ color: colors.wineTextMuted }}>
             {t('admin.dashboard.webhook.configureToken')}
@@ -219,16 +227,26 @@ export function WebhookSection({ webhookLogs, onSimulate }: WebhookSectionProps)
             </div>
           </div>
 
-          <Button onClick={handleSimulateWebhook} disabled={loading} className="w-full">
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t('common.processing')}
-              </>
-            ) : (
-              t('admin.dashboard.webhook.simulator.simulate')
-            )}
-          </Button>
+          <button
+            type="button"
+            onClick={handleSimulateWebhook}
+            disabled={loading}
+            className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+              <div className="auth-btn-glow__glow absolute inset-0" />
+            </div>
+            <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t('common.processing')}
+                </>
+              ) : (
+                t('admin.dashboard.webhook.simulator.simulate')
+              )}
+            </span>
+          </button>
         </div>
       </div>
 

@@ -270,7 +270,12 @@ export function GroupListTable({
         width: '150px',
         render: (group: Group) =>
           group.invite_code ? (
-            <Button variant="outline" size="sm" onClick={() => onEditInviteCode(group)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full text-[#8D2D53]"
+              onClick={() => onEditInviteCode(group)}
+            >
               <Check className="mr-2 h-4 w-4 text-green-600" aria-hidden="true" />
               {t('pages.groups.inviteCode.configured')}
             </Button>
@@ -278,7 +283,7 @@ export function GroupListTable({
             <Button
               variant="outline"
               size="sm"
-              className="text-orange-600 border-orange-300"
+              className="rounded-full text-orange-600 border-orange-300"
               onClick={() => onEditInviteCode(group)}
             >
               <AlertCircle className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -294,6 +299,7 @@ export function GroupListTable({
           <Button
             variant="outline"
             size="sm"
+            className="rounded-full text-[#8D2D53]"
             onClick={() =>
               onManageMembers({
                 wa_group_id: group.wa_group_id,
@@ -455,7 +461,9 @@ export function GroupListTable({
                             aria-hidden="true"
                           />
                         </Button>
-                        <h3 className="font-semibold text-sm xs:text-base break-words">{group.name}</h3>
+                        <h3 className="font-semibold text-sm xs:text-base break-words">
+                          {group.name}
+                        </h3>
                       </div>
                       <div
                         className="flex flex-wrap gap-2 text-xs"
@@ -479,7 +487,7 @@ export function GroupListTable({
                       variant="outline"
                       size="sm"
                       onClick={() => onEditInviteCode(group)}
-                      className="w-full xs:w-auto flex-1 min-w-0 text-xs"
+                      className="w-full xs:w-auto flex-1 min-w-0 text-xs rounded-full text-[#8D2D53]"
                     >
                       <Check className="mr-2 h-3 w-3 text-green-600" aria-hidden="true" />
                       {t('pages.groups.inviteCode.configured')}
@@ -488,7 +496,7 @@ export function GroupListTable({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full xs:w-auto flex-1 min-w-0 text-xs text-orange-600 border-orange-300"
+                      className="w-full xs:w-auto flex-1 min-w-0 text-xs rounded-full text-orange-600 border-orange-300"
                       onClick={() => onEditInviteCode(group)}
                     >
                       <AlertCircle className="mr-2 h-3 w-3" aria-hidden="true" />
@@ -498,7 +506,7 @@ export function GroupListTable({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full xs:w-auto flex-1 min-w-0 text-xs"
+                    className="w-full xs:w-auto flex-1 min-w-0 text-xs rounded-full text-[#8D2D53]"
                     onClick={() =>
                       onManageMembers({
                         wa_group_id: group.wa_group_id,

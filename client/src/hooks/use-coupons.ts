@@ -12,6 +12,7 @@ import {
 } from '@/gen/coupons/v1/coupons_pb';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorInfo } from '@/lib/connect-transport';
+import { safeClipboard } from '@/lib/sentry';
 import { create } from '@bufbuild/protobuf';
 import { Code, createClient } from '@connectrpc/connect';
 import { createConnectQueryKey, useQuery, useTransport } from '@connectrpc/connect-query';
@@ -539,12 +540,20 @@ export function useCoupons(): UseCouponsConnectReturn {
   );
 
   const handleCopyCode = useCallback(
-    (code: string) => {
-      navigator.clipboard.writeText(code);
-      toast({
-        title: t('pages.coupons.success.copied'),
-        description: code,
-      });
+    async (code: string) => {
+      const success = await safeClipboard(code);
+      if (success) {
+        toast({
+          title: t('pages.coupons.success.copied'),
+          description: code,
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: t('common.error'),
+          description: t('common.clipboardUnavailable'),
+        });
+      }
     },
     [toast, t]
   );

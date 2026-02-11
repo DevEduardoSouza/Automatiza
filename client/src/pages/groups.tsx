@@ -10,7 +10,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { useGroups } from '@/hooks/use-groups';
 import { cn } from '@/lib/utils';
-import { AlertCircle, RefreshCw, Search } from 'lucide-react';
+import * as Sentry from '@sentry/react';
+import { AlertCircle, RefreshCw, Search, WifiOff } from 'lucide-react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const GroupsIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -58,6 +60,7 @@ export default function Groups() {
   const {
     groups,
     loading,
+    error,
     searchQuery,
     selectedGroups,
     message,
@@ -125,6 +128,7 @@ export default function Groups() {
     setPollOptions,
     handleReconnect,
     handleSyncGroups,
+    loadGroups,
     handleSaveInviteCode,
     toggleFavorite,
     insertMention,
@@ -146,6 +150,14 @@ export default function Groups() {
     members,
   } = useGroups();
 
+  useEffect(() => {
+    if (error) {
+      Sentry.captureException(error, {
+        tags: { module: 'groups', flow: 'load-groups' },
+      });
+    }
+  }, [error]);
+
   if (loading) {
     return (
       <div className="groups-page flex flex-col w-full h-full xl:max-w-[1400px] 2xl:max-w-[1600px] xl:mx-auto 2xl:mx-auto">
@@ -162,6 +174,47 @@ export default function Groups() {
               <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
                 {t('pages.groups.loading')}
               </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="groups-page flex flex-col w-full h-full xl:max-w-[1400px] 2xl:max-w-[1600px] xl:mx-auto 2xl:mx-auto">
+        <div
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10 xl:p-12"
+          style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
+        >
+          <div className="flex items-center justify-center min-h-[300px] xs:min-h-[350px] sm:min-h-[400px]">
+            <div className="text-center space-y-4 max-w-md">
+              <div
+                className="p-3 rounded-full mx-auto w-fit"
+                style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
+              >
+                <WifiOff className="h-8 w-8 xs:h-10 xs:w-10" style={{ color: 'rgb(220, 50, 50)' }} />
+              </div>
+              <h3 className="text-base xs:text-lg font-semibold" style={{ color: '#18181b' }}>
+                {t('pages.groups.errors.loadFailed')}
+              </h3>
+              <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                {t('pages.groups.errors.loadFailedMessage')}
+              </p>
+              <button
+                type="button"
+                onClick={() => loadGroups()}
+                className="auth-btn-glow relative inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold text-white transition-all"
+              >
+                <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+                  <div className="auth-btn-glow__glow absolute inset-0" />
+                </div>
+                <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                  {t('pages.groups.errors.retry')}
+                </span>
+              </button>
             </div>
           </div>
         </div>

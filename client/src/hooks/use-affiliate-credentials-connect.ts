@@ -15,9 +15,11 @@ import {
   type UpsertCredentialResponse,
 } from '@/gen/affiliates/v1/credentials_pb';
 import { getErrorInfo } from '@/lib/connect-transport';
+import { captureHookError } from '@/lib/sentry';
 import { create } from '@bufbuild/protobuf';
 import { createClient } from '@connectrpc/connect';
 import { useTransport } from '@connectrpc/connect-query';
+import * as Sentry from '@sentry/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -118,7 +120,12 @@ function fromProtoCredential(credential: AffiliateCredential): LocalAffiliateCre
   let parsedCredentials: Record<string, string> = {};
   try {
     parsedCredentials = JSON.parse(credential.credentials || '{}');
-  } catch {
+  } catch (error: unknown) {
+    Sentry.captureMessage(
+      `Failed to parse affiliate credential JSON for store=${credential.store}`,
+      'warning'
+    );
+    captureHookError(error, 'useAffiliateCredentialsConnect', 'fromProtoCredential');
     parsedCredentials = {};
   }
 
@@ -227,6 +234,7 @@ export function useAffiliateCredentialsConnect(): UseAffiliateCredentialsConnect
       return response.credentials.map(fromProtoCredential);
     },
     onError: (error: unknown) => {
+      captureHookError(error, 'useAffiliateCredentialsConnect', 'listCredentials');
       const errorInfo = getErrorInfo(error);
       toast({
         variant: 'destructive',
@@ -254,6 +262,7 @@ export function useAffiliateCredentialsConnect(): UseAffiliateCredentialsConnect
       return response.credential ? fromProtoCredential(response.credential) : null;
     },
     onError: (error: unknown) => {
+      captureHookError(error, 'useAffiliateCredentialsConnect', 'getCredential');
       const errorInfo = getErrorInfo(error);
       toast({
         variant: 'destructive',
@@ -296,6 +305,7 @@ export function useAffiliateCredentialsConnect(): UseAffiliateCredentialsConnect
       });
     },
     onError: (error: unknown) => {
+      captureHookError(error, 'useAffiliateCredentialsConnect', 'upsertCredential');
       const errorInfo = getErrorInfo(error);
       toast({
         variant: 'destructive',
@@ -327,6 +337,7 @@ export function useAffiliateCredentialsConnect(): UseAffiliateCredentialsConnect
       });
     },
     onError: (error: unknown) => {
+      captureHookError(error, 'useAffiliateCredentialsConnect', 'deleteCredential');
       const errorInfo = getErrorInfo(error);
       toast({
         variant: 'destructive',
@@ -354,6 +365,7 @@ export function useAffiliateCredentialsConnect(): UseAffiliateCredentialsConnect
       return response.stores.map(fromProtoActiveStore);
     },
     onError: (error: unknown) => {
+      captureHookError(error, 'useAffiliateCredentialsConnect', 'listActiveStores');
       const errorInfo = getErrorInfo(error);
       toast({
         variant: 'destructive',

@@ -10,6 +10,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import * as Sentry from '@sentry/react';
 import { BarChart3, Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -47,6 +48,21 @@ export function GroupPollDialog({
 }: GroupPollDialogProps) {
   const { t } = useTranslation();
 
+  /** WF38: Defensive validation + Sentry error capture on poll submit */
+  const handleSubmitWithValidation = () => {
+    try {
+      if (!question.trim()) return;
+      const filledOptions = options.filter((o) => o.trim());
+      if (filledOptions.length < 2) return;
+      if (selectedGroupsCount === 0) return;
+      onSubmit();
+    } catch (error) {
+      Sentry.captureException(error, {
+        tags: { component: 'GroupPollDialog', action: 'submit' },
+      });
+    }
+  };
+
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen && selectedGroupsCount === 0) {
       onNoGroupsSelected();
@@ -58,11 +74,16 @@ export function GroupPollDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="w-full min-w-0 text-xs md:text-sm">
-          <BarChart3 className="shrink-0 mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
-          <span className="hidden sm:inline truncate">{t('pages.groups.bulkActions.sendPoll')}</span>
+        <button
+          type="button"
+          className="inline-flex w-full min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs xs:px-4 xs:py-2 xs:text-[13px] md:text-sm font-medium text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+        >
+          <BarChart3 className="shrink-0 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
+          <span className="hidden sm:inline truncate">
+            {t('pages.groups.bulkActions.sendPoll')}
+          </span>
           <span className="sm:hidden truncate">{t('pages.groups.bulkActions.sendPollShort')}</span>
-        </Button>
+        </button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -105,24 +126,34 @@ export function GroupPollDialog({
               </div>
             ))}
             {options.length < 12 && (
-              <Button variant="outline" onClick={onAddOption} className="w-full">
-                <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+              <button
+                type="button"
+                onClick={onAddOption}
+                className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
                 {t('pages.groups.dialogs.poll.addOption')}
-              </Button>
+              </button>
             )}
           </div>
 
-          <Button
-            className="w-full"
-            onClick={onSubmit}
-            disabled={sendingPoll || selectedGroupsCount === 0}
+          <button
+            type="button"
+            onClick={handleSubmitWithValidation}
+            disabled={sendingPoll || selectedGroupsCount === 0 || !question.trim()}
+            className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {sendingPoll
-              ? t('pages.groups.dialogs.poll.sending')
-              : t('pages.groups.dialogs.poll.submit', {
-                  count: selectedGroupsCount,
-                })}
-          </Button>
+            <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+              <div className="auth-btn-glow__glow absolute inset-0" />
+            </div>
+            <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+              {sendingPoll
+                ? t('pages.groups.dialogs.poll.sending')
+                : t('pages.groups.dialogs.poll.submit', {
+                    count: selectedGroupsCount,
+                  })}
+            </span>
+          </button>
         </div>
       </DialogContent>
     </Dialog>

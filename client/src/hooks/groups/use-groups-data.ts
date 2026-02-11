@@ -2,6 +2,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { type PaginatedGroupsResult, useGroupsConnect } from '@/hooks/use-groups-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import type { Group } from '@/types/group';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +31,7 @@ export function useGroupsData(): UseGroupsDataReturn {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -48,6 +50,7 @@ export function useGroupsData(): UseGroupsDataReturn {
   // Fetch paginated data when pagination params or search changes
   const fetchPaginatedGroups = useCallback(async () => {
     setIsPaginatedLoading(true);
+    setError(null);
     try {
       const result = await listGroupsPaginated({
         adminOnly: true,
@@ -56,13 +59,15 @@ export function useGroupsData(): UseGroupsDataReturn {
         search: debouncedSearchQuery || undefined,
       });
       setPaginatedData(result);
-    } catch {
+    } catch (err) {
+      captureHookError(err, 'useGroupsData', 'loadPaginatedGroups');
+      setError(err instanceof Error ? err : new Error(t('pages.groups.errors.loadFailed')));
       // On error, fall back to non-paginated mode
       setUsePagination(false);
     } finally {
       setIsPaginatedLoading(false);
     }
-  }, [listGroupsPaginated, currentPage, pageSize, debouncedSearchQuery]);
+  }, [listGroupsPaginated, currentPage, pageSize, debouncedSearchQuery, t]);
 
   // Reset to page 1 when search changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: debouncedSearchQuery triggers reset intentionally
@@ -284,6 +289,7 @@ export function useGroupsData(): UseGroupsDataReturn {
         description: t('pages.groups.success.syncedMessage'),
       });
     } catch (error: unknown) {
+      captureHookError(error, 'useGroupsData', 'handleSync');
       const errorMessage = error instanceof Error ? error.message : t('pages.groups.errors.sync');
       toast({
         variant: 'destructive',
@@ -298,6 +304,7 @@ export function useGroupsData(): UseGroupsDataReturn {
   return {
     groups,
     loading,
+    error,
     searchQuery,
     filteredGroups,
     syncing,

@@ -1,5 +1,6 @@
 import { useAiToolsConnect } from '@/hooks/use-ai-tools-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { UseGroupsEnhanceReturn } from './types';
@@ -45,7 +46,8 @@ export function useGroupsEnhance(): UseGroupsEnhanceReturn {
             description: t('pages.groups.errors.unexpectedResponseMessage'),
           });
         }
-      } catch {
+      } catch (error: unknown) {
+        captureHookError(error, 'useGroupsEnhance', 'handleEnhanceMessage');
         toast({
           variant: 'destructive',
           title: t('pages.groups.errors.enhanceMessage'),

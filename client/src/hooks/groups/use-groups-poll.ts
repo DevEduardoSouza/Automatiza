@@ -1,6 +1,7 @@
 import { useGroupsConnect } from '@/hooks/use-groups-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import type { Group } from '@/types/group';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -119,6 +120,7 @@ export function useGroupsPoll({
 
           await new Promise((resolve) => setTimeout(resolve, 1000));
         } catch (error: unknown) {
+          captureHookError(error, 'useGroupsPoll', 'sendPollToGroup');
           errorCount++;
           const errorMsg = error instanceof Error ? error.message : t('common.unknownError');
           errorDetails.push(`${group.name}: ${errorMsg}`);
@@ -148,6 +150,7 @@ export function useGroupsPoll({
       setPollOptions(['', '']);
       clearSelection();
     } catch (error: unknown) {
+      captureHookError(error, 'useGroupsPoll', 'handleSendPoll');
       const errorMessage =
         error instanceof Error ? error.message : t('pages.groups.errors.sendPoll');
       toast({

@@ -1,4 +1,5 @@
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -19,8 +20,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
-import { AtSign, MessageSquare, Plus, Sparkles, Upload } from 'lucide-react';
-import { type ChangeEvent, useState } from 'react';
+import type { GroupParticipant } from '@/hooks/use-groups-connect';
+import { AtSign, Loader2, MessageSquare, Sparkles, Upload } from 'lucide-react';
+import type { ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface GroupMessageDialogProps {
@@ -31,11 +33,15 @@ interface GroupMessageDialogProps {
   mentionOpen: boolean;
   onMentionOpenChange: (value: boolean) => void;
   onInsertMention: (mention: string) => void;
+  participants: GroupParticipant[];
+  loadingParticipants: boolean;
   isEnhancing: boolean;
   onEnhanceMessage: () => void;
   mediaFile: File | null;
   onMediaUpload: (e: ChangeEvent<HTMLInputElement>) => void;
   onRemoveMedia: () => void;
+  /** WF20: Disables submit button while message is being sent */
+  isSending?: boolean;
   selectedGroupsCount: number;
   onSubmit: () => void;
   onNoGroupsSelected: () => void;
@@ -52,25 +58,19 @@ export function GroupMessageDialog({
   mentionOpen,
   onMentionOpenChange,
   onInsertMention,
+  participants,
+  loadingParticipants,
   isEnhancing,
   onEnhanceMessage,
   mediaFile,
   onMediaUpload,
   onRemoveMedia,
+  isSending = false,
   selectedGroupsCount,
   onSubmit,
   onNoGroupsSelected,
 }: GroupMessageDialogProps) {
   const { t } = useTranslation();
-  const [phoneInput, setPhoneInput] = useState('');
-
-  const handleAddPhoneMention = () => {
-    const cleaned = phoneInput.replace(/\D/g, '');
-    if (cleaned.length >= 8 && cleaned.length <= 15) {
-      onInsertMention(`@${cleaned} `);
-      setPhoneInput('');
-    }
-  };
 
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen && selectedGroupsCount === 0) {
@@ -83,11 +83,18 @@ export function GroupMessageDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="w-full min-w-0 text-xs md:text-sm">
-          <MessageSquare className="shrink-0 mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
-          <span className="hidden sm:inline truncate">{t('pages.groups.bulkActions.sendMessage')}</span>
-          <span className="sm:hidden truncate">{t('pages.groups.bulkActions.sendMessageShort')}</span>
-        </Button>
+        <button
+          type="button"
+          className="inline-flex w-full min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs xs:px-4 xs:py-2 xs:text-[13px] md:text-sm font-medium text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+        >
+          <MessageSquare className="shrink-0 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
+          <span className="hidden sm:inline truncate">
+            {t('pages.groups.bulkActions.sendMessage')}
+          </span>
+          <span className="sm:hidden truncate">
+            {t('pages.groups.bulkActions.sendMessageShort')}
+          </span>
+        </button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -100,12 +107,12 @@ export function GroupMessageDialog({
               <Label htmlFor="message">{t('pages.groups.form.message')}</Label>
               <Popover open={mentionOpen} onOpenChange={onMentionOpenChange}>
                 <PopoverTrigger asChild>
-                  <Button type="button" variant="outline" size="sm">
+                  <Button type="button" variant="outline" size="sm" className="rounded-full">
                     <AtSign className="mr-2 h-4 w-4" aria-hidden="true" />
                     {t('pages.groups.actions.mention')}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[260px] p-0" align="end">
+                <PopoverContent className="w-[280px] p-0" align="end">
                   <Command>
                     <CommandInput placeholder={t('pages.groups.form.searchMention')} />
                     <CommandEmpty>{t('pages.groups.form.noOptionFound')}</CommandEmpty>
@@ -118,36 +125,38 @@ export function GroupMessageDialog({
                         {t('pages.groups.actions.mentionAll')}
                       </CommandItem>
                     </CommandGroup>
+                    <CommandGroup heading={t('pages.groups.form.participants')}>
+                      {loadingParticipants ? (
+                        <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {t('pages.groups.form.loadingParticipants')}
+                        </div>
+                      ) : participants.length === 0 ? (
+                        <div className="py-4 text-center text-sm text-muted-foreground">
+                          {t('pages.groups.form.noParticipants')}
+                        </div>
+                      ) : (
+                        participants.map((p) => (
+                          <CommandItem
+                            key={p.phone_number}
+                            onSelect={() => onInsertMention(`@${p.phone_number} `)}
+                            className="cursor-pointer"
+                          >
+                            <AtSign className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />
+                            <span className="truncate">{p.phone_number}</span>
+                            {(p.is_admin || p.is_super_admin) && (
+                              <Badge
+                                variant="secondary"
+                                className="ml-auto text-[10px] px-1.5 py-0"
+                              >
+                                {t('pages.groups.form.admin')}
+                              </Badge>
+                            )}
+                          </CommandItem>
+                        ))
+                      )}
+                    </CommandGroup>
                   </Command>
-                  <div className="border-t p-3 space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      {t('pages.groups.form.mentionByNumber')}
-                    </p>
-                    <div className="flex gap-2">
-                      <Input
-                        value={phoneInput}
-                        onChange={(e) => setPhoneInput(e.target.value)}
-                        placeholder={t('pages.groups.form.phonePlaceholder')}
-                        className="h-8 text-sm"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddPhoneMention();
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-2 shrink-0"
-                        onClick={handleAddPhoneMention}
-                        disabled={phoneInput.replace(/\D/g, '').length < 8}
-                      >
-                        <Plus className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    </div>
-                  </div>
                 </PopoverContent>
               </Popover>
             </div>
@@ -184,7 +193,7 @@ export function GroupMessageDialog({
               size="sm"
               onClick={onEnhanceMessage}
               disabled={isEnhancing || !message.trim()}
-              className="w-full"
+              className="w-full rounded-full"
             >
               <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
               {isEnhancing
@@ -209,7 +218,12 @@ export function GroupMessageDialog({
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm bg-muted p-2 rounded">
                   <span className="truncate flex-1">{mediaFile.name}</span>
-                  <Button variant="ghost" size="sm" onClick={onRemoveMedia}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={onRemoveMedia}
+                  >
                     {t('common.remove')}
                   </Button>
                 </div>
@@ -217,13 +231,19 @@ export function GroupMessageDialog({
             )}
           </div>
 
-          <Button
-            className="w-full"
+          <button
+            type="button"
             onClick={onSubmit}
-            disabled={!message.trim() || selectedGroupsCount === 0}
+            disabled={isSending || !message.trim() || selectedGroupsCount === 0}
+            className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {t('pages.groups.dialogs.sendMessage.submit')}
-          </Button>
+            <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+              <div className="auth-btn-glow__glow absolute inset-0" />
+            </div>
+            <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+              {isSending ? t('common.loading') : t('pages.groups.dialogs.sendMessage.submit')}
+            </span>
+          </button>
         </div>
       </DialogContent>
     </Dialog>

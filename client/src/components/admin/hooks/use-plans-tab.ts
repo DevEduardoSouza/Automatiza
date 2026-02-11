@@ -12,6 +12,7 @@ import {
   UpdatePlanRequestSchema,
 } from '@/gen/admin/v1/admin_pb';
 import { getErrorInfo } from '@/lib/connect-transport';
+import { captureHookError } from '@/lib/sentry';
 import { create } from '@bufbuild/protobuf';
 import { useMutation, useQuery } from '@connectrpc/connect-query';
 import { useQueryClient } from '@tanstack/react-query';
@@ -180,52 +181,60 @@ export function usePlansTab(): UsePlansTabReturn {
       .map((f) => f.trim())
       .filter((f) => f.length > 0);
 
-    if (editingPlan) {
-      // Update existing plan
-      await updatePlanMutation.mutateAsync(
-        create(UpdatePlanRequestSchema, {
-          id: editingPlan.id,
-          slug: formData.slug,
-          name: formData.name,
-          isActive: true,
-          description: formData.description || undefined,
-          priceMonthly,
-          priceSemester,
-          priceAnnual,
-          groupLimit: Number.parseInt(formData.group_limit, 10) || 1,
-          storageLimit: BigInt(formData.storage_limit || '1000000000'),
-          features,
-          kiwifyProductIdMonthly: formData.kiwify_product_id_monthly || undefined,
-          kiwifyProductIdSemester: formData.kiwify_product_id_semester || undefined,
-          kiwifyProductIdAnnual: formData.kiwify_product_id_annual || undefined,
-        })
-      );
-    } else {
-      // Create new plan
-      await createPlanMutation.mutateAsync(
-        create(CreatePlanRequestSchema, {
-          slug: formData.slug,
-          name: formData.name,
-          isActive: true,
-          description: formData.description || undefined,
-          priceMonthly,
-          priceSemester,
-          priceAnnual,
-          groupLimit: Number.parseInt(formData.group_limit, 10) || 1,
-          storageLimit: BigInt(formData.storage_limit || '1000000000'),
-          features,
-          kiwifyProductIdMonthly: formData.kiwify_product_id_monthly || undefined,
-          kiwifyProductIdSemester: formData.kiwify_product_id_semester || undefined,
-          kiwifyProductIdAnnual: formData.kiwify_product_id_annual || undefined,
-        })
-      );
+    try {
+      if (editingPlan) {
+        // Update existing plan
+        await updatePlanMutation.mutateAsync(
+          create(UpdatePlanRequestSchema, {
+            id: editingPlan.id,
+            slug: formData.slug,
+            name: formData.name,
+            isActive: true,
+            description: formData.description || undefined,
+            priceMonthly,
+            priceSemester,
+            priceAnnual,
+            groupLimit: Number.parseInt(formData.group_limit, 10) || 1,
+            storageLimit: BigInt(formData.storage_limit || '1000000000'),
+            features,
+            kiwifyProductIdMonthly: formData.kiwify_product_id_monthly || undefined,
+            kiwifyProductIdSemester: formData.kiwify_product_id_semester || undefined,
+            kiwifyProductIdAnnual: formData.kiwify_product_id_annual || undefined,
+          })
+        );
+      } else {
+        // Create new plan
+        await createPlanMutation.mutateAsync(
+          create(CreatePlanRequestSchema, {
+            slug: formData.slug,
+            name: formData.name,
+            isActive: true,
+            description: formData.description || undefined,
+            priceMonthly,
+            priceSemester,
+            priceAnnual,
+            groupLimit: Number.parseInt(formData.group_limit, 10) || 1,
+            storageLimit: BigInt(formData.storage_limit || '1000000000'),
+            features,
+            kiwifyProductIdMonthly: formData.kiwify_product_id_monthly || undefined,
+            kiwifyProductIdSemester: formData.kiwify_product_id_semester || undefined,
+            kiwifyProductIdAnnual: formData.kiwify_product_id_annual || undefined,
+          })
+        );
+      }
+    } catch (error: unknown) {
+      captureHookError(error, 'usePlansTab', 'handleSavePlan');
     }
   }, [formData, editingPlan, createPlanMutation, updatePlanMutation, t]);
 
   const handleDeletePlan = useCallback(
     async (id: string) => {
       if (!confirm(t('admin.plans.confirm.delete'))) return;
-      await deletePlanMutation.mutateAsync(create(DeletePlanRequestSchema, { id }));
+      try {
+        await deletePlanMutation.mutateAsync(create(DeletePlanRequestSchema, { id }));
+      } catch (error: unknown) {
+        captureHookError(error, 'usePlansTab', 'handleDeletePlan');
+      }
     },
     [deletePlanMutation, t]
   );

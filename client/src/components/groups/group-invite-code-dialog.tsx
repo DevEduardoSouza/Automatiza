@@ -1,5 +1,4 @@
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -74,9 +73,19 @@ export function GroupInviteCodeDialog({
               </p>
             )}
           </div>
-          <Button className="w-full" onClick={onSubmit} disabled={!inviteCode.trim()}>
-            {t('pages.groups.inviteCode.save')}
-          </Button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={!inviteCode.trim()}
+            className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+              <div className="auth-btn-glow__glow absolute inset-0" />
+            </div>
+            <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+              {t('pages.groups.inviteCode.save')}
+            </span>
+          </button>
         </div>
       </DialogContent>
     </Dialog>

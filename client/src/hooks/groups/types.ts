@@ -1,3 +1,4 @@
+import type { GroupParticipant } from '@/hooks/use-groups-connect';
 import type { Group } from '@/types/group';
 import type { ChangeEvent } from 'react';
 import type { useNavigate } from 'react-router';
@@ -57,6 +58,7 @@ export const ACTION_STRING_MAP: Record<string, BulkActionType> = {
 export interface UseGroupsDataReturn {
   groups: Group[];
   loading: boolean;
+  error: Error | null;
   searchQuery: string;
   filteredGroups: Group[];
   syncing: boolean;
@@ -114,6 +116,8 @@ export interface UseGroupsMessagingReturn {
   mediaFile: File | null;
   mentionOpen: boolean;
   sendMessageDialogOpen: boolean;
+  mentionParticipants: GroupParticipant[];
+  loadingMentionParticipants: boolean;
   setMessage: (value: string) => void;
   setMentionOpen: (value: boolean) => void;
   setSendMessageDialogOpen: (value: boolean) => void;
@@ -207,6 +211,7 @@ export interface UseGroupsEnhanceReturn {
 export interface UseGroupsReturn {
   groups: Group[];
   loading: boolean;
+  error: Error | null;
   searchQuery: string;
   selectedGroups: string[];
   message: string;
@@ -216,6 +221,8 @@ export interface UseGroupsReturn {
   mediaFile: File | null;
   groupPhoto: File | null;
   mentionOpen: boolean;
+  mentionParticipants: GroupParticipant[];
+  loadingMentionParticipants: boolean;
   connectionStatus: ConnectionStatus;
   instanceName: string;
   reconnecting: boolean;

@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
 import { AlertCircle, Mic, Upload } from 'lucide-react';
 import type { ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -51,6 +52,22 @@ export function GroupAudioDialog({
   onNoGroupsSelected,
 }: GroupAudioDialogProps) {
   const { t } = useTranslation();
+  const { toast } = useToast();
+
+  /** WF18: Validate audio file size (max 16MB) before accepting upload */
+  const handleAudioUploadWithValidation = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.size > 16 * 1024 * 1024) {
+      toast({
+        variant: 'destructive',
+        title: t('pages.groups.errors.audioTooLarge'),
+        description: t('pages.groups.errors.audioExceedsLimit'),
+      });
+      e.target.value = '';
+      return;
+    }
+    onAudioUpload(e);
+  };
 
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen && selectedGroupsCount === 0) {
@@ -63,11 +80,16 @@ export function GroupAudioDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="w-full min-w-0 text-xs md:text-sm">
-          <Mic className="shrink-0 mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
-          <span className="hidden sm:inline truncate">{t('pages.groups.bulkActions.sendAudio')}</span>
+        <button
+          type="button"
+          className="inline-flex w-full min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs xs:px-4 xs:py-2 xs:text-[13px] md:text-sm font-medium text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+        >
+          <Mic className="shrink-0 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
+          <span className="hidden sm:inline truncate">
+            {t('pages.groups.bulkActions.sendAudio')}
+          </span>
           <span className="sm:hidden truncate">{t('pages.groups.bulkActions.sendAudioShort')}</span>
-        </Button>
+        </button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -92,7 +114,7 @@ export function GroupAudioDialog({
                 id="audio"
                 type="file"
                 accept="audio/*,.ogg"
-                onChange={onAudioUpload}
+                onChange={handleAudioUploadWithValidation}
                 className="flex-1"
               />
               <Upload className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
@@ -100,7 +122,7 @@ export function GroupAudioDialog({
             {audioFile && (
               <div className="flex items-center justify-between text-sm bg-muted p-2 rounded">
                 <span className="truncate flex-1">{audioFile.name}</span>
-                <Button variant="ghost" size="sm" onClick={onRemoveAudio}>
+                <Button variant="ghost" size="sm" className="rounded-full" onClick={onRemoveAudio}>
                   {t('common.remove')}
                 </Button>
               </div>
@@ -131,17 +153,23 @@ export function GroupAudioDialog({
             />
           </div>
 
-          <Button
-            className="w-full"
+          <button
+            type="button"
             onClick={onSubmit}
             disabled={
               sendingAudio || selectedGroupsCount === 0 || selectedGroupsCount > 10 || !audioFile
             }
+            className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {sendingAudio
-              ? t('pages.groups.dialogs.sendAudio.sending')
-              : t('pages.groups.dialogs.sendAudio.submit')}
-          </Button>
+            <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+              <div className="auth-btn-glow__glow absolute inset-0" />
+            </div>
+            <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+              {sendingAudio
+                ? t('pages.groups.dialogs.sendAudio.sending')
+                : t('pages.groups.dialogs.sendAudio.submit')}
+            </span>
+          </button>
         </div>
       </DialogContent>
     </Dialog>

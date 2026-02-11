@@ -1,6 +1,7 @@
 import type { GroupParticipant } from '@/hooks/use-groups-connect';
 import { useGroupsConnect } from '@/hooks/use-groups-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
+import { captureHookError } from '@/lib/sentry';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../use-toast';
@@ -78,7 +79,8 @@ export function useGroupsMembers(): UseGroupsMembersReturn {
           group_id: groupId,
         });
         setParticipants(result);
-      } catch {
+      } catch (error: unknown) {
+        captureHookError(error, 'useGroupsMembers', 'loadParticipants');
         setParticipants([]);
       } finally {
         setLoadingParticipants(false);

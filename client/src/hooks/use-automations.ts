@@ -40,6 +40,7 @@ import type {
   StoreKey,
 } from '@/types/automation';
 import { DEFAULT_MONITOR_RULES } from '@/types/automation';
+import { captureHookError } from '@/lib/sentry';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -103,6 +104,7 @@ export interface UseAutomationsReturn {
   limitReached: boolean;
   nearLimit: boolean;
   refinementOpen: RefinementState;
+  savingAutomation: boolean;
   setDialogOpen: (open: boolean) => void;
   setPreviewDialogOpen: (open: boolean) => void;
   setFormData: React.Dispatch<React.SetStateAction<Partial<Automation>>>;
@@ -260,7 +262,8 @@ export function useAutomations(): UseAutomationsReturn {
     try {
       const data = await automationsConnect.listAutomations();
       setAutomationsData(data);
-    } catch {
+    } catch (error: unknown) {
+      captureHookError(error, 'useAutomations', 'loadAutomations');
       toast({
         title: t('pages.offerAutomations.errors.loadAutomations'),
         description: t('pages.offerAutomations.errors.loadAutomationsMessage'),
@@ -436,7 +439,8 @@ export function useAutomations(): UseAutomationsReturn {
                 name: group.name,
               }),
         });
-      } catch {
+      } catch (error: unknown) {
+        captureHookError(error, 'useAutomations', 'toggleFavorite');
         toast({
           title: t('common.error'),
           description: t('pages.offerAutomations.errors.favoriteUpdate'),
@@ -641,7 +645,8 @@ export function useAutomations(): UseAutomationsReturn {
       setDialogOpen(false);
       resetForm();
       loadAutomations();
-    } catch {
+    } catch (error: unknown) {
+      captureHookError(error, 'useAutomations', 'handleSave');
       toast({
         title: t('pages.offerAutomations.errors.save'),
         description: t('pages.offerAutomations.errors.saveMessage'),
@@ -676,8 +681,13 @@ export function useAutomations(): UseAutomationsReturn {
               ? t('pages.offerAutomations.success.activated')
               : t('pages.offerAutomations.success.paused'),
         });
-      } catch {
-        // Failed to toggle status
+      } catch (error: unknown) {
+        captureHookError(error, 'useAutomations', 'toggleStatus');
+        toast({
+          title: t('common.error'),
+          description: t('pages.offerAutomations.errors.save'),
+          variant: 'destructive',
+        });
       }
     },
     [loadAutomations, toast, t, automationsConnect.updateAutomation]
@@ -691,8 +701,13 @@ export function useAutomations(): UseAutomationsReturn {
         await automationsConnect.deleteAutomation(id);
         loadAutomations();
         toast({ title: t('pages.offerAutomations.success.deleted') });
-      } catch {
-        // Failed to delete
+      } catch (error: unknown) {
+        captureHookError(error, 'useAutomations', 'handleDelete');
+        toast({
+          title: t('common.error'),
+          description: t('pages.offerAutomations.errors.save'),
+          variant: 'destructive',
+        });
       }
     },
     [loadAutomations, toast, t, automationsConnect.deleteAutomation]
@@ -1002,6 +1017,7 @@ export function useAutomations(): UseAutomationsReturn {
     limitReached,
     nearLimit,
     refinementOpen,
+    savingAutomation: automationsConnect.isCreatingAutomation || automationsConnect.isUpdatingAutomation,
     setDialogOpen,
     setPreviewDialogOpen,
     setFormData,

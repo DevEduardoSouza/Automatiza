@@ -12,6 +12,7 @@ import {
 } from '@/hooks/use-jobs-connect';
 import { useJobsRealtime } from '@/hooks/use-jobs-realtime';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -298,7 +299,8 @@ export function useJobs(): UseJobsReturn {
           jobPayload.mediaType = mediaFile.type?.startsWith('video/') ? 'video' : 'image';
           jobPayload.fileName = mediaFile.name;
           jobPayload.mimeType = mediaFile.type || undefined;
-        } catch {
+        } catch (error: unknown) {
+          captureHookError(error, 'useJobs', 'readMediaFile');
           toast({
             variant: 'destructive',
             title: t('pages.jobs.errors.fileReadError'),
@@ -382,11 +384,12 @@ export function useJobs(): UseJobsReturn {
 
       resetForm();
       refetchJobs();
-    } catch (error) {
+    } catch (error: unknown) {
+      captureHookError(error, 'useJobs', 'handleScheduleJob');
       toast({
         variant: 'destructive',
         title: t('pages.jobs.errors.schedule'),
-        description: (error as Error).message,
+        description: error instanceof Error ? error.message : t('pages.jobs.errors.schedule'),
       });
     }
   }, [
@@ -419,11 +422,12 @@ export function useJobs(): UseJobsReturn {
           description: t('pages.jobs.success.deletedMessage'),
         });
         refetchJobs();
-      } catch (error) {
+      } catch (error: unknown) {
+        captureHookError(error, 'useJobs', 'handleDeleteJob');
         toast({
           variant: 'destructive',
           title: t('pages.jobs.errors.delete'),
-          description: (error as Error).message,
+          description: error instanceof Error ? error.message : t('pages.jobs.errors.delete'),
         });
       }
     },
@@ -461,7 +465,8 @@ export function useJobs(): UseJobsReturn {
           description: t('pages.jobs.errors.unexpectedResponseMessage'),
         });
       }
-    } catch {
+    } catch (error: unknown) {
+      captureHookError(error, 'useJobs', 'handleEnhanceMessage');
       toast({
         variant: 'destructive',
         title: t('pages.jobs.errors.enhance'),

@@ -136,14 +136,29 @@ export const api = new ApiService();
  * REDIRECT (endpoint público - sem autenticação)
  * ===============================================
  */
+/** FSQ13: Runtime type guard for redirect response */
+interface RedirectResponse {
+  url?: string;
+  redirect_url?: string;
+  [key: string]: unknown;
+}
+
+function isRedirectResponse(data: unknown): data is RedirectResponse {
+  return typeof data === 'object' && data !== null;
+}
+
 export const redirectService = {
   /**
    * Processa link de redirecionamento por slug (uso público /r/:slug)
    * Este endpoint é público e não requer autenticação.
    */
-  async processRedirectBySlug(slug: string) {
-    const response: any = await api.post('/redirect', { slug });
-    return response.data ?? response;
+  async processRedirectBySlug(slug: string): Promise<RedirectResponse> {
+    const response: unknown = await api.post('/redirect', { slug });
+    const data = (response as { data?: unknown })?.data ?? response;
+    if (!isRedirectResponse(data)) {
+      throw new Error('Invalid redirect response format');
+    }
+    return data;
   },
 };
 

@@ -22,6 +22,7 @@ import { createConnectQueryKey, useQuery, useTransport } from '@connectrpc/conne
 import type { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { captureHookError, safeClipboard } from '@/lib/sentry';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -87,6 +88,8 @@ interface UseRedirectLinkReturn {
   startEditLink: (link: LocalSavedRedirectLink) => void;
   cancelEdit: () => void;
   copyToClipboard: (linkSlug: string) => void;
+  selectAllGroups: () => void;
+  deselectAllGroups: () => void;
 }
 
 /**
@@ -235,7 +238,8 @@ export function useRedirectLink(): UseRedirectLinkReturn {
         description: t('pages.redirectLink.success.createdMessage'),
       });
     },
-    onError: () => {
+    onError: (error: unknown) => {
+      captureHookError(error, 'useRedirectLink', 'createMutation');
       toast({
         variant: 'destructive',
         title: t('pages.redirectLink.errors.create'),
@@ -264,7 +268,8 @@ export function useRedirectLink(): UseRedirectLinkReturn {
         description: t('pages.redirectLink.success.updatedMessage'),
       });
     },
-    onError: () => {
+    onError: (error: unknown) => {
+      captureHookError(error, 'useRedirectLink', 'updateMutation');
       toast({
         variant: 'destructive',
         title: t('pages.redirectLink.errors.update'),
@@ -288,7 +293,8 @@ export function useRedirectLink(): UseRedirectLinkReturn {
         description: t('pages.redirectLink.success.deletedMessage'),
       });
     },
-    onError: () => {
+    onError: (error: unknown) => {
+      captureHookError(error, 'useRedirectLink', 'deleteMutation');
       toast({
         variant: 'destructive',
         title: t('pages.redirectLink.errors.delete'),
@@ -354,6 +360,14 @@ export function useRedirectLink(): UseRedirectLinkReturn {
     },
     [toast, t]
   );
+
+  const selectAllGroups = useCallback(() => {
+    setSelectedGroupIds(allGroups.map((g) => g.id));
+  }, [allGroups]);
+
+  const deselectAllGroups = useCallback(() => {
+    setSelectedGroupIds([]);
+  }, []);
 
   const toggleGroupSelection = useCallback((groupId: string) => {
     setSelectedGroupIds((prev) => {
@@ -470,7 +484,8 @@ export function useRedirectLink(): UseRedirectLinkReturn {
         });
         return;
       }
-    } catch {
+    } catch (error) {
+      captureHookError(error, 'useRedirectLink', 'checkSlugAvailability');
       toast({
         variant: 'destructive',
         title: t('pages.redirectLink.errors.checkSlug'),
@@ -609,13 +624,21 @@ export function useRedirectLink(): UseRedirectLinkReturn {
   }, [resetForm, toast, t]);
 
   const copyToClipboard = useCallback(
-    (linkSlug: string) => {
+    async (linkSlug: string) => {
       const link = `${window.location.origin}/r/${linkSlug}`;
-      navigator.clipboard.writeText(link);
-      toast({
-        title: t('pages.redirectLink.success.copied'),
-        description: t('pages.redirectLink.success.copiedMessage'),
-      });
+      const success = await safeClipboard(link);
+      if (success) {
+        toast({
+          title: t('pages.redirectLink.success.copied'),
+          description: t('pages.redirectLink.success.copiedMessage'),
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: t('common.error'),
+          description: t('common.clipboardUnavailable'),
+        });
+      }
     },
     [toast, t]
   );
@@ -648,5 +671,7 @@ export function useRedirectLink(): UseRedirectLinkReturn {
     startEditLink,
     cancelEdit,
     copyToClipboard,
+    selectAllGroups,
+    deselectAllGroups,
   };
 }

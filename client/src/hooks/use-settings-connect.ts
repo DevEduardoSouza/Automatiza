@@ -3,6 +3,7 @@ import { getSettings } from '@/gen/settings/v1/settings-SettingsService_connectq
 import { SettingsService, UpdateSettingRequestSchema } from '@/gen/settings/v1/settings_pb';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorInfo } from '@/lib/connect-transport';
+import { captureHookError } from '@/lib/sentry';
 import { create } from '@bufbuild/protobuf';
 import { type Value, ValueSchema } from '@bufbuild/protobuf/wkt';
 import { createClient } from '@connectrpc/connect';
@@ -58,7 +59,8 @@ function fromProtoValue(value: Value | undefined): unknown {
       if (str.startsWith('{') || str.startsWith('[')) {
         try {
           return JSON.parse(str);
-        } catch {
+        } catch (error: unknown) {
+          captureHookError(error, 'useSettingsConnect', 'fromProtoValue');
           return str;
         }
       }
@@ -131,6 +133,7 @@ export function useSettingsConnect(keys?: string[]): UseSettingsConnectReturn {
       });
     },
     onError: (error: unknown) => {
+      captureHookError(error, 'useSettingsConnect', 'updateSetting');
       const errorInfo = getErrorInfo(error);
       toast({
         variant: 'destructive',

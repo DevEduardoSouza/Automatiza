@@ -1,6 +1,7 @@
 import { useAuth } from '@/contexts';
 import { useToast } from '@/hooks/use-toast';
 import { getAuthErrorKey } from '@/lib/auth-error-mapper';
+import { captureHookError } from '@/lib/sentry';
 import { type ForgotPasswordFormData, forgotPasswordSchema } from '@/schemas';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCallback, useState } from 'react';
@@ -35,20 +36,30 @@ export function useForgotPassword(): UseForgotPasswordReturn {
 
   const onSubmit = useCallback(
     async (data: ForgotPasswordFormData) => {
-      const { error } = await resetPasswordForEmail(data.email);
+      try {
+        const { error } = await resetPasswordForEmail(data.email);
 
-      if (error) {
+        if (error) {
+          captureHookError(error, 'useForgotPassword', 'resetPasswordForEmail');
+          toast({
+            variant: 'destructive',
+            title: t('pages.forgotPassword.errors.send'),
+            description: t(getAuthErrorKey(error)),
+          });
+        } else {
+          setSentEmail(data.email);
+          setEmailSent(true);
+          toast({
+            title: t('pages.forgotPassword.success.title'),
+            description: t('pages.forgotPassword.success.message'),
+          });
+        }
+      } catch (error: unknown) {
+        captureHookError(error, 'useForgotPassword', 'onSubmit');
         toast({
           variant: 'destructive',
           title: t('pages.forgotPassword.errors.send'),
-          description: t(getAuthErrorKey(error)),
-        });
-      } else {
-        setSentEmail(data.email);
-        setEmailSent(true);
-        toast({
-          title: t('pages.forgotPassword.success.title'),
-          description: t('pages.forgotPassword.success.message'),
+          description: error instanceof Error ? error.message : t('common.error'),
         });
       }
     },

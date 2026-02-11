@@ -1,5 +1,7 @@
 import { Code, ConnectError, type Interceptor } from '@connectrpc/connect';
 import { createConnectTransport } from '@connectrpc/connect-web';
+import * as Sentry from '@sentry/react';
+import { sentryInterceptor } from './sentry-connect-interceptor';
 
 // ============================================================
 // CSRF Token Management
@@ -42,7 +44,7 @@ export function getCsrfToken(): string | null {
  */
 function generateTraceId(): string {
   const array = new Uint8Array(16);
-  crypto.getRandomValues(array);
+  safeGetRandomValues(array);
   return Array.from(array)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
@@ -54,10 +56,25 @@ function generateTraceId(): string {
  */
 function generateSpanId(): string {
   const array = new Uint8Array(8);
-  crypto.getRandomValues(array);
+  safeGetRandomValues(array);
   return Array.from(array)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+/**
+ * Safe wrapper around crypto.getRandomValues with Math.random fallback.
+ * Covers environments where crypto API is unavailable (older browsers, some test envs).
+ */
+function safeGetRandomValues(array: Uint8Array): void {
+  try {
+    crypto.getRandomValues(array);
+  } catch {
+    Sentry.captureMessage('crypto.getRandomValues unavailable', 'warning');
+    for (let i = 0; i < array.length; i++) {
+      array[i] = Math.floor(Math.random() * 256);
+    }
+  }
 }
 
 /**
@@ -456,6 +473,7 @@ const errorNormalizationInterceptor: Interceptor = (next) => async (req) => {
  * 2. Tracing: Adds traceparent header
  * 3. Retry: Handles transient failures with backoff
  * 4. Error normalization: Logs and enriches errors
+ * 5. Sentry: Captures errors with gRPC context (must be LAST)
  *
  * IMPORTANT: Uses `credentials: 'include'` to automatically send
  * HTTP-only session cookies with every request.
@@ -482,6 +500,7 @@ export const transport = createConnectTransport({
     tracingInterceptor,
     createRetryInterceptor(3),
     errorNormalizationInterceptor,
+    sentryInterceptor,
   ],
 });
 
@@ -508,6 +527,7 @@ export function createCustomTransport(options?: {
       tracingInterceptor,
       createRetryInterceptor(maxRetries),
       errorNormalizationInterceptor,
+      sentryInterceptor,
     ],
   });
 }

@@ -1,8 +1,10 @@
-import { useGroupsConnect } from '@/hooks/use-groups-connect';
+import { type GroupParticipant, useGroupsConnect } from '@/hooks/use-groups-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
+import * as Sentry from '@sentry/react';
 import type { Group } from '@/types/group';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { UseGroupsMessagingReturn } from './types';
 
@@ -31,6 +33,8 @@ export function useGroupsMessaging({
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [sendMessageDialogOpen, setSendMessageDialogOpen] = useState(false);
+  const [mentionParticipants, setMentionParticipants] = useState<GroupParticipant[]>([]);
+  const [loadingMentionParticipants, setLoadingMentionParticipants] = useState(false);
 
   const insertMention = useCallback(
     (mention: string) => {
@@ -45,6 +49,69 @@ export function useGroupsMessaging({
       });
     },
     [toast, t]
+  );
+
+  const loadMentionParticipants = useCallback(async () => {
+    if (selectedGroups.length === 0 || !latestInstance || latestInstance.status !== 'connected') {
+      setMentionParticipants([]);
+      return;
+    }
+
+    setLoadingMentionParticipants(true);
+    try {
+      const groupsToFetch = groups
+        .filter((g) => selectedGroups.includes(g.id))
+        .slice(0, 5);
+
+      const allParticipants: GroupParticipant[] = [];
+      const seen = new Set<string>();
+      let errorCount = 0;
+
+      for (const group of groupsToFetch) {
+        try {
+          const participants = await getGroupParticipants({
+            instance_name: latestInstance.instance_id,
+            group_id: group.wa_group_id,
+          });
+          for (const p of participants) {
+            if (!seen.has(p.phone_number)) {
+              seen.add(p.phone_number);
+              allParticipants.push(p);
+            }
+          }
+        } catch (error) {
+          errorCount++;
+          Sentry.addBreadcrumb({
+            category: 'groups',
+            message: `Failed to fetch participants for group ${group.name}`,
+            level: 'warning',
+            data: { groupId: group.id },
+          });
+        }
+      }
+
+      // SF11: If ALL groups failed, capture to Sentry
+      if (errorCount === groupsToFetch.length && groupsToFetch.length > 0) {
+        Sentry.captureMessage('All participant fetches failed', {
+          level: 'error',
+          extra: { errorCount, totalGroups: groupsToFetch.length },
+        });
+      }
+
+      setMentionParticipants(allParticipants);
+    } finally {
+      setLoadingMentionParticipants(false);
+    }
+  }, [selectedGroups, groups, latestInstance, getGroupParticipants]);
+
+  const handleMentionOpenChange = useCallback(
+    (open: boolean) => {
+      setMentionOpen(open);
+      if (open) {
+        loadMentionParticipants();
+      }
+    },
+    [loadMentionParticipants]
   );
 
   const handleMediaUpload = useCallback(
@@ -140,7 +207,8 @@ export function useGroupsMessaging({
         });
         return;
       }
-    } catch {
+    } catch (error) {
+      captureHookError(error, 'useGroupsMessaging', 'checkInstanceStatus');
       toast({
         variant: 'destructive',
         title: t('pages.groups.errors.verifyConnection'),
@@ -188,7 +256,8 @@ export function useGroupsMessaging({
           reader.onerror = reject;
           reader.readAsDataURL(mediaFile);
         });
-      } catch {
+      } catch (error) {
+        captureHookError(error, 'useGroupsMessaging', 'fileReader');
         toast({
           variant: 'destructive',
           title: t('pages.groups.errors.processImage'),
@@ -196,6 +265,8 @@ export function useGroupsMessaging({
             filename: mediaFile.name,
           }),
         });
+        // WF16: Return after file read error to prevent sending without image
+        return;
       }
     }
 
@@ -227,7 +298,11 @@ export function useGroupsMessaging({
             }
 
             mentions = participants.map((p) => p.id);
-          } catch {
+          } catch (error) {
+            captureHookError(error, 'useGroupsMessaging', 'fetchParticipants', {
+              groupId: group.wa_group_id,
+              groupName: group.name,
+            });
             toast({
               variant: 'destructive',
               title: t('pages.groups.errors.groupError', { name: group.name }),
@@ -265,7 +340,11 @@ export function useGroupsMessaging({
 
         // Rate limiting delay between messages
         await new Promise((resolve) => setTimeout(resolve, 1000));
-      } catch {
+      } catch (error) {
+        captureHookError(error, 'useGroupsMessaging', 'sendMessage', {
+          groupId: group.wa_group_id,
+          groupName: group.name,
+        });
         errorCount++;
       }
     }
@@ -302,8 +381,10 @@ export function useGroupsMessaging({
     mediaFile,
     mentionOpen,
     sendMessageDialogOpen,
+    mentionParticipants,
+    loadingMentionParticipants,
     setMessage,
-    setMentionOpen,
+    setMentionOpen: handleMentionOpenChange,
     setSendMessageDialogOpen,
     insertMention,
     handleSendMessage,

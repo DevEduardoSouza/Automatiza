@@ -7,6 +7,7 @@ import {
   renderTemplate,
 } from '@/entities/dispatch-text';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDispatchTextsConnect } from './use-dispatch-texts-connect';
@@ -123,8 +124,8 @@ export function useDispatchTexts() {
         });
       }
       closeDialog();
-    } catch {
-      // Error handling is done in useDispatchTextsConnect
+    } catch (error: unknown) {
+      captureHookError(error, 'useDispatchTexts', 'save');
     }
   }, [user, form, editing, closeDialog, createDispatchText, updateDispatchText, t, toast]);
 
@@ -140,8 +141,8 @@ export function useDispatchTexts() {
     if (!user || !deleteTarget) return;
     try {
       await deleteDispatchText(deleteTarget.id);
-    } catch {
-      // Error handling is done in useDispatchTextsConnect
+    } catch (error: unknown) {
+      captureHookError(error, 'useDispatchTexts', 'confirmDelete');
     } finally {
       setDeleteTarget(null);
     }
@@ -169,8 +170,8 @@ export function useDispatchTexts() {
           title: t('pages.dispatchTexts.success.copied'),
           description: token,
         });
-      } catch {
-        // Clipboard API not available
+      } catch (error: unknown) {
+        captureHookError(error, 'useDispatchTexts', 'copyToken');
       }
     },
     [toast, t]

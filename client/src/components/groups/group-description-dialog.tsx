@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -9,6 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import * as Sentry from '@sentry/react';
 import { FileEdit } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -36,6 +36,19 @@ export function GroupDescriptionDialog({
 }: GroupDescriptionDialogProps) {
   const { t } = useTranslation();
 
+  /** WF26: Defensive validation + Sentry error capture on submit */
+  const handleSubmitWithValidation = () => {
+    try {
+      if (!description.trim()) return;
+      if (selectedGroupsCount === 0) return;
+      onSubmit();
+    } catch (error) {
+      Sentry.captureException(error, {
+        tags: { component: 'GroupDescriptionDialog', action: 'submit' },
+      });
+    }
+  };
+
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen && selectedGroupsCount === 0) {
       onNoGroupsSelected();
@@ -47,13 +60,18 @@ export function GroupDescriptionDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="w-full min-w-0 text-xs md:text-sm">
-          <FileEdit className="shrink-0 mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
+        <button
+          type="button"
+          className="inline-flex w-full min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs xs:px-4 xs:py-2 xs:text-[13px] md:text-sm font-medium text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+        >
+          <FileEdit className="shrink-0 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
           <span className="hidden sm:inline truncate">
             {t('pages.groups.bulkActions.changeDescription')}
           </span>
-          <span className="sm:hidden truncate">{t('pages.groups.bulkActions.changeDescriptionShort')}</span>
-        </Button>
+          <span className="sm:hidden truncate">
+            {t('pages.groups.bulkActions.changeDescriptionShort')}
+          </span>
+        </button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -73,9 +91,19 @@ export function GroupDescriptionDialog({
               rows={4}
             />
           </div>
-          <Button className="w-full" onClick={onSubmit}>
-            {t('pages.groups.dialogs.changeDescription.submit')}
-          </Button>
+          <button
+            type="button"
+            onClick={handleSubmitWithValidation}
+            disabled={!description.trim() || selectedGroupsCount === 0}
+            className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+              <div className="auth-btn-glow__glow absolute inset-0" />
+            </div>
+            <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+              {t('pages.groups.dialogs.changeDescription.submit')}
+            </span>
+          </button>
         </div>
       </DialogContent>
     </Dialog>

@@ -64,6 +64,8 @@
     "seconds": "Segundos",
     "minutes": "minutos",
     "comingSoon": "Em breve",
+    "clipboardUnavailable": "Não foi possível copiar. Copie manualmente.",
+    "unsavedChangesWarning": "Há alterações sendo salvas. Deseja sair mesmo assim?",
     "planNames": {
       "free": "Free",
       "pro": "Pro",
@@ -451,7 +453,10 @@
         "searchPlaceholder": "Buscar grupos...",
         "favorites": "⭐ Favoritos",
         "allGroups": "Todos os Grupos",
-        "apply": "Aplicar Seleção"
+        "apply": "Aplicar Seleção",
+        "selectedCount": "selecionado(s)",
+        "selectAll": "Selecionar Todos",
+        "deselectAll": "Desmarcar Todos"
       },
       "buttons": {
         "create": "Criar e Salvar Link",
@@ -497,6 +502,10 @@
         "step4": "Quando um grupo atinge o limite, o próximo na ordem de prioridade é usado",
         "step5": "Cada clique é contabilizado automaticamente",
         "tip": "Organize a ordem acima para controlar qual grupo deve ser preenchido primeiro. Os grupos no topo da lista têm prioridade maior."
+      },
+      "deleteDialog": {
+        "title": "Excluir link de redirecionamento?",
+        "description": "Esta ação não pode ser desfeita. O link será removido permanentemente e deixará de funcionar."
       },
       "alerts": {
         "editing": "Editando link existente",
@@ -632,7 +641,15 @@
         "connectionLostMessage": "A instância não existe mais. Clique em 'Reconectar' para criar uma nova.",
         "disconnected": "WhatsApp desconectado",
         "disconnectedMessage": "Sua instância está desconectada. Clique em \"Reconectar\" para gerar um novo QR Code.",
-        "clean": "Erro ao limpar instâncias"
+        "clean": "Erro ao limpar instâncias",
+        "qrRefreshFailed": "QR Code expirado",
+        "qrRefreshFailedMessage": "Não foi possível atualizar o QR Code após múltiplas tentativas. Reconecte sua instância."
+      },
+      "errorBoundary": {
+        "title": "Erro na conexão WhatsApp",
+        "description": "Ocorreu um erro inesperado na página do WhatsApp. Tente uma das ações abaixo para resolver.",
+        "reconnect": "Reconectar",
+        "clearSession": "Limpar sessão"
       }
     },
     "history": {
@@ -694,11 +711,20 @@
         "description": "Esta ação não pode ser desfeita. Todo o histórico de ações será permanentemente removido."
       },
       "filters": {
+        "title": "Filtros",
+        "subtitle": "Refine os resultados do histórico",
         "eventType": "Tipo de evento",
         "allTypes": "Todos os tipos",
         "status": "Status",
         "allStatuses": "Todos os status",
         "clear": "Limpar filtros"
+      },
+      "pagination": {
+        "showing": "Mostrando {{start}}-{{end}} de {{total}} registros",
+        "first": "Primeira página",
+        "previous": "Página anterior",
+        "next": "Próxima página",
+        "last": "Última página"
       },
       "errors": {
         "load": "Erro ao carregar histórico",
@@ -733,6 +759,8 @@
         "connectedMessage": "Instância conectada e pronta para enviar mensagens.",
         "disconnected": "WhatsApp Desconectado",
         "disconnectedMessage": "Sua instância está desconectada. Reconecte para enviar mensagens.",
+        "checking": "Verificando conexão...",
+        "checkingMessage": "Verificando o status da conexão do WhatsApp...",
         "reconnecting": "Reconectando...",
         "reconnectNow": "Reconectar Agora"
       },
@@ -825,10 +853,10 @@
         "searchMention": "Buscar menção...",
         "noOptionFound": "Nenhuma opção encontrada.",
         "mentionOptions": "Opções de Menção",
-        "mentionByNumber": "Mencionar por número",
-        "phonePlaceholder": "Ex: 5511999999999",
-        "addMention": "Adicionar",
-        "invalidPhone": "Digite um número válido (8-15 dígitos)",
+        "participants": "Participantes",
+        "loadingParticipants": "Carregando participantes...",
+        "noParticipants": "Nenhum participante encontrado",
+        "admin": "Admin",
         "messagePlaceholder": "Digite sua mensagem... Use @todos para mencionar todos"
       },
       "history": {
@@ -1090,6 +1118,9 @@
         "changeDescription": "Erro ao alterar descrição",
         "reconnect": "Erro ao reconectar",
         "reconnectMessage": "Verifique sua conexão e tente novamente",
+        "loadFailed": "Erro ao carregar grupos",
+        "loadFailedMessage": "Não foi possível carregar seus grupos. Verifique sua conexão e tente novamente.",
+        "retry": "Tentar novamente",
         "sync": "Erro ao sincronizar grupos",
         "syncMessage": "Não foi possível sincronizar os grupos",
         "syncQueue": "Não foi possível enfileirar a sincronização de grupos",
@@ -1132,6 +1163,12 @@
         "sendFailures": "{{count}} falhas ao enviar",
         "audioTooLarge": "Áudio muito grande",
         "audioTooLargeMessage": "Envie um áudio de até 4MB (recomendado < 60s).",
+        "audioExceedsLimit": "O áudio excede o limite de 16MB",
+        "photoTooLarge": "Foto muito grande",
+        "photoTooLargeMessage": "Use uma imagem de até 5MB",
+        "invalidPhotoType": "Tipo de arquivo inválido",
+        "invalidPhotoTypeMessage": "Selecione apenas arquivos de imagem",
+        "photoExceedsLimitSchedule": "A foto excede o limite de 5MB",
         "groupLimit": "Limite de grupos",
         "audioGroupLimit": "Para áudio (PTT), envie no máximo 10 grupos por vez.",
         "typeMessageToEnhance": "Digite uma mensagem para melhorar",
@@ -1167,7 +1204,8 @@
         "selectAudioFirst": "Selecione um arquivo de áudio antes de enviar",
         "closedAudioMessage": "{{count}} grupo(s) está(ão) fechado(s) e você não é admin. Áudio não pode ser enviado.",
         "invalidPttFormat": "Formato inválido para PTT",
-        "pttFormatMessage": "Para enviar como áudio de voz (PTT), use arquivo .ogg (opus)"
+        "pttFormatMessage": "Para enviar como áudio de voz (PTT), use arquivo .ogg (opus)",
+        "loadFailed": "Erro ao carregar grupos. Tente novamente."
       },
       "empty": "Nenhum grupo encontrado",
       "emptyHint": "Conecte seu WhatsApp e importe seus grupos",
@@ -1286,7 +1324,9 @@
         "priceWarning": "Aviso padrão"
       },
       "alert": {
-        "formatting": "Você pode usar formatação do WhatsApp: *negrito*, _itálico_, ~riscado~ e quebras de linha. Variáveis ficam entre chaves: {nome_produto}."
+        "formatting": "Você pode usar formatação do WhatsApp: *negrito*, _itálico_, ~riscado~ e quebras de linha. Variáveis ficam entre chaves: {nome_produto}.",
+        "title": "Dica de formatação",
+        "description": "Os textos de disparo suportam formatação WhatsApp (*negrito*, _itálico_, ~riscado~) e variáveis dinâmicas como {nome_produto} e {preco}. Crie templates prontos para usar nas suas automações."
       },
       "preview": {
         "title": "Pré-visualização (exemplo)",
@@ -1294,9 +1334,18 @@
       },
       "table": {
         "title": "Meus textos",
+        "description": "Gerencie seus templates de texto para usar nas automações de disparo.",
         "name": "Nome",
         "status": "Status",
         "actions": "Ações"
+      },
+      "howItWorks": {
+        "title": "Como funciona",
+        "description": "Os Textos de Disparo são templates reutilizáveis que suas automações usam para enviar ofertas nos grupos do WhatsApp.",
+        "variables": "Use variáveis como {nome_produto}, {preco}, {preco_original}, {link_afiliado} e {aviso_preco} para preencher automaticamente os dados do produto.",
+        "formatting": "Formatação WhatsApp: *negrito*, _itálico_, ~riscado~ e > citação. Quebre linhas para organizar a mensagem.",
+        "automations": "Ao criar uma automação, selecione um ou mais textos de disparo ativos. O sistema escolhe aleatoriamente entre eles para variar as mensagens.",
+        "note": "Textos inativos não aparecem na seleção de automações. Ative pelo menos um texto antes de configurar uma automação."
       },
       "empty": "Você ainda não criou nenhum Texto de Disparo.",
       "success": {
@@ -1363,7 +1412,8 @@
         "maxDiscountPlaceholder": "50",
         "minProductPrice": "Valor mínimo do produto",
         "minProductPricePlaceholder": "200",
-        "couponText": "Texto do cupom"
+        "couponText": "Texto do cupom",
+        "discountDescription": "Configure o tipo e valor do desconto"
       },
       "actions": {
         "activate": "Ativar cupom",
@@ -1408,6 +1458,8 @@
         "status": "Status"
       },
       "empty": "Você ainda não criou nenhum cupom.",
+      "loading": "Carregando cupons...",
+      "filterDescription": "Busque e filtre seus cupons",
       "success": {
         "created": "Cupom criado",
         "updated": "Cupom atualizado",
@@ -1465,8 +1517,10 @@
     "automationLogs": {
       "title": "Logs de Automações",
       "subtitle": "Histórico de envios e ações das automações",
+      "loading": "Carregando logs...",
       "filters": {
         "title": "Filtros",
+        "subtitle": "Refine os resultados por automação, loja, grupo ou status",
         "automation": "Automação",
         "store": "Loja",
         "group": "Grupo",
@@ -1480,6 +1534,8 @@
       "table": {
         "title": "Registros",
         "description": "{{filtered}} de {{total}} log(s)",
+        "showing": "Mostrando {{filtered}} de {{total}} logs",
+        "loadMore": "Carregar mais",
         "dateTime": "Data/Hora",
         "automation": "Automação",
         "store": "Loja",
@@ -1500,6 +1556,8 @@
         "error": "Erro"
       },
       "queue": {
+        "title": "Status da Fila",
+        "subtitle": "Acompanhe o progresso dos envios em tempo real",
         "explanation": "significa que o envio foi enfileirado e será enviado em etapas para manter o WhatsApp estável.",
         "estimate": "Estimativa atual:",
         "minutes": "min",
@@ -1524,7 +1582,8 @@
         "success": "CSV exportado com sucesso!"
       },
       "errors": {
-        "load": "Erro ao carregar logs"
+        "load": "Erro ao carregar logs",
+        "export": "Erro ao exportar CSV"
       }
     },
     "mlLinkLists": {
@@ -1553,7 +1612,8 @@
         "delete": "Excluir",
         "confirmDelete": "Excluir a lista \"{{name}}\"? Isso remove todos os links dela.",
         "confirmDeleteTitle": "Excluir lista",
-        "confirmDeleteMessage": "Tem certeza que deseja excluir a lista \"{{name}}\"? Esta ação não pode ser desfeita e todos os links serão removidos."
+        "confirmDeleteMessage": "Tem certeza que deseja excluir a lista \"{{name}}\"? Esta ação não pode ser desfeita e todos os links serão removidos.",
+        "description": "Selecione e gerencie suas listas de links"
       },
       "items": {
         "title": "Links da lista",
@@ -2007,6 +2067,19 @@
         "selectBrands": "Selecione as marcas que deseja usar:",
         "brandsSelected": "{{count}} marca(s) selecionada(s)"
       },
+      "sections": {
+        "storesTitle": "LOJAS DISPONÍVEIS",
+        "storesDescription": "Configure e conecte suas plataformas de afiliado"
+      },
+      "howItWorks": {
+        "title": "COMO FUNCIONA",
+        "description": "Configure suas credenciais de afiliado para gerar links automaticamente nas automações e divulgações.",
+        "step1": "Escolha a plataforma de afiliado que deseja configurar",
+        "step2": "Preencha as credenciais necessárias (API keys, tags, tokens)",
+        "step3": "Salve e teste a conexão para validar as credenciais",
+        "step4": "Ative a geração automática de links para usar nas automações",
+        "tip": "Você pode conectar múltiplas plataformas simultaneamente. Links de afiliado são gerados automaticamente nas automações e divulgações."
+      },
       "success": {
         "saved": "Credenciais salvas com sucesso!",
         "validated": "Credenciais validadas",
@@ -2181,8 +2254,13 @@
         "resetHistory": "Resetar histórico de envios (últimas 24h)",
         "delete": "Excluir automação"
       },
+      "dialog": {
+        "editDescription": "Edite os parâmetros da automação existente.",
+        "createDescription": "Configure uma nova automação de ofertas para seus grupos."
+      },
       "preview": {
         "title": "Ofertas Encontradas - Shopee",
+        "description": "Prévia das ofertas encontradas para esta automação.",
         "loading": "Buscando ofertas...",
         "empty": "Nenhuma oferta encontrada",
         "emptyHint": "Tente ajustar os filtros da automação",

@@ -3,6 +3,7 @@ import type { ListForm, MlLinkList, MlLinkListItem, PreviewState } from '@/entit
 import { useMercadoLivreConnect } from '@/hooks/use-mercadolivre-connect';
 import { useMlLinksConnect } from '@/hooks/use-ml-links-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -52,6 +53,7 @@ interface UseMlLinkListsReturn {
   deleteListTarget: MlLinkList | null;
   deleteItemTarget: MlLinkListItem | null;
   resetConsumedDialogOpen: boolean;
+  savingList: boolean;
   setSelectedListId: (id: string) => void;
   setListDialogOpen: (open: boolean) => void;
   setListForm: React.Dispatch<React.SetStateAction<ListForm>>;
@@ -103,7 +105,8 @@ function toEntityMlLinkListItem(
   if (local.metadata) {
     try {
       metadata = JSON.parse(local.metadata) as MlLinkListItem['metadata'];
-    } catch {
+    } catch (error: unknown) {
+      captureHookError(error, 'useMlLinkLists', 'parseItemMetadata');
       metadata = null;
     }
   }
@@ -403,8 +406,8 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
       try {
         await navigator.clipboard.writeText(text);
         toast({ title: t('pages.mlLinkLists.success.copied') });
-      } catch {
-        // ignore
+      } catch (error: unknown) {
+        captureHookError(error, 'useMlLinkLists', 'copyToClipboard');
       }
     },
     [toast, t]
@@ -426,8 +429,8 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     let cleanUrl = raw;
     try {
       cleanUrl = normalizeUrl(raw);
-    } catch {
-      // keep raw
+    } catch (error: unknown) {
+      captureHookError(error, 'useMlLinkLists', 'normalizeUrl');
     }
 
     let preview: PreviewState | null = null;
@@ -496,7 +499,8 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     const normalized = lines.filter(isMercadoLivreUrl).map((l) => {
       try {
         return normalizeUrl(l);
-      } catch {
+      } catch (error: unknown) {
+        captureHookError(error, 'useMlLinkLists', 'normalizeUrlBulk');
         return l;
       }
     });
@@ -603,6 +607,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     deleteListTarget,
     deleteItemTarget,
     resetConsumedDialogOpen,
+    savingList: mlLinksConnect.isCreatingList || mlLinksConnect.isUpdatingList,
     setSelectedListId,
     setListDialogOpen,
     setListForm,

@@ -1,11 +1,11 @@
 import { ErrorBoundary } from '@/components/error-boundary';
 import { SessionList } from '@/components/sessions';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useProfilePage } from '@/hooks/use-profile-page';
 import { Eye, EyeOff, Lock, Phone } from 'lucide-react';
 import { useState } from 'react';
+import { useBlocker } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
 const ProfileIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -21,6 +21,8 @@ const ProfileIcon = ({ className, style }: { className?: string; style?: React.C
     strokeLinejoin="round"
     className={className}
     style={style}
+    role="img"
+    aria-label="Profile"
   >
     <path d="M2 12C2 8.22876 2 6.34315 3.17157 5.17157C4.34315 4 6.22876 4 10 4H14C17.7712 4 19.6569 4 20.8284 5.17157C22 6.34315 22 8.22876 22 12C22 15.7712 22 17.6569 20.8284 18.8284C19.6569 20 17.7712 20 14 20H10C6.22876 20 4.34315 20 3.17157 18.8284C2 17.6569 2 15.7712 2 12Z" />
     <path d="M9 12.5C7.61929 12.5 6.5 11.3807 6.5 10C6.5 8.61929 7.61929 7.5 9 7.5C10.3807 7.5 11.5 8.61929 11.5 10C11.5 11.3807 10.3807 12.5 9 12.5ZM9 12.5C11.2091 12.5 13 14.2909 13 16.5M9 12.5C6.79086 12.5 5 14.2909 5 16.5" />
@@ -38,6 +40,7 @@ const colors = {
   wineTextLight: 'rgba(141, 45, 83, 0.7)',
   wineTextMuted: 'rgba(141, 45, 83, 0.6)',
   iconBg: 'rgba(141, 45, 83, 0.1)',
+  iconBgHover: 'rgba(141, 45, 83, 0.15)',
 };
 
 /**
@@ -68,11 +71,44 @@ export default function Profile() {
     formatDateBR,
   } = useProfilePage();
 
+  /** FR12: Block navigation while saving profile */
+  useBlocker(() => {
+    if (savingPhone || savingPassword) {
+      return !window.confirm(t('common.unsavedChangesWarning'));
+    }
+    return false;
+  });
+
+  if (loading) {
+    return (
+      <ErrorBoundary>
+        <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
+          <div
+            className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10 xl:p-12"
+            style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
+          >
+            <div className="flex items-center justify-center min-h-[300px] xs:min-h-[350px] sm:min-h-[400px]">
+              <div className="text-center space-y-4">
+                <div
+                  className="h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
+                  style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
+                />
+                <p className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                  {t('pages.profile.loading')}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
-      <div className="flex flex-col w-full h-full">
+      <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
-          className="flex flex-col w-full border rounded-xl xs:rounded-2xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10 xl:p-12"
+          className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-8 lg:p-10 xl:p-12"
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
           <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-9 xl:space-y-10">
@@ -105,7 +141,7 @@ export default function Profile() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 xs:gap-4 sm:gap-6 lg:gap-8 xl:gap-10">
               <div
-                className="lg:col-span-2 rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
+                className="lg:col-span-2 rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
                 <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4 sm:mb-5">
@@ -126,6 +162,7 @@ export default function Profile() {
                     {t('pages.profile.accountInfo.title')}
                   </span>
                 </div>
+                <div className="h-px mb-4 xs:mb-5" style={{ backgroundColor: colors.wineBorder }} />
                 <div className="space-y-3 xs:space-y-4 sm:space-y-5">
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 xs:gap-4 sm:gap-5 lg:gap-6">
                     <div className="space-y-1">
@@ -135,7 +172,9 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.email')}
                       </Label>
-                      <div className="text-sm xs:text-base text-black">{profile?.email || '-'}</div>
+                      <div className="text-sm xs:text-base" style={{ color: '#18181b' }}>
+                        {profile?.email || '-'}
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <Label
@@ -151,7 +190,10 @@ export default function Profile() {
                         >
                           {(profile?.plan || 'free').toUpperCase()}
                         </span>
-                        <span className="text-xs xs:text-sm" style={{ color: colors.wineTextMuted }}>
+                        <span
+                          className="text-xs xs:text-sm"
+                          style={{ color: colors.wineTextMuted }}
+                        >
                           {automationsLimitText}
                         </span>
                       </div>
@@ -163,7 +205,7 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.nextPayment')}
                       </Label>
-                      <div className="text-sm xs:text-base text-black">
+                      <div className="text-sm xs:text-base" style={{ color: '#18181b' }}>
                         {formatDateBR(profile?.billing_next_payment_at ?? null)}
                       </div>
                     </div>
@@ -174,7 +216,7 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.accessUntil')}
                       </Label>
-                      <div className="text-sm xs:text-base text-black">
+                      <div className="text-sm xs:text-base" style={{ color: '#18181b' }}>
                         {formatDateBR(profile?.plan_access_until ?? null)}
                       </div>
                     </div>
@@ -185,7 +227,10 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.userId')}
                       </Label>
-                      <div className="text-sm xs:text-base text-black font-mono break-all">
+                      <div
+                        className="text-sm xs:text-base font-mono break-all"
+                        style={{ color: '#18181b' }}
+                      >
                         {profile?.id || '-'}
                       </div>
                     </div>
@@ -196,7 +241,7 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.connectedWhatsApp')}
                       </Label>
-                      <div className="text-sm xs:text-base text-black">
+                      <div className="text-sm xs:text-base" style={{ color: '#18181b' }}>
                         {connectedInstancesCount} {t('pages.profile.accountInfo.instances')}
                       </div>
                     </div>
@@ -207,7 +252,9 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.createdAt')}
                       </Label>
-                      <div className="text-sm xs:text-base text-black">{formatDateBR(profile?.created_at)}</div>
+                      <div className="text-sm xs:text-base" style={{ color: '#18181b' }}>
+                        {formatDateBR(profile?.created_at)}
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <Label
@@ -216,20 +263,16 @@ export default function Profile() {
                       >
                         {t('pages.profile.accountInfo.updatedAt')}
                       </Label>
-                      <div className="text-sm xs:text-base text-black">{formatDateBR(profile?.updated_at)}</div>
+                      <div className="text-sm xs:text-base" style={{ color: '#18181b' }}>
+                        {formatDateBR(profile?.updated_at)}
+                      </div>
                     </div>
                   </div>
-
-                  {loading && (
-                    <p className="text-xs" style={{ color: colors.wineTextMuted }}>
-                      {t('pages.profile.loading')}
-                    </p>
-                  )}
                 </div>
               </div>
 
               <div
-                className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
+                className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
                 <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4 sm:mb-5">
@@ -250,6 +293,7 @@ export default function Profile() {
                     {t('pages.profile.phone.title')}
                   </span>
                 </div>
+                <div className="h-px mb-4 xs:mb-5" style={{ backgroundColor: colors.wineBorder }} />
                 <div className="space-y-3 xs:space-y-4">
                   <div className="space-y-2">
                     <Label
@@ -270,15 +314,27 @@ export default function Profile() {
                       {t('pages.profile.phone.hint')}
                     </p>
                   </div>
-                  <Button className="w-full" onClick={savePhone} disabled={savingPhone || loading}>
-                    {savingPhone ? t('pages.profile.phone.saving') : t('pages.profile.phone.save')}
-                  </Button>
+                  <button
+                    type="button"
+                    onClick={savePhone}
+                    disabled={savingPhone || loading}
+                    className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+                      <div className="auth-btn-glow__glow absolute inset-0" />
+                    </div>
+                    <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+                      {savingPhone
+                        ? t('pages.profile.phone.saving')
+                        : t('pages.profile.phone.save')}
+                    </span>
+                  </button>
                 </div>
               </div>
             </div>
 
             <div
-              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
+              className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 md:p-7 lg:p-8"
               style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
             >
               <div className="flex items-center gap-2 xs:gap-3 mb-3 xs:mb-4 sm:mb-5">
@@ -296,6 +352,7 @@ export default function Profile() {
                   {t('pages.profile.security.title')}
                 </span>
               </div>
+              <div className="h-px mb-4 xs:mb-5" style={{ backgroundColor: colors.wineBorder }} />
               <div className="space-y-3 xs:space-y-4 sm:space-y-5">
                 <div className="space-y-2">
                   <Label
@@ -396,11 +453,21 @@ export default function Profile() {
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <Button onClick={savePassword} disabled={savingPassword || loading}>
-                    {savingPassword
-                      ? t('pages.profile.security.saving')
-                      : t('pages.profile.security.save')}
-                  </Button>
+                  <button
+                    type="button"
+                    onClick={savePassword}
+                    disabled={savingPassword || loading}
+                    className="auth-btn-glow relative inline-flex w-full sm:w-auto cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+                      <div className="auth-btn-glow__glow absolute inset-0" />
+                    </div>
+                    <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+                      {savingPassword
+                        ? t('pages.profile.security.saving')
+                        : t('pages.profile.security.save')}
+                    </span>
+                  </button>
                 </div>
               </div>
             </div>

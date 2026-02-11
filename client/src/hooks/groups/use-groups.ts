@@ -102,6 +102,7 @@ export function useGroups(): UseGroupsReturn {
     // Data
     groups,
     loading,
+    error: data.error,
     searchQuery: data.searchQuery,
     filteredGroups: data.filteredGroups,
     syncing: data.syncing,
@@ -141,6 +142,8 @@ export function useGroups(): UseGroupsReturn {
     message: messaging.message,
     mediaFile: messaging.mediaFile,
     mentionOpen: messaging.mentionOpen,
+    mentionParticipants: messaging.mentionParticipants,
+    loadingMentionParticipants: messaging.loadingMentionParticipants,
     sendMessageDialogOpen: messaging.sendMessageDialogOpen,
     setMessage: messaging.setMessage,
     setMentionOpen: messaging.setMentionOpen,

@@ -1,6 +1,7 @@
 import { useHistoryConnect } from '@/hooks/use-history-connect';
 import { useHistoryRealtime } from '@/hooks/use-history-realtime';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import type { ActionHistory, ActionHistoryStatus, HistoryStats } from '@/types/action-history';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
@@ -106,10 +107,7 @@ export function useHistory(): UseHistoryReturn {
 
   // Map history events to ActionHistory format
   const history: ActionHistory[] = useMemo(() => {
-    console.log('[DEBUG use-history] events from useHistoryConnect:', events);
-    console.log('[DEBUG use-history] events.length:', events.length);
-    console.log('[DEBUG use-history] serverStats:', serverStats);
-    const result = events.map((event) => ({
+    return events.map((event) => ({
       id: event.id,
       action_type: event.event_type,
       description: event.description,
@@ -121,9 +119,7 @@ export function useHistory(): UseHistoryReturn {
       created_at: event.created_at,
       completed_at: event.completed_at ?? null,
     }));
-    console.log('[DEBUG use-history] mapped history:', result);
-    return result;
-  }, [events, serverStats]);
+  }, [events]);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -132,6 +128,7 @@ export function useHistory(): UseHistoryReturn {
         queryKey: ['connectRpc', 'history.v1.HistoryService'],
       });
     } catch (error: unknown) {
+      captureHookError(error, 'useHistory', 'loadHistory');
       const errorMessage = error instanceof Error ? error.message : t('common.error');
       toast({
         variant: 'destructive',
@@ -193,6 +190,7 @@ export function useHistory(): UseHistoryReturn {
       });
       return deletedCount;
     } catch (error: unknown) {
+      captureHookError(error, 'useHistory', 'clearHistory');
       const errorMessage = error instanceof Error ? error.message : t('common.error');
       toast({
         variant: 'destructive',

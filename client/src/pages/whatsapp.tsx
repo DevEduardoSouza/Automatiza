@@ -1,12 +1,15 @@
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { useWhatsApp } from '@/hooks/use-whatsapp';
+import * as Sentry from '@sentry/react';
 import {
   AlertCircle,
   Loader2,
   RefreshCw,
+  Trash2,
   Unplug,
   Wifi,
   WifiOff,
@@ -148,7 +151,18 @@ export default function WhatsApp() {
   };
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary
+      fallback={
+        <WahaErrorFallback
+          onReconnect={() => {
+            refreshQrCode();
+          }}
+          onClearSession={() => {
+            disconnectInstance();
+          }}
+        />
+      }
+    >
       <div className="flex flex-col w-full h-full 2xl:max-w-[1600px] 2xl:mx-auto">
         <div
           className="flex flex-col w-full border rounded-xl xs:rounded-2xl lg:rounded-3xl p-4 xs:p-5 sm:p-6 md:p-6 lg:p-8 xl:p-10"
@@ -521,19 +535,18 @@ function VerifyingContent({ onDisconnect }: VerifyingContentProps) {
         </p>
       </div>
 
-      <Button
-        variant="outline"
+      <button
+        type="button"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           onDisconnect();
         }}
-        className="w-full gap-2 xs:gap-2.5 cursor-pointer relative z-10"
-        style={{ color: colors.wine, borderColor: colors.wineBorder }}
+        className="relative z-10 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
       >
         <Unplug className="h-4 w-4" />
         {t('pages.whatsapp.connected.disconnect')}
-      </Button>
+      </button>
     </div>
   );
 }
@@ -547,10 +560,19 @@ function DisconnectedContent({ onConnect }: DisconnectedContentProps) {
 
   return (
     <div className="space-y-4">
-      <Button onClick={onConnect} size="lg" className="w-full gap-2 xs:gap-2.5">
-        <Wifi className="h-4 w-4 xs:h-5 xs:w-5" />
-        {t('pages.whatsapp.disconnected.generateQR')}
-      </Button>
+      <button
+        type="button"
+        onClick={onConnect}
+        className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all"
+      >
+        <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+          <div className="auth-btn-glow__glow absolute inset-0" />
+        </div>
+        <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+          <Wifi className="h-4 w-4 xs:h-5 xs:w-5" />
+          {t('pages.whatsapp.disconnected.generateQR')}
+        </span>
+      </button>
     </div>
   );
 }
@@ -590,16 +612,14 @@ function ConnectingContent({
               <span style={{ color: colors.wineTextMuted }}>
                 {t('pages.whatsapp.qrCode.expiresIn', { seconds: qrCountdown })}
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
+                type="button"
                 onClick={onRefreshQr}
-                className="h-8 gap-1 text-xs cursor-pointer"
-                style={{ color: colors.wine }}
+                className="inline-flex items-center gap-1 rounded-full px-2.5 xs:px-3 py-1 xs:py-1.5 text-[10px] xs:text-xs font-medium text-[#8D2D53] cursor-pointer transition-all hover:bg-[rgba(141,45,83,0.08)]"
               >
-                <RefreshCw className="h-3 w-3" />
+                <RefreshCw className="h-2.5 w-2.5 xs:h-3 xs:w-3" />
                 {t('common.refresh')}
-              </Button>
+              </button>
             </div>
             <Progress
               value={(qrCountdown / 30) * 100}
@@ -627,15 +647,14 @@ function ConnectingContent({
         </div>
       )}
 
-      <Button
-        variant="outline"
+      <button
+        type="button"
         onClick={onDisconnect}
-        className="w-full gap-2 xs:gap-2.5 cursor-pointer"
-        style={{ color: colors.wine, borderColor: colors.wineBorder }}
+        className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
       >
         <Unplug className="h-4 w-4" />
         {t('pages.whatsapp.connected.disconnect')}
-      </Button>
+      </button>
     </div>
   );
 }
@@ -691,41 +710,38 @@ function ConnectedContent({
 
       {importing && <ImportingProgress progress={importProgress} importedGroups={importedGroups} />}
 
-      <Button
+      <button
+        type="button"
         onClick={onImportGroups}
-        variant="outline"
-        className="w-full gap-2 xs:gap-2.5"
         disabled={importing}
-        style={{ color: colors.wine, borderColor: colors.wineBorder }}
+        className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
       >
         <RefreshCw className={`h-4 w-4 ${importing ? 'animate-spin' : ''}`} />
         {importing
           ? t('pages.whatsapp.connected.importing')
           : t('pages.whatsapp.connected.syncGroupsManually')}
-      </Button>
+      </button>
 
       <AutoSyncToggle autoSync={autoSync} onToggle={onAutoSyncToggle} />
 
       <div className="flex flex-col xs:flex-row gap-2 xs:gap-3 pt-2">
-        <Button
-          variant="outline"
+        <button
+          type="button"
           onClick={onReconnect}
           disabled={importing}
-          className="flex-1 gap-2 xs:gap-2.5 cursor-pointer"
-          style={{ color: colors.wine, borderColor: colors.wineBorder }}
+          className="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RefreshCw className="h-4 w-4" />
           {t('pages.whatsapp.connected.reconnect')}
-        </Button>
-        <Button
-          variant="outline"
+        </button>
+        <button
+          type="button"
           onClick={onDisconnect}
-          className="flex-1 gap-2 xs:gap-2.5 cursor-pointer"
-          style={{ color: colors.wine, borderColor: colors.wineBorder }}
+          className="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
         >
           <Unplug className="h-4 w-4" />
           {t('pages.whatsapp.connected.disconnect')}
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -805,21 +821,78 @@ function AutoSyncToggle({ autoSync, onToggle }: AutoSyncToggleProps) {
             : t('pages.whatsapp.connected.autoSync.disabled')}
         </p>
       </div>
-      <Button
-        variant={autoSync ? 'default' : 'outline'}
-        size="sm"
+      <button
+        type="button"
         onClick={onToggle}
-        className="cursor-pointer"
-        style={
+        className={`inline-flex cursor-pointer items-center justify-center rounded-full px-3 xs:px-4 py-1.5 xs:py-2 text-xs xs:text-sm font-semibold transition-all ${
           autoSync
-            ? { backgroundColor: colors.wine }
-            : { color: colors.wine, borderColor: colors.wineBorder }
-        }
+            ? 'bg-[#8D2D53] text-white shadow-sm hover:bg-[#8D2D53]/90'
+            : 'border border-gray-300 bg-white text-[#8D2D53] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md'
+        }`}
       >
         {autoSync
           ? t('pages.whatsapp.connected.autoSync.activated')
           : t('pages.whatsapp.connected.autoSync.activate')}
-      </Button>
+      </button>
+    </div>
+  );
+}
+
+interface WahaErrorFallbackProps {
+  onReconnect: () => void;
+  onClearSession: () => void;
+}
+
+/**
+ * WAHA-specific error fallback with recovery actions (Reconnect / Clear session).
+ */
+function WahaErrorFallback({ onReconnect, onClearSession }: WahaErrorFallbackProps) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="min-h-[400px] flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4">
+            <WifiOff className="h-12 w-12 text-destructive" aria-hidden="true" />
+          </div>
+          <CardTitle>{t('pages.whatsapp.errorBoundary.title')}</CardTitle>
+          <CardDescription>{t('pages.whatsapp.errorBoundary.description')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button
+            onClick={() => {
+              Sentry.addBreadcrumb({
+                category: 'whatsapp',
+                message: 'User initiated reconnect from error boundary',
+                level: 'info',
+              });
+              onReconnect();
+            }}
+            className="w-full"
+            aria-label={t('pages.whatsapp.errorBoundary.reconnect')}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+            {t('pages.whatsapp.errorBoundary.reconnect')}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              Sentry.addBreadcrumb({
+                category: 'whatsapp',
+                message: 'User initiated clear session from error boundary',
+                level: 'info',
+              });
+              onClearSession();
+            }}
+            className="w-full"
+            aria-label={t('pages.whatsapp.errorBoundary.clearSession')}
+          >
+            <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+            {t('pages.whatsapp.errorBoundary.clearSession')}
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

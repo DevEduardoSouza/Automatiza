@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useAutomations } from '@/hooks/use-automations';
 import { useToast } from '@/hooks/use-toast';
 import { AlertCircle, FileText, List, Plus, WifiOff } from 'lucide-react';
+import { useBlocker } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
 const AIIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -73,6 +74,7 @@ export default function OfferAutomations() {
     limitReached,
     nearLimit,
     refinementOpen,
+    savingAutomation,
     setDialogOpen,
     setPreviewDialogOpen,
     setFormData,
@@ -89,6 +91,14 @@ export default function OfferAutomations() {
     handleResetHistory,
     handlePreviewOffers,
   } = useAutomations();
+
+  /** FR12: Block navigation while mutations are pending */
+  useBlocker(() => {
+    if (savingAutomation) {
+      return !window.confirm(t('common.unsavedChangesWarning'));
+    }
+    return false;
+  });
 
   const handleLimitReachedToast = () => {
     toast({
@@ -194,6 +204,7 @@ export default function OfferAutomations() {
                 setMonitorDelayInput={setMonitorDelayInput}
                 refinementOpen={refinementOpen}
                 setRefinementOpen={setRefinementOpen}
+                saving={savingAutomation}
                 onSave={handleSave}
                 onReset={resetForm}
                 onToggleFavorite={toggleFavorite}

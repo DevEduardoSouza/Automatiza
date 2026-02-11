@@ -1,5 +1,6 @@
 import { useGroupsConnect } from '@/hooks/use-groups-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import type { Group } from '@/types/group';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -197,6 +198,7 @@ export function useGroupsBulkActions({
                 throw new Error(t('pages.groups.errors.unknownAction'));
             }
           } catch (error) {
+            captureHookError(error, 'useGroupsBulkActions', 'executeBulkAction');
             const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
             errorDetails.push(`${group.name}: ${errorMessage}`);
             errorCount++;
@@ -232,6 +234,7 @@ export function useGroupsBulkActions({
         setChangePhotoDialogOpen(false);
         setChangeDescriptionDialogOpen(false);
       } catch (error) {
+        captureHookError(error, 'useGroupsBulkActions', 'executeAction');
         toast({
           variant: 'destructive',
           title: t('common.error'),

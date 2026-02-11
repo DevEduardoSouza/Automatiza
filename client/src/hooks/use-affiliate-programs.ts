@@ -6,6 +6,7 @@ import {
 } from '@/hooks/use-affiliate-credentials-connect';
 import { useMercadoLivreConnect } from '@/hooks/use-mercadolivre-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -76,7 +77,7 @@ const STORE_CONFIGS: StoreConfig[] = [
       { key: 'appId', label: 'App ID', type: 'text', placeholder: '12345' },
       {
         key: 'password',
-        label: 'Password',
+        label: 'Senha',
         type: 'password',
         placeholder: '********',
       },
@@ -175,7 +176,12 @@ const ENABLED_STORES: StoreKey[] = ['shopee', 'ml'];
 function base64UrlDecode(input: string): string {
   const s = input.replace(/-/g, '+').replace(/_/g, '/');
   const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
-  return atob(s + pad);
+  try {
+    return atob(s + pad);
+  } catch (error: unknown) {
+    captureHookError(error, 'useAffiliatePrograms', 'base64UrlDecode');
+    throw error;
+  }
 }
 
 function decodeMlConnectionToken(rawToken: string): MlConnectionToken {
@@ -195,7 +201,8 @@ function decodeMlConnectionToken(rawToken: string): MlConnectionToken {
       return { error: 'Token invalido (faltando tag/cookie).' };
     }
     return { tag, cookie, csrfToken };
-  } catch {
+  } catch (error: unknown) {
+    captureHookError(error, 'useAffiliatePrograms', 'decodeMlConnectionToken');
     return { error: 'Token invalido (nao consegui decodificar).' };
   }
 }
@@ -301,7 +308,8 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
         if (cred.store === 'awin' && cred.credentials.selected_brands) {
           try {
             selectedBrands = JSON.parse(cred.credentials.selected_brands);
-          } catch {
+          } catch (error: unknown) {
+            captureHookError(error, 'useAffiliatePrograms', 'parseAwinBrands');
             selectedBrands = undefined;
           }
           const { selected_brands, ...rest } = cred.credentials;
@@ -533,6 +541,7 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
 
         await refetchCredentials();
       } catch (error: unknown) {
+        captureHookError(error, 'useAffiliatePrograms', 'handleSave');
         const errorMessage =
           error instanceof Error ? error.message : t('pages.affiliatePrograms.errors.saveUnknown');
         toast({
@@ -616,6 +625,7 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
           }),
         });
       } catch (error: unknown) {
+        captureHookError(error, 'useAffiliatePrograms', 'handleTest');
         const errorMessage =
           error instanceof Error
             ? error.message

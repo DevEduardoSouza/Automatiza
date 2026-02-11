@@ -5,6 +5,7 @@ import { type LocalDispatchLog, useDispatchLogsConnect } from '@/hooks/use-dispa
 import { useGroupsConnect } from '@/hooks/use-groups-connect';
 import { useJobsConnect } from '@/hooks/use-jobs-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import type {
   DispatchLog,
   DispatchLogAutomation,
@@ -161,7 +162,8 @@ export function useAutomationLogs(): UseAutomationLogsReturn {
           }))
           .sort((a, b) => a.name.localeCompare(b.name))
       );
-    } catch {
+    } catch (error: unknown) {
+      captureHookError(error, 'useAutomationLogs', 'loadAutomations');
       toast({
         title: t('pages.automationLogs.errors.load'),
         variant: 'destructive',
@@ -179,41 +181,56 @@ export function useAutomationLogs(): UseAutomationLogsReturn {
   // No need for client-side filtering - logs already filtered by the backend
   const filteredLogs = logs;
 
+  /** FSQ7/FSQ34: Wrap exportCSV in try/catch + validate Date parsing */
   const exportCSV = useCallback(() => {
-    const headers = [
-      t('pages.automationLogs.table.dateTime'),
-      t('pages.automationLogs.table.automation'),
-      t('pages.automationLogs.table.store'),
-      t('pages.automationLogs.table.group'),
-      t('pages.automationLogs.table.category'),
-      t('pages.automationLogs.table.product'),
-      t('pages.automationLogs.table.affiliateLink'),
-      t('pages.automationLogs.table.status'),
-      t('pages.automationLogs.table.error'),
-    ];
+    try {
+      const headers = [
+        t('pages.automationLogs.table.dateTime'),
+        t('pages.automationLogs.table.automation'),
+        t('pages.automationLogs.table.store'),
+        t('pages.automationLogs.table.group'),
+        t('pages.automationLogs.table.category'),
+        t('pages.automationLogs.table.product'),
+        t('pages.automationLogs.table.affiliateLink'),
+        t('pages.automationLogs.table.status'),
+        t('pages.automationLogs.table.error'),
+      ];
 
-    const rows = filteredLogs.map((log) => [
-      format(new Date(log.created_at), 'dd/MM/yyyy HH:mm:ss'),
-      log.automation_name,
-      STORES.find((s) => s.value === log.store)?.label || log.store,
-      log.group_name || log.group_id,
-      log.product_category || '-',
-      log.product_url,
-      log.affiliate_url || '-',
-      log.status,
-      log.error || '-',
-    ]);
+      const rows = filteredLogs.map((log) => {
+        const date = new Date(log.created_at);
+        const formattedDate = Number.isNaN(date.getTime())
+          ? log.created_at
+          : format(date, 'dd/MM/yyyy HH:mm:ss');
+        return [
+          formattedDate,
+          log.automation_name,
+          STORES.find((s) => s.value === log.store)?.label || log.store,
+          log.group_name || log.group_id,
+          log.product_category || '-',
+          log.product_url,
+          log.affiliate_url || '-',
+          log.status,
+          log.error || '-',
+        ];
+      });
 
-    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `logs-${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `logs-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
 
-    toast({ title: t('pages.automationLogs.export.success') });
+      toast({ title: t('pages.automationLogs.export.success') });
+    } catch (error: unknown) {
+      captureHookError(error, 'useAutomationLogs', 'exportCSV');
+      toast({
+        title: t('pages.automationLogs.errors.export'),
+        variant: 'destructive',
+      });
+    }
   }, [filteredLogs, toast, t]);
 
   const getProductHref = useCallback((log: DispatchLog): string => {

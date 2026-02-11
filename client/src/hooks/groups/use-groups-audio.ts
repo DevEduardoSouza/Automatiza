@@ -1,6 +1,7 @@
 import { useGroupsConnect } from '@/hooks/use-groups-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import type { Group } from '@/types/group';
 import { type ChangeEvent, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -148,7 +149,8 @@ export function useGroupsAudio({
 
           successCount++;
           await new Promise((resolve) => setTimeout(resolve, 1000));
-        } catch {
+        } catch (error: unknown) {
+          captureHookError(error, 'useGroupsAudio', 'sendAudioToGroup');
           errorCount++;
         }
       }

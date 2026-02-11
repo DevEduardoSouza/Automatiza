@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui/button';
+import type { GroupParticipant } from '@/hooks/use-groups-connect';
 import { useToast } from '@/hooks/use-toast';
 import { Lock, Settings2, Unlock } from 'lucide-react';
 import type { ChangeEvent } from 'react';
@@ -47,6 +47,8 @@ interface GroupBulkActionsProps {
   mentionOpen: boolean;
   onMentionOpenChange: (value: boolean) => void;
   onInsertMention: (mention: string) => void;
+  mentionParticipants: GroupParticipant[];
+  loadingMentionParticipants: boolean;
   isEnhancing: boolean;
   onEnhanceMessage: () => void;
   mediaFile: File | null;
@@ -107,6 +109,8 @@ export function GroupBulkActions({
   mentionOpen,
   onMentionOpenChange,
   onInsertMention,
+  mentionParticipants,
+  loadingMentionParticipants,
   isEnhancing,
   onEnhanceMessage,
   mediaFile,
@@ -189,16 +193,32 @@ export function GroupBulkActions({
 
       {/* Actions Grid */}
       <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 min-[1900px]:grid-cols-8 gap-2 xs:gap-2.5 md:gap-3 xl:gap-4">
-        <Button variant="outline" onClick={handleCloseGroups} className="w-full min-w-0 text-xs xs:text-[13px] md:text-sm">
-          <Lock className="shrink-0 mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
-          <span className="hidden sm:inline truncate">{t('pages.groups.bulkActions.closeGroups')}</span>
-          <span className="sm:hidden truncate">{t('pages.groups.bulkActions.closeGroupsShort')}</span>
-        </Button>
-        <Button variant="outline" onClick={handleOpenGroups} className="w-full min-w-0 text-xs xs:text-[13px] md:text-sm">
-          <Unlock className="shrink-0 mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
-          <span className="hidden sm:inline truncate">{t('pages.groups.bulkActions.openGroups')}</span>
-          <span className="sm:hidden truncate">{t('pages.groups.bulkActions.openGroupsShort')}</span>
-        </Button>
+        <button
+          type="button"
+          onClick={handleCloseGroups}
+          className="inline-flex w-full min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs xs:px-4 xs:py-2 xs:text-[13px] md:text-sm font-medium text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+        >
+          <Lock className="shrink-0 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
+          <span className="hidden sm:inline truncate">
+            {t('pages.groups.bulkActions.closeGroups')}
+          </span>
+          <span className="sm:hidden truncate">
+            {t('pages.groups.bulkActions.closeGroupsShort')}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={handleOpenGroups}
+          className="inline-flex w-full min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs xs:px-4 xs:py-2 xs:text-[13px] md:text-sm font-medium text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+        >
+          <Unlock className="shrink-0 h-3 w-3 md:h-4 md:w-4" aria-hidden="true" />
+          <span className="hidden sm:inline truncate">
+            {t('pages.groups.bulkActions.openGroups')}
+          </span>
+          <span className="sm:hidden truncate">
+            {t('pages.groups.bulkActions.openGroupsShort')}
+          </span>
+        </button>
 
         <GroupNameDialog
           open={changeNameDialogOpen}
@@ -245,6 +265,8 @@ export function GroupBulkActions({
           mentionOpen={mentionOpen}
           onMentionOpenChange={onMentionOpenChange}
           onInsertMention={onInsertMention}
+          participants={mentionParticipants}
+          loadingParticipants={loadingMentionParticipants}
           isEnhancing={isEnhancing}
           onEnhanceMessage={onEnhanceMessage}
           mediaFile={mediaFile}

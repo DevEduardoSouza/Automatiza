@@ -22,6 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { GroupParticipant } from '@/hooks/use-groups-connect';
+import * as Sentry from '@sentry/react';
 import { ChevronDown, ChevronUp, Loader2, LogOut, Search, Trash2, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -158,29 +159,38 @@ export function GroupMembersDialog({
     return formatPhoneNumber(rawNumber);
   }
 
+  /** WF39: Wrapped in try/catch with Sentry capture */
   async function handleConfirmedAction() {
     if (!confirmAction) return;
-    switch (confirmAction.type) {
-      case 'remove':
-        if (confirmAction.participantId) {
-          await onRemoveMember(confirmAction.participantId);
-        }
-        break;
-      case 'leave':
-        await onLeaveGroup();
-        break;
-      case 'promote':
-        if (confirmAction.participantId) {
-          await onPromoteMember(confirmAction.participantId);
-        }
-        break;
-      case 'demote':
-        if (confirmAction.participantId) {
-          await onDemoteMember(confirmAction.participantId);
-        }
-        break;
+    try {
+      switch (confirmAction.type) {
+        case 'remove':
+          if (confirmAction.participantId) {
+            await onRemoveMember(confirmAction.participantId);
+          }
+          break;
+        case 'leave':
+          await onLeaveGroup();
+          break;
+        case 'promote':
+          if (confirmAction.participantId) {
+            await onPromoteMember(confirmAction.participantId);
+          }
+          break;
+        case 'demote':
+          if (confirmAction.participantId) {
+            await onDemoteMember(confirmAction.participantId);
+          }
+          break;
+      }
+    } catch (error) {
+      Sentry.captureException(error, {
+        tags: { component: 'GroupMembersDialog', action: confirmAction.type },
+        extra: { participantId: confirmAction.participantId },
+      });
+    } finally {
+      setConfirmAction(null);
     }
-    setConfirmAction(null);
   }
 
   function getConfirmMessage(): string {
@@ -244,6 +254,7 @@ export function GroupMembersDialog({
               onClick={onAddMember}
               disabled={!phoneNumberInput.trim() || isAddingMember}
               size="sm"
+              className="rounded-full"
             >
               {isAddingMember ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -366,19 +377,19 @@ export function GroupMembersDialog({
           <Separator />
 
           {/* Leave group button */}
-          <Button
-            variant="destructive"
-            className="w-full"
+          <button
+            type="button"
+            className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-destructive px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold text-white shadow-sm transition-all hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLeavingGroup}
             onClick={() => setConfirmAction({ type: 'leave' })}
           >
             {isLeavingGroup ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
             ) : (
-              <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
+              <LogOut className="h-4 w-4" aria-hidden="true" />
             )}
             {t('pages.groups.members.leaveGroup')}
-          </Button>
+          </button>
         </DialogContent>
       </Dialog>
 
