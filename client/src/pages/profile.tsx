@@ -2,10 +2,10 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { SessionList } from '@/components/sessions';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useNavigationGuard } from '@/hooks/use-navigation-guard';
 import { useProfilePage } from '@/hooks/use-profile-page';
 import { Eye, EyeOff, Lock, Phone } from 'lucide-react';
 import { useState } from 'react';
-import { useBlocker } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
 const ProfileIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -71,13 +71,8 @@ export default function Profile() {
     formatDateBR,
   } = useProfilePage();
 
-  /** FR12: Block navigation while saving profile */
-  useBlocker(() => {
-    if (savingPhone || savingPassword) {
-      return !window.confirm(t('common.unsavedChangesWarning'));
-    }
-    return false;
-  });
+  /** FR12: Block browser close/reload while saving profile */
+  useNavigationGuard(savingPhone || savingPassword);
 
   if (loading) {
     return (

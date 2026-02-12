@@ -119,6 +119,8 @@ jobs:
           CORS_ORIGIN=${{ vars.CORS_ORIGIN }}
           PUBLIC_BASE_URL=${{ vars.PUBLIC_BASE_URL }}
           BACKEND_PUBLIC_URL=${{ vars.BACKEND_PUBLIC_URL }}
+          WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}
+          SENTRY_DSN=${{ secrets.SENTRY_DSN }}
           WAHA_API_KEY=${{ secrets.WAHA_API_KEY }}
           ML_CREDENTIALS_ENCRYPTION_KEY=${{ secrets.ML_CREDENTIALS_ENCRYPTION_KEY }}
           KIWIFY_WEBHOOK_TOKEN=${{ secrets.KIWIFY_WEBHOOK_TOKEN }}
@@ -139,6 +141,29 @@ jobs:
           ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             'chmod 600 /opt/automatiza/docker/.env'
           rm -f /tmp/.env.deploy /tmp/.env.clean
+
+      - name: Validate .env on VPS
+        run: |
+          echo "=== Validating .env on VPS ==="
+          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+            ENV_FILE="/opt/automatiza/docker/.env"
+            MISSING=""
+            for key in NODE_ENV PORT DB_USER DB_PASSWORD DB_NAME JWT_SECRET COOKIE_DOMAIN CORS_ORIGIN BACKEND_PUBLIC_URL SENTRY_DSN; do
+              val=$(grep "^${key}=" "$ENV_FILE" | cut -d= -f2-)
+              if [ -z "$val" ]; then
+                MISSING="${MISSING}  - ${key}\n"
+              fi
+            done
+            if [ -n "$MISSING" ]; then
+              echo "WARNING: The following critical variables are empty:"
+              printf "$MISSING"
+              echo "Check GitHub Settings > Environments > production > Variables/Secrets"
+            else
+              echo "All critical variables are set."
+            fi
+            echo "--- .env keys (values masked) ---"
+            awk -F= "{print \$1 \"=\" (length(\$2) > 0 ? \"[SET]\" : \"[EMPTY]\")}" "$ENV_FILE"
+          '
 
       - name: Copy docker-compose.yml to VPS
         run: |

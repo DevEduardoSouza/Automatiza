@@ -8,9 +8,9 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAutomations } from '@/hooks/use-automations';
+import { useNavigationGuard } from '@/hooks/use-navigation-guard';
 import { useToast } from '@/hooks/use-toast';
 import { AlertCircle, FileText, List, Plus, WifiOff } from 'lucide-react';
-import { useBlocker } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
 const AIIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -25,6 +25,8 @@ const AIIcon = ({ className, style }: { className?: string; style?: React.CSSPro
     strokeLinejoin="round"
     className={className}
     style={style}
+    role="img"
+    aria-label="AI"
   >
     <path d="M4 12C4 8.22876 4 6.34315 5.17157 5.17157C6.34315 4 8.22876 4 12 4C15.7712 4 17.6569 4 18.8284 5.17157C20 6.34315 20 8.22876 20 12C20 15.7712 20 17.6569 18.8284 18.8284C17.6569 20 15.7712 20 12 20C8.22876 20 6.34315 20 5.17157 18.8284C4 17.6569 4 15.7712 4 12Z" />
     <path d="M7.5 15L9.34189 9.47434C9.43631 9.19107 9.7014 9 10 9C10.2986 9 10.5637 9.19107 10.6581 9.47434L12.5 15M8.5 13H11.5" />
@@ -92,13 +94,8 @@ export default function OfferAutomations() {
     handlePreviewOffers,
   } = useAutomations();
 
-  /** FR12: Block navigation while mutations are pending */
-  useBlocker(() => {
-    if (savingAutomation) {
-      return !window.confirm(t('common.unsavedChangesWarning'));
-    }
-    return false;
-  });
+  /** FR12: Block browser close/reload while mutations are pending */
+  useNavigationGuard(savingAutomation);
 
   const handleLimitReachedToast = () => {
     toast({
