@@ -43,7 +43,6 @@ docker build \
 echo "[2/5] Building frontend image..."
 docker build \
     --platform linux/amd64 \
-    --build-arg VITE_API_URL="https://${DOMAIN}" \
     -t "${IMAGE_PREFIX}/frontend:${VERSION}" \
     -t "${IMAGE_PREFIX}/frontend:latest" \
     "${PROJECT_ROOT}/client"
