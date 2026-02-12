@@ -216,7 +216,7 @@ services:
       # Logging
       - WAHA_LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
-      - waha_data:/app/.waha
+      - waha_data:/app/.sessions
     networks:
       - automatiza-network
     restart: unless-stopped

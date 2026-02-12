@@ -59,7 +59,7 @@ services:
       WAHA_DASHBOARD_ENABLED: "false"
       WAHA_LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
-      - waha_data:/app/.waha
+      - waha_data:/app/.sessions
     ports:
       - "127.0.0.1:3001:3000"
     healthcheck:
