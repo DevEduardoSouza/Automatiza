@@ -408,12 +408,16 @@ h2 {
 
 .automation-form-dialog,
 .automation-form-dialog p,
-.automation-form-dialog span,
+.automation-form-dialog span:not(.auth-btn-glow span),
 .automation-form-dialog input,
 .automation-form-dialog textarea,
 .automation-form-dialog select,
 .automation-form-dialog [data-slot="select-value"] {
   color: #000000;
+}
+
+.automation-form-dialog .auth-btn-glow span {
+  color: #ffffff;
 }
 
 .automation-form-dialog .text-muted-foreground {
