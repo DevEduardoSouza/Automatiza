@@ -79,14 +79,14 @@ interface UseProfilesConnectReturn {
 
   // Admin operations
   listProfiles: (
-    page?: number,
-    pageSize?: number
-  ) => Promise<{ profiles: LocalProfile[]; totalCount: number }>;
+    cursor?: string,
+    limit?: number
+  ) => Promise<{ profiles: LocalProfile[]; nextCursor: string; hasMore: boolean }>;
   searchProfiles: (
     query: string,
-    page?: number,
-    pageSize?: number
-  ) => Promise<{ profiles: LocalProfile[]; totalCount: number }>;
+    cursor?: string,
+    limit?: number
+  ) => Promise<{ profiles: LocalProfile[]; nextCursor: string; hasMore: boolean }>;
   blockUser: (userId: string) => Promise<LocalProfile>;
   unblockUser: (userId: string) => Promise<LocalProfile>;
   updateUserPlan: (params: UpdateUserPlanParams) => Promise<LocalProfile>;
@@ -303,9 +303,9 @@ export function useProfilesConnect(): UseProfilesConnectReturn {
 
   const listProfilesMutation = useMutation({
     mutationFn: async (params: {
-      page?: number;
-      pageSize?: number;
-    }): Promise<{ profiles: LocalProfile[]; totalCount: number }> => {
+      cursor?: string;
+      limit?: number;
+    }): Promise<{ profiles: LocalProfile[]; nextCursor: string; hasMore: boolean }> => {
       if (!user?.id) {
         throw new Error(t('common.errors.notAuthenticated'));
       }
@@ -313,14 +313,15 @@ export function useProfilesConnect(): UseProfilesConnectReturn {
       const client = createClient(ProfilesService, transport);
       const response: ListProfilesResponse = await client.listProfiles(
         create(ListProfilesRequestSchema, {
-          page: params.page,
-          pageSize: params.pageSize,
+          cursor: params.cursor,
+          limit: params.limit,
         })
       );
 
       return {
         profiles: response.profiles.map(fromProtoProfile),
-        totalCount: response.totalCount,
+        nextCursor: response.nextCursor ?? '',
+        hasMore: response.hasMore,
       };
     },
     onError: (error: unknown) => {
@@ -340,9 +341,9 @@ export function useProfilesConnect(): UseProfilesConnectReturn {
   const searchProfilesMutation = useMutation({
     mutationFn: async (params: {
       query: string;
-      page?: number;
-      pageSize?: number;
-    }): Promise<{ profiles: LocalProfile[]; totalCount: number }> => {
+      cursor?: string;
+      limit?: number;
+    }): Promise<{ profiles: LocalProfile[]; nextCursor: string; hasMore: boolean }> => {
       if (!user?.id) {
         throw new Error(t('common.errors.notAuthenticated'));
       }
@@ -351,14 +352,15 @@ export function useProfilesConnect(): UseProfilesConnectReturn {
       const response: SearchProfilesResponse = await client.searchProfiles(
         create(SearchProfilesRequestSchema, {
           query: params.query,
-          page: params.page,
-          pageSize: params.pageSize,
+          cursor: params.cursor,
+          limit: params.limit,
         })
       );
 
       return {
         profiles: response.profiles.map(fromProtoProfile),
-        totalCount: response.totalCount,
+        nextCursor: response.nextCursor ?? '',
+        hasMore: response.hasMore,
       };
     },
     onError: (error: unknown) => {
@@ -508,10 +510,10 @@ export function useProfilesConnect(): UseProfilesConnectReturn {
 
   const listProfiles = useCallback(
     async (
-      page?: number,
-      pageSize?: number
-    ): Promise<{ profiles: LocalProfile[]; totalCount: number }> => {
-      return listProfilesMutation.mutateAsync({ page, pageSize });
+      cursor?: string,
+      limit?: number
+    ): Promise<{ profiles: LocalProfile[]; nextCursor: string; hasMore: boolean }> => {
+      return listProfilesMutation.mutateAsync({ cursor, limit });
     },
     [listProfilesMutation]
   );
@@ -519,10 +521,10 @@ export function useProfilesConnect(): UseProfilesConnectReturn {
   const searchProfiles = useCallback(
     async (
       query: string,
-      page?: number,
-      pageSize?: number
-    ): Promise<{ profiles: LocalProfile[]; totalCount: number }> => {
-      return searchProfilesMutation.mutateAsync({ query, page, pageSize });
+      cursor?: string,
+      limit?: number
+    ): Promise<{ profiles: LocalProfile[]; nextCursor: string; hasMore: boolean }> => {
+      return searchProfilesMutation.mutateAsync({ query, cursor, limit });
     },
     [searchProfilesMutation]
   );

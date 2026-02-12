@@ -1,10 +1,7 @@
 import { useAdminConnect } from '@/hooks/use-admin-connect';
 import { useLoadBalancerConnect } from '@/hooks/use-loadbalancer-connect';
-import { useProfilesConnect } from '@/hooks/use-profiles-connect';
 import { useSettingsConnect } from '@/hooks/use-settings-connect';
 import { useWebhooksConnect } from '@/hooks/use-webhooks-connect';
-import { format, subDays } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -36,6 +33,7 @@ export function useDashboardTab(props?: DashboardTabProps): UseDashboardTabRetur
     ensureWebhooks,
     isPending: adminPending,
     listWebhookLogs,
+    fetchAdminProfileStats,
   } = useAdminConnect();
   const {
     stats: lbConnectStats,
@@ -43,7 +41,6 @@ export function useDashboardTab(props?: DashboardTabProps): UseDashboardTabRetur
     refetch: refetchLbStats,
   } = useLoadBalancerConnect();
   const { simulateKiwifyWebhook } = useWebhooksConnect();
-  const { listProfiles } = useProfilesConnect();
   const { getSetting } = useSettingsConnect(['kiwify_webhook_token']);
 
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([]);
@@ -175,44 +172,15 @@ export function useDashboardTab(props?: DashboardTabProps): UseDashboardTabRetur
 
   const fetchDashboardStats = useCallback(async () => {
     try {
-      // Use ConnectRPC to list profiles
-      const { profiles } = await listProfiles(1, 10000);
+      const result = await fetchAdminProfileStats();
+      if (!result) return;
 
-      const now = new Date();
-      const thirtyDaysAgo = subDays(now, 30);
-
-      const totalUsers = profiles?.length || 0;
-      const activeUsers =
-        profiles?.filter((p) => new Date(p.updated_at) > thirtyDaysAgo).length || 0;
-      const inactiveUsers = totalUsers - activeUsers;
-
-      const planCounts = profiles?.reduce((acc: Record<string, number>, profile) => {
-        const plan = profile.plan || 'free';
-        acc[plan] = (acc[plan] || 0) + 1;
-        return acc;
-      }, {});
-
-      const planStats = Object.entries(planCounts || {}).map(([plan, count]) => ({
-        plan: plan.charAt(0).toUpperCase() + plan.slice(1),
-        count: count as number,
-      }));
-
-      const growthData = [];
-      for (let i = 6; i >= 0; i--) {
-        const date = subDays(now, i);
-        const count = profiles?.filter((p) => new Date(p.created_at) <= date).length || 0;
-        growthData.push({
-          date: format(date, 'dd/MM', { locale: ptBR }),
-          users: count,
-        });
-      }
-
-      const newStats = {
-        totalUsers,
-        activeUsers,
-        inactiveUsers,
-        planStats,
-        growthData,
+      const newStats: DashboardStats = {
+        totalUsers: result.totalUsers,
+        activeUsers: result.activeUsers,
+        inactiveUsers: result.inactiveUsers,
+        planStats: result.planStats,
+        growthData: result.growthData,
       };
 
       setStats(newStats);
@@ -220,7 +188,7 @@ export function useDashboardTab(props?: DashboardTabProps): UseDashboardTabRetur
     } catch {
       // Error handled silently
     }
-  }, [onStatsUpdate, listProfiles]);
+  }, [onStatsUpdate, fetchAdminProfileStats]);
 
   const fetchWebhookLogs = useCallback(async () => {
     const logs = await listWebhookLogs({ limit: 10, source: 'kiwify' });

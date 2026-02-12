@@ -918,6 +918,34 @@ message DeleteSubcategoryResponse {
 }
 
 // ============================================================
+// Admin Profile Stats
+// ============================================================
+
+message GetAdminProfileStatsRequest {}
+
+message PlanStat {
+  string plan = 1;
+  int32 count = 2;
+}
+
+message GrowthPoint {
+  string date = 1;
+  int32 users = 2;
+}
+
+message AdminProfileStats {
+  int32 total_users = 1;
+  int32 active_users = 2;
+  int32 inactive_users = 3;
+  repeated PlanStat plan_stats = 4;
+  repeated GrowthPoint growth_data = 5;
+}
+
+message GetAdminProfileStatsResponse {
+  AdminProfileStats stats = 1;
+}
+
+// ============================================================
 // Service Definition
 // ============================================================
 
@@ -1027,6 +1055,13 @@ service AdminService {
 
   // Blocks a user with extended options.
   rpc AdminBlockUser(AdminBlockUserRequest) returns (AdminBlockUserResponse);
+
+  // ============================================================
+  // Admin Profile Stats
+  // ============================================================
+
+  // Returns aggregated profile statistics for the admin dashboard.
+  rpc GetAdminProfileStats(GetAdminProfileStatsRequest) returns (GetAdminProfileStatsResponse);
 
   // ============================================================
   // Categories Management

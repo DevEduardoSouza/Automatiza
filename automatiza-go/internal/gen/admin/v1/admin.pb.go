@@ -6038,6 +6038,266 @@ func (x *DeleteSubcategoryResponse) GetSuccess() bool {
 	return false
 }
 
+type GetAdminProfileStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAdminProfileStatsRequest) Reset() {
+	*x = GetAdminProfileStatsRequest{}
+	mi := &file_admin_v1_admin_proto_msgTypes[89]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAdminProfileStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAdminProfileStatsRequest) ProtoMessage() {}
+
+func (x *GetAdminProfileStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_admin_v1_admin_proto_msgTypes[89]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAdminProfileStatsRequest.ProtoReflect.Descriptor instead.
+func (*GetAdminProfileStatsRequest) Descriptor() ([]byte, []int) {
+	return file_admin_v1_admin_proto_rawDescGZIP(), []int{89}
+}
+
+type PlanStat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Plan          string                 `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
+	Count         int32                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlanStat) Reset() {
+	*x = PlanStat{}
+	mi := &file_admin_v1_admin_proto_msgTypes[90]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlanStat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlanStat) ProtoMessage() {}
+
+func (x *PlanStat) ProtoReflect() protoreflect.Message {
+	mi := &file_admin_v1_admin_proto_msgTypes[90]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlanStat.ProtoReflect.Descriptor instead.
+func (*PlanStat) Descriptor() ([]byte, []int) {
+	return file_admin_v1_admin_proto_rawDescGZIP(), []int{90}
+}
+
+func (x *PlanStat) GetPlan() string {
+	if x != nil {
+		return x.Plan
+	}
+	return ""
+}
+
+func (x *PlanStat) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+type GrowthPoint struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Date          string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`
+	Users         int32                  `protobuf:"varint,2,opt,name=users,proto3" json:"users,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GrowthPoint) Reset() {
+	*x = GrowthPoint{}
+	mi := &file_admin_v1_admin_proto_msgTypes[91]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrowthPoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrowthPoint) ProtoMessage() {}
+
+func (x *GrowthPoint) ProtoReflect() protoreflect.Message {
+	mi := &file_admin_v1_admin_proto_msgTypes[91]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrowthPoint.ProtoReflect.Descriptor instead.
+func (*GrowthPoint) Descriptor() ([]byte, []int) {
+	return file_admin_v1_admin_proto_rawDescGZIP(), []int{91}
+}
+
+func (x *GrowthPoint) GetDate() string {
+	if x != nil {
+		return x.Date
+	}
+	return ""
+}
+
+func (x *GrowthPoint) GetUsers() int32 {
+	if x != nil {
+		return x.Users
+	}
+	return 0
+}
+
+type AdminProfileStats struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TotalUsers    int32                  `protobuf:"varint,1,opt,name=total_users,json=totalUsers,proto3" json:"total_users,omitempty"`
+	ActiveUsers   int32                  `protobuf:"varint,2,opt,name=active_users,json=activeUsers,proto3" json:"active_users,omitempty"`
+	InactiveUsers int32                  `protobuf:"varint,3,opt,name=inactive_users,json=inactiveUsers,proto3" json:"inactive_users,omitempty"`
+	PlanStats     []*PlanStat            `protobuf:"bytes,4,rep,name=plan_stats,json=planStats,proto3" json:"plan_stats,omitempty"`
+	GrowthData    []*GrowthPoint         `protobuf:"bytes,5,rep,name=growth_data,json=growthData,proto3" json:"growth_data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdminProfileStats) Reset() {
+	*x = AdminProfileStats{}
+	mi := &file_admin_v1_admin_proto_msgTypes[92]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminProfileStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminProfileStats) ProtoMessage() {}
+
+func (x *AdminProfileStats) ProtoReflect() protoreflect.Message {
+	mi := &file_admin_v1_admin_proto_msgTypes[92]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminProfileStats.ProtoReflect.Descriptor instead.
+func (*AdminProfileStats) Descriptor() ([]byte, []int) {
+	return file_admin_v1_admin_proto_rawDescGZIP(), []int{92}
+}
+
+func (x *AdminProfileStats) GetTotalUsers() int32 {
+	if x != nil {
+		return x.TotalUsers
+	}
+	return 0
+}
+
+func (x *AdminProfileStats) GetActiveUsers() int32 {
+	if x != nil {
+		return x.ActiveUsers
+	}
+	return 0
+}
+
+func (x *AdminProfileStats) GetInactiveUsers() int32 {
+	if x != nil {
+		return x.InactiveUsers
+	}
+	return 0
+}
+
+func (x *AdminProfileStats) GetPlanStats() []*PlanStat {
+	if x != nil {
+		return x.PlanStats
+	}
+	return nil
+}
+
+func (x *AdminProfileStats) GetGrowthData() []*GrowthPoint {
+	if x != nil {
+		return x.GrowthData
+	}
+	return nil
+}
+
+type GetAdminProfileStatsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Stats         *AdminProfileStats     `protobuf:"bytes,1,opt,name=stats,proto3" json:"stats,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAdminProfileStatsResponse) Reset() {
+	*x = GetAdminProfileStatsResponse{}
+	mi := &file_admin_v1_admin_proto_msgTypes[93]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAdminProfileStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAdminProfileStatsResponse) ProtoMessage() {}
+
+func (x *GetAdminProfileStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_admin_v1_admin_proto_msgTypes[93]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAdminProfileStatsResponse.ProtoReflect.Descriptor instead.
+func (*GetAdminProfileStatsResponse) Descriptor() ([]byte, []int) {
+	return file_admin_v1_admin_proto_rawDescGZIP(), []int{93}
+}
+
+func (x *GetAdminProfileStatsResponse) GetStats() *AdminProfileStats {
+	if x != nil {
+		return x.Stats
+	}
+	return nil
+}
+
 var File_admin_v1_admin_proto protoreflect.FileDescriptor
 
 const file_admin_v1_admin_proto_rawDesc = "" +
@@ -6630,14 +6890,32 @@ const file_admin_v1_admin_proto_rawDesc = "" +
 	"\x18DeleteSubcategoryRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"5\n" +
 	"\x19DeleteSubcategoryResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess*\x83\x01\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"\x1d\n" +
+	"\x1bGetAdminProfileStatsRequest\"4\n" +
+	"\bPlanStat\x12\x12\n" +
+	"\x04plan\x18\x01 \x01(\tR\x04plan\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\"7\n" +
+	"\vGrowthPoint\x12\x12\n" +
+	"\x04date\x18\x01 \x01(\tR\x04date\x12\x14\n" +
+	"\x05users\x18\x02 \x01(\x05R\x05users\"\xe9\x01\n" +
+	"\x11AdminProfileStats\x12\x1f\n" +
+	"\vtotal_users\x18\x01 \x01(\x05R\n" +
+	"totalUsers\x12!\n" +
+	"\factive_users\x18\x02 \x01(\x05R\vactiveUsers\x12%\n" +
+	"\x0einactive_users\x18\x03 \x01(\x05R\rinactiveUsers\x121\n" +
+	"\n" +
+	"plan_stats\x18\x04 \x03(\v2\x12.admin.v1.PlanStatR\tplanStats\x126\n" +
+	"\vgrowth_data\x18\x05 \x03(\v2\x15.admin.v1.GrowthPointR\n" +
+	"growthData\"Q\n" +
+	"\x1cGetAdminProfileStatsResponse\x121\n" +
+	"\x05stats\x18\x01 \x01(\v2\x1b.admin.v1.AdminProfileStatsR\x05stats*\x83\x01\n" +
 	"\n" +
 	"EventLevel\x12\x1b\n" +
 	"\x17EVENT_LEVEL_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11EVENT_LEVEL_DEBUG\x10\x01\x12\x14\n" +
 	"\x10EVENT_LEVEL_INFO\x10\x02\x12\x14\n" +
 	"\x10EVENT_LEVEL_WARN\x10\x03\x12\x15\n" +
-	"\x11EVENT_LEVEL_ERROR\x10\x042\xe0\x17\n" +
+	"\x11EVENT_LEVEL_ERROR\x10\x042\xc7\x18\n" +
 	"\fAdminService\x12Y\n" +
 	"\x10GetObservability\x12!.admin.v1.GetObservabilityRequest\x1a\".admin.v1.GetObservabilityResponse\x12n\n" +
 	"\x17GetShopeeAffiliateAudit\x12(.admin.v1.GetShopeeAffiliateAuditRequest\x1a).admin.v1.GetShopeeAffiliateAuditResponse\x12S\n" +
@@ -6668,7 +6946,8 @@ const file_admin_v1_admin_proto_rawDesc = "" +
 	"\x14GetUserInvestigation\x12%.admin.v1.GetUserInvestigationRequest\x1a&.admin.v1.GetUserInvestigationResponse\x12\x86\x01\n" +
 	"\x1fAdminBulkUpdateAutomationStatus\x120.admin.v1.AdminBulkUpdateAutomationStatusRequest\x1a1.admin.v1.AdminBulkUpdateAutomationStatusResponse\x12\x80\x01\n" +
 	"\x1dAdminSpreadAutomationSchedule\x12..admin.v1.AdminSpreadAutomationScheduleRequest\x1a/.admin.v1.AdminSpreadAutomationScheduleResponse\x12S\n" +
-	"\x0eAdminBlockUser\x12\x1f.admin.v1.AdminBlockUserRequest\x1a .admin.v1.AdminBlockUserResponse\x12S\n" +
+	"\x0eAdminBlockUser\x12\x1f.admin.v1.AdminBlockUserRequest\x1a .admin.v1.AdminBlockUserResponse\x12e\n" +
+	"\x14GetAdminProfileStats\x12%.admin.v1.GetAdminProfileStatsRequest\x1a&.admin.v1.GetAdminProfileStatsResponse\x12S\n" +
 	"\x0eListCategories\x12\x1f.admin.v1.ListCategoriesRequest\x1a .admin.v1.ListCategoriesResponse\x12S\n" +
 	"\x0eCreateCategory\x12\x1f.admin.v1.CreateCategoryRequest\x1a .admin.v1.CreateCategoryResponse\x12S\n" +
 	"\x0eUpdateCategory\x12\x1f.admin.v1.UpdateCategoryRequest\x1a .admin.v1.UpdateCategoryResponse\x12S\n" +
@@ -6692,7 +6971,7 @@ func file_admin_v1_admin_proto_rawDescGZIP() []byte {
 }
 
 var file_admin_v1_admin_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 90)
+var file_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 95)
 var file_admin_v1_admin_proto_goTypes = []any{
 	(EventLevel)(0),                                 // 0: admin.v1.EventLevel
 	(*ObservabilityQueue)(nil),                      // 1: admin.v1.ObservabilityQueue
@@ -6784,12 +7063,17 @@ var file_admin_v1_admin_proto_goTypes = []any{
 	(*UpdateSubcategoryResponse)(nil),               // 87: admin.v1.UpdateSubcategoryResponse
 	(*DeleteSubcategoryRequest)(nil),                // 88: admin.v1.DeleteSubcategoryRequest
 	(*DeleteSubcategoryResponse)(nil),               // 89: admin.v1.DeleteSubcategoryResponse
-	nil,                                             // 90: admin.v1.ObservabilityDispatchLogs.ByStatusEntry
-	(*structpb.Struct)(nil),                         // 91: google.protobuf.Struct
+	(*GetAdminProfileStatsRequest)(nil),             // 90: admin.v1.GetAdminProfileStatsRequest
+	(*PlanStat)(nil),                                // 91: admin.v1.PlanStat
+	(*GrowthPoint)(nil),                             // 92: admin.v1.GrowthPoint
+	(*AdminProfileStats)(nil),                       // 93: admin.v1.AdminProfileStats
+	(*GetAdminProfileStatsResponse)(nil),            // 94: admin.v1.GetAdminProfileStatsResponse
+	nil,                                             // 95: admin.v1.ObservabilityDispatchLogs.ByStatusEntry
+	(*structpb.Struct)(nil),                         // 96: google.protobuf.Struct
 }
 var file_admin_v1_admin_proto_depIdxs = []int32{
 	2,  // 0: admin.v1.ObservabilityLoadBalancer.summary:type_name -> admin.v1.ObservabilityLoadBalancerSummary
-	90, // 1: admin.v1.ObservabilityDispatchLogs.by_status:type_name -> admin.v1.ObservabilityDispatchLogs.ByStatusEntry
+	95, // 1: admin.v1.ObservabilityDispatchLogs.by_status:type_name -> admin.v1.ObservabilityDispatchLogs.ByStatusEntry
 	4,  // 2: admin.v1.ObservabilityDispatchLogs.top_errors:type_name -> admin.v1.TopError
 	5,  // 3: admin.v1.ObservabilityDispatchLogs.top_users:type_name -> admin.v1.TopDispatchUser
 	8,  // 4: admin.v1.ObservabilityTopUsers.by_groups_slots:type_name -> admin.v1.TopUserByGroupSlots
@@ -6801,7 +7085,7 @@ var file_admin_v1_admin_proto_depIdxs = []int32{
 	11, // 10: admin.v1.ShopeeAuditData.window:type_name -> admin.v1.AuditWindow
 	12, // 11: admin.v1.ShopeeAuditData.samples:type_name -> admin.v1.ShopeeAuditSample
 	0,  // 12: admin.v1.SystemEvent.level:type_name -> admin.v1.EventLevel
-	91, // 13: admin.v1.SystemEvent.meta:type_name -> google.protobuf.Struct
+	96, // 13: admin.v1.SystemEvent.meta:type_name -> google.protobuf.Struct
 	10, // 14: admin.v1.GetObservabilityResponse.data:type_name -> admin.v1.ObservabilityData
 	13, // 15: admin.v1.GetShopeeAffiliateAuditResponse.data:type_name -> admin.v1.ShopeeAuditData
 	14, // 16: admin.v1.GetSystemEventsResponse.events:type_name -> admin.v1.SystemEvent
@@ -6826,77 +7110,82 @@ var file_admin_v1_admin_proto_depIdxs = []int32{
 	74, // 35: admin.v1.UpdateCategoryResponse.category:type_name -> admin.v1.Category
 	75, // 36: admin.v1.CreateSubcategoryResponse.subcategory:type_name -> admin.v1.Subcategory
 	75, // 37: admin.v1.UpdateSubcategoryResponse.subcategory:type_name -> admin.v1.Subcategory
-	15, // 38: admin.v1.AdminService.GetObservability:input_type -> admin.v1.GetObservabilityRequest
-	17, // 39: admin.v1.AdminService.GetShopeeAffiliateAudit:input_type -> admin.v1.GetShopeeAffiliateAuditRequest
-	19, // 40: admin.v1.AdminService.EnsureWebhooks:input_type -> admin.v1.EnsureWebhooksRequest
-	60, // 41: admin.v1.AdminService.ListWebhookLogs:input_type -> admin.v1.ListWebhookLogsRequest
-	62, // 42: admin.v1.AdminService.SimulateKiwifyWebhook:input_type -> admin.v1.SimulateKiwifyWebhookRequest
-	21, // 43: admin.v1.AdminService.GetSystemEvents:input_type -> admin.v1.GetSystemEventsRequest
-	23, // 44: admin.v1.AdminService.ResetUserPassword:input_type -> admin.v1.ResetUserPasswordRequest
-	26, // 45: admin.v1.AdminService.ListPlans:input_type -> admin.v1.ListPlansRequest
-	28, // 46: admin.v1.AdminService.CreatePlan:input_type -> admin.v1.CreatePlanRequest
-	30, // 47: admin.v1.AdminService.UpdatePlan:input_type -> admin.v1.UpdatePlanRequest
-	32, // 48: admin.v1.AdminService.DeletePlan:input_type -> admin.v1.DeletePlanRequest
-	35, // 49: admin.v1.AdminService.ListEmailTemplates:input_type -> admin.v1.ListEmailTemplatesRequest
-	37, // 50: admin.v1.AdminService.CreateEmailTemplate:input_type -> admin.v1.CreateEmailTemplateRequest
-	39, // 51: admin.v1.AdminService.UpdateEmailTemplate:input_type -> admin.v1.UpdateEmailTemplateRequest
-	41, // 52: admin.v1.AdminService.ToggleEmailTemplateActive:input_type -> admin.v1.ToggleEmailTemplateActiveRequest
-	44, // 53: admin.v1.AdminService.ListUsers:input_type -> admin.v1.ListUsersRequest
-	46, // 54: admin.v1.AdminService.CreateUser:input_type -> admin.v1.CreateUserRequest
-	48, // 55: admin.v1.AdminService.UpdateUserRole:input_type -> admin.v1.UpdateUserRoleRequest
-	51, // 56: admin.v1.AdminService.ListAdminUsers:input_type -> admin.v1.ListAdminUsersRequest
-	53, // 57: admin.v1.AdminService.GrantAdminRole:input_type -> admin.v1.GrantAdminRoleRequest
-	55, // 58: admin.v1.AdminService.RevokeAdminRole:input_type -> admin.v1.RevokeAdminRoleRequest
-	57, // 59: admin.v1.AdminService.UnlockUserAccount:input_type -> admin.v1.UnlockUserAccountRequest
-	66, // 60: admin.v1.AdminService.GetUserInvestigation:input_type -> admin.v1.GetUserInvestigationRequest
-	68, // 61: admin.v1.AdminService.AdminBulkUpdateAutomationStatus:input_type -> admin.v1.AdminBulkUpdateAutomationStatusRequest
-	70, // 62: admin.v1.AdminService.AdminSpreadAutomationSchedule:input_type -> admin.v1.AdminSpreadAutomationScheduleRequest
-	72, // 63: admin.v1.AdminService.AdminBlockUser:input_type -> admin.v1.AdminBlockUserRequest
-	76, // 64: admin.v1.AdminService.ListCategories:input_type -> admin.v1.ListCategoriesRequest
-	78, // 65: admin.v1.AdminService.CreateCategory:input_type -> admin.v1.CreateCategoryRequest
-	80, // 66: admin.v1.AdminService.UpdateCategory:input_type -> admin.v1.UpdateCategoryRequest
-	82, // 67: admin.v1.AdminService.DeleteCategory:input_type -> admin.v1.DeleteCategoryRequest
-	84, // 68: admin.v1.AdminService.CreateSubcategory:input_type -> admin.v1.CreateSubcategoryRequest
-	86, // 69: admin.v1.AdminService.UpdateSubcategory:input_type -> admin.v1.UpdateSubcategoryRequest
-	88, // 70: admin.v1.AdminService.DeleteSubcategory:input_type -> admin.v1.DeleteSubcategoryRequest
-	16, // 71: admin.v1.AdminService.GetObservability:output_type -> admin.v1.GetObservabilityResponse
-	18, // 72: admin.v1.AdminService.GetShopeeAffiliateAudit:output_type -> admin.v1.GetShopeeAffiliateAuditResponse
-	20, // 73: admin.v1.AdminService.EnsureWebhooks:output_type -> admin.v1.EnsureWebhooksResponse
-	61, // 74: admin.v1.AdminService.ListWebhookLogs:output_type -> admin.v1.ListWebhookLogsResponse
-	63, // 75: admin.v1.AdminService.SimulateKiwifyWebhook:output_type -> admin.v1.SimulateKiwifyWebhookResponse
-	22, // 76: admin.v1.AdminService.GetSystemEvents:output_type -> admin.v1.GetSystemEventsResponse
-	24, // 77: admin.v1.AdminService.ResetUserPassword:output_type -> admin.v1.ResetUserPasswordResponse
-	27, // 78: admin.v1.AdminService.ListPlans:output_type -> admin.v1.ListPlansResponse
-	29, // 79: admin.v1.AdminService.CreatePlan:output_type -> admin.v1.CreatePlanResponse
-	31, // 80: admin.v1.AdminService.UpdatePlan:output_type -> admin.v1.UpdatePlanResponse
-	33, // 81: admin.v1.AdminService.DeletePlan:output_type -> admin.v1.DeletePlanResponse
-	36, // 82: admin.v1.AdminService.ListEmailTemplates:output_type -> admin.v1.ListEmailTemplatesResponse
-	38, // 83: admin.v1.AdminService.CreateEmailTemplate:output_type -> admin.v1.CreateEmailTemplateResponse
-	40, // 84: admin.v1.AdminService.UpdateEmailTemplate:output_type -> admin.v1.UpdateEmailTemplateResponse
-	42, // 85: admin.v1.AdminService.ToggleEmailTemplateActive:output_type -> admin.v1.ToggleEmailTemplateActiveResponse
-	45, // 86: admin.v1.AdminService.ListUsers:output_type -> admin.v1.ListUsersResponse
-	47, // 87: admin.v1.AdminService.CreateUser:output_type -> admin.v1.CreateUserResponse
-	49, // 88: admin.v1.AdminService.UpdateUserRole:output_type -> admin.v1.UpdateUserRoleResponse
-	52, // 89: admin.v1.AdminService.ListAdminUsers:output_type -> admin.v1.ListAdminUsersResponse
-	54, // 90: admin.v1.AdminService.GrantAdminRole:output_type -> admin.v1.GrantAdminRoleResponse
-	56, // 91: admin.v1.AdminService.RevokeAdminRole:output_type -> admin.v1.RevokeAdminRoleResponse
-	58, // 92: admin.v1.AdminService.UnlockUserAccount:output_type -> admin.v1.UnlockUserAccountResponse
-	67, // 93: admin.v1.AdminService.GetUserInvestigation:output_type -> admin.v1.GetUserInvestigationResponse
-	69, // 94: admin.v1.AdminService.AdminBulkUpdateAutomationStatus:output_type -> admin.v1.AdminBulkUpdateAutomationStatusResponse
-	71, // 95: admin.v1.AdminService.AdminSpreadAutomationSchedule:output_type -> admin.v1.AdminSpreadAutomationScheduleResponse
-	73, // 96: admin.v1.AdminService.AdminBlockUser:output_type -> admin.v1.AdminBlockUserResponse
-	77, // 97: admin.v1.AdminService.ListCategories:output_type -> admin.v1.ListCategoriesResponse
-	79, // 98: admin.v1.AdminService.CreateCategory:output_type -> admin.v1.CreateCategoryResponse
-	81, // 99: admin.v1.AdminService.UpdateCategory:output_type -> admin.v1.UpdateCategoryResponse
-	83, // 100: admin.v1.AdminService.DeleteCategory:output_type -> admin.v1.DeleteCategoryResponse
-	85, // 101: admin.v1.AdminService.CreateSubcategory:output_type -> admin.v1.CreateSubcategoryResponse
-	87, // 102: admin.v1.AdminService.UpdateSubcategory:output_type -> admin.v1.UpdateSubcategoryResponse
-	89, // 103: admin.v1.AdminService.DeleteSubcategory:output_type -> admin.v1.DeleteSubcategoryResponse
-	71, // [71:104] is the sub-list for method output_type
-	38, // [38:71] is the sub-list for method input_type
-	38, // [38:38] is the sub-list for extension type_name
-	38, // [38:38] is the sub-list for extension extendee
-	0,  // [0:38] is the sub-list for field type_name
+	91, // 38: admin.v1.AdminProfileStats.plan_stats:type_name -> admin.v1.PlanStat
+	92, // 39: admin.v1.AdminProfileStats.growth_data:type_name -> admin.v1.GrowthPoint
+	93, // 40: admin.v1.GetAdminProfileStatsResponse.stats:type_name -> admin.v1.AdminProfileStats
+	15, // 41: admin.v1.AdminService.GetObservability:input_type -> admin.v1.GetObservabilityRequest
+	17, // 42: admin.v1.AdminService.GetShopeeAffiliateAudit:input_type -> admin.v1.GetShopeeAffiliateAuditRequest
+	19, // 43: admin.v1.AdminService.EnsureWebhooks:input_type -> admin.v1.EnsureWebhooksRequest
+	60, // 44: admin.v1.AdminService.ListWebhookLogs:input_type -> admin.v1.ListWebhookLogsRequest
+	62, // 45: admin.v1.AdminService.SimulateKiwifyWebhook:input_type -> admin.v1.SimulateKiwifyWebhookRequest
+	21, // 46: admin.v1.AdminService.GetSystemEvents:input_type -> admin.v1.GetSystemEventsRequest
+	23, // 47: admin.v1.AdminService.ResetUserPassword:input_type -> admin.v1.ResetUserPasswordRequest
+	26, // 48: admin.v1.AdminService.ListPlans:input_type -> admin.v1.ListPlansRequest
+	28, // 49: admin.v1.AdminService.CreatePlan:input_type -> admin.v1.CreatePlanRequest
+	30, // 50: admin.v1.AdminService.UpdatePlan:input_type -> admin.v1.UpdatePlanRequest
+	32, // 51: admin.v1.AdminService.DeletePlan:input_type -> admin.v1.DeletePlanRequest
+	35, // 52: admin.v1.AdminService.ListEmailTemplates:input_type -> admin.v1.ListEmailTemplatesRequest
+	37, // 53: admin.v1.AdminService.CreateEmailTemplate:input_type -> admin.v1.CreateEmailTemplateRequest
+	39, // 54: admin.v1.AdminService.UpdateEmailTemplate:input_type -> admin.v1.UpdateEmailTemplateRequest
+	41, // 55: admin.v1.AdminService.ToggleEmailTemplateActive:input_type -> admin.v1.ToggleEmailTemplateActiveRequest
+	44, // 56: admin.v1.AdminService.ListUsers:input_type -> admin.v1.ListUsersRequest
+	46, // 57: admin.v1.AdminService.CreateUser:input_type -> admin.v1.CreateUserRequest
+	48, // 58: admin.v1.AdminService.UpdateUserRole:input_type -> admin.v1.UpdateUserRoleRequest
+	51, // 59: admin.v1.AdminService.ListAdminUsers:input_type -> admin.v1.ListAdminUsersRequest
+	53, // 60: admin.v1.AdminService.GrantAdminRole:input_type -> admin.v1.GrantAdminRoleRequest
+	55, // 61: admin.v1.AdminService.RevokeAdminRole:input_type -> admin.v1.RevokeAdminRoleRequest
+	57, // 62: admin.v1.AdminService.UnlockUserAccount:input_type -> admin.v1.UnlockUserAccountRequest
+	66, // 63: admin.v1.AdminService.GetUserInvestigation:input_type -> admin.v1.GetUserInvestigationRequest
+	68, // 64: admin.v1.AdminService.AdminBulkUpdateAutomationStatus:input_type -> admin.v1.AdminBulkUpdateAutomationStatusRequest
+	70, // 65: admin.v1.AdminService.AdminSpreadAutomationSchedule:input_type -> admin.v1.AdminSpreadAutomationScheduleRequest
+	72, // 66: admin.v1.AdminService.AdminBlockUser:input_type -> admin.v1.AdminBlockUserRequest
+	90, // 67: admin.v1.AdminService.GetAdminProfileStats:input_type -> admin.v1.GetAdminProfileStatsRequest
+	76, // 68: admin.v1.AdminService.ListCategories:input_type -> admin.v1.ListCategoriesRequest
+	78, // 69: admin.v1.AdminService.CreateCategory:input_type -> admin.v1.CreateCategoryRequest
+	80, // 70: admin.v1.AdminService.UpdateCategory:input_type -> admin.v1.UpdateCategoryRequest
+	82, // 71: admin.v1.AdminService.DeleteCategory:input_type -> admin.v1.DeleteCategoryRequest
+	84, // 72: admin.v1.AdminService.CreateSubcategory:input_type -> admin.v1.CreateSubcategoryRequest
+	86, // 73: admin.v1.AdminService.UpdateSubcategory:input_type -> admin.v1.UpdateSubcategoryRequest
+	88, // 74: admin.v1.AdminService.DeleteSubcategory:input_type -> admin.v1.DeleteSubcategoryRequest
+	16, // 75: admin.v1.AdminService.GetObservability:output_type -> admin.v1.GetObservabilityResponse
+	18, // 76: admin.v1.AdminService.GetShopeeAffiliateAudit:output_type -> admin.v1.GetShopeeAffiliateAuditResponse
+	20, // 77: admin.v1.AdminService.EnsureWebhooks:output_type -> admin.v1.EnsureWebhooksResponse
+	61, // 78: admin.v1.AdminService.ListWebhookLogs:output_type -> admin.v1.ListWebhookLogsResponse
+	63, // 79: admin.v1.AdminService.SimulateKiwifyWebhook:output_type -> admin.v1.SimulateKiwifyWebhookResponse
+	22, // 80: admin.v1.AdminService.GetSystemEvents:output_type -> admin.v1.GetSystemEventsResponse
+	24, // 81: admin.v1.AdminService.ResetUserPassword:output_type -> admin.v1.ResetUserPasswordResponse
+	27, // 82: admin.v1.AdminService.ListPlans:output_type -> admin.v1.ListPlansResponse
+	29, // 83: admin.v1.AdminService.CreatePlan:output_type -> admin.v1.CreatePlanResponse
+	31, // 84: admin.v1.AdminService.UpdatePlan:output_type -> admin.v1.UpdatePlanResponse
+	33, // 85: admin.v1.AdminService.DeletePlan:output_type -> admin.v1.DeletePlanResponse
+	36, // 86: admin.v1.AdminService.ListEmailTemplates:output_type -> admin.v1.ListEmailTemplatesResponse
+	38, // 87: admin.v1.AdminService.CreateEmailTemplate:output_type -> admin.v1.CreateEmailTemplateResponse
+	40, // 88: admin.v1.AdminService.UpdateEmailTemplate:output_type -> admin.v1.UpdateEmailTemplateResponse
+	42, // 89: admin.v1.AdminService.ToggleEmailTemplateActive:output_type -> admin.v1.ToggleEmailTemplateActiveResponse
+	45, // 90: admin.v1.AdminService.ListUsers:output_type -> admin.v1.ListUsersResponse
+	47, // 91: admin.v1.AdminService.CreateUser:output_type -> admin.v1.CreateUserResponse
+	49, // 92: admin.v1.AdminService.UpdateUserRole:output_type -> admin.v1.UpdateUserRoleResponse
+	52, // 93: admin.v1.AdminService.ListAdminUsers:output_type -> admin.v1.ListAdminUsersResponse
+	54, // 94: admin.v1.AdminService.GrantAdminRole:output_type -> admin.v1.GrantAdminRoleResponse
+	56, // 95: admin.v1.AdminService.RevokeAdminRole:output_type -> admin.v1.RevokeAdminRoleResponse
+	58, // 96: admin.v1.AdminService.UnlockUserAccount:output_type -> admin.v1.UnlockUserAccountResponse
+	67, // 97: admin.v1.AdminService.GetUserInvestigation:output_type -> admin.v1.GetUserInvestigationResponse
+	69, // 98: admin.v1.AdminService.AdminBulkUpdateAutomationStatus:output_type -> admin.v1.AdminBulkUpdateAutomationStatusResponse
+	71, // 99: admin.v1.AdminService.AdminSpreadAutomationSchedule:output_type -> admin.v1.AdminSpreadAutomationScheduleResponse
+	73, // 100: admin.v1.AdminService.AdminBlockUser:output_type -> admin.v1.AdminBlockUserResponse
+	94, // 101: admin.v1.AdminService.GetAdminProfileStats:output_type -> admin.v1.GetAdminProfileStatsResponse
+	77, // 102: admin.v1.AdminService.ListCategories:output_type -> admin.v1.ListCategoriesResponse
+	79, // 103: admin.v1.AdminService.CreateCategory:output_type -> admin.v1.CreateCategoryResponse
+	81, // 104: admin.v1.AdminService.UpdateCategory:output_type -> admin.v1.UpdateCategoryResponse
+	83, // 105: admin.v1.AdminService.DeleteCategory:output_type -> admin.v1.DeleteCategoryResponse
+	85, // 106: admin.v1.AdminService.CreateSubcategory:output_type -> admin.v1.CreateSubcategoryResponse
+	87, // 107: admin.v1.AdminService.UpdateSubcategory:output_type -> admin.v1.UpdateSubcategoryResponse
+	89, // 108: admin.v1.AdminService.DeleteSubcategory:output_type -> admin.v1.DeleteSubcategoryResponse
+	75, // [75:109] is the sub-list for method output_type
+	41, // [41:75] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_admin_v1_admin_proto_init() }
@@ -6943,7 +7232,7 @@ func file_admin_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_admin_v1_admin_proto_rawDesc), len(file_admin_v1_admin_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   90,
+			NumMessages:   95,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

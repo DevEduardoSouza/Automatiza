@@ -22,6 +22,28 @@ type ProfileRepository interface {
 	SearchProfiles(ctx context.Context, query, cursor string, limit int) ([]*models.Profile, string, error)
 	GetMaxAutomations(ctx context.Context, userID string) (int, error)
 	CountUserAutomations(ctx context.Context, userID string) (int, error)
+	GetProfileStats(ctx context.Context) (*ProfileStats, error)
+}
+
+// PlanStat represents the count of users per plan
+type PlanStat struct {
+	Plan  string
+	Count int
+}
+
+// GrowthPoint represents a daily user count for growth charts
+type GrowthPoint struct {
+	Date  string
+	Users int
+}
+
+// ProfileStats holds aggregated profile statistics for the admin dashboard
+type ProfileStats struct {
+	TotalUsers   int
+	ActiveUsers  int
+	InactiveUsers int
+	PlanStats    []PlanStat
+	GrowthData   []GrowthPoint
 }
 
 // InstanceRepository handles instance data operations

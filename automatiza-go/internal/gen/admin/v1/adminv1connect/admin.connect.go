@@ -105,6 +105,9 @@ const (
 	// AdminServiceAdminBlockUserProcedure is the fully-qualified name of the AdminService's
 	// AdminBlockUser RPC.
 	AdminServiceAdminBlockUserProcedure = "/admin.v1.AdminService/AdminBlockUser"
+	// AdminServiceGetAdminProfileStatsProcedure is the fully-qualified name of the AdminService's
+	// GetAdminProfileStats RPC.
+	AdminServiceGetAdminProfileStatsProcedure = "/admin.v1.AdminService/GetAdminProfileStats"
 	// AdminServiceListCategoriesProcedure is the fully-qualified name of the AdminService's
 	// ListCategories RPC.
 	AdminServiceListCategoriesProcedure = "/admin.v1.AdminService/ListCategories"
@@ -183,6 +186,8 @@ type AdminServiceClient interface {
 	AdminSpreadAutomationSchedule(context.Context, *connect.Request[v1.AdminSpreadAutomationScheduleRequest]) (*connect.Response[v1.AdminSpreadAutomationScheduleResponse], error)
 	// Blocks a user with extended options.
 	AdminBlockUser(context.Context, *connect.Request[v1.AdminBlockUserRequest]) (*connect.Response[v1.AdminBlockUserResponse], error)
+	// Returns aggregated profile statistics for the admin dashboard.
+	GetAdminProfileStats(context.Context, *connect.Request[v1.GetAdminProfileStatsRequest]) (*connect.Response[v1.GetAdminProfileStatsResponse], error)
 	// Lists all categories with optional subcategories (admin only).
 	ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error)
 	// Creates a new category (admin only).
@@ -366,6 +371,12 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("AdminBlockUser")),
 			connect.WithClientOptions(opts...),
 		),
+		getAdminProfileStats: connect.NewClient[v1.GetAdminProfileStatsRequest, v1.GetAdminProfileStatsResponse](
+			httpClient,
+			baseURL+AdminServiceGetAdminProfileStatsProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("GetAdminProfileStats")),
+			connect.WithClientOptions(opts...),
+		),
 		listCategories: connect.NewClient[v1.ListCategoriesRequest, v1.ListCategoriesResponse](
 			httpClient,
 			baseURL+AdminServiceListCategoriesProcedure,
@@ -439,6 +450,7 @@ type adminServiceClient struct {
 	adminBulkUpdateAutomationStatus *connect.Client[v1.AdminBulkUpdateAutomationStatusRequest, v1.AdminBulkUpdateAutomationStatusResponse]
 	adminSpreadAutomationSchedule   *connect.Client[v1.AdminSpreadAutomationScheduleRequest, v1.AdminSpreadAutomationScheduleResponse]
 	adminBlockUser                  *connect.Client[v1.AdminBlockUserRequest, v1.AdminBlockUserResponse]
+	getAdminProfileStats            *connect.Client[v1.GetAdminProfileStatsRequest, v1.GetAdminProfileStatsResponse]
 	listCategories                  *connect.Client[v1.ListCategoriesRequest, v1.ListCategoriesResponse]
 	createCategory                  *connect.Client[v1.CreateCategoryRequest, v1.CreateCategoryResponse]
 	updateCategory                  *connect.Client[v1.UpdateCategoryRequest, v1.UpdateCategoryResponse]
@@ -578,6 +590,11 @@ func (c *adminServiceClient) AdminBlockUser(ctx context.Context, req *connect.Re
 	return c.adminBlockUser.CallUnary(ctx, req)
 }
 
+// GetAdminProfileStats calls admin.v1.AdminService.GetAdminProfileStats.
+func (c *adminServiceClient) GetAdminProfileStats(ctx context.Context, req *connect.Request[v1.GetAdminProfileStatsRequest]) (*connect.Response[v1.GetAdminProfileStatsResponse], error) {
+	return c.getAdminProfileStats.CallUnary(ctx, req)
+}
+
 // ListCategories calls admin.v1.AdminService.ListCategories.
 func (c *adminServiceClient) ListCategories(ctx context.Context, req *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error) {
 	return c.listCategories.CallUnary(ctx, req)
@@ -668,6 +685,8 @@ type AdminServiceHandler interface {
 	AdminSpreadAutomationSchedule(context.Context, *connect.Request[v1.AdminSpreadAutomationScheduleRequest]) (*connect.Response[v1.AdminSpreadAutomationScheduleResponse], error)
 	// Blocks a user with extended options.
 	AdminBlockUser(context.Context, *connect.Request[v1.AdminBlockUserRequest]) (*connect.Response[v1.AdminBlockUserResponse], error)
+	// Returns aggregated profile statistics for the admin dashboard.
+	GetAdminProfileStats(context.Context, *connect.Request[v1.GetAdminProfileStatsRequest]) (*connect.Response[v1.GetAdminProfileStatsResponse], error)
 	// Lists all categories with optional subcategories (admin only).
 	ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error)
 	// Creates a new category (admin only).
@@ -847,6 +866,12 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("AdminBlockUser")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceGetAdminProfileStatsHandler := connect.NewUnaryHandler(
+		AdminServiceGetAdminProfileStatsProcedure,
+		svc.GetAdminProfileStats,
+		connect.WithSchema(adminServiceMethods.ByName("GetAdminProfileStats")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceListCategoriesHandler := connect.NewUnaryHandler(
 		AdminServiceListCategoriesProcedure,
 		svc.ListCategories,
@@ -943,6 +968,8 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceAdminSpreadAutomationScheduleHandler.ServeHTTP(w, r)
 		case AdminServiceAdminBlockUserProcedure:
 			adminServiceAdminBlockUserHandler.ServeHTTP(w, r)
+		case AdminServiceGetAdminProfileStatsProcedure:
+			adminServiceGetAdminProfileStatsHandler.ServeHTTP(w, r)
 		case AdminServiceListCategoriesProcedure:
 			adminServiceListCategoriesHandler.ServeHTTP(w, r)
 		case AdminServiceCreateCategoryProcedure:
@@ -1068,6 +1095,10 @@ func (UnimplementedAdminServiceHandler) AdminSpreadAutomationSchedule(context.Co
 
 func (UnimplementedAdminServiceHandler) AdminBlockUser(context.Context, *connect.Request[v1.AdminBlockUserRequest]) (*connect.Response[v1.AdminBlockUserResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("admin.v1.AdminService.AdminBlockUser is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) GetAdminProfileStats(context.Context, *connect.Request[v1.GetAdminProfileStatsRequest]) (*connect.Response[v1.GetAdminProfileStatsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("admin.v1.AdminService.GetAdminProfileStats is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error) {

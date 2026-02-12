@@ -627,3 +627,105 @@ func (r *profileRepository) CountUserAutomations(ctx context.Context, userID str
 
 	return count, nil
 }
+
+// GetProfileStats returns aggregated profile statistics for the admin dashboard.
+// Uses a single SQL query with CTEs for total/active counts, plan breakdown, and 7-day growth.
+func (r *profileRepository) GetProfileStats(ctx context.Context) (*repository.ProfileStats, error) {
+	query := `
+		WITH totals AS (
+			SELECT
+				COUNT(*) AS total_users,
+				COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '30 days') AS active_users
+			FROM profiles
+		),
+		plan_breakdown AS (
+			SELECT COALESCE(plan, 'free') AS plan, COUNT(*) AS cnt
+			FROM profiles
+			GROUP BY COALESCE(plan, 'free')
+			ORDER BY cnt DESC
+		),
+		growth AS (
+			SELECT
+				d::date AS day,
+				COUNT(p.id) AS cumulative_users
+			FROM generate_series(
+				(CURRENT_DATE - INTERVAL '6 days')::date,
+				CURRENT_DATE::date,
+				'1 day'::interval
+			) AS d
+			LEFT JOIN profiles p ON p.created_at::date <= d::date
+			GROUP BY d::date
+			ORDER BY d::date
+		)
+		SELECT
+			t.total_users,
+			t.active_users,
+			pb.plan,
+			pb.cnt,
+			g.day,
+			g.cumulative_users
+		FROM totals t
+		CROSS JOIN plan_breakdown pb
+		CROSS JOIN growth g
+		ORDER BY pb.plan, g.day
+	`
+
+	rows, err := r.db.pool.Query(ctx, query)
+	if err != nil {
+		r.logger.Error("Failed to get profile stats", zap.Error(err))
+		return nil, fmt.Errorf("query profile stats: %w", err)
+	}
+	defer rows.Close()
+
+	var stats repository.ProfileStats
+	planMap := make(map[string]int)
+	growthMap := make(map[string]int)
+
+	for rows.Next() {
+		var totalUsers, activeUsers int
+		var plan string
+		var planCount int
+		var day time.Time
+		var cumulativeUsers int
+
+		if err := rows.Scan(&totalUsers, &activeUsers, &plan, &planCount, &day, &cumulativeUsers); err != nil {
+			return nil, fmt.Errorf("scan profile stats: %w", err)
+		}
+
+		stats.TotalUsers = totalUsers
+		stats.ActiveUsers = activeUsers
+		stats.InactiveUsers = totalUsers - activeUsers
+		planMap[plan] = planCount
+		growthMap[day.Format("02/01")] = cumulativeUsers
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	// If no rows returned (empty database), return zero stats
+	if stats.TotalUsers == 0 && len(planMap) == 0 {
+		return &stats, nil
+	}
+
+	for plan, count := range planMap {
+		capitalizedPlan := strings.ToUpper(plan[:1]) + plan[1:]
+		stats.PlanStats = append(stats.PlanStats, repository.PlanStat{
+			Plan:  capitalizedPlan,
+			Count: count,
+		})
+	}
+
+	// Build growth data in chronological order
+	for i := 6; i >= 0; i-- {
+		day := time.Now().UTC().AddDate(0, 0, -i)
+		dateKey := day.Format("02/01")
+		users := growthMap[dateKey]
+		stats.GrowthData = append(stats.GrowthData, repository.GrowthPoint{
+			Date:  dateKey,
+			Users: users,
+		})
+	}
+
+	return &stats, nil
+}

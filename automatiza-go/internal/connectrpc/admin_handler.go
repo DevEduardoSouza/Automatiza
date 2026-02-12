@@ -359,6 +359,49 @@ func (h *AdminHandler) GetObservability(
 	}), nil
 }
 
+// GetAdminProfileStats returns aggregated profile statistics for the admin dashboard.
+func (h *AdminHandler) GetAdminProfileStats(
+	ctx context.Context,
+	req *connect.Request[adminv1.GetAdminProfileStatsRequest],
+) (*connect.Response[adminv1.GetAdminProfileStatsResponse], error) {
+	if err := h.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+
+	stats, err := h.profileRepo.GetProfileStats(ctx)
+	if err != nil {
+		h.getLogger().Error("Failed to get profile stats", zap.Error(err))
+		sentry.CaptureException(fmt.Errorf("GetAdminProfileStats: %w", err))
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get profile stats"))
+	}
+
+	planStats := make([]*adminv1.PlanStat, 0, len(stats.PlanStats))
+	for _, ps := range stats.PlanStats {
+		planStats = append(planStats, &adminv1.PlanStat{
+			Plan:  ps.Plan,
+			Count: int32(ps.Count),
+		})
+	}
+
+	growthData := make([]*adminv1.GrowthPoint, 0, len(stats.GrowthData))
+	for _, gp := range stats.GrowthData {
+		growthData = append(growthData, &adminv1.GrowthPoint{
+			Date:  gp.Date,
+			Users: int32(gp.Users),
+		})
+	}
+
+	return connect.NewResponse(&adminv1.GetAdminProfileStatsResponse{
+		Stats: &adminv1.AdminProfileStats{
+			TotalUsers:   int32(stats.TotalUsers),
+			ActiveUsers:  int32(stats.ActiveUsers),
+			InactiveUsers: int32(stats.InactiveUsers),
+			PlanStats:    planStats,
+			GrowthData:   growthData,
+		},
+	}), nil
+}
+
 // GetShopeeAffiliateAudit returns Shopee affiliate link audit data.
 func (h *AdminHandler) GetShopeeAffiliateAudit(
 	ctx context.Context,

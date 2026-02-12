@@ -5,6 +5,8 @@ import {
   AdminService,
   EnsureWebhooksRequestSchema,
   EventLevel,
+  GetAdminProfileStatsRequestSchema,
+  type GetAdminProfileStatsResponse,
   GetShopeeAffiliateAuditRequestSchema,
   GetSystemEventsRequestSchema,
   ListWebhookLogsRequestSchema,
@@ -135,6 +137,14 @@ interface LocalSystemEvent {
   meta: Record<string, unknown>;
 }
 
+export interface LocalAdminProfileStats {
+  totalUsers: number;
+  activeUsers: number;
+  inactiveUsers: number;
+  planStats: { plan: string; count: number }[];
+  growthData: { date: string; users: number }[];
+}
+
 interface EnsureWebhooksParams {
   serverId: number;
   limit?: number;
@@ -189,6 +199,8 @@ interface UseAdminConnectReturn {
   isResettingPassword: boolean;
   /** List webhook logs */
   listWebhookLogs: (params?: { limit?: number; source?: string }) => Promise<WebhookLog[]>;
+  /** Fetch aggregated profile stats for admin dashboard */
+  fetchAdminProfileStats: () => Promise<LocalAdminProfileStats | null>;
 }
 
 // ============================================================
@@ -480,6 +492,25 @@ export function useAdminConnect(): UseAdminConnectReturn {
     },
   });
 
+  // Mutation for fetching admin profile stats
+  const profileStatsMutation = useMutation({
+    mutationFn: async (): Promise<LocalAdminProfileStats | null> => {
+      const client = createClient(AdminService, transport);
+      const response: GetAdminProfileStatsResponse = await client.getAdminProfileStats(
+        create(GetAdminProfileStatsRequestSchema, {})
+      );
+      const s = response.stats;
+      if (!s) return null;
+      return {
+        totalUsers: s.totalUsers,
+        activeUsers: s.activeUsers,
+        inactiveUsers: s.inactiveUsers,
+        planStats: s.planStats.map((ps) => ({ plan: ps.plan, count: ps.count })),
+        growthData: s.growthData.map((gp) => ({ date: gp.date, users: gp.users })),
+      };
+    },
+  });
+
   // Imperative wrappers
   const fetchShopeeAudit = async (params?: {
     days?: number;
@@ -519,12 +550,21 @@ export function useAdminConnect(): UseAdminConnectReturn {
     }
   };
 
+  const fetchAdminProfileStats = async (): Promise<LocalAdminProfileStats | null> => {
+    try {
+      return await profileStatsMutation.mutateAsync();
+    } catch {
+      return null;
+    }
+  };
+
   const isPending =
     shopeeAuditMutation.isPending ||
     ensureWebhooksMutation.isPending ||
     systemEventsMutation.isPending ||
     resetPasswordMutation.isPending ||
-    webhookLogsMutation.isPending;
+    webhookLogsMutation.isPending ||
+    profileStatsMutation.isPending;
 
   return {
     observability,
@@ -538,5 +578,6 @@ export function useAdminConnect(): UseAdminConnectReturn {
     resetUserPassword,
     isResettingPassword: resetPasswordMutation.isPending,
     listWebhookLogs,
+    fetchAdminProfileStats,
   };
 }
