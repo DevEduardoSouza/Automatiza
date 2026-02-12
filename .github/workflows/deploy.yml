@@ -82,6 +82,14 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/frontend:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_PREFIX }}/frontend:latest
+          build-args: |
+            SENTRY_ORG=automatiza
+            SENTRY_PROJECT=automatiza-frontend
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            SENTRY_RELEASE=${{ steps.version.outputs.version }}
+            VITE_SENTRY_DSN=${{ secrets.VITE_SENTRY_DSN }}
+            VITE_SENTRY_ENVIRONMENT=production
+            VITE_SENTRY_RELEASE=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 

@@ -264,6 +264,9 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("WAHA_API_KEY"); v != "" && cfg.WahaAPIKey == "" {
 		cfg.WahaAPIKey = v
 	}
+	if v := os.Getenv("SENTRY_DSN"); v != "" && cfg.SentryDSN == "" {
+		cfg.SentryDSN = v
+	}
 }
 
 func validateConfig(cfg *Config) error {
