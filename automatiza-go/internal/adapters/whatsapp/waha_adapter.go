@@ -457,20 +457,13 @@ func (a *WahaAdapter) handleErrorResponse(statusCode int, path string, body []by
 // =============================================================================
 
 // CreateSession creates a new WhatsApp session with the specified configuration.
+// If no webhook URL is available (neither from input nor from adapter config),
+// the webhooks config is omitted so WAHA falls back to its container-level
+// defaults (WHATSAPP_HOOK_URL / WHATSAPP_HOOK_EVENTS env vars).
 func (a *WahaAdapter) CreateSession(ctx context.Context, input CreateSessionInput) (*SessionInfo, error) {
 	webhookURL := input.WebhookURL
 	if webhookURL == "" && a.webhookBaseURL != "" {
 		webhookURL = a.webhookBaseURL + "/api/v1/webhooks/waha"
-	}
-
-	events := input.WebhookEvents
-	if len(events) == 0 {
-		events = []string{"message", "message.ack", "session.status"}
-	}
-
-	hmacKey := input.HMACKey
-	if hmacKey == "" {
-		hmacKey = a.webhookSecret
 	}
 
 	// Build GOWS engine storage config
@@ -483,40 +476,39 @@ func (a *WahaAdapter) CreateSession(ctx context.Context, input CreateSessionInpu
 		},
 	}
 
-	// Build webhook config
-	webhookConfig := wahaWebhookConfig{
-		URL:    webhookURL,
-		Events: events,
-	}
-	if hmacKey != "" {
-		webhookConfig.HMAC = &wahaHMACConfig{Key: hmacKey}
+	// Build session config — only include webhooks when we have a valid URL.
+	// Without a URL, WAHA uses its global defaults from env vars.
+	sessionCfg := map[string]interface{}{
+		"gows": gowsConfig,
 	}
 
-	// Build session config with GOWS
-	sessionConfig := &wahaSessionConfig{
-		Webhooks: []wahaWebhookConfig{webhookConfig},
+	if webhookURL != "" {
+		events := input.WebhookEvents
+		if len(events) == 0 {
+			events = []string{"message", "message.ack", "session.status"}
+		}
+
+		wh := map[string]interface{}{
+			"url":    webhookURL,
+			"events": events,
+		}
+
+		hmacKey := input.HMACKey
+		if hmacKey == "" {
+			hmacKey = a.webhookSecret
+		}
+		if hmacKey != "" {
+			wh["hmac"] = map[string]interface{}{"key": hmacKey}
+		}
+
+		sessionCfg["webhooks"] = []map[string]interface{}{wh}
 	}
 
-	// Add GOWS config via a custom payload since wahaSessionConfig doesn't have GOWS field
 	payload := map[string]interface{}{
-		"name":  input.SessionName,
-		"start": true,
-		"config": map[string]interface{}{
-			"webhooks": []map[string]interface{}{
-				{
-					"url":    webhookURL,
-					"events": events,
-					"hmac": map[string]interface{}{
-						"key": hmacKey,
-					},
-				},
-			},
-			"gows": gowsConfig,
-		},
+		"name":   input.SessionName,
+		"start":  true,
+		"config": sessionCfg,
 	}
-
-	// Avoid unused variable warning
-	_ = sessionConfig
 
 	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sessions", payload)
 	if err != nil {
