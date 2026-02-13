@@ -293,7 +293,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	var monitoringRulesJSON, categoriesJSON, storesJSON, scheduleDaysJSON []byte
 	var scheduleTime, startTime, endTime, lastRunAt, nextRunAt *time.Time
 	var createdAt, updatedAt time.Time
-	var priority int
+	var priority *int
 	var filterType *string
 
 	err := row.Scan(
@@ -373,7 +373,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		var monitoringRulesJSON, categoriesJSON, storesJSON, scheduleDaysJSON []byte
 		var scheduleTime, startTime, endTime, lastRunAt, nextRunAt *time.Time
 		var createdAt, updatedAt time.Time
-		var priority int
+		var priority *int
 		var filterType *string
 
 		err := rows.Scan(
