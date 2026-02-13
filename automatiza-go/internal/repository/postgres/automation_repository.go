@@ -294,13 +294,14 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	var scheduleTime, startTime, endTime, lastRunAt, nextRunAt *time.Time
 	var createdAt, updatedAt time.Time
 	var priority *int
+	var includeImage *bool
 	var filterType *string
 
 	err := row.Scan(
 		&a.ID, &a.UserID, &a.Name, &a.Type, &a.Status, &a.Mode, &a.ShopeeLink, &a.Keyword,
 		&groupIDsJSON, &sendGroupsJSON, &monitorGroupIDsJSON, &monitoringRulesJSON,
 		&categoriesJSON, &storesJSON, &a.MinPrice, &a.MaxPrice, &a.MinDiscount, &priority,
-		&a.CustomMessage, &a.IncludeImage, &a.DispatchTextID, &filterType,
+		&a.CustomMessage, &includeImage, &a.DispatchTextID, &filterType,
 		&scheduleTime, &scheduleDaysJSON, &startTime, &endTime, &a.IntervalMinutes,
 		&a.DelaySeconds, &a.DedupeHours, &lastRunAt, &nextRunAt,
 		&a.CouponID, &createdAt, &updatedAt,
@@ -310,6 +311,10 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 			return nil, nil
 		}
 		return nil, err
+	}
+
+	if includeImage != nil {
+		a.IncludeImage = *includeImage
 	}
 
 	// Unmarshal JSON arrays with error capture
@@ -374,19 +379,24 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		var scheduleTime, startTime, endTime, lastRunAt, nextRunAt *time.Time
 		var createdAt, updatedAt time.Time
 		var priority *int
+		var includeImage *bool
 		var filterType *string
 
 		err := rows.Scan(
 			&a.ID, &a.UserID, &a.Name, &a.Type, &a.Status, &a.Mode, &a.ShopeeLink, &a.Keyword,
 			&groupIDsJSON, &sendGroupsJSON, &monitorGroupIDsJSON, &monitoringRulesJSON,
 			&categoriesJSON, &storesJSON, &a.MinPrice, &a.MaxPrice, &a.MinDiscount, &priority,
-			&a.CustomMessage, &a.IncludeImage, &a.DispatchTextID, &filterType,
+			&a.CustomMessage, &includeImage, &a.DispatchTextID, &filterType,
 			&scheduleTime, &scheduleDaysJSON, &startTime, &endTime, &a.IntervalMinutes,
 			&a.DelaySeconds, &a.DedupeHours, &lastRunAt, &nextRunAt,
 			&a.CouponID, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, err
+		}
+
+		if includeImage != nil {
+			a.IncludeImage = *includeImage
 		}
 
 		// Unmarshal JSON arrays with error capture
