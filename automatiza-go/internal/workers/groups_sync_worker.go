@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"automatiza-go/internal/adapters/whatsapp"
@@ -80,6 +81,20 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 	// 2. Check instance status via WhatsAppProvider
 	sessionInfo, err := w.whatsappProvider.GetSessionStatus(ctx, data.InstanceName)
 	if err != nil {
+		var providerErr *whatsapp.ProviderError
+		if errors.As(err, &providerErr) {
+			if providerErr.Code == whatsapp.ErrCodeSessionNotFound {
+				w.logger.Info("Session no longer exists, skipping sync",
+					zap.String("instance", data.InstanceName))
+				return nil
+			}
+			if providerErr.Code == whatsapp.ErrCodeProviderError {
+				w.logger.Debug("Provider temporarily unavailable, skipping sync",
+					zap.String("instance", data.InstanceName),
+					zap.Error(err))
+				return nil
+			}
+		}
 		return fmt.Errorf("failed to check status: %w", err)
 	}
 

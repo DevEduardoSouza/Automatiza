@@ -1,7 +1,6 @@
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useAuth } from '@/contexts';
 import { Loader2, XCircle } from 'lucide-react';
-import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
@@ -12,7 +11,6 @@ import { Link, useSearchParams } from 'react-router';
  */
 export default function AuthMagic() {
   const { t } = useTranslation();
-  const { theme } = useTheme();
   const [searchParams] = useSearchParams();
   const { verifyMagicLink } = useAuth();
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +49,7 @@ export default function AuthMagic() {
               <div className="mb-8 text-center">
                 <div className="mb-6 flex justify-center">
                   <img
-                    src={theme === 'dark' ? '/novalogo_dark.png' : '/novalogo.png'}
+                    src="/novalogo.png"
                     alt="Automatisa Grupos"
                     className="h-10 w-auto object-contain"
                   />

@@ -1,4 +1,3 @@
-import { useTheme } from 'next-themes';
 import { Toaster as Sonner } from 'sonner';
 
 import { toast } from './toast-utils';
@@ -6,12 +5,10 @@ import { toast } from './toast-utils';
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 function Toaster({ ...props }: ToasterProps) {
-  const { theme = 'system' } = useTheme();
-
   return (
     <Sonner
       duration={5000}
-      theme={theme as ToasterProps['theme']}
+      theme="light"
       className="toaster group"
       toastOptions={{
         classNames: {

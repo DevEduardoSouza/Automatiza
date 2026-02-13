@@ -473,15 +473,10 @@ func (n *SSEStatusNotifier) ProcessStatus(ctx context.Context, sessionName, stat
 	// Resolve session name to user ID
 	userID, err := n.userResolver(sessionName)
 	if err != nil {
-		// W31: Status notifier errors captured
-		observability.LogAndCapture(n.logger, sentry.LevelWarning,
-			"Failed to resolve user ID for session",
-			fmt.Errorf("resolve user for session %s: %w", sessionName, err),
-			map[string]string{
-				"module":  "sse-status-notifier",
-				"session": sessionName,
-			})
-		// Don't return error - SSE notification is optional
+		// Session likely deleted — transient, not worth Sentry noise
+		n.logger.Debug("Session not resolved (likely deleted)",
+			zap.String("session", sessionName),
+			zap.Error(err))
 		return nil
 	}
 

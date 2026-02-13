@@ -61,7 +61,10 @@ CREATE TABLE IF NOT EXISTS plans (
     price_semester NUMERIC(10, 2),
     price_annual NUMERIC(10, 2),
     group_limit INTEGER NOT NULL DEFAULT 1,
-    storage_limit BIGINT NOT NULL DEFAULT 1000000000
+    storage_limit BIGINT NOT NULL DEFAULT 1000000000,
+    kiwify_product_id_monthly TEXT,
+    kiwify_product_id_semester TEXT,
+    kiwify_product_id_annual TEXT
 );
 
 INSERT INTO plans (name, slug, description, price, max_automations, max_groups, max_instances, features) VALUES
@@ -138,12 +141,13 @@ CREATE INDEX IF NOT EXISTS idx_user_credentials_user_id ON user_credentials(user
 
 CREATE TABLE IF NOT EXISTS user_roles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE UNIQUE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     role VARCHAR(50) NOT NULL DEFAULT 'user',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_roles_user_id_role ON user_roles(user_id, role);
 
 -- =============================================================================
 -- Sessions (User Authentication Sessions)

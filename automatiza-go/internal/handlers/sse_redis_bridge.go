@@ -271,15 +271,10 @@ func NewRedisSSEStatusNotifier(
 func (n *RedisSSEStatusNotifier) ProcessStatus(ctx context.Context, sessionName, status string) error {
 	userID, err := n.userResolver(sessionName)
 	if err != nil {
-		// W31: Status notifier errors captured
-		observability.LogAndCapture(n.logger, sentry.LevelWarning,
-			"Failed to resolve user ID for session",
-			fmt.Errorf("resolve user for session %s: %w", sessionName, err),
-			map[string]string{
-				"module":  "redis-sse-status-notifier",
-				"session": sessionName,
-			})
-		// Don't fail — SSE notification is best-effort
+		// Session likely deleted — transient, not worth Sentry noise
+		n.logger.Debug("Session not resolved (likely deleted)",
+			zap.String("session", sessionName),
+			zap.Error(err))
 		return nil
 	}
 

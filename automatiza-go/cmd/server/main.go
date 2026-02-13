@@ -568,6 +568,8 @@ func main() {
 		DB:              dbClients.Admin,
 		Redis:           redisClientForAuth,
 		CookieConfig:    cookieConfig,
+		EmailService:    emailService,
+		PublicBaseURL:    cfg.PublicBaseURL,
 		Logger:          config.NewModuleLogger(logger, "auth"),
 		RateLimitConfig: rateLimitConfig,
 	})

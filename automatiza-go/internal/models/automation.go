@@ -11,7 +11,7 @@ type Automation struct {
 	UserID          string   `json:"user_id" db:"user_id"`
 	Name            string   `json:"name" db:"name"`
 	GroupIDs        []string `json:"group_ids" db:"group_ids"`
-	ShopeeLink      string   `json:"shopee_link" db:"shopee_link"`
+	ShopeeLink      *string  `json:"shopee_link,omitempty" db:"shopee_link"`
 	CustomMessage   *string  `json:"custom_message,omitempty" db:"custom_message"`
 	IncludeImage    bool     `json:"include_image" db:"include_image"`
 	ScheduleTime    *string  `json:"schedule_time,omitempty" db:"schedule_time"`

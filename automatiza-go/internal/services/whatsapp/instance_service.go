@@ -8,6 +8,7 @@ package whatsapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -229,6 +230,10 @@ func (s *instanceService) GetStatus(ctx context.Context, instanceName string) (s
 func (s *instanceService) ReconnectInstance(ctx context.Context, instanceName string) (*models.QRCode, error) {
 	// Restart the session
 	if err := s.provider.RestartSession(ctx, instanceName); err != nil {
+		var providerErr *whatsapp.ProviderError
+		if errors.As(err, &providerErr) && providerErr.Code == whatsapp.ErrCodeSessionNotFound {
+			return nil, fmt.Errorf("session does not exist: %s", instanceName)
+		}
 		return nil, fmt.Errorf("failed to restart session: %w", err)
 	}
 

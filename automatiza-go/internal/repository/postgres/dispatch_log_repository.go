@@ -259,7 +259,7 @@ func (r *dispatchLogRepository) DeleteRecentByAutomation(ctx context.Context, au
 	query := `
 		DELETE FROM dispatch_logs
 		WHERE automation_id = $1
-		AND created_at >= NOW() - ($2::text || ' days')::INTERVAL
+		AND created_at >= NOW() - MAKE_INTERVAL(days => $2)
 	`
 
 	result, err := r.db.pool.Exec(ctx, query, automationID, sinceDays)

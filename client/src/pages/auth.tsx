@@ -61,7 +61,6 @@ function MailIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-import { useTheme } from 'next-themes';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 
@@ -71,7 +70,6 @@ import { Link } from 'react-router';
  */
 export default function Auth() {
   const { t } = useTranslation();
-  const { theme, setTheme } = useTheme();
 
   const {
     email,
@@ -90,78 +88,26 @@ export default function Auth() {
     resetMagicLinkState,
   } = useAuthPage();
 
-  const isDark = theme === 'dark';
-
   return (
     <ErrorBoundary>
-      <div
-        className={`relative flex min-h-screen items-center justify-center overflow-hidden px-3 xs:px-4 sm:px-6 xl:px-8 ${
-          isDark ? 'bg-[hsl(220,13%,9%)]' : 'bg-white'
-        }`}
-      >
-        {/* Theme Toggle - Hidden */}
-
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-3 xs:px-4 sm:px-6 xl:px-8 bg-white">
         <section className="group relative z-10 w-full max-w-[calc(100%-1rem)] xs:max-w-md lg:max-w-lg xl:max-w-xl">
-          {/* Rotating blur background (dark only) */}
-          {isDark && (
-            <>
-              <div className="absolute inset-0 overflow-hidden rounded-2xl">
-                <div className="pointer-events-none absolute -inset-10 animate-spin rounded-full bg-gradient-to-r from-transparent via-gray-400/20 to-transparent opacity-50 blur-xl [animation-duration:10s]" />
-                <div className="pointer-events-none absolute -inset-20 animate-spin rounded-full bg-gradient-to-r from-transparent via-gray-500/15 to-transparent opacity-30 blur-2xl [animation-direction:reverse] [animation-duration:18s]" />
-              </div>
-              {/* Border gradient */}
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-gray-300/40 via-gray-600/60 to-gray-800/50 p-px transition-opacity duration-300 group-hover:opacity-100" />
-            </>
-          )}
-
           {/* Card */}
-          <div
-            className={`relative rounded-2xl ${
-              isDark
-                ? 'overflow-hidden shadow-inner ring-1 ring-white/15 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_40px_-10px_rgba(107,114,128,0.4)] hover:ring-gray-400/30'
-                : 'border border-[#520B27]/10 bg-white shadow-xl'
-            }`}
-            style={
-              isDark
-                ? {
-                    backgroundColor: 'hsl(220, 13%, 9%)',
-                    backgroundImage: `
-                      radial-gradient(at 88% 40%, hsl(220, 13%, 9%) 0px, transparent 85%),
-                      radial-gradient(at 49% 30%, hsl(220, 13%, 9%) 0px, transparent 85%),
-                      radial-gradient(at 14% 26%, hsl(220, 13%, 9%) 0px, transparent 85%),
-                      radial-gradient(at 0% 64%, hsl(220, 13%, 14%) 0px, transparent 85%),
-                      radial-gradient(at 41% 94%, hsl(220, 13%, 11%) 0px, transparent 85%),
-                      radial-gradient(at 100% 99%, hsl(220, 13%, 11%) 0px, transparent 85%)
-                    `,
-                  }
-                : undefined
-            }
-          >
+          <div className="relative rounded-2xl border border-[#520B27]/10 bg-white shadow-xl">
             <div className="p-4 xs:p-6 sm:p-8 lg:p-10 xl:p-12">
               {/* Header */}
               <div className="mb-5 xs:mb-6 sm:mb-8 lg:mb-10 text-center">
-                {/* Secure area indicator (dark only) */}
-                {isDark && (
-                  <div className="mb-3 flex items-center justify-center gap-2 text-xs text-gray-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/80" />
-                    <span>Secure area</span>
-                  </div>
-                )}
                 <div className="mb-4 xs:mb-5 sm:mb-6 flex justify-center">
                   <img
-                    src={isDark ? '/novalogo_dark.png' : '/novalogo.png'}
+                    src="/novalogo.png"
                     alt="Automatisa Grupos"
                     className="h-8 xs:h-9 sm:h-10 lg:h-12 w-auto object-contain"
                   />
                 </div>
-                <h2
-                  className={`text-xl xs:text-2xl font-semibold tracking-tight sm:text-3xl lg:text-4xl ${
-                    isDark ? 'text-white' : 'text-[#520B27]'
-                  }`}
-                >
+                <h2 className="text-xl xs:text-2xl font-semibold tracking-tight sm:text-3xl lg:text-4xl text-[#520B27]">
                   {authMode === 'magic' ? t('pages.auth.magicLink.title') : t('pages.auth.title')}
                 </h2>
-                <p className={`mt-1.5 text-xs xs:text-sm lg:text-base ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                <p className="mt-1.5 text-xs xs:text-sm lg:text-base text-gray-500">
                   {authMode === 'magic'
                     ? t('pages.auth.magicLink.subtitle')
                     : t('pages.auth.subtitle')}
@@ -172,16 +118,12 @@ export default function Auth() {
               {magicLinkSent ? (
                 <div className="space-y-6">
                   <div className="flex flex-col items-center justify-center space-y-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 xs:p-5 sm:p-6 lg:p-8 text-center">
-                    <CheckCircle
-                      className={`h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 ${isDark ? 'text-emerald-400' : 'text-emerald-500'}`}
-                    />
+                    <CheckCircle className="h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 text-emerald-500" />
                     <div>
-                      <h3
-                        className={`text-base xs:text-lg font-medium ${isDark ? 'text-white' : 'text-[#520B27]'}`}
-                      >
+                      <h3 className="text-base xs:text-lg font-medium text-[#520B27]">
                         {t('pages.auth.magicLink.success.title')}
                       </h3>
-                      <p className={`mt-2 text-xs xs:text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <p className="mt-2 text-xs xs:text-sm text-gray-500">
                         {t('pages.auth.magicLink.success.description', { email: magicLinkEmail })}
                       </p>
                     </div>
@@ -189,11 +131,7 @@ export default function Auth() {
                   <button
                     type="button"
                     onClick={resetMagicLinkState}
-                    className={`flex w-full items-center justify-center gap-2 text-sm transition ${
-                      isDark
-                        ? 'text-gray-400 hover:text-gray-200'
-                        : 'text-gray-500 hover:text-[#520B27]'
-                    }`}
+                    className="flex w-full items-center justify-center gap-2 text-sm transition text-gray-500 hover:text-[#520B27]"
                   >
                     <ArrowLeftIcon className="h-4 w-4" />
                     {t('pages.auth.magicLink.backToPassword')}
@@ -207,7 +145,7 @@ export default function Auth() {
                     <div>
                       <label
                         htmlFor="magic-email"
-                        className={`mb-1.5 block text-xs lg:text-sm font-medium ${isDark ? 'text-gray-300' : 'pl-2.5 text-gray-700'}`}
+                        className="mb-1.5 block text-xs lg:text-sm font-medium pl-2.5 text-gray-700"
                       >
                         {t('pages.auth.form.email')}
                       </label>
@@ -222,11 +160,7 @@ export default function Auth() {
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           required
-                          className={`w-full py-2 pl-9 pr-3 text-xs xs:py-2.5 xs:pl-10 xs:pr-4 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none ${
-                            isDark
-                              ? 'rounded-lg bg-gray-900/50 text-gray-100 placeholder-gray-500 ring-1 ring-gray-600/30 focus:ring-2 focus:ring-gray-400/50'
-                              : 'rounded-2xl !border-2 !border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30'
-                          }`}
+                          className="w-full py-2 pl-9 pr-3 text-xs xs:py-2.5 xs:pl-10 xs:pr-4 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none rounded-2xl !border-2 !border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30"
                         />
                       </div>
                     </div>
@@ -253,14 +187,10 @@ export default function Auth() {
                   {/* Divider */}
                   <div className="relative my-4 py-1 xs:my-5 sm:my-6">
                     <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                      <div className={`w-full border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`} />
+                      <div className="w-full border-t border-gray-200" />
                     </div>
                     <div className="relative flex justify-center">
-                      <span
-                        className={`px-2 text-[10px] uppercase tracking-wide ${
-                          isDark ? 'bg-transparent text-gray-500' : 'bg-white text-gray-400'
-                        }`}
-                      >
+                      <span className="px-2 text-[10px] uppercase tracking-wide bg-white text-gray-400">
                         {t('pages.auth.orContinueWith')}
                       </span>
                     </div>
@@ -270,11 +200,7 @@ export default function Auth() {
                   <button
                     type="button"
                     onClick={() => setAuthMode('password')}
-                    className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold transition-all ${
-                      isDark
-                        ? 'auth-btn-glow text-white'
-                        : '!border !border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:!border-gray-400 hover:shadow-md'
-                    }`}
+                    className="inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold transition-all !border !border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:!border-gray-400 hover:shadow-md"
                   >
                     <ArrowLeftIcon className="h-4 w-4" />
                     {t('pages.auth.magicLink.backToPassword')}
@@ -282,20 +208,9 @@ export default function Auth() {
 
                   {/* Footer */}
                   <div className="mt-5 xs:mt-6 sm:mt-8 text-xs">
-                    {isDark ? (
-                      <div className="flex items-center justify-between text-gray-500">
-                        <p>{t('pages.auth.noPlan')}</p>
-                        <div className="flex items-center gap-3">
-                          <a href="#" className="transition hover:text-white">Terms</a>
-                          <span className="text-gray-600">&bull;</span>
-                          <a href="#" className="transition hover:text-white">Privacy</a>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center text-sm text-gray-400">
-                        <p>{t('pages.auth.noPlan')}</p>
-                      </div>
-                    )}
+                    <div className="text-center text-sm text-gray-400">
+                      <p>{t('pages.auth.noPlan')}</p>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -306,7 +221,7 @@ export default function Auth() {
                     <div>
                       <label
                         htmlFor="login-email"
-                        className={`mb-1.5 block text-xs lg:text-sm font-medium ${isDark ? 'text-gray-300' : 'pl-2.5 text-gray-700'}`}
+                        className="mb-1.5 block text-xs lg:text-sm font-medium pl-2.5 text-gray-700"
                       >
                         {t('pages.auth.form.email')}
                       </label>
@@ -321,11 +236,7 @@ export default function Auth() {
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           required
-                          className={`w-full py-2 pl-9 pr-3 text-xs xs:py-2.5 xs:pl-10 xs:pr-4 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none ${
-                            isDark
-                              ? 'rounded-lg bg-gray-900/50 text-gray-100 placeholder-gray-500 ring-1 ring-gray-600/30 focus:ring-2 focus:ring-gray-400/50'
-                              : 'rounded-2xl !border-2 !border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30'
-                          }`}
+                          className="w-full py-2 pl-9 pr-3 text-xs xs:py-2.5 xs:pl-10 xs:pr-4 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none rounded-2xl !border-2 !border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30"
                         />
                       </div>
                     </div>
@@ -335,15 +246,13 @@ export default function Auth() {
                       <div className="mb-1.5 flex items-center justify-between">
                         <label
                           htmlFor="login-password"
-                          className={`block text-xs lg:text-sm font-medium ${isDark ? 'text-gray-300' : 'pl-2.5 text-gray-700'}`}
+                          className="block text-xs lg:text-sm font-medium pl-2.5 text-gray-700"
                         >
                           {t('pages.auth.form.password')}
                         </label>
                         <Link
                           to="/forgot-password"
-                          className={`text-xs underline-offset-4 hover:underline ${
-                            isDark ? 'text-gray-400 hover:text-gray-200' : 'pr-2.5 text-[#520B27]'
-                          }`}
+                          className="text-xs underline-offset-4 hover:underline pr-2.5 text-[#520B27]"
                         >
                           {t('pages.auth.forgotPassword')}
                         </Link>
@@ -359,20 +268,12 @@ export default function Auth() {
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           required
-                          className={`w-full py-2 pl-9 pr-10 text-xs xs:py-2.5 xs:pl-10 xs:pr-11 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none ${
-                            isDark
-                              ? 'rounded-lg bg-gray-900/50 text-gray-100 placeholder-gray-500 ring-1 ring-gray-600/30 focus:ring-2 focus:ring-gray-400/50'
-                              : 'rounded-2xl !border-2 !border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30'
-                          }`}
+                          className="w-full py-2 pl-9 pr-10 text-xs xs:py-2.5 xs:pl-10 xs:pr-11 xs:text-sm lg:py-3 lg:text-base transition focus:outline-none rounded-2xl !border-2 !border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 hover:!border-[#520B27] focus:!border-[#520B27] focus:ring-1 focus:ring-[#3a0718]/30"
                         />
                         <button
                           type="button"
                           onClick={togglePasswordVisibility}
-                          className={`absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 transition ${
-                            isDark
-                              ? 'text-gray-400 hover:text-gray-200'
-                              : 'text-gray-400 hover:text-[#520B27]'
-                          }`}
+                          className="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 transition text-gray-400 hover:text-[#520B27]"
                           aria-label={
                             showPassword
                               ? t('pages.auth.form.hidePassword')
@@ -410,14 +311,10 @@ export default function Auth() {
                   {/* Divider */}
                   <div className="relative my-4 py-1 xs:my-5 sm:my-6">
                     <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                      <div className={`w-full border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`} />
+                      <div className="w-full border-t border-gray-200" />
                     </div>
                     <div className="relative flex justify-center">
-                      <span
-                        className={`px-2 text-[10px] uppercase tracking-wide ${
-                          isDark ? 'bg-transparent text-gray-500' : 'bg-white text-gray-400'
-                        }`}
-                      >
+                      <span className="px-2 text-[10px] uppercase tracking-wide bg-white text-gray-400">
                         {t('pages.auth.orContinueWith')}
                       </span>
                     </div>
@@ -427,11 +324,7 @@ export default function Auth() {
                   <button
                     type="button"
                     onClick={() => setAuthMode('magic')}
-                    className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold transition-all ${
-                      isDark
-                        ? 'auth-btn-glow text-white'
-                        : '!border !border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:!border-gray-400 hover:shadow-md'
-                    }`}
+                    className="inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold transition-all !border !border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:!border-gray-400 hover:shadow-md"
                   >
                     <MailIcon className="h-4 w-4" />
                     {t('pages.auth.magicLink.button')}
@@ -439,20 +332,9 @@ export default function Auth() {
 
                   {/* Footer */}
                   <div className="mt-5 xs:mt-6 sm:mt-8 text-xs">
-                    {isDark ? (
-                      <div className="flex items-center justify-between text-gray-500">
-                        <p>{t('pages.auth.noPlan')}</p>
-                        <div className="flex items-center gap-3">
-                          <a href="#" className="transition hover:text-white">Terms</a>
-                          <span className="text-gray-600">&bull;</span>
-                          <a href="#" className="transition hover:text-white">Privacy</a>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center text-sm text-gray-400">
-                        <p>{t('pages.auth.noPlan')}</p>
-                      </div>
-                    )}
+                    <div className="text-center text-sm text-gray-400">
+                      <p>{t('pages.auth.noPlan')}</p>
+                    </div>
                   </div>
 
                 </>

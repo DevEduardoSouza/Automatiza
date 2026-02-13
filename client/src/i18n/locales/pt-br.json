@@ -948,7 +948,12 @@
         "reconnectDescription": "Escaneie o QR Code abaixo com seu WhatsApp para reconectar a instância \"{{instanceName}}\"",
         "qrCodeAlt": "QR Code para reconexão",
         "generatingQr": "Gerando QR Code...",
-        "waitingScan": "Aguardando escaneamento..."
+        "waitingScan": "Aguardando escaneamento...",
+        "verifying": {
+          "title": "Verificando...",
+          "description": "Verificando status da conexão...",
+          "message": "Verificando status da conexão..."
+        }
       },
       "dialogs": {
         "changeName": {

@@ -684,7 +684,11 @@ func (h *GroupsHandler) GetSyncStatus(
 	if h.asynqInspector != nil {
 		info, err := h.asynqInspector.GetTaskInfo("default", jobID)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("job not found"))
+			log.Printf("[GetSyncStatus] Asynq fallback failed jobID=%s err=%v", jobID, err)
+			return connect.NewResponse(&groupsv1.GetSyncStatusResponse{
+				Status:   "unknown",
+				Progress: 0,
+			}), nil
 		}
 
 		var status string

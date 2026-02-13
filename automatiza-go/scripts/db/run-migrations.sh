@@ -62,6 +62,7 @@ MIGRATION_FILES=(
     "028_categories_table.up.sql"
     "029_automations_offer_texts_columns.up.sql"
     "030_fix_reconciliation_checkpoints.up.sql"
+    "031_fix_plans_kiwify_and_user_roles.up.sql"
 )
 
 for migration in "${MIGRATION_FILES[@]}"; do

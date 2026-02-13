@@ -12,7 +12,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useResetPassword } from '@/hooks';
-import { useTheme } from 'next-themes';
 import { useTranslation } from 'react-i18next';
 
 /**
@@ -21,7 +20,6 @@ import { useTranslation } from 'react-i18next';
  */
 export default function ResetPassword() {
   const { t } = useTranslation();
-  const { theme } = useTheme();
   const { form, validSession, checkingSession, onSubmit } = useResetPassword();
 
   if (checkingSession) {
@@ -54,7 +52,7 @@ export default function ResetPassword() {
           <CardHeader className="space-y-1 text-center pb-8">
             <div className="mb-6 flex justify-center">
               <img
-                src={theme === 'dark' ? '/novalogo_dark.png' : '/novalogo.png'}
+                src="/novalogo.png"
                 alt="Automatisa Grupos"
                 className="h-10 w-auto object-contain"
               />

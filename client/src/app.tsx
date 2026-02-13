@@ -9,8 +9,8 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/contexts';
 import { transport } from '@/lib/connect-transport';
-import * as Sentry from '@sentry/react';
 import { TransportProvider } from '@connectrpc/connect-query';
+import * as Sentry from '@sentry/react';
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from 'next-themes';
 import { Suspense, lazy } from 'react';
@@ -100,7 +100,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => (
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TransportProvider transport={transport}>
-      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+      <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light" enableSystem={false}>
         <BrowserRouter>
           <AuthProvider>
             <TooltipProvider>
