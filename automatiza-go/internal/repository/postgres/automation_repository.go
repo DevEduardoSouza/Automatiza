@@ -296,15 +296,18 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	var priority *int
 	var includeImage *bool
 	var filterType *string
+	// Local nullable vars to safely handle NULL TEXT columns (pgx NULL scan fix)
+	var shopeeLink, keyword, customMessage, dispatchTextID, couponID *string
+	var automationType, mode *string
 
 	err := row.Scan(
-		&a.ID, &a.UserID, &a.Name, &a.Type, &a.Status, &a.Mode, &a.ShopeeLink, &a.Keyword,
+		&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
 		&groupIDsJSON, &sendGroupsJSON, &monitorGroupIDsJSON, &monitoringRulesJSON,
 		&categoriesJSON, &storesJSON, &a.MinPrice, &a.MaxPrice, &a.MinDiscount, &priority,
-		&a.CustomMessage, &includeImage, &a.DispatchTextID, &filterType,
+		&customMessage, &includeImage, &dispatchTextID, &filterType,
 		&scheduleTime, &scheduleDaysJSON, &startTime, &endTime, &a.IntervalMinutes,
 		&a.DelaySeconds, &a.DedupeHours, &lastRunAt, &nextRunAt,
-		&a.CouponID, &createdAt, &updatedAt,
+		&couponID, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -313,6 +316,13 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 		return nil, err
 	}
 
+	a.Type = automationType
+	a.Mode = mode
+	a.ShopeeLink = shopeeLink
+	a.Keyword = keyword
+	a.CustomMessage = customMessage
+	a.DispatchTextID = dispatchTextID
+	a.CouponID = couponID
 	if includeImage != nil {
 		a.IncludeImage = *includeImage
 	}
@@ -381,20 +391,30 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		var priority *int
 		var includeImage *bool
 		var filterType *string
+		// Local nullable vars to safely handle NULL TEXT columns (pgx NULL scan fix)
+		var shopeeLink, keyword, customMessage, dispatchTextID, couponID *string
+		var automationType, mode *string
 
 		err := rows.Scan(
-			&a.ID, &a.UserID, &a.Name, &a.Type, &a.Status, &a.Mode, &a.ShopeeLink, &a.Keyword,
+			&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
 			&groupIDsJSON, &sendGroupsJSON, &monitorGroupIDsJSON, &monitoringRulesJSON,
 			&categoriesJSON, &storesJSON, &a.MinPrice, &a.MaxPrice, &a.MinDiscount, &priority,
-			&a.CustomMessage, &includeImage, &a.DispatchTextID, &filterType,
+			&customMessage, &includeImage, &dispatchTextID, &filterType,
 			&scheduleTime, &scheduleDaysJSON, &startTime, &endTime, &a.IntervalMinutes,
 			&a.DelaySeconds, &a.DedupeHours, &lastRunAt, &nextRunAt,
-			&a.CouponID, &createdAt, &updatedAt,
+			&couponID, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 
+		a.Type = automationType
+		a.Mode = mode
+		a.ShopeeLink = shopeeLink
+		a.Keyword = keyword
+		a.CustomMessage = customMessage
+		a.DispatchTextID = dispatchTextID
+		a.CouponID = couponID
 		if includeImage != nil {
 			a.IncludeImage = *includeImage
 		}

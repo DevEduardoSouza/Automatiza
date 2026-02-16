@@ -259,10 +259,11 @@ func (r *dispatchLogRepository) DeleteRecentByAutomation(ctx context.Context, au
 	query := `
 		DELETE FROM dispatch_logs
 		WHERE automation_id = $1
-		AND created_at >= NOW() - MAKE_INTERVAL(days => $2)
+		AND created_at >= $2
 	`
 
-	result, err := r.db.pool.Exec(ctx, query, automationID, sinceDays)
+	cutoff := time.Now().UTC().Add(-time.Duration(sinceDays) * 24 * time.Hour)
+	result, err := r.db.pool.Exec(ctx, query, automationID, cutoff)
 	if err != nil {
 		r.logger.Error("Failed to delete dispatch logs by automation",
 			zap.String("automationID", automationID),
