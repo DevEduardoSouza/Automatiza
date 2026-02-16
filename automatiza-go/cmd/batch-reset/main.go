@@ -98,7 +98,7 @@ func main() {
 	// --- Frontend base URL ---
 	baseURL := cfg.PublicBaseURL
 	if baseURL == "" {
-		baseURL = "https://astecwms.com.br"
+		baseURL = "https://www.v2automatisagrupos.com"
 	}
 
 	// --- Query affected users ---

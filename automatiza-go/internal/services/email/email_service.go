@@ -164,7 +164,7 @@ func (s *dynamicEmailService) SendWelcomeEmail(ctx context.Context, to, name, pa
 		"Name":     name,
 		"Password": password,
 		"Year":     time.Now().Year(),
-		"LoginURL": "https://astecwms.com.br/auth",
+		"LoginURL": "https://www.v2automatisagrupos.com/auth",
 	}
 
 	body, err := s.renderTemplate("welcome", data)
@@ -283,7 +283,7 @@ func (s *emailService) SendWelcomeEmail(ctx context.Context, to, name, password 
 		"Name":     name,
 		"Password": password,
 		"Year":     time.Now().Year(),
-		"LoginURL": "https://astecwms.com.br/auth",
+		"LoginURL": "https://www.v2automatisagrupos.com/auth",
 	}
 
 	body, err := s.renderTemplate("welcome", data)

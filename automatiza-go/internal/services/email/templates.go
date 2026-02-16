@@ -106,7 +106,7 @@ const welcomeTemplate = `
         <p><strong>Importante:</strong> Por seguranca, recomendamos que voce altere sua senha apos o primeiro login.</p>
 
         <p style="text-align: center;">
-            <a href="{{if .LoginURL}}{{.LoginURL}}{{else}}https://astecwms.com.br/auth{{end}}" class="button">Acessar Minha Conta</a>
+            <a href="{{if .LoginURL}}{{.LoginURL}}{{else}}https://www.v2automatisagrupos.com/auth{{end}}" class="button">Acessar Minha Conta</a>
         </p>
 
         <h2>Proximos passos:</h2>
@@ -215,7 +215,7 @@ const planUpgradeTemplate = `
         {{end}}
 
         <p style="text-align: center;">
-            <a href="https://astecwms.com.br/dashboard" class="button">Acessar Dashboard</a>
+            <a href="https://www.v2automatisagrupos.com/dashboard" class="button">Acessar Dashboard</a>
         </p>
 
         <p>Obrigado por confiar no Automatiza!</p>
@@ -263,7 +263,7 @@ const suspensionWarningTemplate = `
         <p>Para evitar a suspensao, por favor regularize seu pagamento:</p>
 
         <p style="text-align: center;">
-            <a href="https://astecwms.com.br/billing" class="button">Regularizar Pagamento</a>
+            <a href="https://www.v2automatisagrupos.com/billing" class="button">Regularizar Pagamento</a>
         </p>
 
         <p>Se voce acredita que isso e um erro ou ja realizou o pagamento, entre em contato com nosso suporte.</p>
