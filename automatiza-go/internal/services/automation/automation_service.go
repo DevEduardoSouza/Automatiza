@@ -533,6 +533,11 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		}, nil
 	}
 
+	// Shuffle offers to ensure variety even if dedup has gaps
+	rand.Shuffle(len(allOffers), func(i, j int) {
+		allOffers[i], allOffers[j] = allOffers[j], allOffers[i]
+	})
+
 	// Get dispatch text template (only if active)
 	var dispatchTemplate string
 	if automation.DispatchTextID != nil {
@@ -618,6 +623,23 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					zap.Float64("finalPrice", allOffers[i].Price),
 					zap.Float64("finalOriginal", allOffers[i].OriginalPrice))
 				offer = allOffers[i]
+			}
+		}
+
+		// Generate proper affiliate link via generateShortLink mutation
+		if s.shopeeService != nil && offer.ProductURL != "" {
+			affLink, affErr := s.shopeeService.GenerateAffiliateLink(ctx, offer.ProductURL, automation.UserID)
+			if affErr != nil {
+				s.logger.Warn("Failed to generate affiliate link, using API offerLink",
+					zap.String("automationID", automation.ID),
+					zap.String("productURL", offer.ProductURL),
+					zap.Error(affErr))
+			} else if affLink != nil && affLink.AffiliateLink != "" {
+				allOffers[i].AffiliateLink = affLink.AffiliateLink
+				offer = allOffers[i]
+				s.logger.Info("Affiliate link generated",
+					zap.String("automationID", automation.ID),
+					zap.String("affiliateLink", affLink.AffiliateLink))
 			}
 		}
 
@@ -791,13 +813,36 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 }
 
 func (s *automationService) isDuplicate(ctx context.Context, userID, groupID, canonicalKey string, hours int) bool {
+	// Fast path: check Redis cache first (written by markAsSent)
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("dedup:%s:%s:%s", userID, groupID, canonicalKey)
+		exists, err := s.cache.Exists(ctx, cacheKey)
+		if err == nil && exists {
+			return true
+		}
+	}
+
+	// Slow path: check database
 	if s.dispatchLogRepo == nil {
 		return false
 	}
 
 	log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, hours)
 	if err != nil {
+		s.logger.Warn("dedup DB check failed",
+			zap.String("userID", userID),
+			zap.String("groupID", groupID),
+			zap.String("canonicalKey", canonicalKey),
+			zap.Error(err))
 		return false
+	}
+
+	// Backfill cache from DB hit to accelerate future checks
+	if log != nil && s.cache != nil {
+		cacheKey := fmt.Sprintf("dedup:%s:%s:%s", userID, groupID, canonicalKey)
+		if cacheErr := s.cache.Set(ctx, cacheKey, "1", time.Duration(hours)*time.Hour); cacheErr != nil {
+			s.logger.Debug("dedup cache backfill failed", zap.Error(cacheErr))
+		}
 	}
 
 	return log != nil

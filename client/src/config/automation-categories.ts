@@ -124,8 +124,8 @@ export const BELEZA_CATEGORY = 'Beleza';
 export const GENERAL_CATEGORY = 'Ofertas gerais';
 
 /** Automation timing constants */
-export const MIN_AUTOMATION_INTERVAL_MINUTES = 10;
-export const INTERVALS = [10, 15, 20, 30, 45, 60, 90, 120];
+export const MIN_AUTOMATION_INTERVAL_MINUTES = 5;
+export const INTERVALS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 export const MAX_SEND_GROUPS = 20;
 
 /** Electronics subcategories with labels and i18n keys */

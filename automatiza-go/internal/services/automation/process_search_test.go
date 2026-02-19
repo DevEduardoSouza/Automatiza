@@ -78,6 +78,10 @@ func TestProcessSearchMode_Success(t *testing.T) {
 		Price:         979.90,
 		OriginalPrice: 1299.90,
 	}, nil).Maybe()
+	// Affiliate link generation
+	deps.shopeeService.On("GenerateAffiliateLink", ctx, "https://shopee.com.br/product/67890/12345", "user-1").Return(&models.ShopeeAffiliateLink{
+		AffiliateLink: "https://s.shopee.com.br/tracked-link",
+	}, nil).Maybe()
 	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil, nil).Maybe()
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
 	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
@@ -470,6 +474,10 @@ func TestProcessSearchMode_WithPriceFilters(t *testing.T) {
 	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(shopeeOffers, nil)
 	// Price refetch before sending
 	deps.shopeeService.On("GetProduct", ctx, int64(12345), int64(67890), "user-1").Return(nil, errors.New("not found")).Maybe()
+	// Affiliate link generation
+	deps.shopeeService.On("GenerateAffiliateLink", ctx, "https://shopee.com.br/product/67890/12345", "user-1").Return(&models.ShopeeAffiliateLink{
+		AffiliateLink: "https://s.shopee.com.br/tracked-link",
+	}, nil).Maybe()
 	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil, nil).Maybe()
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
 	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
@@ -539,6 +547,10 @@ func TestProcessSearchMode_WithCustomDispatchText(t *testing.T) {
 	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(shopeeOffers, nil)
 	// Price refetch before sending
 	deps.shopeeService.On("GetProduct", ctx, int64(12345), int64(67890), "user-1").Return(nil, errors.New("not found")).Maybe()
+	// Affiliate link generation
+	deps.shopeeService.On("GenerateAffiliateLink", ctx, "https://shopee.com.br/product/67890/12345", "user-1").Return(&models.ShopeeAffiliateLink{
+		AffiliateLink: "https://s.shopee.com.br/tracked-link",
+	}, nil).Maybe()
 	deps.settingsRepo.On("GetActiveDispatchTextByID", ctx, "dispatch-123", "user-1").Return(customTemplate, nil)
 	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil, nil).Maybe()
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
@@ -684,6 +696,10 @@ func TestProcessSearchMode_EdgeCases(t *testing.T) {
 					if tt.offersCount > 0 {
 						// Price refetch before sending
 						deps.shopeeService.On("GetProduct", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("int64"), "user-1").Return(nil, errors.New("not found")).Maybe()
+						// Affiliate link generation
+						deps.shopeeService.On("GenerateAffiliateLink", ctx, mock.AnythingOfType("string"), "user-1").Return(&models.ShopeeAffiliateLink{
+							AffiliateLink: "https://s.shopee.com.br/tracked-link",
+						}, nil).Maybe()
 						deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil, nil).Maybe()
 						deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
 					}
