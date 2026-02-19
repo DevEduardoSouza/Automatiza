@@ -489,7 +489,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		switch store {
 		case "shopee":
 			if s.shopeeService != nil {
-				limitPerKeyword := 1
+				limitPerKeyword := 20
 				for _, kw := range keywords {
 					kwCopy := kw
 					var kwPtr *string
@@ -523,11 +523,6 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 			// ML search would go here
 			// For now, ML is mainly used for affiliate link generation
 		}
-	}
-
-	// Cap to 1 offer per run — interval_minutes controls the cadence
-	if len(allOffers) > 1 {
-		allOffers = allOffers[:1]
 	}
 
 	if len(allOffers) == 0 {
@@ -571,8 +566,33 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 	skippedCount := 0
 	dedupeHours := automation.GetDedupeHours()
 
+	// Iterate through offers and send the FIRST non-duplicate to all groups.
+	// We fetch ~20 offers but only send 1 per run; dedup ensures variety across runs.
 	for i, offer := range allOffers {
-		// Refetch current price before sending (Node.js parity: fetchProductPriceDetails)
+		canonicalKey := models.CanonicalKeyFromShopeeOffer(&offer)
+		store := "shopee"
+
+		// Pre-check: if this offer is already a duplicate for ALL target groups, skip entirely
+		allGroupsDuped := true
+		for _, groupID := range targetGroups {
+			if !s.isDuplicate(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
+				allGroupsDuped = false
+				break
+			}
+		}
+		if allGroupsDuped {
+			s.logger.Info("Offer skipped: dedup (all groups)",
+				zap.String("automationID", automation.ID),
+				zap.String("canonicalKey", canonicalKey),
+				zap.Int("offerIndex", i))
+			for _, groupID := range targetGroups {
+				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "dedupe", withCanonicalKey(canonicalKey, store))
+			}
+			skippedCount += len(targetGroups)
+			continue
+		}
+
+		// This offer is new for at least one group — refetch price and send to all groups
 		if s.shopeeService != nil && offer.ItemID > 0 && offer.ShopID > 0 {
 			refreshed, err := s.shopeeService.GetProduct(ctx, offer.ItemID, offer.ShopID, automation.UserID)
 			if err != nil {
@@ -581,7 +601,6 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					zap.Int64("shopID", offer.ShopID),
 					zap.Error(err))
 			} else if refreshed != nil {
-				// Only overwrite prices if the refreshed data is valid (non-zero)
 				if refreshed.Price > 0 {
 					allOffers[i].Price = refreshed.Price
 				}
@@ -603,14 +622,13 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		}
 
 		for _, groupID := range targetGroups {
-			// Check deduplication
-			canonicalKey := models.CanonicalKeyFromShopeeOffer(&offer)
+			// Per-group dedup check (an offer may be new for some groups but not others)
 			if s.isDuplicate(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
 				s.logger.Info("Offer skipped: dedup",
 					zap.String("automationID", automation.ID),
 					zap.String("canonicalKey", canonicalKey),
 					zap.String("groupID", groupID))
-				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "dedupe")
+				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "dedupe", withCanonicalKey(canonicalKey, store))
 				skippedCount++
 				continue
 			}
@@ -632,7 +650,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 						zap.String("automationID", automation.ID),
 						zap.String("groupID", groupID),
 						zap.String("reason", decision.Reason))
-					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "blocked", decision.Reason)
+					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "blocked", decision.Reason, withCanonicalKey(canonicalKey, store))
 					skippedCount++
 					continue
 				}
@@ -650,7 +668,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					s.logger.Info("Offer skipped: backpressure",
 						zap.String("automationID", automation.ID),
 						zap.String("groupID", groupID))
-					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "backpressure")
+					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "backpressure", withCanonicalKey(canonicalKey, store))
 					skippedCount++
 					continue
 				}
@@ -671,8 +689,6 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 			}
 
 			if s.queueClient != nil {
-				// Apply incremental delay to prevent WhatsApp anti-spam suppression.
-				// Uses sentCount (not loop index) so skipped offers don't waste delay time.
 				delay := time.Duration(sentCount) * time.Duration(automation.GetDelaySeconds()) * time.Second
 				_, err := s.queueClient.EnqueueMessage(ctx, jobData, delay)
 				if err != nil {
@@ -680,14 +696,14 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 						zap.String("automationID", automation.ID),
 						zap.String("groupID", groupID),
 						zap.Error(err))
-					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "failed", err.Error())
+					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "failed", err.Error(), withCanonicalKey(canonicalKey, store))
 					continue
 				}
 			}
 
 			// Mark as sent for deduplication
 			s.markAsSent(ctx, automation.UserID, groupID, canonicalKey, dedupeHours)
-			s.logDispatch(ctx, automation, groupID, offer.ProductURL, "sent", "")
+			s.logDispatch(ctx, automation, groupID, offer.ProductURL, "sent", "", withCanonicalKey(canonicalKey, store))
 			sentCount++
 
 			// Record backpressure
@@ -699,6 +715,9 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				}
 			}
 		}
+
+		// 1 offer per run: stop after processing the first non-duplicate offer
+		break
 	}
 
 	s.logger.Info("Search automation completed",
@@ -797,7 +816,18 @@ func (s *automationService) markAsSent(ctx context.Context, userID, groupID, can
 	}
 }
 
-func (s *automationService) logDispatch(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg string) {
+// logDispatchOpt applies optional fields to a DispatchLog before creation.
+type logDispatchOpt func(*models.DispatchLog)
+
+// withCanonicalKey sets the canonical_key and store on the dispatch log for deduplication.
+func withCanonicalKey(canonicalKey, store string) logDispatchOpt {
+	return func(log *models.DispatchLog) {
+		log.CanonicalKey = &canonicalKey
+		log.Store = &store
+	}
+}
+
+func (s *automationService) logDispatch(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg string, opts ...logDispatchOpt) {
 	if s.dispatchLogRepo == nil {
 		return
 	}
@@ -820,6 +850,10 @@ func (s *automationService) logDispatch(ctx context.Context, automation *models.
 		ProductURL:     &productURL,
 		Status:         status,
 		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+	}
+
+	for _, opt := range opts {
+		opt(log)
 	}
 
 	if errorMsg != "" {
