@@ -320,19 +320,10 @@ export function useHistoryConnect(options?: UseHistoryConnectOptions): UseHistor
   });
 
   // Transform proto events to local format
-  const events: LocalHistoryEvent[] = useMemo(() => {
-    console.log('[DEBUG] historyResponse:', historyResponse);
-    console.log('[DEBUG] historyResponse?.events:', historyResponse?.events);
-    console.log('[DEBUG] typeof events:', typeof historyResponse?.events);
-    console.log('[DEBUG] Array.isArray:', Array.isArray(historyResponse?.events));
-    if (historyResponse?.events && historyResponse.events.length > 0) {
-      console.log('[DEBUG] First event raw:', historyResponse.events[0]);
-      console.log('[DEBUG] First event JSON:', JSON.stringify(historyResponse.events[0], null, 2));
-    }
-    const result = (historyResponse?.events ?? []).map(fromProtoHistoryEvent);
-    console.log('[DEBUG] Transformed events:', result);
-    return result;
-  }, [historyResponse]);
+  const events: LocalHistoryEvent[] = useMemo(
+    () => (historyResponse?.events ?? []).map(fromProtoHistoryEvent),
+    [historyResponse]
+  );
 
   // Transform proto stats to local format
   const stats: LocalHistoryStats = useMemo(

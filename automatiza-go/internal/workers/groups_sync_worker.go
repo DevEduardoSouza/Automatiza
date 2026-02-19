@@ -140,6 +140,8 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 
 	// 4. Get participants for each group to determine admin status
 	groups := make([]models.Group, 0, len(groupInfos))
+	adminCount := 0
+	lidOnlyCount := 0
 	for i, gi := range groupInfos {
 		// W22: Check for context cancellation at the beginning of each iteration
 		select {
@@ -204,39 +206,65 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 			// The /participants/v2 endpoint resolves LIDs to phone numbers in the PhoneNumber field,
 			// so we compare using PhoneNumber (which has the actual phone) instead of ID.
 			sessionPhone := whatsapp.ExtractPhoneFromID(sessionInfo.AuthenticatedUser.ID)
+			matched := false
+			groupHasLIDOnly := true
 			for _, p := range participants {
 				participantPhone := p.PhoneNumber
 				if participantPhone == "" {
 					// PhoneNumber not resolved (LID mapping failed) — try extracting from ID
 					participantPhone = whatsapp.ExtractPhoneFromID(p.ID)
+				} else {
+					groupHasLIDOnly = false
 				}
 				if participantPhone == sessionPhone {
+					matched = true
 					w.logger.Info("Found session user in group",
 						zap.String("groupName", gi.Subject),
 						zap.String("participantID", p.ID),
 						zap.String("participantPhone", participantPhone),
 						zap.Bool("isAdmin", p.IsAdmin),
 						zap.Bool("isSuperAdmin", p.IsSuperAdmin))
-				}
-				if participantPhone == sessionPhone && (p.IsAdmin || p.IsSuperAdmin) {
-					group.IsAdmin = true
+					if p.IsAdmin || p.IsSuperAdmin {
+						group.IsAdmin = true
+					}
 					break
 				}
+			}
+
+			// Fallback: if no participant matched by phone, check if the session user
+			// is the group owner (Owner field from WAHA GroupInfo).
+			if !matched && gi.Owner != "" {
+				ownerPhone := whatsapp.ExtractPhoneFromID(gi.Owner)
+				if ownerPhone == sessionPhone {
+					w.logger.Info("Session user is group owner (fallback)",
+						zap.String("groupName", gi.Subject),
+						zap.String("owner", gi.Owner))
+					group.IsAdmin = true
+					matched = true
+				}
+			}
+
+			if !matched {
+				w.logger.Warn("Session user not found in group participants",
+					zap.String("groupName", gi.Subject),
+					zap.String("sessionPhone", sessionPhone),
+					zap.Int("participantCount", len(participants)))
+			}
+			if groupHasLIDOnly && len(participants) > 0 {
+				lidOnlyCount++
 			}
 		} else if err == nil {
-			// AuthenticatedUser is nil — use embedded participants from GetGroups
-			// and match by phone number extracted from participant IDs
-			for _, p := range gi.Participants {
-				if p.IsAdmin || p.IsSuperAdmin {
-					// Without session user context, we can't determine if WE are admin.
-					// Skip — is_admin stays false (safe default).
-					break
-				}
-			}
+			// AuthenticatedUser is nil — cannot determine admin status without session user context.
+			w.logger.Warn("AuthenticatedUser is nil, skipping admin detection",
+				zap.String("groupName", gi.Subject))
 		} else {
 			w.logger.Warn("Failed to get group participants, skipping admin check",
 				zap.String("groupID", gi.ID),
 				zap.Error(err))
+		}
+
+		if group.IsAdmin {
+			adminCount++
 		}
 
 		w.logger.Info("Admin detection result",
@@ -266,6 +294,22 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 				"total":    totalGroups,
 			})
 		}
+	}
+
+	// Log admin detection summary
+	w.logger.Info("Admin detection summary",
+		zap.Int("totalGroups", totalGroups),
+		zap.Int("adminGroups", adminCount),
+		zap.Int("lidOnlyGroups", lidOnlyCount))
+
+	if totalGroups > 0 && adminCount == 0 {
+		w.logger.Warn("ZERO groups detected as admin — possible LID resolution failure",
+			zap.Int("totalGroups", totalGroups),
+			zap.Int("lidOnlyGroups", lidOnlyCount))
+		sentry.CaptureMessage(fmt.Sprintf(
+			"Admin detection found 0/%d admin groups (LID-only: %d) for user %s",
+			totalGroups, lidOnlyCount, data.UserID,
+		))
 	}
 
 	// 5. Sync to database (batch)

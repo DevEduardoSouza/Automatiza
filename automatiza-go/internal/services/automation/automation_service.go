@@ -143,6 +143,7 @@ func (s *automationService) DiagnoseAutomation(ctx context.Context, automationID
 		result.Status = "error"
 		whatsappCheck.Status = "error"
 		whatsappCheck.Message = "Nenhuma instancia WhatsApp encontrada"
+		result.Errors = append(result.Errors, whatsappCheck.Message)
 	} else {
 		connectedCount := 0
 		for _, inst := range instances {
@@ -154,6 +155,7 @@ func (s *automationService) DiagnoseAutomation(ctx context.Context, automationID
 			result.Status = "error"
 			whatsappCheck.Status = "error"
 			whatsappCheck.Message = "Nenhuma instancia conectada"
+			result.Errors = append(result.Errors, whatsappCheck.Message)
 		} else {
 			whatsappCheck.Message = fmt.Sprintf("%d instancia(s) conectada(s)", connectedCount)
 		}
@@ -256,6 +258,7 @@ func (s *automationService) DiagnoseAutomation(ctx context.Context, automationID
 			result.Status = "error"
 			mlLinkListCheck.Status = "error"
 			mlLinkListCheck.Message = "Lista de links nao configurada. Selecione uma Lista de Links (Mercado Livre)."
+			result.Errors = append(result.Errors, mlLinkListCheck.Message)
 		} else {
 			// Check if list has unconsumed items
 			listID := *automation.MlLinkListID
@@ -471,31 +474,49 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		zap.String("instanceID", connectedInstance.InstanceID),
 		zap.Strings("stores", stores))
 
+	// Build keywords list: prefer Texts array, fallback to single Keyword
+	keywords := automation.Texts
+	if len(keywords) == 0 && automation.Keyword != nil && *automation.Keyword != "" {
+		keywords = []string{*automation.Keyword}
+	}
+	if len(keywords) == 0 {
+		keywords = []string{""} // empty keyword = broad search
+	}
+
 	// Search for products
 	var allOffers []models.ShopeeOffer
 	for _, store := range stores {
 		switch store {
 		case "shopee":
 			if s.shopeeService != nil {
-				params := models.ShopeeSearchParams{
-					Keyword:     automation.Keyword,
-					Categories:  automation.Categories,
-					MinPrice:    automation.MinPrice,
-					MaxPrice:    automation.MaxPrice,
-					MinDiscount: automation.MinDiscount,
-					Limit:       10,
-				}
-				result, err := s.shopeeService.SearchOffers(ctx, automation.UserID, params)
-				if err != nil {
-					s.logger.Warn("Shopee search failed",
-						zap.String("automationID", automation.ID),
-						zap.Error(err))
-				} else if result != nil {
-					s.logger.Info("Shopee search completed",
-						zap.String("automationID", automation.ID),
-						zap.String("keyword", stringPtrValue(automation.Keyword)),
-						zap.Int("offersReturned", len(result.Offers)))
-					allOffers = append(allOffers, result.Offers...)
+				limitPerKeyword := max(3, 10/len(keywords))
+				for _, kw := range keywords {
+					kwCopy := kw
+					var kwPtr *string
+					if kwCopy != "" {
+						kwPtr = &kwCopy
+					}
+					params := models.ShopeeSearchParams{
+						Keyword:     kwPtr,
+						Categories:  automation.Categories,
+						MinPrice:    automation.MinPrice,
+						MaxPrice:    automation.MaxPrice,
+						MinDiscount: automation.MinDiscount,
+						Limit:       limitPerKeyword,
+					}
+					result, err := s.shopeeService.SearchOffers(ctx, automation.UserID, params)
+					if err != nil {
+						s.logger.Warn("Shopee search failed",
+							zap.String("automationID", automation.ID),
+							zap.String("keyword", kwCopy),
+							zap.Error(err))
+					} else if result != nil {
+						s.logger.Info("Shopee search completed",
+							zap.String("automationID", automation.ID),
+							zap.String("keyword", kwCopy),
+							zap.Int("offersReturned", len(result.Offers)))
+						allOffers = append(allOffers, result.Offers...)
+					}
 				}
 			}
 		case "mercadolivre":
@@ -527,9 +548,18 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		dispatchTemplate = "{{PRODUTO_NOME}}\n\nDe: {{PRODUTO_PRECO_ORIGINAL}}\nPor: {{PRODUTO_PRECO}}\n\n{{LINK_AFILIADO}}"
 	}
 
+	// Detect templates without variables — all messages will be identical, risking WhatsApp anti-spam suppression
+	templateVars := text.ExtractTemplateVariables(dispatchTemplate)
+	if len(templateVars) == 0 {
+		s.logger.Warn("Dispatch template has no variables — all messages will be identical",
+			zap.String("automationID", automation.ID),
+			zap.Int("templateLen", len(dispatchTemplate)))
+	}
+
 	s.logger.Info("Dispatch template resolved",
 		zap.String("automationID", automation.ID),
-		zap.Int("templateLen", len(dispatchTemplate)))
+		zap.Int("templateLen", len(dispatchTemplate)),
+		zap.Int("variableCount", len(templateVars)))
 
 	// Send offers to groups
 	sentCount := 0
@@ -583,6 +613,12 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 			// Build message from template
 			message := s.buildOfferMessage(dispatchTemplate, &offer, automation)
 
+			s.logger.Debug("Message built for offer",
+				zap.String("automationID", automation.ID),
+				zap.Int("offerIndex", i),
+				zap.String("productName", offer.Name),
+				zap.Int("messageLen", len(message)))
+
 			// Apply URL safety check
 			if s.urlSafetyService != nil {
 				decision, _ := s.urlSafetyService.Evaluate(ctx, message)
@@ -630,7 +666,10 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 			}
 
 			if s.queueClient != nil {
-				_, err := s.queueClient.EnqueueMessage(ctx, jobData, 0)
+				// Apply incremental delay to prevent WhatsApp anti-spam suppression.
+				// Uses sentCount (not loop index) so skipped offers don't waste delay time.
+				delay := time.Duration(sentCount) * time.Duration(automation.GetDelaySeconds()) * time.Second
+				_, err := s.queueClient.EnqueueMessage(ctx, jobData, delay)
 				if err != nil {
 					s.logger.Error("Failed to enqueue message",
 						zap.String("automationID", automation.ID),

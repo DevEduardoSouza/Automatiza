@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 
 	"go.uber.org/zap"
 )
@@ -164,8 +165,17 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 	}
 
 	// Get the instance for this group
-	instanceIDInt := 0
-	_, _ = fmt.Sscanf(group.InstanceID, "%d", &instanceIDInt)
+	instanceIDInt, parseErr := strconv.Atoi(group.InstanceID)
+	if parseErr != nil || instanceIDInt <= 0 {
+		s.logger.Error("Invalid instance ID for group",
+			zap.String("groupID", targetGroup.GroupID),
+			zap.String("rawInstanceID", group.InstanceID),
+			zap.Error(parseErr))
+		return &models.ProcessRedirectResult{
+			Success: false,
+			Error:   "instance not found",
+		}, nil
+	}
 	instance, err := s.instanceRepo.GetInstanceByID(ctx, instanceIDInt)
 	if err != nil || instance == nil {
 		s.logger.Error("Failed to get instance for group",
@@ -203,7 +213,6 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 				zap.String("groupName", group.Name),
 				zap.Bool("isAdmin", group.IsAdmin),
 				zap.Error(err))
-			// W37: Capture invite code failure with Sentry tags
 			observability.CaptureWithTags(err, map[string]string{
 				"module":      "redirect",
 				"flow":        "invite-code",
@@ -211,9 +220,26 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 				"waGroupID":   group.WAGroupID,
 				"groupName":   group.Name,
 			})
+
+			// Differentiate temporary from permanent errors
+			var providerErr *whatsapp.ProviderError
+			if errors.As(err, &providerErr) {
+				switch providerErr.Code {
+				case whatsapp.ErrCodeRateLimited, whatsapp.ErrCodeTimeout, whatsapp.ErrCodeNetworkError, whatsapp.ErrCodeProviderError:
+					return &models.ProcessRedirectResult{
+						Success: false,
+						Error:   "service temporarily unavailable",
+					}, nil
+				case whatsapp.ErrCodePermissionDenied:
+					return &models.ProcessRedirectResult{
+						Success: false,
+						Error:   "bot is not admin in group",
+					}, nil
+				}
+			}
 			return &models.ProcessRedirectResult{
 				Success: false,
-				Error:   "failed to get invite code - check if WhatsApp session is connected",
+				Error:   "failed to get invite code",
 			}, nil
 		}
 

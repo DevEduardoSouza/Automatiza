@@ -1,263 +1,205 @@
 ---
-status: filled
 slug: testing
 category: testing
+generatedAt: 2026-02-18T22:38:15.697Z
+relevantFiles:
+  - automatiza-go/tests/E2E_TEST_SPEC.md
+  - automatiza-go/tests/e2e
+  - automatiza-go/tests/integration
+  - automatiza-go/tests/load
+  - automatiza-go/scripts/loadtest/README.md
+  - automatiza-go/scripts/loadtest/profile_loadtest.go
+  - automatiza-go/tests/e2e/admin_test.go
+  - automatiza-go/tests/e2e/auth_test.go
+  - automatiza-go/tests/e2e/automations_test.go
+  - automatiza-go/tests/e2e/redirect_test.go
 ---
 
 # How do I run and write tests?
 
-## Testing Stack
+## Running Tests
 
-| Layer | Framework | Location |
-|-------|-----------|----------|
-| Frontend Unit | Vitest | `client/src/**/*.test.ts` |
-| Frontend E2E | Playwright | `client/e2e/` |
-| Backend Unit | Go testing | `automatiza-go/**/*_test.go` |
-| Backend E2E | Go testing + testcontainers | `automatiza-go/tests/e2e/` |
-| Load Testing | Go + k6 | `automatiza-go/tests/load/` |
+### Quick Commands
 
-## Frontend Testing
+| Command | Scope |
+|---------|-------|
+| `make test` | Run all tests (frontend + backend) |
+| `make test-client` | Frontend unit tests (Vitest) |
+| `make test-go` | Backend unit + integration tests (Go) |
+| `make test-coverage` | All tests with coverage reports |
 
-### Unit Tests (Vitest)
-
-```bash
-cd client
-
-# Run in watch mode
-npm run test
-
-# Single run
-npm run test:run
-
-# With coverage
-npm run test:coverage
-```
-
-**Configuration:** `client/vitest.config.ts`
-
-```typescript
-export default defineConfig({
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: './src/test/setup.ts',
-  },
-});
-```
-
-### E2E Tests (Playwright)
+### Frontend Tests
 
 ```bash
-cd client
+# Unit tests with Vitest
+make test-client
 
-# Run headless
-npm run test:e2e
+# Or directly
+cd client && npx vitest run
 
-# Run with browser visible
-npm run test:e2e:headed
-
-# Interactive UI mode
-npm run test:e2e:ui
-
-# View last report
-npm run test:e2e:report
+# Watch mode (development)
+cd client && npx vitest
 ```
 
-**Configuration:** `client/playwright.config.ts`
-
-```typescript
-export default defineConfig({
-  testDir: './e2e',
-  use: {
-    baseURL: 'http://localhost:5173',
-    trace: 'on-first-retry',
-  },
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-  },
-});
-```
-
-## Backend Testing
-
-### Unit & Integration Tests
+### Backend Tests
 
 ```bash
-cd automatiza-go
+# All Go tests
+make test-go
 
-# Run all tests
-go test ./...
+# Or directly
+cd automatiza-go && go test ./...
 
-# Run with verbose output
-go test -v ./...
+# Specific package
+cd automatiza-go && go test ./internal/services/automation/...
 
-# Run specific package
-go test ./internal/services/...
-
-# With coverage
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
+# With verbose output
+cd automatiza-go && go test -v ./internal/services/automation/...
 ```
 
-### E2E Tests (with Database)
+### E2E Tests
 
 ```bash
-# Requires Docker for PostgreSQL container
-go test -v ./tests/e2e/...
+# Frontend E2E with Playwright
+cd client && npx playwright test
 
-# Skip long-running tests
-go test -short ./...
+# Backend E2E tests
+cd automatiza-go && go test ./tests/e2e/...
 ```
+
+### Load Tests
+
+```bash
+# Load testing scripts
+cd automatiza-go && go run ./scripts/loadtest/profile_loadtest.go
+```
+
+See `automatiza-go/scripts/loadtest/README.md` for configuration details.
 
 ## Test Organization
 
-### Frontend E2E Structure
-```
-client/e2e/
-├── pages/               # Page Object Models
-│   ├── auth.page.ts
-│   ├── dashboard.page.ts
-│   ├── groups.page.ts
-│   └── ...
-├── fixtures/            # Test Data & Mocks
-│   ├── auth.fixture.ts
-│   ├── dashboard.fixture.ts
-│   └── ...
-└── specs/               # Test Files
-    ├── auth.spec.ts
-    ├── dashboard.spec.ts
-    └── ...
-```
+### Frontend (`client/`)
 
-### Backend E2E Structure
-```
-automatiza-go/tests/e2e/
-├── setup_test.go        # Test environment setup
-├── auth_test.go         # Auth flow tests
-├── automations_test.go  # Automation tests
-└── ...
-```
+| Type | Location | Framework |
+|------|----------|-----------|
+| Unit tests | Co-located with source (`*.test.ts`, `*.test.tsx`) | Vitest |
+| E2E tests | `client/e2e/` | Playwright |
+| Test utilities | `client/src/test/` | Custom helpers |
+| Page objects | `client/e2e/pages/` | Playwright page objects |
+| Fixtures | `client/e2e/fixtures/` | Playwright fixtures |
+
+### Backend (`automatiza-go/`)
+
+| Type | Location | Framework |
+|------|----------|-----------|
+| Unit tests | Co-located with source (`*_test.go`) | Go testing |
+| Integration tests | `automatiza-go/tests/integration/` | testcontainers-go |
+| E2E tests | `automatiza-go/tests/e2e/` | Go testing + HTTP client |
+| Load tests | `automatiza-go/scripts/loadtest/` | Custom Go scripts |
+| Test spec | `automatiza-go/tests/E2E_TEST_SPEC.md` | Documentation |
 
 ## Writing Tests
 
-### Frontend E2E Example
+### Frontend Unit Tests (Vitest)
+
 ```typescript
-import { test, expect } from '@playwright/test';
-import { AuthPage } from './pages/auth.page';
-import { loginUser, TEST_USER } from './fixtures/auth.fixture';
+// Example: client/src/entities/automation/model/automation.test.ts
+import { describe, expect, it } from "vitest";
 
-test.describe('Authentication', () => {
-  test('should login successfully', async ({ page }) => {
-    const authPage = new AuthPage(page);
-    await authPage.goto();
+describe("AutomationEntity", () => {
+  it("should validate automation config", () => {
+    // Arrange
+    const config = { /* ... */ };
 
-    // Mock API
-    await page.route('**/auth.v1.AuthService/Login', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/grpc-web+proto',
-        headers: { 'grpc-status': '0' },
-        body: Buffer.from(JSON.stringify({ user: TEST_USER })),
-      });
-    });
+    // Act
+    const result = validateConfig(config);
 
-    // Perform login
-    await authPage.login(TEST_USER.email, TEST_USER.password);
-
-    // Assert redirect
-    await expect(page).toHaveURL('/dashboard');
+    // Assert
+    expect(result.isValid).toBe(true);
   });
 });
 ```
 
-### Backend Test Example
+- Co-locate test files with the source they test.
+- Use `describe`/`it` blocks with clear descriptions.
+- Test success paths, error paths, and edge cases.
+
+### Backend Unit Tests (Go)
+
 ```go
-func TestAutomations_Create(t *testing.T) {
-  env := newTestEnv(t)
-  defer env.cleanup(t)
+// Example: internal/services/automation/automation_service_test.go
+func TestAutomationService_Create(t *testing.T) {
+    // Arrange
+    repo := newMockRepo()
+    svc := NewAutomationService(repo)
 
-  client := newHTTPClient(t, env.router)
-  client.setAuthToken("user-123")
+    // Act
+    result, err := svc.Create(ctx, input)
 
-  payload := map[string]interface{}{
-    "name": "Test Automation",
-    "mode": 1,
-  }
-
-  w := client.post("/connect/automations.v1.AutomationsService/Create", payload)
-
-  assert.Equal(t, http.StatusOK, w.Code)
+    // Assert
+    require.NoError(t, err)
+    assert.Equal(t, expected, result)
 }
 ```
 
-## Mocking Patterns
+- Co-locate `_test.go` files with their source package.
+- Use `testify` for assertions (`require` for fatal, `assert` for non-fatal).
+- Use table-driven tests for multiple input/output combinations.
 
-### Frontend (Playwright Route Interception)
-```typescript
-await page.route('**/groups.v1.GroupsService/List', async (route) => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/grpc-web+proto',
-    headers: { 'grpc-status': '0' },
-    body: Buffer.from(JSON.stringify({ groups: MOCK_GROUPS })),
-  });
-});
-```
+### Integration Tests (testcontainers)
 
-### Backend (Repository Mocks)
+Backend integration tests use **testcontainers-go** to spin up real PostgreSQL and Redis containers:
+
 ```go
-type mockGroupRepo struct {
-  groups map[string]*models.Group
-}
-
-func (m *mockGroupRepo) ListGroups(ctx context.Context, instanceID string) ([]*models.Group, error) {
-  var result []*models.Group
-  for _, g := range m.groups {
-    if g.InstanceID == instanceID {
-      result = append(result, g)
+func TestIntegration_AutomationRepo(t *testing.T) {
+    if testing.Short() {
+        t.Skip("skipping integration test")
     }
-  }
-  return result, nil
+    // testcontainers spins up a real Postgres instance
+    db := setupTestDatabase(t)
+    repo := postgres.NewAutomationRepository(db)
+    // ... test with real database
 }
 ```
 
-## Test Fixtures
+- Run with `-short` flag to skip integration tests during rapid development.
+- Each test gets an isolated database state.
 
-### Reusable Test Data
+### Frontend E2E Tests (Playwright)
+
 ```typescript
-// fixtures/groups.fixture.ts
-export const MOCK_GROUPS = [
-  { id: 'grp-1', name: 'Marketing', memberCount: 150 },
-  { id: 'grp-2', name: 'Sales', memberCount: 75 },
-];
+// Example: client/e2e/auth.spec.ts
+import { test, expect } from "./fixtures/auth.fixture";
 
-export async function setupGroupsMocks(page: Page) {
-  await mockGroupsListApi(page, MOCK_GROUPS);
-  await mockWhatsAppStatusApi(page, { connected: true });
-}
+test("user can log in", async ({ authPage }) => {
+  await authPage.login("user@example.com", "password");
+  await expect(authPage.dashboard).toBeVisible();
+});
 ```
 
-## CI/CD Integration
+- Page objects in `client/e2e/pages/` encapsulate page interactions.
+- Fixtures in `client/e2e/fixtures/` provide reusable test setup (auth, navigation).
 
-Tests run automatically on:
-- Pull request creation
-- Push to main branch
+## Quality Gates
 
-```yaml
-# Example CI config
-test:
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-    - name: Frontend Tests
-      run: |
-        cd client
-        npm ci
-        npm run test:run
-        npm run test:e2e
-    - name: Backend Tests
-      run: |
-        cd automatiza-go
-        go test ./...
+Every change must pass all quality gates before merge:
+
+1. **TypeScript typecheck** (`tsc --noEmit`)
+2. **BiomeJS lint** (frontend)
+3. **golangci-lint** (backend, includes gosec, errcheck, bodyclose, complexity limits)
+4. **Vitest** (frontend unit tests)
+5. **Go tests** (backend unit + integration)
+6. **Buf lint + breaking check** (protobuf contract validation)
+
+These gates run in CI on every push. Flaky tests block merge until stabilized.
+
+## Test Coverage
+
+```bash
+# Generate coverage reports for all tests
+make test-coverage
 ```
+
+- Coverage reports are generated for both frontend (Vitest) and backend (Go).
+- The goal is meaningful coverage of business logic, not arbitrary percentage targets.
+- Every new or modified business rule requires corresponding test updates covering success, error, and edge cases.

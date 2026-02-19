@@ -117,6 +117,23 @@ func (m *mockProfileRepo) CountUserAutomations(ctx context.Context, userID strin
 	return 0, nil // Default count
 }
 
+func (m *mockProfileRepo) CreateUserCredentials(ctx context.Context, userID, passwordHash string) error {
+	if m.shouldFail {
+		return m.failError
+	}
+	if profile, ok := m.profiles[userID]; ok {
+		profile.PasswordHash = &passwordHash
+	}
+	return nil
+}
+
+func (m *mockProfileRepo) GetProfileStats(ctx context.Context) (*repository.ProfileStats, error) {
+	if m.shouldFail {
+		return nil, m.failError
+	}
+	return &repository.ProfileStats{}, nil
+}
+
 func (m *mockProfileRepo) AddProfile(profile *models.Profile) {
 	m.profiles[profile.ID] = profile
 	m.profileByEmail[profile.Email] = profile

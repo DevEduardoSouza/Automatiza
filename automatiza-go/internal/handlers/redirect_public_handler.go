@@ -74,5 +74,5 @@ func (h *RedirectPublicHandler) Process(c *gin.Context) {
 		return
 	}
 
-	middleware.RespondSuccess(c, response)
+	c.JSON(http.StatusOK, response)
 }

@@ -209,6 +209,7 @@ services:
       # Webhooks
       - WHATSAPP_HOOK_URL=${BACKEND_PUBLIC_URL:-http://host.docker.internal:3000}/api/v1/webhooks/waha
       - WHATSAPP_HOOK_EVENTS=message,message.ack,session.status,group.join,group.leave
+      - WHATSAPP_HOOK_HMAC_KEY=${WEBHOOK_SECRET}
 
       # Dashboard
       - WAHA_DASHBOARD_ENABLED=true

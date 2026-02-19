@@ -141,20 +141,35 @@ export default function ForgotPassword() {
                         )}
                       />
 
-                      {/* Submit Button */}
+                      {/* Submit Button - Pill with Expanding Circle */}
                       <button
                         type="submit"
                         disabled={form.formState.isSubmitting}
-                        className="auth-btn-glow relative mt-6 inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-busy={form.formState.isSubmitting}
+                        className="animated-save-btn group/btn mt-6 w-full inline-flex items-center gap-2 !border !border-gray-300 shadow-sm transition relative overflow-hidden font-semibold rounded-full py-2 text-xs xs:py-2.5 xs:text-sm lg:py-3 lg:text-base justify-center"
                       >
-                        <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
-                          <div className="auth-btn-glow__glow absolute inset-0" />
-                        </div>
-                        <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
-                          <MailIcon className="h-4 w-4" />
-                          {form.formState.isSubmitting
-                            ? t('pages.forgotPassword.form.submitting')
-                            : t('pages.forgotPassword.form.submit')}
+                        {form.formState.isSubmitting
+                          ? t('pages.forgotPassword.form.submitting')
+                          : t('pages.forgotPassword.form.submit')}
+
+                        <span className="animated-save-btn-circle absolute right-[0.3em] flex items-center justify-center h-[calc(100%-0.4em)] w-[3em] rounded-full">
+                          {form.formState.isSubmitting ? (
+                            <div className="w-[1.1em] h-[1.1em] border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              className="animated-save-btn-icon w-[1.1em] h-[1.1em] text-white"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M8 7.86859V7.34663C8 5.90823 9.02094 4.67225 10.4335 4.40061L17.4335 3.05446C19.2836 2.69866 21 4.1164 21 6.00048V17.9995C21 19.8836 19.2836 21.3013 17.4335 20.9455L10.4335 19.5994C9.02094 19.3278 8 18.0918 8 16.6534V16.1314" />
+                              <path d="M13 14.9995L16 11.9995L13 8.99953M15.5 11.9995H3" />
+                            </svg>
+                          )}
                         </span>
                       </button>
                     </form>

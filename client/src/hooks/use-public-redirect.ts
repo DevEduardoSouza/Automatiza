@@ -1,6 +1,5 @@
 import { captureHookError } from '@/lib/sentry';
 import { redirectService } from '@/services/api.service';
-import * as Sentry from '@sentry/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
@@ -12,9 +11,12 @@ interface RedirectResponse {
   error?: string;
 }
 
+type RedirectErrorType = 'groups_full' | 'temporary' | 'not_found' | 'generic' | null;
+
 interface UsePublicRedirectReturn {
   loading: boolean;
   error: string | null;
+  errorType: RedirectErrorType;
   groupName: string;
   redirectUrl: string;
   actionHint: string;
@@ -36,6 +38,7 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
   const { slug } = useParams<{ slug: string }>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<RedirectErrorType>(null);
   const [groupName, setGroupName] = useState<string>('');
   const [redirectUrl, setRedirectUrl] = useState<string>('');
   const [actionHint, setActionHint] = useState<string>('');
@@ -79,9 +82,7 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
         'instance not found': t('pages.publicRedirect.error.instanceNotFound'),
         'bot is not admin in group': t('pages.publicRedirect.error.notAdmin'),
         'failed to get invite code': t('pages.publicRedirect.error.inviteCodeFailed'),
-        'failed to get invite code - check if WhatsApp session is connected': t(
-          'pages.publicRedirect.error.sessionDisconnected'
-        ),
+        'service temporarily unavailable': t('pages.publicRedirect.error.temporarilyUnavailable'),
         'invite code not available': t('pages.publicRedirect.error.inviteCodeNotAvailable'),
         'WhatsApp provider not configured': t('pages.publicRedirect.error.providerNotConfigured'),
       };
@@ -95,8 +96,17 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
       const data: RedirectResponse = await redirectService.processRedirectBySlug(slug as string);
 
       if (!data?.success) {
+        const backendError = data?.error || '';
+
+        // Classify error type BEFORE translation
+        let type: RedirectErrorType = 'generic';
+        if (backendError.includes('all groups are full')) type = 'groups_full';
+        else if (backendError.includes('temporarily unavailable')) type = 'temporary';
+        else if (backendError.includes('not found')) type = 'not_found';
+
+        setErrorType(type);
         throw new Error(
-          translateError(data?.error || '') || t('pages.publicRedirect.error.genericError')
+          translateError(backendError) || t('pages.publicRedirect.error.genericError')
         );
       }
 
@@ -144,14 +154,11 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
           try {
             document.body.removeChild(iframe);
           } catch {
-            Sentry.captureMessage(
-              'iframe removeChild failed in trySchemeWithoutNavigating',
-              'info'
-            );
+            // Expected fallback: iframe may already be removed
           }
         }, 1500);
       } catch {
-        Sentry.captureMessage('iframe scheme navigation failed', 'info');
+        // Expected fallback: iframe scheme navigation not supported
       }
     };
 
@@ -165,7 +172,7 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
           window.location.href = `intent://chat.whatsapp.com/${inviteCode}#Intent;scheme=https;package=com.whatsapp;end`;
           return;
         } catch {
-          Sentry.captureMessage('Android intent navigation failed', 'info');
+          // Expected fallback: Android intent not supported
         }
       }
     }
@@ -186,7 +193,7 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
     try {
       await navigator.clipboard.writeText(redirectUrl);
     } catch {
-      Sentry.captureMessage('clipboard API unavailable, falling back to execCommand', 'info');
+      // Expected fallback: clipboard API unavailable, use execCommand
       const ta = document.createElement('textarea');
       ta.value = redirectUrl;
       ta.style.position = 'fixed';
@@ -204,7 +211,7 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
       const win = window.open(redirectUrl, '_blank', 'noopener,noreferrer');
       if (!win) window.location.href = redirectUrl;
     } catch {
-      Sentry.captureMessage('window.open failed, falling back to location.href', 'info');
+      // Expected fallback: window.open blocked, use location.href
       window.location.href = redirectUrl;
     }
   }, [redirectUrl]);
@@ -212,6 +219,7 @@ export function usePublicRedirect(): UsePublicRedirectReturn {
   return {
     loading,
     error,
+    errorType,
     groupName,
     redirectUrl,
     actionHint,

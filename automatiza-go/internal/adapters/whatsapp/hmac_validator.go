@@ -1,5 +1,5 @@
 // Package whatsapp provides the WhatsApp adapter abstraction layer.
-// This file implements HMAC-SHA256 validation for securing WAHA webhooks.
+// This file implements HMAC-SHA512 validation for securing WAHA webhooks.
 //
 // Security considerations:
 // - Uses constant-time comparison (hmac.Equal) to prevent timing attacks
@@ -9,7 +9,7 @@ package whatsapp
 
 import (
 	"crypto/hmac"
-	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -40,7 +40,7 @@ var (
 	ErrHMACValidationDisabled = errors.New("hmac validation disabled: empty secret key")
 )
 
-// HMACValidator validates webhook signatures using HMAC-SHA256.
+// HMACValidator validates webhook signatures using HMAC-SHA512.
 // It implements constant-time comparison to prevent timing attacks.
 type HMACValidator struct {
 	secretKey []byte
@@ -57,12 +57,12 @@ func NewHMACValidator(secretKey string) *HMACValidator {
 	}
 }
 
-// Validate checks if the provided signature matches the HMAC-SHA256 of the body.
+// Validate checks if the provided signature matches the HMAC-SHA512 of the body.
 // Returns nil if the signature is valid or if validation is disabled.
 // Returns an error if the signature is invalid or malformed.
 //
-// The signature parameter should be a hex-encoded string of the HMAC-SHA256 hash.
-// WAHA typically sends this in the X-WAHA-SIGNATURE header.
+// The signature parameter should be a hex-encoded string of the HMAC-SHA512 hash.
+// WAHA sends this in the X-Webhook-Hmac header.
 //
 // Security: Uses hmac.Equal for constant-time comparison to prevent timing attacks.
 func (v *HMACValidator) Validate(body []byte, signature string) error {
@@ -97,11 +97,11 @@ func (v *HMACValidator) Validate(body []byte, signature string) error {
 	return nil
 }
 
-// ComputeSignature computes the HMAC-SHA256 signature for the given body.
+// ComputeSignature computes the HMAC-SHA512 signature for the given body.
 // Returns the signature as a lowercase hex-encoded string.
 // This is useful for testing and debugging.
 func (v *HMACValidator) ComputeSignature(body []byte) string {
-	mac := hmac.New(sha256.New, v.secretKey)
+	mac := hmac.New(sha512.New, v.secretKey)
 	mac.Write(body)
 	return hex.EncodeToString(mac.Sum(nil))
 }

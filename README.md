@@ -233,41 +233,74 @@ Baseado nas páginas: */dashboard* - */whatsapp* - */groups* - */jobs* - */redir
 
 
 
+ O setup.sh concatena os módulos em um único CLAUDE.md:                                                                                                                                                  
+                                                                  
+  bash .claude/boilerplate/setup.sh \                                                                                                                                                                                     
+    --target /caminho/do/projeto \                                                                                                                                                                                        
+    --type go-react \                                                                                                                                                                                                     
+    --name meu-projeto                                                                                                                                                                                                    
 
-Valide a Phase 1 do plano `.context/plans/sentry-integration.md` usando o "Checklist de
-  Conclusão" (seção que começa na linha 2153).
+  Internamente ele faz:
 
-  Instruções:
-  1. Leia a seção "### Phase 1” dentro do "Checklist de Conclusão" no plano.
-  2. Para CADA item `- [ ]` do checklist da Phase 1:
-     a. Localize o arquivo/código correspondente no codebase (use grep/glob).
-     b. Verifique se a implementação existe e está correta conforme descrito.
-     c. Marque como ✅ (implementado corretamente), ⚠️  (implementado parcialmente — descreva o
-  gap), ou ❌ (não implementado).
-  3. Adicionalmente, execute estas auditorias automáticas conforme a Phase:
-     - **Phase 1-3 (Backend):** `grep -r "_ = err" automatiza-go/` | `grep -r "if err != nil {}"
-  automatiza-go/` — deve retornar ZERO resultados nos arquivos tocados.
-     - **Phase 4-5 (Frontend):** `grep -r "catch {}" client/src/` | `grep -r "catch (e) {}"
-  client/src/` — deve retornar ZERO catch blocks vazios nos arquivos tocados.
-     - **Phase 5 específico:** `grep -r "localStorage\." client/src/` — deve retornar ZERO uso
-  direto (apenas safeLocalStorage). `grep -r "navigator.clipboard" client/src/` — deve retornar
-  ZERO uso direto (apenas safeClipboard).
-     - **Phase 6:** Execute TODOS os testes listados no checklist (Teste: ...) e reporte
-  pass/fail.
-  4. Valide também contra o "Risk Assessment" (linha 2025) — para cada risco CRITICO/ALTO da
-  Phase, confirme que a mitigação está implementada.
-  5. Gere um relatório final no formato:
+  00-base.md + 01-prip.md + 02-rules.md + ... → CLAUDE.md (arquivo único)
 
-     ## Relatório de Validação — Phase 1
 
-     | # | Item do Checklist | Status | Evidência/Gap |
-     |---|-------------------|--------|---------------|
-     | 1 | [texto do item]   | ✅/⚠️ /❌ | [arquivo:linha ou descrição do gap] |
+Veja se a página */profile* tem algum erro em produção, verifique também no sentry
+Veja se a página */admin* tem algum erro em produção, verifique também no sentry
 
-     **Resumo:** X/Y items ✅ | Z items ⚠️  | W items ❌
-     **Auditorias grep:** PASS/FAIL (detalhes)
-     **Riscos CRITICOS mitigados:** X/Y
 
-     **Veredicto:** APROVADA / REPROVADA (listar items bloqueantes)
+⏺ Análise completa. Aqui está o relatório:                                                                 
+                                                                  
+  ---                                                                                                      
+  Relatório: Página /history em Produção
+                                                                                                           
+  Status: Sem erros diretos no Sentry                             
 
-  6. Se REPROVADA, liste exatamente o que falta implementar para aprovar.
+  Não há nenhuma issue no Sentry com culprit /history. A página carrega e funciona corretamente.
+
+  Problemas encontrados no código
+
+  1. console.log de debug em produção (client/src/hooks/use-history-connect.ts:324-333)
+
+  6 linhas de debug console.log('[DEBUG]...') que estão vazando no console do navegador em produção:
+  console.log('[DEBUG] historyResponse:', historyResponse);
+  console.log('[DEBUG] historyResponse?.events:', historyResponse?.events);
+  // ... mais 4 linhas
+
+  2. Performance: contagem ineficiente (automatiza-go/internal/connectrpc/history_handler.go:116-127)
+
+  Para calcular totalCount e stats, o handler faz uma segunda query buscando até 10.000 registros em vez de
+   usar SELECT COUNT(*):
+  countReq := models.HistoryListRequest{
+      Limit: 10000, // ← busca até 10k registros só para contar
+      Offset: 0,
+  }
+  allHistory, err := h.historyRepo.GetUserHistoryFiltered(ctx, countReq, user.ID)
+  totalCount := int32(len(allHistory))
+  Isso é custoso em memória e CPU, especialmente para usuários com muitos registros.
+
+  Issue indireto encontrado (página /offer-automations, não /history)
+
+  AUTOMATIZA-BACKEND-J (2 ocorrências, última em 12/02):
+  "failed to reset history: failed to delete dispatch logs: failed to encode args[1]: unable to encode 1
+  into text format"
+
+  Erro de tipo ao resetar histórico de automação. Ocorreu na página de automações, não na /history.
+
+  ---
+  Quer que eu corrija os dois problemas encontrados (remover console.logs e otimizar a contagem com COUNT)?
+
+
+O que hoje o mcp "chrome-devtools" consegue fazer com a configuração atual e o que posso habilitar a mais de super poderes ?
+
+
+
+    "docker-vps": {
+      "command": "uvx",
+      "args": ["mcp-docker"],
+      "env": {
+        "DOCKER_HOST": "ssh://root@157.180.59.35",
+        "SAFETY_ALLOW_MODERATE_OPERATIONS": "false",
+        "SAFETY_ALLOW_DESTRUCTIVE_OPERATIONS": "false"
+      }
+    },

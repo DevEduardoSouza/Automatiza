@@ -436,7 +436,7 @@ func TestWAHAWebhookHandler_HMACValidationFailure(t *testing.T) {
 			name:         "wrong signature",
 			hmacKey:      "test-secret-key",
 			body:         createValidEventPayload(),
-			signature:    "0000000000000000000000000000000000000000000000000000000000000000",
+			signature:    "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
 			wantStatus:   http.StatusUnauthorized,
 			wantError:    "invalid signature",
 			wantEnqueued: false,
@@ -534,7 +534,7 @@ func TestWAHAWebhookHandler_HMACDisabled(t *testing.T) {
 		},
 		{
 			name:       "any signature accepted when HMAC disabled",
-			signature:  "0000000000000000000000000000000000000000000000000000000000000000",
+			signature:  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
 			wantStatus: http.StatusOK,
 		},
 	}

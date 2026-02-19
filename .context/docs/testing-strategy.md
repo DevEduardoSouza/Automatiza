@@ -1,111 +1,105 @@
-#---
+---
+type: doc
+name: testing-strategy
+description: Test frameworks, patterns, coverage requirements, and quality gates
+category: testing
+generated: 2026-02-18
 status: filled
+scaffoldVersion: "2.0.0"
 ---
 
 # Testing Strategy
 
-Quality is maintained through a layered testing approach combining unit tests, integration tests, and end-to-end tests.
+This document describes how the Automatiza project maintains quality through automated testing. It covers test types, frameworks, execution commands, and the quality gates enforced in CI.
 
 ## Test Types
 
-### Unit Tests
-- **Framework**: Vitest (Jest-compatible)
-- **Location**: `client/src/**/__tests__/*.test.ts`
-- **Focus**: React hooks, utility functions, data transformations
-- **Key files tested**:
-  - `client/src/hooks/groups/__tests__/use-groups-*.test.ts`
-  - Hook logic and state management
+### Unit Tests (Frontend)
 
-### Integration Tests
-- **Focus**: Component integration with hooks
-- **Mocking**: API calls mocked at Connect-RPC level
+- **Framework:** Vitest
+- **Location:** Test files live alongside source as `*.test.ts` / `*.test.tsx`, or inside `__tests__/` directories.
+- **Patterns:**
+  - Component tests render with `@testing-library/react` and assert on DOM output and user interactions.
+  - Custom hooks are tested with `renderHook` from `@testing-library/react`.
+  - Pure utility functions are tested with direct input/output assertions.
+- **Mocking:** Vitest's built-in `vi.mock()` for module mocking. ConnectRPC transport is mocked at the transport layer to avoid network calls.
 
-### E2E Tests
-- **Framework**: Playwright
-- **Location**: `client/e2e/*.spec.ts`
-- **Page Objects**: `client/e2e/pages/*.page.ts`
-- **Fixtures**: `client/e2e/fixtures/*.fixture.ts`
+### Unit Tests (Backend)
 
-**E2E Test Coverage**:
-- `automations.spec.ts` - Automation workflows
-- `groups.spec.ts` - Group management
-- `whatsapp.spec.ts` - WhatsApp instance management
-- `jobs.spec.ts` - Scheduled jobs
-- `history.spec.ts` - Action history
-- `ml-link-lists.spec.ts` - ML link management
-- `affiliate-programs.spec.ts` - Affiliate integrations
+- **Framework:** Go standard `testing` package
+- **Location:** Test files use the `*_test.go` convention, colocated with the source file they test.
+- **Patterns:**
+  - Table-driven tests for functions with multiple input/output combinations.
+  - Subtests via `t.Run()` for organized, named test cases.
+  - `testify/assert` and `testify/require` for assertions.
+  - Mocks and fakes for repository interfaces to isolate service logic.
+- **Conventions:** Every exported function in the service layer should have corresponding test coverage for success, error, and edge cases.
+
+### Integration Tests (Backend)
+
+- **Framework:** Go `testing` + testcontainers-go
+- **Infrastructure:** Tests spin up real PostgreSQL and Redis containers via testcontainers, ensuring queries run against actual database engines.
+- **Patterns:**
+  - Repository tests execute real SQL against a containerized PostgreSQL instance.
+  - Tests use transaction rollback or per-test database setup for isolation.
+  - Connection pooling and container reuse are configured for performance.
+- **Location:** Integration tests live alongside unit tests in `*_test.go` files, typically distinguished by build tags or test helper setup.
+
+### End-to-End Tests (E2E)
+
+- **Framework:** Playwright
+- **Location:** `client/e2e/*.spec.ts`
+- **Patterns:**
+  - Page Object Model -- page interactions are abstracted into classes under `client/e2e/pages/`.
+  - Tests exercise full user flows (login, navigation, form submission, data verification).
+  - Each test is independent and does not rely on state from other tests.
+- **Environment:** E2E tests run against the full stack (frontend + backend + database).
 
 ## Running Tests
 
-### Unit Tests
-
-```bash
-# Run all unit tests
-cd client
-npm run test
-
-# Watch mode for development
-npm run test -- --watch
-
-# Run with coverage
-npm run test -- --coverage
-
-# Run specific test file
-npm run test -- use-groups.test.ts
-```
-
-### E2E Tests
-
-```bash
-# Run all E2E tests
-cd client
-npm run e2e
-
-# Run specific E2E test
-npx playwright test automations.spec.ts
-
-# Run with UI mode
-npx playwright test --ui
-
-# Run headed (visible browser)
-npx playwright test --headed
-```
+| Task | Command | Notes |
+|------|---------|-------|
+| All tests | `make test` | Runs frontend + backend tests |
+| Frontend only | `make test-client` | Vitest |
+| Backend only | `make test-go` | Go test with race detector |
+| Coverage report | `make test-coverage` | Generates coverage output |
+| Watch mode (frontend) | `cd client && npx vitest --watch` | Re-runs on file change |
+| Single test file (frontend) | `cd client && npx vitest run src/path/to/file.test.ts` | Run a specific test |
+| Single test (backend) | `cd automatiza-go && go test -run TestFunctionName ./internal/...` | Run a specific Go test |
 
 ## Quality Gates
 
-### Coverage Requirements
-- Minimum 70% coverage for new code
-- Critical hooks (groups, automations) should have 80%+ coverage
+The following checks are enforced in CI. All must pass before a PR can be merged:
 
-### Pre-merge Checks
-- All unit tests passing
-- All E2E tests passing
-- No TypeScript errors (`npm run type-check`)
-- No linting errors (`npm run lint`)
-- Code review approved
+### Mandatory Checks
 
-### CI Pipeline
-- Tests run on every pull request
-- E2E tests run against staging environment
-- SonarQube analysis for code quality (see `docker-compose.sonarqube.yml`)
+1. **TypeScript typecheck** -- zero errors from `tsc --noEmit`.
+2. **BiomeJS lint/format** -- no warnings or errors from the frontend linter.
+3. **golangci-lint** -- strict configuration including `gosec`, `errcheck`, `bodyclose`, and complexity limits.
+4. **Buf lint** -- all `.proto` files conform to Buf lint rules.
+5. **Buf breaking** -- no breaking changes to protobuf contracts without explicit versioning (v2 package).
+6. **All tests pass** -- `make test` exits successfully with zero failures.
 
-## Troubleshooting
+### Zero-Tolerance Policies
 
-### Flaky E2E Tests
-- Tests involving WhatsApp status may be timing-sensitive
-- Use `setupWhatsAppConnectedMocks()` / `setupWhatsAppDisconnectedMocks()` fixtures
-- Add appropriate waits for async operations
+- **No flaky tests:** A test that fails intermittently blocks merge until it is stabilized or removed. Flaky tests are never skipped or ignored.
+- **No silent errors in Go:** Empty `if err != nil {}` blocks, `_ = err` assignments, or error handling with only `fmt.Println` / `log.Println` are treated as critical failures. Every error must include structured logging, Sentry reporting (when applicable), and trace context.
+- **No `any` types in TypeScript:** All code must be fully typed. Use generics when needed.
+- **No linter suppressions without justification:** `// NOSONAR`, `//nolint`, or `// biome-ignore` require a detailed technical comment explaining why the suppression is necessary.
 
-### Mock Setup
-Each feature has dedicated fixtures:
-- `setupGroupsMocks()` - Groups page mocks
-- `setupJobsMocks()` - Jobs page mocks
-- `setupHistoryMocks()` - History page mocks
-- `setupMlLinkListsMocks()` - ML Links mocks
+### Pre-Merge Checklist
 
-### Common Issues
-- **Timeout errors**: Increase timeout or check for missing mocks
-- **Selector not found**: Page structure may have changed, update page objects
-- **API mock not matched**: Verify fixture URL patterns match actual requests
+Before considering a task complete (Definition of Done):
 
-See [Development Workflow](./development-workflow.md) for related processes.
+- [ ] `make lint` passes (BiomeJS + golangci-lint)
+- [ ] `make test` passes (all test suites)
+- [ ] No TypeScript `any` types introduced
+- [ ] No dead code or unused imports
+- [ ] All user-facing strings use i18n
+- [ ] New business logic has corresponding tests (success, error, edge cases)
+- [ ] Go error paths include observability (structured log + Sentry + trace)
+
+## Related Documents
+
+- [Development Workflow](./development-workflow.md) -- branching strategy, local setup, and code review process
+- [Tooling & Productivity Guide](./tooling.md) -- required tools and IDE configuration

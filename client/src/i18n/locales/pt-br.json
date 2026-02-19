@@ -36,6 +36,12 @@
     "status": "Status",
     "active": "Ativo",
     "inactive": "Inativo",
+    "activate": "Ativar",
+    "activated": "Ativado",
+    "deactivate": "Desativar",
+    "deactivated": "Desativado",
+    "expand": "Expandir",
+    "collapse": "Recolher",
     "all": "Todos",
     "none": "Nenhum",
     "noResults": "Nenhum resultado encontrado",
@@ -212,6 +218,7 @@
         "inviteCodeFailed": "Não foi possível obter o código de convite do grupo.",
         "sessionDisconnected": "A sessão do WhatsApp está desconectada. Entre em contato com o administrador.",
         "inviteCodeNotAvailable": "O código de convite do grupo não está disponível.",
+        "temporarilyUnavailable": "Serviço temporariamente indisponível. Tente novamente em alguns instantes.",
         "providerNotConfigured": "O provedor WhatsApp não está configurado.",
         "genericError": "Não foi possível processar seu link. Verifique se o endereço está correto.",
         "tryAgain": "Tentar Novamente",
@@ -643,13 +650,24 @@
         "disconnectedMessage": "Sua instância está desconectada. Clique em \"Reconectar\" para gerar um novo QR Code.",
         "clean": "Erro ao limpar instâncias",
         "qrRefreshFailed": "QR Code expirado",
-        "qrRefreshFailedMessage": "Não foi possível atualizar o QR Code após múltiplas tentativas. Reconecte sua instância."
+        "qrRefreshFailedMessage": "Não foi possível atualizar o QR Code após múltiplas tentativas. Reconecte sua instância.",
+        "instanceNotFound": "Instância não encontrada. Reconecte o WhatsApp para continuar."
       },
       "errorBoundary": {
         "title": "Erro na conexão WhatsApp",
         "description": "Ocorreu um erro inesperado na página do WhatsApp. Tente uma das ações abaixo para resolver.",
         "reconnect": "Reconectar",
         "clearSession": "Limpar sessão"
+      },
+      "verifying": {
+        "title": "Verificando...",
+        "description": "Verificando status da conexão...",
+        "message": "Verificando status da conexão..."
+      },
+      "disconnecting": {
+        "title": "Desconectando...",
+        "description": "Removendo instância...",
+        "message": "Desconectando..."
       }
     },
     "history": {
@@ -953,6 +971,11 @@
           "title": "Verificando...",
           "description": "Verificando status da conexão...",
           "message": "Verificando status da conexão..."
+        },
+        "disconnecting": {
+          "title": "Desconectando...",
+          "description": "Removendo instância...",
+          "message": "Desconectando..."
         }
       },
       "dialogs": {
@@ -2309,6 +2332,7 @@
         "activated": "Automação ativada!",
         "resumed": "Automação retomada!",
         "executed": "Automação executada com sucesso!",
+        "executedMessage": "\"{{name}}\" foi enviada para os grupos configurados.",
         "diagnosticOk": "Diagnóstico OK",
         "historyReset": "Histórico resetado com sucesso!",
         "historyResetMessage": "O histórico de ofertas foi limpo.",
@@ -2321,6 +2345,9 @@
       },
       "confirm": {
         "delete": "Tem certeza que deseja excluir esta automação?",
+        "deleteTitle": "Excluir automação",
+        "deleteDescription": "Tem certeza que deseja excluir esta automação? Esta ação não pode ser desfeita.",
+        "resetHistoryTitle": "Resetar histórico de envios",
         "resetHistory": "Tem certeza que deseja resetar o histórico da automação {{name}}? Isso permitirá que ofertas já enviadas sejam enviadas novamente."
       },
       "errors": {

@@ -237,6 +237,30 @@ type statusCacheEntry struct {
 	expiresAt time.Time
 }
 
+// isDockerInternalURL returns true if the URL points to a Docker-internal or
+// loopback address where HTTP is acceptable (no TLS needed).
+func isDockerInternalURL(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	// Docker service names have no dots (e.g. "waha", "redis")
+	if !strings.Contains(host, ".") {
+		return true
+	}
+	// Well-known internal hostnames
+	switch host {
+	case "localhost", "host.docker.internal", "gateway.docker.internal":
+		return true
+	}
+	// Loopback IPs
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	return false
+}
+
 // NewWahaAdapter creates a new WAHA adapter with the given configuration.
 func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, error) {
 	if err := cfg.validate(); err != nil {
@@ -249,8 +273,9 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 
 	namedLogger := logger.Named("waha-adapter")
 
-	// W39: HTTPS enforcement in production — warn and capture in Sentry
-	if os.Getenv("NODE_ENV") == "production" && !strings.HasPrefix(cfg.APIURL, "https://") {
+	// W39: HTTPS enforcement in production — warn only for public-facing URLs.
+	// Docker-internal URLs (http://waha:3000, http://host.docker.internal:...) are safe.
+	if os.Getenv("NODE_ENV") == "production" && !strings.HasPrefix(cfg.APIURL, "https://") && !isDockerInternalURL(cfg.APIURL) {
 		namedLogger.Warn("WAHA API URL is not HTTPS in production — communication is not encrypted",
 			zap.String("url", cfg.APIURL))
 		observability.CaptureMessage(sentry.LevelWarning, "WAHA API URL is not HTTPS in production — communication is not encrypted",

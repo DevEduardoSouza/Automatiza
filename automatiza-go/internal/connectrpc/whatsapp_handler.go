@@ -2,6 +2,7 @@ package connectrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -224,6 +225,13 @@ func (h *WhatsAppHandler) CheckStatus(
 
 	sessionInfo, err := h.waProvider.GetSessionStatus(ctx, req.Msg.GetInstanceName())
 	if err != nil {
+		var providerErr *whatsapp.ProviderError
+		if errors.As(err, &providerErr) && providerErr.Code == whatsapp.ErrCodeSessionNotFound {
+			return connect.NewResponse(&whatsappv1.CheckStatusResponse{
+				Success: true,
+				State:   whatsappv1.InstanceState_INSTANCE_STATE_CLOSE,
+			}), nil
+		}
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check status: %w", err))
 	}
 

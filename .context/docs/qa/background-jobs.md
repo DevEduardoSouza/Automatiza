@@ -1,208 +1,107 @@
 ---
-status: filled
 slug: background-jobs
 category: operations
+generatedAt: 2026-02-18T22:38:15.698Z
+relevantFiles:
+  - client/e2e/pages/jobs.page.ts
+  - client/src/gen/jobs/v1/jobs_pb.ts
 ---
 
 # How do background jobs work?
 
-## Job System Architecture
+## Architecture
 
-The platform uses **Asynq** (Redis-based task queue) for background processing.
+Background jobs use **Asynq**, a Redis-backed distributed task queue for Go. The backend supports two execution modes:
 
-```
-┌─────────────┐     ┌─────────┐     ┌─────────────┐
-│  HTTP/RPC   │────▶│  Redis  │────▶│   Workers   │
-│   Server    │     │  Queue  │     │  (Asynq)    │
-└─────────────┘     └─────────┘     └─────────────┘
-                                           │
-                                           ▼
-                                    ┌─────────────┐
-                                    │ SSE Bridge  │
-                                    │ (Real-time) │
-                                    └─────────────┘
-```
+- **Server mode** (default): `go run ./cmd/server/main.go` -- serves HTTP/ConnectRPC API.
+- **Worker mode**: `go run ./cmd/server/main.go -worker` -- processes background jobs from Redis queues.
 
-## Running Workers
+Both modes share the same codebase but activate different components at startup.
 
-```bash
-# Start worker process
-cd automatiza-go
-go run ./cmd/server/main.go -worker
+## Job Workers
 
-# Or via Makefile
-make worker
-```
-
-## Job Types
-
-### Message Jobs
-```go
-// Send WhatsApp message
-type SendMessagePayload struct {
-  InstanceID string
-  GroupJID   string
-  Message    string
-  MediaURL   string
-  Delay      time.Duration
-}
-```
-
-### Automation Jobs
-```go
-// Execute automation workflow
-type AutomationJobPayload struct {
-  AutomationID string
-  UserID       string
-  Mode         AutomationMode // SEARCH, MONITOR, LIST
-}
-```
-
-### Sync Jobs
-```go
-// Sync WhatsApp groups
-type SyncGroupsPayload struct {
-  InstanceID string
-  UserID     string
-}
-```
-
-### Reconciliation Jobs
-```go
-// Fill gaps in message history
-type ReconciliationPayload struct {
-  InstanceID string
-  StartTime  time.Time
-  EndTime    time.Time
-}
-```
-
-## Worker Implementation
-
-Located in `automatiza-go/internal/workers/`:
+Workers live in `automatiza-go/internal/workers/` and process specific job types:
 
 | Worker | File | Purpose |
 |--------|------|---------|
-| Message Worker | `message_worker.go` | Send WhatsApp messages |
-| Groups Sync | `groups_sync_worker.go` | Sync group lists |
-| Webhook Consumer | `webhook_consumer.go` | Process WAHA events |
-| Reconciliation | `reconciliation_worker.go` | Gap filling |
-| SSE Notifier | `sse_notifier.go` | Real-time UI updates |
+| **Message Queue Worker** | `message_queue_worker.go` | Processes queued WhatsApp messages for dispatch |
+| **Dispatch Log Processor** | `dispatch_log_processor.go` | Records dispatch results and updates logs |
+| **Groups Sync Worker** | `groups_sync_worker.go` | Synchronizes WhatsApp groups from WAHA |
+| **Webhook Consumer** | `webhook_consumer_worker.go` | Processes inbound webhook events (WAHA, Kiwify, etc.) |
+| **Message Worker** | `message_worker.go` | Handles individual message sending tasks |
+| **Monitoring Message Processor** | `monitoring_message_processor.go` | Processes monitoring/alerting messages |
+| **Reconciliation Worker** | `reconciliation_worker.go` | Runs data reconciliation and backfill tasks |
 
-### Worker Pattern
-```go
-func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error {
-  var payload SendMessagePayload
-  if err := json.Unmarshal(task.Payload(), &payload); err != nil {
-    return fmt.Errorf("unmarshal payload: %w", err)
-  }
+## Job Services
 
-  // Execute with retry logic
-  return w.sendMessage(ctx, payload)
-}
+Business logic for job management lives in `internal/services/`:
+
+| Service | Purpose |
+|---------|---------|
+| `services/jobs/` | Job CRUD, scheduling, retry management |
+| `services/automation/` | Automation execution engine (triggers workers) |
+| `services/monitoring/` | Process monitoring and health checks |
+| `services/reconciliation/` | Data consistency checks and gap filling |
+| `services/watchdog/` | Silence detection -- alerts when no events arrive for X time |
+| `services/cron/` | Scheduled/recurring job definitions |
+
+## Reliability Patterns
+
+### Idempotency
+
+All consumers are idempotent by `payload.id` (or derived `idempotencyKey` when `payload.id` is absent). Duplicate events are safely accepted without side effects. The `webhook_events` table enforces uniqueness via `event_id`.
+
+### Retry with Backoff
+
+- Failed jobs are retried with **exponential backoff + jitter**.
+- Retries are only applied because consumers are idempotent.
+- Each job type has configurable `max_retries` (stored in the `jobs` table).
+
+### Dead Letter Queue (DLQ)
+
+- Poison messages (jobs that fail all retry attempts) are moved to a DLQ.
+- DLQ messages never block the main queue.
+- Admin UI allows inspection and manual retry of DLQ entries.
+
+### Watchdog / Silence Detection
+
+The watchdog service (`services/watchdog/`) monitors event flow:
+- If no events arrive for a configurable time window, it triggers a health check.
+- On detection of silence, it initiates reconnection/restart with backoff (no infinite loops).
+- Works in conjunction with reconciliation to fill gaps.
+
+### Reconciliation / Backfill
+
+The reconciliation service (`services/reconciliation/`) acts as a compensatory mechanism:
+- Runs on startup and when gaps/silence are detected.
+- Uses WAHA message endpoints with timestamp/checkpoint filters to fetch missed events.
+- Never relies 100% on real-time events alone.
+
+## Webhook Ingestion Flow
+
+```
+WAHA Plus
+  |
+  v
+POST /webhooks/waha  (Gin handler)
+  |-- Validate HMAC signature
+  |-- ACK immediately (fast response)
+  |-- Enqueue payload to Redis (Asynq)
+  |
+  v
+Webhook Consumer Worker
+  |-- Dedup by event_id
+  |-- Process event (business logic)
+  |-- Update dispatch logs, groups, etc.
+  |-- On failure: retry with backoff -> DLQ
 ```
 
-## Job Scheduling
+## Job Management UI
 
-### Scheduled Jobs (Cron-like)
-```go
-// Create scheduled job
-job := &models.ScheduledJob{
-  AutomationID: automationID,
-  CronExpr:     "0 8-22 * * *", // Every hour 8am-10pm
-  NextRun:      nextRunTime,
-  Status:       JobStatusActive,
-}
-```
+The `JobsService` ConnectRPC service exposes job listing, status checking, retry, and cancellation to the frontend admin panel. Job states (`JobStatus`) and action types (`JobActionType`) are defined in `proto/jobs/v1/`.
 
-### One-time Jobs
-```go
-// Queue immediate job
-task := asynq.NewTask("send_message", payload)
-client.Enqueue(task, asynq.MaxRetry(3))
+## Monitoring
 
-// Queue delayed job
-client.Enqueue(task, asynq.ProcessIn(5*time.Minute))
-```
-
-## Job Status & Monitoring
-
-### Job Status Enum
-```protobuf
-enum JobStatus {
-  JOB_STATUS_UNSPECIFIED = 0;
-  JOB_STATUS_PENDING = 1;
-  JOB_STATUS_RUNNING = 2;
-  JOB_STATUS_COMPLETED = 3;
-  JOB_STATUS_FAILED = 4;
-  JOB_STATUS_CANCELLED = 5;
-}
-```
-
-### Queue Metrics (Admin)
-```typescript
-interface QueueMetrics {
-  pending: number;
-  active: number;
-  completed: number;
-  failed: number;
-  scheduled: number;
-}
-```
-
-## Frontend Integration
-
-### Jobs Page
-```typescript
-// client/src/hooks/use-jobs-connect.ts
-const { data: jobs } = useJobsConnect();
-
-// Real-time updates via SSE
-useJobsRealtime((event) => {
-  if (event.type === 'JOB_COMPLETED') {
-    queryClient.invalidateQueries(['jobs']);
-  }
-});
-```
-
-### Page Object (E2E)
-```typescript
-// client/e2e/pages/jobs.page.ts
-class JobsPage {
-  jobsTable = this.page.locator('[data-testid="jobs-table"]');
-
-  async cancelJob(jobId: string) { ... }
-  async retryJob(jobId: string) { ... }
-}
-```
-
-## Real-time Updates (SSE)
-
-Workers publish events to Redis Pub/Sub, which are streamed to clients:
-
-```go
-// Worker publishes
-redis.Publish(ctx, "sse:user:"+userID, event)
-
-// SSE handler streams
-func (h *SSEHandler) Stream(c *gin.Context) {
-  pubsub := h.redis.Subscribe(ctx, "sse:user:"+userID)
-  for msg := range pubsub.Channel() {
-    fmt.Fprintf(w, "data: %s\n\n", msg.Payload)
-    w.Flush()
-  }
-}
-```
-
-## Error Handling & Retries
-
-```go
-// Retry configuration
-asynq.MaxRetry(3)           // Max 3 retries
-asynq.Timeout(5*time.Minute) // 5 min timeout
-asynq.Queue("critical")      // Priority queue
-
-// Dead letter queue
-// Failed jobs after max retries go to dead letter
-// Can be manually retried via admin panel
-```
+- Job processing metrics are exported to Datadog.
+- Failed jobs trigger Sentry alerts with full context (job type, payload summary, error trace).
+- Structured JSON logs include `traceId` for correlation with request traces.

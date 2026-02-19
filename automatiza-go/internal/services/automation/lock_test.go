@@ -127,6 +127,14 @@ func (m *MockAutomationRepository) UpdateNextRunAt(ctx context.Context, automati
 	return nil
 }
 
+func (m *MockAutomationRepository) BulkUpdateStatusByUserID(ctx context.Context, userID, targetStatus string, sourceStatus *string) (int, error) {
+	return 0, nil
+}
+
+func (m *MockAutomationRepository) BulkUpdateNextRunAts(ctx context.Context, automationIDs []string, nextRunAts []time.Time) error {
+	return nil
+}
+
 // Compile-time interface verification
 var _ repository.AutomationRepository = (*MockAutomationRepository)(nil)
 

@@ -1,117 +1,127 @@
 ---
-status: filled
 slug: getting-started
 category: getting-started
+generatedAt: 2026-02-18T22:38:09.787Z
 ---
 
 # How do I set up and run this project?
 
 ## Prerequisites
 
-### Required Tools
-- **Node.js** 20+ (LTS recommended)
 - **Go** 1.24+
-- **Docker** & Docker Compose (for PostgreSQL, Redis)
-- **Buf CLI** (for proto generation)
-- **Playwright** (for E2E tests)
-
-### Optional Tools
-- **Make** (for automation commands)
-- **VS Code** with Go and TypeScript extensions
+- **Node.js** LTS (v20+) and npm
+- **Docker** and Docker Compose (for PostgreSQL, Redis, WAHA)
+- **Make** (build automation)
+- **Buf CLI** (for Protocol Buffer generation)
 
 ## Installation
 
-### 1. Clone the Repository
 ```bash
+# Clone the repository
 git clone <repository-url>
 cd novo-projeto
+
+# Install all dependencies (Go modules + npm packages)
+make install
 ```
 
-### 2. Start Infrastructure (PostgreSQL + Redis)
+## Starting the Development Environment
+
+### Full Stack (recommended)
+
 ```bash
-cd automatiza-go
-docker-compose up -d
+# Start database containers + backend + frontend
+make dev
 ```
 
-### 3. Install Frontend Dependencies
+This runs PostgreSQL, Redis, the Go backend, and the Vite dev server.
+
+### With WAHA (WhatsApp integration)
+
 ```bash
-cd client
-npm install
-npx playwright install  # For E2E tests
+# Start everything including WAHA Plus
+make dev-all
 ```
 
-### 4. Install Backend Dependencies
+### Individual Services
+
 ```bash
-cd automatiza-go
-go mod download
+# Database only (PostgreSQL + Redis)
+make db-up
+
+# Run migrations
+make db-migrate
+
+# Frontend only (Vite dev server)
+make dev-client
+
+# Backend only (Go server)
+make dev-go
+
+# WAHA only
+make waha-up
 ```
 
-### 5. Generate Proto Code (if needed)
+## Default Ports
+
+| Service | Port | URL |
+|---------|------|-----|
+| Frontend (Vite) | 5173 | `http://localhost:5173` |
+| Backend (Go/Gin) | 3000 | `http://localhost:3000` |
+| PostgreSQL | 5432 | `localhost:5432` |
+| Redis | 6379 | `localhost:6379` |
+
+## Database Management
+
 ```bash
-cd client
-npx buf generate ../proto
+# Start PostgreSQL + Redis
+make db-up
+
+# Run pending migrations
+make db-migrate
+
+# View PostgreSQL logs
+make db-logs
+
+# Access PostgreSQL shell
+make db-shell
+
+# Full reset (DESTRUCTIVE - drops all data)
+make db-reset
 ```
 
-## Running the Project
+## Worker Mode
 
-### Development Mode
+The backend can run in worker mode for background job processing:
 
-**Terminal 1 - Backend:**
 ```bash
-cd automatiza-go
-go run ./cmd/server/main.go
-# Server runs on http://localhost:3000
+cd automatiza-go && go run ./cmd/server/main.go -worker
 ```
 
-**Terminal 2 - Frontend:**
+## Useful Commands
+
 ```bash
-cd client
-npm run dev
-# Dev server runs on http://localhost:5173
+# Check status of all services
+make status
+
+# View logs from all services
+make logs
+
+# Stop everything
+make stop
+
+# Generate Protocol Buffer stubs (TypeScript + Go)
+make proto-generate
+
+# Run all linters
+make lint
+
+# Run all tests
+make test
 ```
 
-**Terminal 3 - Background Workers (optional):**
-```bash
-cd automatiza-go
-go run ./cmd/server/main.go -worker
-```
+## Troubleshooting
 
-### Using Makefile
-```bash
-make dev      # Start frontend dev server
-make server   # Start backend server
-make worker   # Start background workers
-make proto    # Regenerate proto files
-```
-
-## Environment Configuration
-
-### Frontend (.env)
-```env
-VITE_API_URL=http://localhost:3000
-```
-
-### Backend (automatiza-go/.env)
-```env
-DATABASE_URL=postgres://user:password@localhost:5432/automatiza
-REDIS_URL=redis://localhost:6379
-WAHA_API_URL=<waha-instance-url>
-JWT_SECRET=<secret>
-```
-
-## Verification
-
-After setup, verify everything works:
-
-1. **Backend health:** `curl http://localhost:3000/health`
-2. **Frontend:** Open `http://localhost:5173` in browser
-3. **Database:** `docker-compose ps` should show healthy containers
-
-## Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| Port 3000 in use | Change backend port or kill existing process |
-| Proto generation fails | Ensure `buf` CLI is installed |
-| Database connection fails | Check Docker containers are running |
-| CORS errors | Verify Vite proxy config in `vite.config.ts` |
+- If database migrations fail, try `make db-reset && make db-migrate` for a clean start.
+- Never use PM2 in the local environment. Use `make dev` commands instead.
+- If ports are occupied, stop existing services with `make stop` before starting.

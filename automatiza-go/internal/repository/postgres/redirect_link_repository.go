@@ -36,12 +36,13 @@ func (r *redirectLinkRepository) GetByID(ctx context.Context, linkID string) (*m
 
 	var link models.RedirectLink
 	var targetGroupsJSON, groupClicksJSON []byte
+	var name *string
 
 	err := r.db.QueryRow(ctx, query, linkID).Scan(
 		&link.ID,
 		&link.UserID,
 		&link.Slug,
-		&link.Name,
+		&name,
 		&link.Strategy,
 		&targetGroupsJSON,
 		&link.ClickCount,
@@ -58,6 +59,9 @@ func (r *redirectLinkRepository) GetByID(ctx context.Context, linkID string) (*m
 			zap.String("linkID", linkID),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to get redirect link: %w", err)
+	}
+	if name != nil {
+		link.Name = *name
 	}
 
 	// Unmarshal JSONB fields
@@ -88,12 +92,13 @@ func (r *redirectLinkRepository) GetBySlug(ctx context.Context, slug string) (*m
 
 	var link models.RedirectLink
 	var targetGroupsJSON, groupClicksJSON []byte
+	var name *string
 
 	err := r.db.QueryRow(ctx, query, slug).Scan(
 		&link.ID,
 		&link.UserID,
 		&link.Slug,
-		&link.Name,
+		&name,
 		&link.Strategy,
 		&targetGroupsJSON,
 		&link.ClickCount,
@@ -110,6 +115,9 @@ func (r *redirectLinkRepository) GetBySlug(ctx context.Context, slug string) (*m
 			zap.String("slug", slug),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to get redirect link by slug: %w", err)
+	}
+	if name != nil {
+		link.Name = *name
 	}
 
 	// Unmarshal JSONB fields
@@ -152,12 +160,13 @@ func (r *redirectLinkRepository) GetByUserID(ctx context.Context, userID string)
 	for rows.Next() {
 		var link models.RedirectLink
 		var targetGroupsJSON, groupClicksJSON []byte
+		var name *string
 
 		err := rows.Scan(
 			&link.ID,
 			&link.UserID,
 			&link.Slug,
-			&link.Name,
+			&name,
 			&link.Strategy,
 			&targetGroupsJSON,
 			&link.ClickCount,
@@ -168,6 +177,9 @@ func (r *redirectLinkRepository) GetByUserID(ctx context.Context, userID string)
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan redirect link: %w", err)
+		}
+		if name != nil {
+			link.Name = *name
 		}
 
 		// Unmarshal JSONB fields

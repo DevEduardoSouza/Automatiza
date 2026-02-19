@@ -618,6 +618,8 @@ func TestProcessSearchMode_EdgeCases(t *testing.T) {
 				mlService:          new(MockMLService),
 			}
 
+			setupDefaultHistoryExpectations(deps.historyRepo)
+
 			svc := automation.NewAutomationService(
 				deps.automationRepo,
 				deps.automationRunRepo,

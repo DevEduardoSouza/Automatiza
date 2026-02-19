@@ -225,7 +225,32 @@ func (m *mockWahaProvider) SendPoll(ctx context.Context, input whatsapp.SendPoll
 func (m *mockWahaProvider) SetWebhook(ctx context.Context, input whatsapp.SetWebhookInput) error {
 	return nil
 }
-func (m *mockWahaProvider) DownloadMedia(ctx context.Context, input whatsapp.DownloadMediaInput) ([]byte, error) {
+func (m *mockWahaProvider) AddGroupMembers(ctx context.Context, input whatsapp.AddGroupMembersInput) (*whatsapp.MemberOperationResult, error) {
+	return &whatsapp.MemberOperationResult{SuccessCount: len(input.PhoneNumbers)}, nil
+}
+func (m *mockWahaProvider) RemoveGroupMembers(ctx context.Context, input whatsapp.RemoveGroupMembersInput) (*whatsapp.MemberOperationResult, error) {
+	return &whatsapp.MemberOperationResult{SuccessCount: len(input.PhoneNumbers)}, nil
+}
+func (m *mockWahaProvider) LeaveGroup(ctx context.Context, input whatsapp.LeaveGroupInput) error {
+	return nil
+}
+func (m *mockWahaProvider) PromoteMember(ctx context.Context, input whatsapp.PromoteMemberInput) error {
+	return nil
+}
+func (m *mockWahaProvider) DemoteMember(ctx context.Context, input whatsapp.DemoteMemberInput) error {
+	return nil
+}
+func (m *mockWahaProvider) SendVideo(ctx context.Context, input whatsapp.SendVideoInput) (*whatsapp.MessageResult, error) {
+	return nil, nil
+}
+func (m *mockWahaProvider) SendDocument(ctx context.Context, input whatsapp.SendDocumentInput) (*whatsapp.MessageResult, error) {
+	return nil, nil
+}
+func (m *mockWahaProvider) ClearStatusCache(sessionName string) {}
+func (m *mockWahaProvider) DownloadMedia(ctx context.Context, input whatsapp.DownloadMediaInput) (*whatsapp.DownloadMediaResult, error) {
+	return nil, nil
+}
+func (m *mockWahaProvider) DownloadMediaByURL(ctx context.Context, mediaURL string) (*whatsapp.DownloadMediaResult, error) {
 	return nil, nil
 }
 

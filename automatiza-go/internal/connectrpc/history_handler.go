@@ -112,19 +112,17 @@ func (h *HistoryHandler) ListHistory(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get history: %w", err))
 	}
 
-	// Get total count for pagination (with same filters, but no limit)
+	// Get total count + stats via efficient COUNT(*) GROUP BY query
 	countReq := models.HistoryListRequest{
-		Limit:      10000, // Large limit to get all for counting
-		Offset:     0,
 		ActionType: actionTypeFilter,
 		Status:     listReq.Status,
 	}
-	allHistory, err := h.historyRepo.GetUserHistoryFiltered(ctx, countReq, user.ID)
+	statsResult, err := h.historyRepo.CountUserHistoryFiltered(ctx, countReq, user.ID)
 	if err != nil {
 		// Fallback: use current page count
-		allHistory = history
+		statsResult = models.HistoryStatsResult{Total: int32(len(history))}
 	}
-	totalCount := int32(len(allHistory))
+	totalCount := statsResult.Total
 
 	// Calculate total pages
 	totalPages := totalCount / pageSize
@@ -135,23 +133,11 @@ func (h *HistoryHandler) ListHistory(
 		totalPages = 1
 	}
 
-	// Calculate stats from ALL history (not just current page)
 	stats := &historyv1.HistoryStats{
 		Total:     totalCount,
-		Completed: 0,
-		Running:   0,
-		Failed:    0,
-	}
-
-	for _, histItem := range allHistory {
-		switch histItem.Status {
-		case models.ActionStatusCompleted:
-			stats.Completed++
-		case models.ActionStatusRunning, models.ActionStatusPending:
-			stats.Running++
-		case models.ActionStatusFailed:
-			stats.Failed++
-		}
+		Completed: statsResult.Completed,
+		Running:   statsResult.Running,
+		Failed:    statsResult.Failed,
 	}
 
 	// Convert current page events to proto

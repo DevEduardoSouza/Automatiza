@@ -27,7 +27,9 @@ function lazyWithRetry<T extends React.ComponentType>(
     loader().catch((error: unknown) => {
       const isChunkError =
         error instanceof Error &&
-        (error.name === 'ChunkLoadError' || error.message.includes('Loading chunk'));
+        (error.name === 'ChunkLoadError' ||
+          error.message.includes('Loading chunk') ||
+          error.message.includes('dynamically imported module'));
 
       if (isChunkError) {
         Sentry.captureException(error, { tags: { type: 'chunk_load_error' } });

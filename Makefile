@@ -93,7 +93,7 @@ db-up: ## Start PostgreSQL + Redis
 
 db-wait: ## Wait for PostgreSQL to accept connections
 	@printf "$(YELLOW)Waiting for PostgreSQL..."
-	@until cd automatiza-go && docker compose exec -T postgres pg_isready -U $${POSTGRES_USER:-automatiza} -d $${POSTGRES_DB:-automatiza} > /dev/null 2>&1; do \
+	@cd automatiza-go && until docker compose exec -T postgres pg_isready -U $${POSTGRES_USER:-automatiza} -d $${POSTGRES_DB:-automatiza} > /dev/null 2>&1; do \
 		printf "."; \
 		sleep 1; \
 	done

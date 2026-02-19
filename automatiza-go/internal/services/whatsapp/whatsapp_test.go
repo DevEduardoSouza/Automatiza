@@ -346,9 +346,64 @@ func (m *MockWhatsAppProvider) GetMessages(ctx context.Context, input whatsapp.G
 	}, nil
 }
 
+// AddGroupMembers implements WhatsAppProvider.
+func (m *MockWhatsAppProvider) AddGroupMembers(ctx context.Context, input whatsapp.AddGroupMembersInput) (*whatsapp.MemberOperationResult, error) {
+	return &whatsapp.MemberOperationResult{SuccessCount: len(input.PhoneNumbers)}, nil
+}
+
+// RemoveGroupMembers implements WhatsAppProvider.
+func (m *MockWhatsAppProvider) RemoveGroupMembers(ctx context.Context, input whatsapp.RemoveGroupMembersInput) (*whatsapp.MemberOperationResult, error) {
+	return &whatsapp.MemberOperationResult{SuccessCount: len(input.PhoneNumbers)}, nil
+}
+
+// LeaveGroup implements WhatsAppProvider.
+func (m *MockWhatsAppProvider) LeaveGroup(ctx context.Context, input whatsapp.LeaveGroupInput) error {
+	return nil
+}
+
+// PromoteMember implements WhatsAppProvider.
+func (m *MockWhatsAppProvider) PromoteMember(ctx context.Context, input whatsapp.PromoteMemberInput) error {
+	return nil
+}
+
+// DemoteMember implements WhatsAppProvider.
+func (m *MockWhatsAppProvider) DemoteMember(ctx context.Context, input whatsapp.DemoteMemberInput) error {
+	return nil
+}
+
+// SendVideo implements WhatsAppProvider.
+func (m *MockWhatsAppProvider) SendVideo(ctx context.Context, input whatsapp.SendVideoInput) (*whatsapp.MessageResult, error) {
+	return &whatsapp.MessageResult{
+		ID:        "video-" + time.Now().Format("150405"),
+		Timestamp: time.Now(),
+	}, nil
+}
+
+// SendDocument implements WhatsAppProvider.
+func (m *MockWhatsAppProvider) SendDocument(ctx context.Context, input whatsapp.SendDocumentInput) (*whatsapp.MessageResult, error) {
+	return &whatsapp.MessageResult{
+		ID:        "doc-" + time.Now().Format("150405"),
+		Timestamp: time.Now(),
+	}, nil
+}
+
+// ClearStatusCache implements WhatsAppProvider.
+func (m *MockWhatsAppProvider) ClearStatusCache(sessionName string) {}
+
 // DownloadMedia implements WhatsAppProvider.
-func (m *MockWhatsAppProvider) DownloadMedia(ctx context.Context, input whatsapp.DownloadMediaInput) ([]byte, error) {
-	return []byte("mock-media-data"), nil
+func (m *MockWhatsAppProvider) DownloadMedia(ctx context.Context, input whatsapp.DownloadMediaInput) (*whatsapp.DownloadMediaResult, error) {
+	return &whatsapp.DownloadMediaResult{
+		Data:     []byte("mock-media-data"),
+		Mimetype: "application/octet-stream",
+	}, nil
+}
+
+// DownloadMediaByURL implements WhatsAppProvider.
+func (m *MockWhatsAppProvider) DownloadMediaByURL(ctx context.Context, mediaURL string) (*whatsapp.DownloadMediaResult, error) {
+	return &whatsapp.DownloadMediaResult{
+		Data:     []byte("mock-media-data"),
+		Mimetype: "application/octet-stream",
+	}, nil
 }
 
 // Helper methods for testing

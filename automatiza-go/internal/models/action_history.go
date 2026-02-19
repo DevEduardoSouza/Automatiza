@@ -94,3 +94,11 @@ type HistoryListRequest struct {
 	ActionType *string `json:"action_type,omitempty" form:"action_type"`
 	Status     *string `json:"status,omitempty" form:"status"`
 }
+
+// HistoryStatsResult holds aggregated counts by status from a COUNT(*) GROUP BY query.
+type HistoryStatsResult struct {
+	Total     int32
+	Completed int32
+	Running   int32
+	Failed    int32
+}

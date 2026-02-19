@@ -29,6 +29,7 @@ import { useMlLinksConnect } from '@/hooks/use-ml-links-connect';
 import { useProfilesConnect } from '@/hooks/use-profiles-connect';
 import { useShopeeConnect } from '@/hooks/use-shopee-connect';
 import { useToast } from '@/hooks/use-toast';
+import { captureHookError } from '@/lib/sentry';
 import type {
   Automation,
   AutomationCoupon,
@@ -40,7 +41,6 @@ import type {
   StoreKey,
 } from '@/types/automation';
 import { DEFAULT_MONITOR_RULES } from '@/types/automation';
-import { captureHookError } from '@/lib/sentry';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -105,6 +105,13 @@ export interface UseAutomationsReturn {
   nearLimit: boolean;
   refinementOpen: RefinementState;
   savingAutomation: boolean;
+  deleteTargetId: string | null;
+  setDeleteTargetId: (id: string | null) => void;
+  confirmDelete: () => Promise<void>;
+  resetTargetId: string | null;
+  resetTargetName: string | null;
+  setResetTarget: (id: string | null, name?: string | null) => void;
+  confirmResetHistory: () => Promise<void>;
   setDialogOpen: (open: boolean) => void;
   setPreviewDialogOpen: (open: boolean) => void;
   setFormData: React.Dispatch<React.SetStateAction<Partial<Automation>>>;
@@ -114,11 +121,11 @@ export interface UseAutomationsReturn {
   toggleFavorite: (groupId: string) => Promise<void>;
   handleSave: () => Promise<void>;
   toggleStatus: (id: string, currentStatus: AutomationStatus) => Promise<void>;
-  handleDelete: (id: string) => Promise<void>;
+  handleDelete: (id: string) => void;
   openEdit: (automation: Automation) => void;
   resetForm: () => void;
   handleRunNow: (automation: Automation) => Promise<void>;
-  handleResetHistory: (automationId: string, automationName: string) => Promise<void>;
+  handleResetHistory: (automationId: string, automationName: string) => void;
   addText: () => void;
   updateText: (index: number, value: string) => void;
   removeText: (index: number) => void;
@@ -693,25 +700,35 @@ export function useAutomations(): UseAutomationsReturn {
     [loadAutomations, toast, t, automationsConnect.updateAutomation]
   );
 
-  const handleDelete = useCallback(
-    async (id: string) => {
-      if (!confirm(t('pages.offerAutomations.confirm.delete'))) return;
+  // Delete confirmation state (replaces window.confirm with AlertDialog)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
-      try {
-        await automationsConnect.deleteAutomation(id);
-        loadAutomations();
-        toast({ title: t('pages.offerAutomations.success.deleted') });
-      } catch (error: unknown) {
-        captureHookError(error, 'useAutomations', 'handleDelete');
-        toast({
-          title: t('common.error'),
-          description: t('pages.offerAutomations.errors.save'),
-          variant: 'destructive',
-        });
-      }
-    },
-    [loadAutomations, toast, t, automationsConnect.deleteAutomation]
-  );
+  // Reset history confirmation state
+  const [resetTargetId, setResetTargetId] = useState<string | null>(null);
+  const [resetTargetName, setResetTargetName] = useState<string | null>(null);
+
+  const handleDelete = useCallback((id: string) => {
+    setDeleteTargetId(id);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTargetId) return;
+
+    try {
+      await automationsConnect.deleteAutomation(deleteTargetId);
+      loadAutomations();
+      toast({ title: t('pages.offerAutomations.success.deleted') });
+    } catch (error: unknown) {
+      captureHookError(error, 'useAutomations', 'handleDelete');
+      toast({
+        title: t('common.error'),
+        description: t('pages.offerAutomations.errors.save'),
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleteTargetId(null);
+    }
+  }, [deleteTargetId, loadAutomations, toast, t, automationsConnect.deleteAutomation]);
 
   const openEdit = useCallback((automation: Automation) => {
     setEditingId(automation.id);
@@ -786,11 +803,20 @@ export function useAutomations(): UseAutomationsReturn {
 
         if (code === 'SENT_OK' || code === 'ENVIO_PRONTO') {
           await automationsConnect.runAutomation(automation.id);
+          toast({
+            title: t('pages.offerAutomations.success.executed'),
+            description: t('pages.offerAutomations.success.executedMessage', {
+              name: automation.name,
+            }),
+            variant: 'success',
+            duration: 5000,
+          });
         } else {
           toast({
-            title: `\u26A0\uFE0F ${message}`,
-            description: errorDetail || t('pages.offerAutomations.errors.execute'),
+            title: t('pages.offerAutomations.errors.execute'),
+            description: errorDetail || message,
             variant: 'destructive',
+            duration: 5000,
           });
         }
 
@@ -802,6 +828,7 @@ export function useAutomations(): UseAutomationsReturn {
           title: t('pages.offerAutomations.errors.execute'),
           description: errorMessage,
           variant: 'destructive',
+          duration: 5000,
         });
       } finally {
         setRunningId(null);
@@ -816,44 +843,45 @@ export function useAutomations(): UseAutomationsReturn {
     ]
   );
 
-  const handleResetHistory = useCallback(
-    async (automationId: string, automationName: string) => {
-      if (
-        !confirm(
-          t('pages.offerAutomations.confirm.resetHistory', {
-            name: automationName,
-          })
-        )
-      ) {
-        return;
-      }
+  const handleResetHistory = useCallback((automationId: string, automationName: string) => {
+    setResetTargetId(automationId);
+    setResetTargetName(automationName);
+  }, []);
 
-      setResettingId(automationId);
+  const setResetTarget = useCallback((id: string | null, name?: string | null) => {
+    setResetTargetId(id);
+    setResetTargetName(name ?? null);
+  }, []);
 
-      try {
-        const result = await automationsConnect.resetAutomationHistory(automationId);
+  const confirmResetHistory = useCallback(async () => {
+    if (!resetTargetId) return;
 
-        toast({
-          title: t('pages.offerAutomations.success.historyReset'),
-          description: result.message || t('pages.offerAutomations.success.historyResetMessage'),
-        });
+    setResettingId(resetTargetId);
 
-        loadAutomations();
-      } catch (error: unknown) {
-        toast({
-          title: t('pages.offerAutomations.errors.resetHistory'),
-          description:
-            error instanceof Error
-              ? error.message
-              : t('pages.offerAutomations.errors.resetHistoryMessage'),
-          variant: 'destructive',
-        });
-      } finally {
-        setResettingId(null);
-      }
-    },
-    [toast, t, loadAutomations, automationsConnect.resetAutomationHistory]
-  );
+    try {
+      const result = await automationsConnect.resetAutomationHistory(resetTargetId);
+
+      toast({
+        title: t('pages.offerAutomations.success.historyReset'),
+        description: result.message || t('pages.offerAutomations.success.historyResetMessage'),
+      });
+
+      loadAutomations();
+    } catch (error: unknown) {
+      toast({
+        title: t('pages.offerAutomations.errors.resetHistory'),
+        description:
+          error instanceof Error
+            ? error.message
+            : t('pages.offerAutomations.errors.resetHistoryMessage'),
+        variant: 'destructive',
+      });
+    } finally {
+      setResettingId(null);
+      setResetTargetId(null);
+      setResetTargetName(null);
+    }
+  }, [resetTargetId, toast, t, loadAutomations, automationsConnect.resetAutomationHistory]);
 
   const addText = useCallback(() => {
     if ((formData.texts?.length || 0) < 3) {
@@ -1017,7 +1045,15 @@ export function useAutomations(): UseAutomationsReturn {
     limitReached,
     nearLimit,
     refinementOpen,
-    savingAutomation: automationsConnect.isCreatingAutomation || automationsConnect.isUpdatingAutomation,
+    savingAutomation:
+      automationsConnect.isCreatingAutomation || automationsConnect.isUpdatingAutomation,
+    deleteTargetId,
+    setDeleteTargetId,
+    confirmDelete,
+    resetTargetId,
+    resetTargetName,
+    setResetTarget,
+    confirmResetHistory,
     setDialogOpen,
     setPreviewDialogOpen,
     setFormData,

@@ -588,112 +588,9 @@ func TestDispatchLogRepository_CreateIfNotExists(t *testing.T) {
 	})
 }
 
-// =============================================================================
-// GetStats Tests
-// =============================================================================
-
-func TestDispatchLogRepository_GetStats(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
-
-	tdb := setupDispatchLogTestDB(t)
-	defer tdb.cleanup(t)
-
-	logger := zap.NewNop()
-	repo := NewDispatchLogRepository(tdb.db, logger)
-	ctx := context.Background()
-
-	userID := "user-stats"
-
-	// Create logs with different statuses
-	statuses := []string{
-		models.DispatchLogStatusSent,
-		models.DispatchLogStatusSent,
-		models.DispatchLogStatusSent,
-		models.DispatchLogStatusFailed,
-		models.DispatchLogStatusFailed,
-		models.DispatchLogStatusPending,
-	}
-
-	for _, status := range statuses {
-		log := &models.DispatchLog{
-			UserID: userID,
-			Status: status,
-		}
-		_, err := repo.Create(ctx, log)
-		require.NoError(t, err)
-	}
-
-	t.Run("returns correct stats", func(t *testing.T) {
-		since := time.Now().Add(-1 * time.Hour)
-		stats, err := repo.GetStats(ctx, userID, since)
-
-		require.NoError(t, err)
-		assert.Equal(t, 3, stats[models.DispatchLogStatusSent])
-		assert.Equal(t, 2, stats[models.DispatchLogStatusFailed])
-		assert.Equal(t, 1, stats[models.DispatchLogStatusPending])
-	})
-
-	t.Run("returns empty stats for unknown user", func(t *testing.T) {
-		since := time.Now().Add(-1 * time.Hour)
-		stats, err := repo.GetStats(ctx, "unknown-user", since)
-
-		require.NoError(t, err)
-		assert.Len(t, stats, 0)
-	})
-}
-
-// =============================================================================
-// DeleteOldLogs Tests
-// =============================================================================
-
-func TestDispatchLogRepository_DeleteOldLogs(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
-
-	tdb := setupDispatchLogTestDB(t)
-	defer tdb.cleanup(t)
-
-	logger := zap.NewNop()
-	repo := NewDispatchLogRepository(tdb.db, logger)
-	ctx := context.Background()
-
-	t.Run("deletes logs older than duration", func(t *testing.T) {
-		userID := "user-delete-old"
-
-		// Create logs
-		for i := 0; i < 3; i++ {
-			log := &models.DispatchLog{
-				UserID: userID,
-				Status: models.DispatchLogStatusSent,
-			}
-			_, err := repo.Create(ctx, log)
-			require.NoError(t, err)
-		}
-
-		// Manually set one log to be old
-		_, err := tdb.pool.Exec(ctx, `
-			UPDATE dispatch_logs
-			SET created_at = NOW() - INTERVAL '10 days'
-			WHERE user_id = $1
-			LIMIT 1
-		`, userID)
-		require.NoError(t, err)
-
-		// Delete logs older than 7 days
-		deleted, err := repo.DeleteOldLogs(ctx, 7*24*time.Hour)
-
-		require.NoError(t, err)
-		assert.Equal(t, int64(1), deleted)
-
-		// Verify remaining logs
-		logs, err := repo.GetUserLogs(ctx, userID, 10, 0)
-		require.NoError(t, err)
-		assert.Len(t, logs, 2)
-	})
-}
+// NOTE: TestDispatchLogRepository_GetStats and TestDispatchLogRepository_DeleteOldLogs
+// were removed because GetStats and DeleteOldLogs methods no longer exist in the
+// DispatchLogRepository interface.
 
 // =============================================================================
 // DeleteRecentByAutomation Tests
@@ -846,7 +743,7 @@ func TestDispatchLogRepository_EdgeCases(t *testing.T) {
 			Status:     models.DispatchLogStatusPending,
 		}
 
-		created, err := repo.Create(ctx, log)
+		_, err := repo.Create(ctx, log)
 		require.NoError(t, err)
 
 		logs, err := repo.GetUserLogs(ctx, "user-edge", 10, 0)

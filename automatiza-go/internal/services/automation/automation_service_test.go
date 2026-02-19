@@ -93,6 +93,16 @@ func (m *MockAutomationRepository) UpdateNextRunAt(ctx context.Context, automati
 	return args.Error(0)
 }
 
+func (m *MockAutomationRepository) BulkUpdateStatusByUserID(ctx context.Context, userID, targetStatus string, sourceStatus *string) (int, error) {
+	args := m.Called(ctx, userID, targetStatus, sourceStatus)
+	return args.Int(0), args.Error(1)
+}
+
+func (m *MockAutomationRepository) BulkUpdateNextRunAts(ctx context.Context, automationIDs []string, nextRunAts []time.Time) error {
+	args := m.Called(ctx, automationIDs, nextRunAts)
+	return args.Error(0)
+}
+
 // MockAutomationRunRepository implements repository.AutomationRunRepository
 type MockAutomationRunRepository struct {
 	mock.Mock
@@ -231,6 +241,14 @@ func (m *MockGroupRepository) GetUserGroups(ctx context.Context, userID string, 
 	return args.Get(0).([]models.Group), args.Error(1)
 }
 
+func (m *MockGroupRepository) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
+	args := m.Called(ctx, userID, page, pageSize, adminOnly, search)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*repository.GroupPaginatedResult), args.Error(1)
+}
+
 func (m *MockGroupRepository) GetGroupByID(ctx context.Context, groupID string) (*models.Group, error) {
 	args := m.Called(ctx, groupID)
 	if args.Get(0) == nil {
@@ -311,6 +329,11 @@ func (m *MockGroupRepository) DeleteGroupsByInstance(ctx context.Context, userID
 
 func (m *MockGroupRepository) BulkUpdateGroups(ctx context.Context, userID string, groupIDs []string, updates map[string]interface{}) (int64, error) {
 	args := m.Called(ctx, userID, groupIDs, updates)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockGroupRepository) CountAll(ctx context.Context) (int64, error) {
+	args := m.Called(ctx)
 	return args.Get(0).(int64), args.Error(1)
 }
 
@@ -427,6 +450,62 @@ func (m *MockActionHistoryRepository) GetByUserID(ctx context.Context, userID st
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]models.ActionHistory), args.Error(1)
+}
+
+func (m *MockActionHistoryRepository) GetByActionType(ctx context.Context, userID, actionType string, limit int) ([]models.ActionHistory, error) {
+	args := m.Called(ctx, userID, actionType, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.ActionHistory), args.Error(1)
+}
+
+func (m *MockActionHistoryRepository) GetUserHistoryFiltered(ctx context.Context, req models.HistoryListRequest, userID string) ([]models.ActionHistory, error) {
+	args := m.Called(ctx, req, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.ActionHistory), args.Error(1)
+}
+
+func (m *MockActionHistoryRepository) MarkCompleted(ctx context.Context, historyID string) error {
+	args := m.Called(ctx, historyID)
+	return args.Error(0)
+}
+
+func (m *MockActionHistoryRepository) MarkFailed(ctx context.Context, historyID, errorMessage string) error {
+	args := m.Called(ctx, historyID, errorMessage)
+	return args.Error(0)
+}
+
+func (m *MockActionHistoryRepository) MarkRunning(ctx context.Context, historyID string) error {
+	args := m.Called(ctx, historyID)
+	return args.Error(0)
+}
+
+func (m *MockActionHistoryRepository) IncrementSuccessCount(ctx context.Context, historyID string) error {
+	args := m.Called(ctx, historyID)
+	return args.Error(0)
+}
+
+func (m *MockActionHistoryRepository) IncrementErrorCount(ctx context.Context, historyID string, errorMsg string) error {
+	args := m.Called(ctx, historyID, errorMsg)
+	return args.Error(0)
+}
+
+func (m *MockActionHistoryRepository) UpdateCounts(ctx context.Context, historyID string, successCount, errorCount int32) error {
+	args := m.Called(ctx, historyID, successCount, errorCount)
+	return args.Error(0)
+}
+
+func (m *MockActionHistoryRepository) DeleteUserHistory(ctx context.Context, userID string, beforeDate *time.Time, actionTypes []string) (int64, error) {
+	args := m.Called(ctx, userID, beforeDate, actionTypes)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockActionHistoryRepository) CountUserHistoryFiltered(ctx context.Context, req models.HistoryListRequest, userID string) (models.HistoryStatsResult, error) {
+	args := m.Called(ctx, req, userID)
+	return args.Get(0).(models.HistoryStatsResult), args.Error(1)
 }
 
 // MockSettingsRepository implements repository.SettingsRepository
@@ -597,6 +676,19 @@ func (m *MockProfileRepository) GetMaxAutomations(ctx context.Context, userID st
 func (m *MockProfileRepository) CountUserAutomations(ctx context.Context, userID string) (int, error) {
 	args := m.Called(ctx, userID)
 	return args.Int(0), args.Error(1)
+}
+
+func (m *MockProfileRepository) CreateUserCredentials(ctx context.Context, userID, passwordHash string) error {
+	args := m.Called(ctx, userID, passwordHash)
+	return args.Error(0)
+}
+
+func (m *MockProfileRepository) GetProfileStats(ctx context.Context) (*repository.ProfileStats, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*repository.ProfileStats), args.Error(1)
 }
 
 // MockMlLinkListItemRepository implements repository.MlLinkListItemRepository
@@ -785,6 +877,16 @@ func newTestService(t *testing.T) (automation.Service, *testServiceDeps) {
 		mlService:          new(MockMLService),
 	}
 
+	// Default fire-and-forget expectations for history repo methods
+	// called during automation runs (MarkRunning/MarkCompleted/MarkFailed/UpdateCounts/IncrementSuccessCount/IncrementErrorCount).
+	// Individual tests can override with explicit expectations.
+	deps.historyRepo.On("MarkRunning", mock.Anything, mock.AnythingOfType("string")).Return(nil).Maybe()
+	deps.historyRepo.On("MarkCompleted", mock.Anything, mock.AnythingOfType("string")).Return(nil).Maybe()
+	deps.historyRepo.On("MarkFailed", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(nil).Maybe()
+	deps.historyRepo.On("UpdateCounts", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("int32"), mock.AnythingOfType("int32")).Return(nil).Maybe()
+	deps.historyRepo.On("IncrementSuccessCount", mock.Anything, mock.AnythingOfType("string")).Return(nil).Maybe()
+	deps.historyRepo.On("IncrementErrorCount", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(nil).Maybe()
+
 	svc := automation.NewAutomationService(
 		deps.automationRepo,
 		deps.automationRunRepo,
@@ -805,6 +907,18 @@ func newTestService(t *testing.T) (automation.Service, *testServiceDeps) {
 	)
 
 	return svc, deps
+}
+
+// setupDefaultHistoryExpectations adds Maybe() expectations for fire-and-forget
+// history repo methods called during automation runs. Use this when creating
+// testServiceDeps manually (outside newTestService).
+func setupDefaultHistoryExpectations(historyRepo *MockActionHistoryRepository) {
+	historyRepo.On("MarkRunning", mock.Anything, mock.AnythingOfType("string")).Return(nil).Maybe()
+	historyRepo.On("MarkCompleted", mock.Anything, mock.AnythingOfType("string")).Return(nil).Maybe()
+	historyRepo.On("MarkFailed", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(nil).Maybe()
+	historyRepo.On("UpdateCounts", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("int32"), mock.AnythingOfType("int32")).Return(nil).Maybe()
+	historyRepo.On("IncrementSuccessCount", mock.Anything, mock.AnythingOfType("string")).Return(nil).Maybe()
+	historyRepo.On("IncrementErrorCount", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(nil).Maybe()
 }
 
 func ptr[T any](v T) *T {

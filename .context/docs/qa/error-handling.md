@@ -1,176 +1,95 @@
 ---
-status: filled
 slug: error-handling
 category: operations
+generatedAt: 2026-02-18T22:38:13.920Z
+relevantFiles:
+  - client/src/components/error-boundary.tsx
+  - client/src/components/admin/types/team.types.ts
+  - client/src/components/admin/types/email-templates.types.ts
+  - client/src/contexts/auth-context.tsx
+  - client/src/lib/connect/error-handler.ts
 ---
 
 # How are errors handled?
 
-## Error Handling Architecture
+## Philosophy
 
-The platform uses a multi-layer error handling approach:
+Errors are never silently ignored. Every error path must include observability (structured logging, Sentry reporting, and trace tagging). The system maps gRPC error codes to user-friendly UI actions through a centralized handler.
 
-1. **Frontend:** React Error Boundary + toast notifications
-2. **Transport:** ConnectRPC interceptors with error mapping
-3. **Backend:** Structured Go errors with gRPC codes
+## Backend Error Handling (Go)
 
-## Frontend Error Handling
+### Error Wrapping
+
+All errors are wrapped with context using `fmt.Errorf("context: %w", err)` or custom error types defined in `internal/errors/`. This preserves the error chain for debugging while adding meaningful context at each layer.
+
+### ConnectRPC Error Codes
+
+Services return typed ConnectRPC errors that map to standard gRPC status codes:
+
+| Code | Usage | Example |
+|------|-------|---------|
+| `InvalidArgument` | Validation failures | Missing required field, invalid format |
+| `NotFound` | Resource does not exist | User, automation, or group not found |
+| `AlreadyExists` | Duplicate creation attempt | Email already registered |
+| `Unauthenticated` | Missing or invalid token | Expired JWT, no cookie |
+| `PermissionDenied` | Insufficient role/permissions | User accessing admin endpoint |
+| `Internal` | Unexpected server error | Database connection failure |
+| `Unavailable` | Temporary service issue | Redis down, WAHA unreachable |
+| `ResourceExhausted` | Rate limit exceeded | Too many requests |
+
+### Observability on Error
+
+Every `if err != nil` block that results in an HTTP response must:
+
+1. **Tag the active span** (if tracing is active) with error details.
+2. **Log structured JSON** with `traceId`, `module`, `flow`, and error message.
+3. **Report to Sentry** when the error is unexpected or critical (with tags for `module` and `flow`).
+
+### Prohibited Patterns
+
+- `_ = err` (ignoring errors)
+- Empty `if err != nil {}` blocks
+- `fmt.Println(err)` or `log.Println(err)` without structured logging/observability
+- Leaking internal error details to the client
+
+## Frontend Error Handling (React/TypeScript)
+
+### Centralized Error Interceptor
+
+The ConnectRPC error interceptor (`client/src/lib/connect/error-handler.ts`) maps gRPC codes to UI actions centrally. Individual components do not use scattered try/catch blocks.
+
+### gRPC Code to UI Action Mapping
+
+| gRPC Code | UI Action |
+|-----------|-----------|
+| `InvalidArgument` | Inline form errors (per-field via react-hook-form) |
+| `NotFound` | Toast notification or redirect to 404 |
+| `Unauthenticated` | Token refresh attempt, then redirect to login |
+| `PermissionDenied` | Access denied message |
+| `Unavailable` | Reconnect with backoff, "service unavailable" toast |
+| `ResourceExhausted` | Rate limit toast with retry hint |
+| `Internal` | Generic "something went wrong" toast |
 
 ### Error Boundary
-```typescript
-// src/components/error-boundary.tsx
-<ErrorBoundary
-  FallbackComponent={ErrorFallback}
-  onError={(error) => logErrorToService(error)}
->
-  <App />
-</ErrorBoundary>
-```
 
-### Connect Error Mapping
-```typescript
-// src/lib/connect-transport.ts
-interface ConnectErrorInfo {
-  code: Code;           // gRPC code
-  message: string;      // Raw message
-  userMessage: string;  // User-friendly (pt-BR)
-  action: 'inline' | 'toast' | 'redirect' | 'retry' | 'none';
-  redirectTo?: string;
-  retryable: boolean;
-}
-```
+The `ErrorBoundary` component (`client/src/components/error-boundary.tsx`) catches unhandled React rendering errors and displays a fallback UI instead of a blank screen.
 
-### Error Actions by Code
+### Sentry Integration (Frontend)
 
-| gRPC Code | Action | Description |
-|-----------|--------|-------------|
-| `InvalidArgument` | inline | Show in form field |
-| `Unauthenticated` | redirect | Go to /auth |
-| `PermissionDenied` | toast | Show permission error |
-| `NotFound` | toast | Resource not found |
-| `ResourceExhausted` | retry + toast | Rate limited |
-| `Unavailable` | retry | Service temporarily down |
-| `Internal` | toast | Server error |
+- Unhandled exceptions are automatically captured by the Sentry SDK.
+- ConnectRPC errors include tags for the service name and method.
+- User context (ID, email, role) is attached to Sentry events for debugging.
 
-### Hook Error Pattern
-```typescript
-// Typical mutation error handling
-const mutation = useMutation({
-  mutationFn: async (data) => { ... },
-  onError: (error: unknown) => {
-    const errorInfo = getErrorInfo(error);
-    toast({
-      variant: 'destructive',
-      title: t('common.error'),
-      description: errorInfo.userMessage,
-    });
-  },
-});
-```
+## Validation Errors
 
-## Auth Error Mapping
+- Validation rules are defined in `.proto` files using protovalidate (CEL annotations).
+- Backend enforces validation via a ConnectRPC interceptor.
+- Frontend uses react-hook-form with a resolver based on `@bufbuild/protovalidate`, keeping validation rules in sync with the backend.
+- `InvalidArgument` errors are structured with per-field details, which the frontend maps directly to form field errors.
 
-```typescript
-// src/lib/auth-error-mapper.ts
-const errorMap = {
-  invalid_credentials: 'common.errors.auth.invalidCredentials',
-  email_not_confirmed: 'common.errors.auth.emailNotConfirmed',
-  email_exists: 'common.errors.auth.emailExists',
-  session_expired: 'common.errors.auth.sessionExpired',
-  rate_limit_exceeded: 'common.errors.auth.rateLimitExceeded',
-  weak_password: 'common.errors.auth.weakPassword',
-};
-```
+## Error Logging Standards
 
-## Backend Error Handling
-
-### Error Types (Go)
-```go
-// internal/errors/errors.go
-var (
-  ErrNotFound          = errors.New("resource not found")
-  ErrInvalidInput      = errors.New("invalid input")
-  ErrUnauthorized      = errors.New("unauthorized")
-  ErrForbidden         = errors.New("forbidden")
-  ErrRateLimited       = errors.New("rate limit exceeded")
-  ErrInternal          = errors.New("internal error")
-)
-```
-
-### Auth-Specific Errors
-```go
-// internal/auth/errors.go
-ErrInvalidCredentials  = errors.New("invalid email or password")
-ErrAccountLocked       = errors.New("account locked")
-ErrEmailNotVerified    = errors.New("email not verified")
-ErrSessionExpired      = errors.New("session expired")
-ErrInvalidCSRF         = errors.New("invalid csrf token")
-```
-
-### Error to gRPC Code Mapping
-```go
-func mapErrorToCode(err error) connect.Code {
-  switch {
-  case errors.Is(err, ErrNotFound):
-    return connect.CodeNotFound
-  case errors.Is(err, ErrInvalidInput):
-    return connect.CodeInvalidArgument
-  case errors.Is(err, ErrUnauthorized):
-    return connect.CodeUnauthenticated
-  case errors.Is(err, ErrForbidden):
-    return connect.CodePermissionDenied
-  case errors.Is(err, ErrRateLimited):
-    return connect.CodeResourceExhausted
-  default:
-    return connect.CodeInternal
-  }
-}
-```
-
-## Retry Strategy
-
-### Retryable Errors
-- `Unavailable` - Service temporarily down
-- `ResourceExhausted` - Rate limited
-- `Aborted` - Transaction conflict
-- `DeadlineExceeded` - Timeout
-
-### Retry Configuration
-```typescript
-const retryConfig = {
-  maxRetries: 3,
-  baseDelayMs: 100,
-  maxDelayMs: 5000,
-  // Exponential backoff with jitter
-  getDelay: (attempt) =>
-    Math.min(baseDelay * 2 ** attempt + randomJitter(), maxDelay)
-};
-```
-
-### Idempotent Methods Only
-Retry is only applied to safe operations:
-- `List*`, `Get*`, `Check*`, `Fetch*`, `Search*`, `Find*`, `Count*`
-
-## Distributed Tracing
-
-Errors include trace context for debugging:
-
-```typescript
-// Request headers
-{
-  'traceparent': '00-trace-id-span-id-01',
-  'x-trace-id': 'unique-request-id'
-}
-```
-
-Server logs include the trace ID for correlation.
-
-## User-Facing Messages (pt-BR)
-
-| Error | Message |
-|-------|---------|
-| Invalid credentials | "Email ou senha inválidos" |
-| Session expired | "Sua sessão expirou. Faça login novamente." |
-| Rate limited | "Muitas tentativas. Aguarde alguns minutos." |
-| Permission denied | "Você não tem permissão para esta ação." |
-| Service unavailable | "Serviço temporariamente indisponível." |
+- All logs are structured JSON with automatic PII redaction.
+- Every log entry includes `traceId`/`correlationId` for cross-service traceability.
+- Sensitive data (passwords, tokens, API keys) is never included in error messages or logs.
+- Internal error details are logged server-side only; client-facing messages are user-friendly.

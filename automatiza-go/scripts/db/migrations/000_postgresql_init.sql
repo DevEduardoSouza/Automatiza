@@ -825,6 +825,22 @@ CREATE TABLE IF NOT EXISTS reconciliation_checkpoints (
 CREATE INDEX IF NOT EXISTS idx_reconciliation_checkpoints_session ON reconciliation_checkpoints(session_name);
 
 -- =============================================================================
+-- Magic Link Tokens (passwordless authentication)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS magic_link_tokens (
+    id SERIAL PRIMARY KEY,
+    email TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_magic_link_tokens_email ON magic_link_tokens(email);
+CREATE INDEX IF NOT EXISTS idx_magic_link_tokens_expires ON magic_link_tokens(expires_at) WHERE used_at IS NULL;
+
+-- =============================================================================
 -- Apply updated_at Triggers
 -- =============================================================================
 

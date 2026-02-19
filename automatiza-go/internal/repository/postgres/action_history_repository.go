@@ -502,3 +502,50 @@ func (r *actionHistoryRepository) GetUserHistoryFiltered(ctx context.Context, re
 
 	return histories, rows.Err()
 }
+
+// CountUserHistoryFiltered returns aggregated counts by status using a single
+// SELECT status, COUNT(*) ... GROUP BY status query, avoiding fetching all rows.
+func (r *actionHistoryRepository) CountUserHistoryFiltered(ctx context.Context, req models.HistoryListRequest, userID string) (models.HistoryStatsResult, error) {
+	query := `SELECT status, COUNT(*) FROM action_history WHERE user_id = $1`
+	args := []interface{}{userID}
+	argIndex := 2
+
+	if req.ActionType != nil && *req.ActionType != "" {
+		query += fmt.Sprintf(" AND action_type = $%d", argIndex)
+		args = append(args, *req.ActionType)
+		argIndex++
+	}
+
+	if req.Status != nil && *req.Status != "" {
+		query += fmt.Sprintf(" AND status = $%d", argIndex)
+		args = append(args, *req.Status)
+	}
+
+	query += " GROUP BY status"
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return models.HistoryStatsResult{}, err
+	}
+	defer rows.Close()
+
+	var result models.HistoryStatsResult
+	for rows.Next() {
+		var status string
+		var count int32
+		if err := rows.Scan(&status, &count); err != nil {
+			return models.HistoryStatsResult{}, err
+		}
+		result.Total += count
+		switch status {
+		case models.ActionStatusCompleted:
+			result.Completed = count
+		case models.ActionStatusRunning, models.ActionStatusPending:
+			result.Running += count
+		case models.ActionStatusFailed:
+			result.Failed = count
+		}
+	}
+
+	return result, rows.Err()
+}

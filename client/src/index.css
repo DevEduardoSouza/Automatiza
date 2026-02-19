@@ -455,6 +455,53 @@ h2 {
   }
 }
 
+/* ============================================
+   ANIMATED SAVE BUTTON - BOTAO ENTRAR (Pill + Expanding Circle)
+   ============================================ */
+
+.animated-save-btn {
+  padding-right: 3.3em;
+  padding-left: 1.2em;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  background: #ffffff;
+  color: #4b5563;
+}
+
+.animated-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.animated-save-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.animated-save-btn-circle {
+  background: linear-gradient(135deg, #520B27 0%, #7a1038 50%, #a3174d 100%);
+  box-shadow: 0 0.2em 0.8em rgba(82, 11, 39, 0.5);
+  transition-property: width, box-shadow, transform !important;
+  transition-duration: 1s, 1s, 0.15s !important;
+  transition-timing-function: ease-in-out !important;
+}
+
+.animated-save-btn:hover:not(:disabled) .animated-save-btn-circle {
+  width: 98% !important;
+  box-shadow: 0 0.2em 1em rgba(82, 11, 39, 0.6);
+}
+
+.animated-save-btn:active:not(:disabled) .animated-save-btn-circle {
+  transform: scale(0.95);
+}
+
+.animated-save-btn-icon {
+  transition: transform 1s ease-in-out !important;
+}
+
+.animated-save-btn:hover:not(:disabled) .animated-save-btn-icon {
+  transform: scale(1.1);
+}
+
 .auth-btn-glow {
   background: linear-gradient(135deg, rgb(26, 26, 26) 0%, rgb(10, 10, 10) 100%);
   border: 1px solid rgba(255, 255, 255, 0.1);

@@ -64,7 +64,9 @@ func (r *automationRepository) GetUserAutomations(ctx context.Context, userID st
 		       custom_message, include_image, dispatch_text_id, filter_type,
 		       schedule_time, schedule_days, start_time, end_time, interval_minutes,
 		       delay_seconds, dedupe_hours, last_run_at, next_run_at,
-		       coupon_id, created_at, updated_at
+		       coupon_id, created_at, updated_at,
+		       texts, ctas, last_error, last_error_at,
+		       ml_link_list_id, list_items_per_run, list_include_image, priority_type
 		FROM automations
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -87,7 +89,9 @@ func (r *automationRepository) GetActiveAutomations(ctx context.Context) ([]mode
 		       custom_message, include_image, dispatch_text_id, filter_type,
 		       schedule_time, schedule_days, start_time, end_time, interval_minutes,
 		       delay_seconds, dedupe_hours, last_run_at, next_run_at,
-		       coupon_id, created_at, updated_at
+		       coupon_id, created_at, updated_at,
+		       texts, ctas, last_error, last_error_at,
+		       ml_link_list_id, list_items_per_run, list_include_image, priority_type
 		FROM automations
 		WHERE status = 'active'
 		ORDER BY priority DESC, created_at ASC
@@ -110,7 +114,9 @@ func (r *automationRepository) GetAutomationByID(ctx context.Context, automation
 		       custom_message, include_image, dispatch_text_id, filter_type,
 		       schedule_time, schedule_days, start_time, end_time, interval_minutes,
 		       delay_seconds, dedupe_hours, last_run_at, next_run_at,
-		       coupon_id, created_at, updated_at
+		       coupon_id, created_at, updated_at,
+		       texts, ctas, last_error, last_error_at,
+		       ml_link_list_id, list_items_per_run, list_include_image, priority_type
 		FROM automations
 		WHERE id = $1
 	`
@@ -126,7 +132,9 @@ func (r *automationRepository) GetAutomationByIDAndUser(ctx context.Context, aut
 		       custom_message, include_image, dispatch_text_id, filter_type,
 		       schedule_time, schedule_days, start_time, end_time, interval_minutes,
 		       delay_seconds, dedupe_hours, last_run_at, next_run_at,
-		       coupon_id, created_at, updated_at
+		       coupon_id, created_at, updated_at,
+		       texts, ctas, last_error, last_error_at,
+		       ml_link_list_id, list_items_per_run, list_include_image, priority_type
 		FROM automations
 		WHERE id = $1 AND user_id = $2
 	`
@@ -158,10 +166,12 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 			categories, stores, min_price, max_price, min_discount, priority,
 			custom_message, include_image, dispatch_text_id, filter_type,
 			schedule_time, schedule_days, start_time, end_time, interval_minutes,
-			delay_seconds, dedupe_hours, coupon_id, created_at, updated_at
+			delay_seconds, dedupe_hours, coupon_id, created_at, updated_at,
+			texts, ctas, ml_link_list_id, list_items_per_run, list_include_image, priority_type
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-			$18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
+			$18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
+			$32, $33, $34, $35, $36, $37
 		)
 		RETURNING id
 	`
@@ -174,6 +184,7 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 		data.CustomMessage, data.IncludeImage, data.DispatchTextID, nil,
 		data.ScheduleTime, scheduleDaysJSON, data.StartTime, data.EndTime, data.IntervalMinutes,
 		data.DelaySeconds, data.DedupeHours, data.CouponID, now, now,
+		data.Texts, data.CTAs, data.MlLinkListID, data.ListItemsPerRun, data.ListIncludeImage, data.PriorityType,
 	).Scan(&id)
 
 	if err != nil {
@@ -191,7 +202,11 @@ func (r *automationRepository) UpdateAutomation(ctx context.Context, automationI
 		return nil
 	}
 
-	// Convert array fields to JSON
+	// Convert TEXT[] fields: pgx handles []string natively for TEXT[] columns,
+	// but they arrive as []string from the update map — no conversion needed.
+	// Just ensure they're not accidentally JSON-marshaled below.
+
+	// Convert JSONB array fields to JSON
 	for _, key := range []string{"group_ids", "send_groups", "monitor_group_ids", "categories", "stores", "schedule_days"} {
 		if val, ok := updates[key]; ok {
 			if arr, ok := val.([]string); ok {
@@ -267,7 +282,9 @@ func (r *automationRepository) GetMonitoringAutomationsForGroup(ctx context.Cont
 		       custom_message, include_image, dispatch_text_id, filter_type,
 		       schedule_time, schedule_days, start_time, end_time, interval_minutes,
 		       delay_seconds, dedupe_hours, last_run_at, next_run_at,
-		       coupon_id, created_at, updated_at
+		       coupon_id, created_at, updated_at,
+		       texts, ctas, last_error, last_error_at,
+		       ml_link_list_id, list_items_per_run, list_include_image, priority_type
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'monitoring'
@@ -299,6 +316,12 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	// Local nullable vars to safely handle NULL TEXT columns (pgx NULL scan fix)
 	var shopeeLink, keyword, customMessage, dispatchTextID, couponID *string
 	var automationType, mode *string
+	// New columns: texts, ctas, last_error, last_error_at, ml_link_list_id, list_items_per_run, list_include_image, priority_type
+	var texts, ctas []string
+	var lastError, mlLinkListID, priorityType *string
+	var lastErrorAt *time.Time
+	var listItemsPerRun *int
+	var listIncludeImage *bool
 
 	err := row.Scan(
 		&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
@@ -308,6 +331,8 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 		&scheduleTime, &scheduleDaysJSON, &startTime, &endTime, &a.IntervalMinutes,
 		&a.DelaySeconds, &a.DedupeHours, &lastRunAt, &nextRunAt,
 		&couponID, &createdAt, &updatedAt,
+		&texts, &ctas, &lastError, &lastErrorAt,
+		&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -323,8 +348,20 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	a.CustomMessage = customMessage
 	a.DispatchTextID = dispatchTextID
 	a.CouponID = couponID
+	a.FilterType = filterType
+	a.Texts = texts
+	a.CTAs = ctas
+	a.LastError = lastError
+	a.MlLinkListID = mlLinkListID
+	a.PriorityType = priorityType
+	a.ListItemsPerRun = listItemsPerRun
+	a.ListIncludeImage = listIncludeImage
 	if includeImage != nil {
 		a.IncludeImage = *includeImage
+	}
+	if lastErrorAt != nil {
+		t := lastErrorAt.Format(time.RFC3339)
+		a.LastErrorAt = &t
 	}
 
 	// Unmarshal JSON arrays with error capture
@@ -394,6 +431,12 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		// Local nullable vars to safely handle NULL TEXT columns (pgx NULL scan fix)
 		var shopeeLink, keyword, customMessage, dispatchTextID, couponID *string
 		var automationType, mode *string
+		// New columns: texts, ctas, last_error, last_error_at, ml_link_list_id, list_items_per_run, list_include_image, priority_type
+		var texts, ctas []string
+		var lastError, mlLinkListID, priorityType *string
+		var lastErrorAt *time.Time
+		var listItemsPerRun *int
+		var listIncludeImage *bool
 
 		err := rows.Scan(
 			&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
@@ -403,6 +446,8 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 			&scheduleTime, &scheduleDaysJSON, &startTime, &endTime, &a.IntervalMinutes,
 			&a.DelaySeconds, &a.DedupeHours, &lastRunAt, &nextRunAt,
 			&couponID, &createdAt, &updatedAt,
+			&texts, &ctas, &lastError, &lastErrorAt,
+			&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
 		)
 		if err != nil {
 			return nil, err
@@ -415,8 +460,20 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		a.CustomMessage = customMessage
 		a.DispatchTextID = dispatchTextID
 		a.CouponID = couponID
+		a.FilterType = filterType
+		a.Texts = texts
+		a.CTAs = ctas
+		a.LastError = lastError
+		a.MlLinkListID = mlLinkListID
+		a.PriorityType = priorityType
+		a.ListItemsPerRun = listItemsPerRun
+		a.ListIncludeImage = listIncludeImage
 		if includeImage != nil {
 			a.IncludeImage = *includeImage
+		}
+		if lastErrorAt != nil {
+			t := lastErrorAt.Format(time.RFC3339)
+			a.LastErrorAt = &t
 		}
 
 		// Unmarshal JSON arrays with error capture

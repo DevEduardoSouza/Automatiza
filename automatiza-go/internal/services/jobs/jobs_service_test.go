@@ -191,6 +191,19 @@ func (m *MockGroupRepository) BulkUpdateGroups(ctx context.Context, userID strin
 	return args.Get(0).(int64), args.Error(1)
 }
 
+func (m *MockGroupRepository) CountAll(ctx context.Context) (int64, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockGroupRepository) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
+	args := m.Called(ctx, userID, page, pageSize, adminOnly, search)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*repository.GroupPaginatedResult), args.Error(1)
+}
+
 // MockInstanceRepository implements repository.InstanceRepository for testing
 type MockInstanceRepository struct {
 	mock.Mock

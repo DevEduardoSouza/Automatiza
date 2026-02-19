@@ -69,6 +69,62 @@ func (m *mockActionHistoryRepo) GetByUserID(ctx context.Context, userID string, 
 	return args.Get(0).([]models.ActionHistory), args.Error(1)
 }
 
+func (m *mockActionHistoryRepo) GetByActionType(ctx context.Context, userID, actionType string, limit int) ([]models.ActionHistory, error) {
+	args := m.Called(ctx, userID, actionType, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.ActionHistory), args.Error(1)
+}
+
+func (m *mockActionHistoryRepo) GetUserHistoryFiltered(ctx context.Context, req models.HistoryListRequest, userID string) ([]models.ActionHistory, error) {
+	args := m.Called(ctx, req, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.ActionHistory), args.Error(1)
+}
+
+func (m *mockActionHistoryRepo) MarkCompleted(ctx context.Context, historyID string) error {
+	args := m.Called(ctx, historyID)
+	return args.Error(0)
+}
+
+func (m *mockActionHistoryRepo) MarkFailed(ctx context.Context, historyID, errorMessage string) error {
+	args := m.Called(ctx, historyID, errorMessage)
+	return args.Error(0)
+}
+
+func (m *mockActionHistoryRepo) MarkRunning(ctx context.Context, historyID string) error {
+	args := m.Called(ctx, historyID)
+	return args.Error(0)
+}
+
+func (m *mockActionHistoryRepo) IncrementSuccessCount(ctx context.Context, historyID string) error {
+	args := m.Called(ctx, historyID)
+	return args.Error(0)
+}
+
+func (m *mockActionHistoryRepo) IncrementErrorCount(ctx context.Context, historyID string, errorMsg string) error {
+	args := m.Called(ctx, historyID, errorMsg)
+	return args.Error(0)
+}
+
+func (m *mockActionHistoryRepo) UpdateCounts(ctx context.Context, historyID string, successCount, errorCount int32) error {
+	args := m.Called(ctx, historyID, successCount, errorCount)
+	return args.Error(0)
+}
+
+func (m *mockActionHistoryRepo) DeleteUserHistory(ctx context.Context, userID string, beforeDate *time.Time, actionTypes []string) (int64, error) {
+	args := m.Called(ctx, userID, beforeDate, actionTypes)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *mockActionHistoryRepo) CountUserHistoryFiltered(ctx context.Context, req models.HistoryListRequest, userID string) (models.HistoryStatsResult, error) {
+	args := m.Called(ctx, req, userID)
+	return args.Get(0).(models.HistoryStatsResult), args.Error(1)
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================

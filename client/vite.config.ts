@@ -16,14 +16,14 @@ export default defineConfig(({ mode }) => ({
     proxy: {
       // Proxy para o backend Go - resolve problema de cookies cross-origin
       '/connect': {
-        target: 'http://localhost:3000',
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true,
         // Garantir que cookies sao encaminhados
         cookieDomainRewrite: 'localhost',
         secure: false,
       },
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true,
         cookieDomainRewrite: 'localhost',
         secure: false,

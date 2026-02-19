@@ -89,6 +89,9 @@ export function useWhatsApp(): UseWhatsAppReturn {
   // Track whether a QR refresh is already in progress to avoid overlapping calls
   const refreshingQrRef = useRef(false);
 
+  // Track whether the initial sync on connection has been done
+  const initialSyncDoneRef = useRef(false);
+
   // WF9: Max retry counter for QR refresh loops
   const qrRefreshCountRef = useRef(0);
   const MAX_QR_REFRESHES = 5;
@@ -437,7 +440,7 @@ export function useWhatsApp(): UseWhatsAppReturn {
         }
 
         // Add group to imported list (only admin groups)
-        if (data.group && data.group.isAdmin) {
+        if (data.group?.isAdmin) {
           const groupName = data.group.name || data.group.id;
           setImportedGroups((prev) => {
             if (prev.includes(groupName)) return prev;
@@ -731,7 +734,11 @@ export function useWhatsApp(): UseWhatsAppReturn {
 
       if (currentStatus === 'open') {
         // Connected! Transition to connected state.
-        Sentry.addBreadcrumb({ category: 'whatsapp', message: 'Polling detected OPEN state', level: 'info' });
+        Sentry.addBreadcrumb({
+          category: 'whatsapp',
+          message: 'Polling detected OPEN state',
+          level: 'info',
+        });
         setConnected(true);
         setConnecting(false);
         setQrCode(null);
@@ -743,7 +750,11 @@ export function useWhatsApp(): UseWhatsAppReturn {
         });
       } else if (currentStatus === 'close') {
         // Session closed — disconnected
-        Sentry.addBreadcrumb({ category: 'whatsapp', message: 'Polling detected CLOSE state', level: 'warning' });
+        Sentry.addBreadcrumb({
+          category: 'whatsapp',
+          message: 'Polling detected CLOSE state',
+          level: 'warning',
+        });
         setConnected(false);
         setConnecting(false);
         await updateInstanceStatus('disconnected');
@@ -880,9 +891,17 @@ export function useWhatsApp(): UseWhatsAppReturn {
       };
 
       try {
-        Sentry.addBreadcrumb({ category: 'whatsapp', message: `Starting sync for instance: ${instanceName}`, level: 'info' });
+        Sentry.addBreadcrumb({
+          category: 'whatsapp',
+          message: `Starting sync for instance: ${instanceName}`,
+          level: 'info',
+        });
         const result = await syncGroupsConnect(instanceName);
-        Sentry.addBreadcrumb({ category: 'whatsapp', message: `Sync result: ${result.success}`, level: 'info' });
+        Sentry.addBreadcrumb({
+          category: 'whatsapp',
+          message: `Sync result: ${result.success}`,
+          level: 'info',
+        });
 
         if (!result.success) {
           throw new Error(result.message || t('pages.whatsapp.errors.import'));
@@ -890,7 +909,11 @@ export function useWhatsApp(): UseWhatsAppReturn {
 
         // If we have a job_id, poll for status updates
         if (result.job_id) {
-          Sentry.addBreadcrumb({ category: 'whatsapp', message: `Job ID received, starting polling: ${result.job_id}`, level: 'info' });
+          Sentry.addBreadcrumb({
+            category: 'whatsapp',
+            message: `Job ID received, starting polling: ${result.job_id}`,
+            level: 'info',
+          });
           let pollCount = 0;
           let errorCount = 0;
           const maxPolls = 30; // Max 30 polls (30 seconds)
@@ -901,7 +924,11 @@ export function useWhatsApp(): UseWhatsAppReturn {
 
             try {
               const status = await getSyncStatus(result.job_id as string);
-              Sentry.addBreadcrumb({ category: 'whatsapp', message: `Poll getSyncStatus: ${status.status} progress=${status.progress}`, level: 'info' });
+              Sentry.addBreadcrumb({
+                category: 'whatsapp',
+                message: `Poll getSyncStatus: ${status.status} progress=${status.progress}`,
+                level: 'info',
+              });
               errorCount = 0; // Reset error count on success
 
               // Update progress
@@ -911,14 +938,22 @@ export function useWhatsApp(): UseWhatsAppReturn {
 
               // Check for completion
               if (status.status === 'completed' || status.status === 'success') {
-                Sentry.addBreadcrumb({ category: 'whatsapp', message: 'Sync completed via polling', level: 'info' });
+                Sentry.addBreadcrumb({
+                  category: 'whatsapp',
+                  message: 'Sync completed via polling',
+                  level: 'info',
+                });
                 clearInterval(pollInterval);
                 await completeImport(undefined, status.groups_synced);
                 return;
               }
 
               if (status.status === 'failed' || status.status === 'error') {
-                Sentry.addBreadcrumb({ category: 'whatsapp', message: `Sync failed via polling: ${status.error}`, level: 'warning' });
+                Sentry.addBreadcrumb({
+                  category: 'whatsapp',
+                  message: `Sync failed via polling: ${status.error}`,
+                  level: 'warning',
+                });
                 clearInterval(pollInterval);
                 failImport(status.error);
                 return;
@@ -926,16 +961,28 @@ export function useWhatsApp(): UseWhatsAppReturn {
 
               // Timeout after maxPolls
               if (pollCount >= maxPolls) {
-                Sentry.addBreadcrumb({ category: 'whatsapp', message: 'Max polls reached, completing', level: 'info' });
+                Sentry.addBreadcrumb({
+                  category: 'whatsapp',
+                  message: 'Max polls reached, completing',
+                  level: 'info',
+                });
                 clearInterval(pollInterval);
                 await completeImport(result.message);
               }
             } catch (pollError) {
               errorCount++;
-              Sentry.addBreadcrumb({ category: 'whatsapp', message: `Poll error (${errorCount}/${maxErrors})`, level: 'warning' });
+              Sentry.addBreadcrumb({
+                category: 'whatsapp',
+                message: `Poll error (${errorCount}/${maxErrors})`,
+                level: 'warning',
+              });
 
               if (errorCount >= maxErrors) {
-                Sentry.addBreadcrumb({ category: 'whatsapp', message: 'Max poll errors, completing', level: 'warning' });
+                Sentry.addBreadcrumb({
+                  category: 'whatsapp',
+                  message: 'Max poll errors, completing',
+                  level: 'warning',
+                });
                 clearInterval(pollInterval);
                 await completeImport(result.message);
               }
@@ -943,11 +990,22 @@ export function useWhatsApp(): UseWhatsAppReturn {
           }, 1000);
         } else {
           // No job_id - sync was immediate or synchronous, complete now
-          Sentry.addBreadcrumb({ category: 'whatsapp', message: 'No job_id, sync was synchronous', level: 'info' });
+          Sentry.addBreadcrumb({
+            category: 'whatsapp',
+            message: 'No job_id, sync was synchronous',
+            level: 'info',
+          });
           await completeImport(result.message);
         }
       } catch (error: unknown) {
         captureHookError(error, 'useWhatsApp', 'handleImportGroups');
+
+        const errorMsg = error instanceof Error ? error.message : '';
+        if (errorMsg.includes('not_found') || errorMsg.includes('instance not found')) {
+          failImport(t('pages.whatsapp.errors.instanceNotFound'));
+          return;
+        }
+
         const errorMessage =
           error instanceof Error ? error.message : t('pages.whatsapp.errors.importMessage');
         failImport(errorMessage);
@@ -955,6 +1013,24 @@ export function useWhatsApp(): UseWhatsAppReturn {
     },
     [instanceName, instanceId, importing, toast, t, syncGroupsConnect, getSyncStatus, refetchGroups]
   );
+
+  /**
+   * Mandatory initial sync: triggers groups sync once when all conditions are met
+   * (connected + instanceName + instanceId). Independent of the autoSync toggle,
+   * which controls recurring hourly syncs.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: handleImportGroups excluded to prevent re-trigger on every callback recreation
+  useEffect(() => {
+    if (
+      connected &&
+      hasRealInstanceName(instanceName) &&
+      instanceId &&
+      !initialSyncDoneRef.current
+    ) {
+      initialSyncDoneRef.current = true;
+      handleImportGroups(true);
+    }
+  }, [connected, instanceName, instanceId]);
 
   /**
    * Clean old disconnected/pending instances via ConnectRPC.
@@ -1032,6 +1108,7 @@ export function useWhatsApp(): UseWhatsAppReturn {
       setInstanceId(null);
       setQrCode(null);
       initialLoadDoneRef.current = false;
+      initialSyncDoneRef.current = false;
     } finally {
       setDisconnecting(false);
       disconnectingRef.current = false;

@@ -2,7 +2,7 @@ package whatsapp
 
 import (
 	"crypto/hmac"
-	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"errors"
 	"testing"
@@ -80,7 +80,7 @@ func TestHMACValidator_Validate_InvalidSignature(t *testing.T) {
 	}{
 		{
 			name:      "wrong signature",
-			signature: "0000000000000000000000000000000000000000000000000000000000000000",
+			signature: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
 			wantErr:   ErrHMACSignatureMismatch,
 		},
 		{
@@ -95,7 +95,7 @@ func TestHMACValidator_Validate_InvalidSignature(t *testing.T) {
 		},
 		{
 			name:      "truncated signature",
-			signature: v.ComputeSignature(body)[:32], // Only half the signature
+			signature: v.ComputeSignature(body)[:64], // Only half the signature
 			wantErr:   ErrHMACSignatureMismatch,
 		},
 	}
@@ -129,7 +129,7 @@ func TestHMACValidator_Validate_MalformedSignature(t *testing.T) {
 		},
 		{
 			name:      "uppercase letters in signature (should still decode)",
-			signature: "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+			signature: "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
 		},
 		{
 			name:      "spaces in signature",
@@ -172,9 +172,9 @@ func TestHMACValidator_ComputeSignature(t *testing.T) {
 	v := NewHMACValidator(secretKey)
 	body := []byte("test body")
 
-	t.Run("produces correct HMAC-SHA256", func(t *testing.T) {
+	t.Run("produces correct HMAC-SHA512", func(t *testing.T) {
 		// Compute expected signature manually
-		mac := hmac.New(sha256.New, []byte(secretKey))
+		mac := hmac.New(sha512.New, []byte(secretKey))
 		mac.Write(body)
 		expected := hex.EncodeToString(mac.Sum(nil))
 
@@ -230,7 +230,7 @@ func TestHMACValidator_ValidateWithResult(t *testing.T) {
 	})
 
 	t.Run("invalid signature returns invalid result", func(t *testing.T) {
-		result := v.ValidateWithResult(body, "0000000000000000000000000000000000000000000000000000000000000000")
+		result := v.ValidateWithResult(body, "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
 		if result.Valid {
 			t.Error("expected Valid to be false")
 		}
@@ -320,7 +320,7 @@ func BenchmarkHMACValidator_Validate(b *testing.B) {
 	v := NewHMACValidator(secretKey)
 	body := []byte(`{"event":"message","session":"default","payload":{"id":"msg-123"}}`)
 	validSig := v.ComputeSignature(body)
-	invalidSig := "0000000000000000000000000000000000000000000000000000000000000000"
+	invalidSig := "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
 
 	b.Run("valid signature", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
@@ -337,7 +337,7 @@ func BenchmarkHMACValidator_Validate(b *testing.B) {
 
 // Helper function to compute HMAC with a specific key
 func computeHMACWithKey(key string, body []byte) string {
-	mac := hmac.New(sha256.New, []byte(key))
+	mac := hmac.New(sha512.New, []byte(key))
 	mac.Write(body)
 	return hex.EncodeToString(mac.Sum(nil))
 }

@@ -153,8 +153,17 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 	if len(gqlResp.Errors) > 0 {
-		gqlErr := fmt.Errorf("shopee API error: %s", gqlResp.Errors[0].Message)
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee GraphQL returned error", gqlErr, map[string]string{
+		errMsg := gqlResp.Errors[0].Message
+		gqlErr := fmt.Errorf("shopee API error: %s", errMsg)
+
+		// Downgrade known user/data errors to Warning (not code bugs)
+		level := sentry.LevelError
+		if strings.Contains(errMsg, "Invalid Signature") ||
+			strings.Contains(errMsg, "invalid value") {
+			level = sentry.LevelWarning
+		}
+
+		observability.LogAndCapture(s.logger, level, "Shopee GraphQL returned error", gqlErr, map[string]string{
 			"external_service": "shopee",
 			"endpoint":        "graphql",
 		})
@@ -273,22 +282,37 @@ func (s *shopeeService) resolveCategoryIDs(categories []string) []int {
 
 // searchShopee executes a single Shopee GraphQL search with optional keyword and category.
 func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, keyword *string, categoryID *int64, sortType, limit int, params models.ShopeeSearchParams) (*models.ShopeeSearchResult, error) {
-	// Build query args
-	args := fmt.Sprintf("sortType: %d, limit: %d", sortType, limit)
+	// Build GraphQL query with variables for correct type handling
+	varDefs := "$sortType: Int!, $limit: Int!"
+	queryArgs := "sortType: $sortType, limit: $limit"
+	variables := map[string]interface{}{
+		"sortType": sortType,
+		"limit":    limit,
+	}
+
 	if keyword != nil && *keyword != "" {
-		args += fmt.Sprintf(`, keyword: %q`, *keyword)
+		varDefs += ", $keyword: String"
+		queryArgs += ", keyword: $keyword"
+		variables["keyword"] = *keyword
 	}
 	if categoryID != nil {
-		args += fmt.Sprintf(`, productCatId: "%d"`, *categoryID)
+		varDefs += ", $productCatId: Int"
+		queryArgs += ", productCatId: $productCatId"
+		variables["productCatId"] = *categoryID
 	}
 	if params.Offset > 0 {
 		page := params.Offset/limit + 1
-		args += fmt.Sprintf(`, page: %d`, page)
+		varDefs += ", $page: Int"
+		queryArgs += ", page: $page"
+		variables["page"] = page
 	}
 
-	gqlQuery := fmt.Sprintf(`{ productOfferV2(%s) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName productCatIds } } }`, args)
+	gqlQuery := fmt.Sprintf(`query(%s) { productOfferV2(%s) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName productCatIds } } }`, varDefs, queryArgs)
 
-	payload, marshalErr := json.Marshal(map[string]string{"query": gqlQuery})
+	payload, marshalErr := json.Marshal(map[string]interface{}{
+		"query":     gqlQuery,
+		"variables": variables,
+	})
 	if marshalErr != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee search payload", marshalErr, map[string]string{
 			"external_service": "shopee",
@@ -815,7 +839,6 @@ func initCategoryMapping() map[string][]int {
 		},
 
 		"Casa e Decoração": {
-			100636, // Casa e Decoração
 			100717, // Artigos de Cozinha
 			100710, // Roupas de Cama
 			100711, // Decoração
@@ -922,7 +945,6 @@ func initCategoryMapping() map[string][]int {
 		},
 
 		"Alimentos": {
-			100002, // Suplementos Alimentares
 			100789, // Sementes
 			100654, // Padaria
 			100646, // Lanches

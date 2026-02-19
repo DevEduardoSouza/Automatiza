@@ -127,6 +127,7 @@ type ActionHistoryRepository interface {
 	GetByUserID(ctx context.Context, userID string, limit, offset int) ([]models.ActionHistory, error)
 	GetByActionType(ctx context.Context, userID, actionType string, limit int) ([]models.ActionHistory, error)
 	GetUserHistoryFiltered(ctx context.Context, req models.HistoryListRequest, userID string) ([]models.ActionHistory, error)
+	CountUserHistoryFiltered(ctx context.Context, req models.HistoryListRequest, userID string) (models.HistoryStatsResult, error)
 	MarkCompleted(ctx context.Context, historyID string) error
 	MarkFailed(ctx context.Context, historyID, errorMessage string) error
 	MarkRunning(ctx context.Context, historyID string) error

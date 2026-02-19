@@ -7,12 +7,10 @@ import (
 	"strconv"
 
 	adminv1 "automatiza-go/internal/gen/admin/v1"
-	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/loadbalancer"
 
 	"connectrpc.com/connect"
-	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
 
@@ -82,9 +80,9 @@ func (h *LoadBalancerHandler) GetStats(
 	for i, srv := range stats.Servers {
 		serverID, parseErr := strconv.ParseInt(srv.ID, 10, 32)
 		if parseErr != nil {
-			observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to parse server ID", parseErr, map[string]string{
-				"module": "loadbalancer", "operation": "parse_server_id", "raw_id": srv.ID,
-			})
+			// Non-numeric IDs (e.g. "default" fallback) are expected — log locally only
+			h.logger.Debug("non-numeric server ID, using index as fallback",
+				zap.String("raw_id", srv.ID), zap.Int("index", i))
 			serverID = int64(i + 1)
 		}
 		if serverID == 0 {
@@ -178,9 +176,8 @@ func (h *LoadBalancerHandler) GetUserServer(
 
 	serverID, parseErr := strconv.ParseInt(server.ID, 10, 32)
 	if parseErr != nil {
-		observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to parse server ID for user server", parseErr, map[string]string{
-			"module": "loadbalancer", "operation": "parse_server_id", "raw_id": server.ID,
-		})
+		h.logger.Debug("non-numeric server ID for user server, defaulting to 0",
+			zap.String("raw_id", server.ID))
 	}
 	status := "offline"
 	if server.IsActive {
@@ -230,9 +227,8 @@ func (h *LoadBalancerHandler) MigrateUser(
 	if err == nil && currentServer != nil {
 		prevID, parseErr := strconv.ParseInt(currentServer.ID, 10, 32)
 		if parseErr != nil {
-			observability.LogAndCapture(h.logger, sentry.LevelWarning, "failed to parse previous server ID during migration", parseErr, map[string]string{
-				"module": "loadbalancer", "operation": "parse_server_id", "raw_id": currentServer.ID,
-			})
+			h.logger.Debug("non-numeric previous server ID during migration, defaulting to 0",
+				zap.String("raw_id", currentServer.ID))
 		}
 		previousServerID = int32(prevID)
 	}

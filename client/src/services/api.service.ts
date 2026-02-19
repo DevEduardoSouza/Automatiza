@@ -154,11 +154,10 @@ export const redirectService = {
    */
   async processRedirectBySlug(slug: string): Promise<RedirectResponse> {
     const response: unknown = await api.post('/redirect', { slug });
-    const data = (response as { data?: unknown })?.data ?? response;
-    if (!isRedirectResponse(data)) {
+    if (!isRedirectResponse(response)) {
       throw new Error('Invalid redirect response format');
     }
-    return data;
+    return response;
   },
 };
 

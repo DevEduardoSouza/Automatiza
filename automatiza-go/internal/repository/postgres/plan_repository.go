@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/lib/pq"
 	"go.uber.org/zap"
 )
 
@@ -56,7 +55,7 @@ func (r *planRepository) GetByKiwifyProductID(ctx context.Context, productID str
 		&plan.KiwifyProductIDMonthly, &plan.KiwifyProductIDSemester, &plan.KiwifyProductIDAnnual,
 		&createdAt, &updatedAt, &plan.Description,
 		&plan.PriceMonthly, &plan.PriceSemester, &plan.PriceAnnual,
-		&plan.GroupLimit, &plan.StorageLimit, pq.Array(&plan.Features),
+		&plan.GroupLimit, &plan.StorageLimit, &plan.Features,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -95,7 +94,7 @@ func (r *planRepository) GetBySlug(ctx context.Context, slug string) (*models.Pl
 		&plan.KiwifyProductIDMonthly, &plan.KiwifyProductIDSemester, &plan.KiwifyProductIDAnnual,
 		&createdAt, &updatedAt, &plan.Description,
 		&plan.PriceMonthly, &plan.PriceSemester, &plan.PriceAnnual,
-		&plan.GroupLimit, &plan.StorageLimit, pq.Array(&plan.Features),
+		&plan.GroupLimit, &plan.StorageLimit, &plan.Features,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -143,7 +142,7 @@ func (r *planRepository) GetActivePlans(ctx context.Context) ([]models.Plan, err
 			&plan.KiwifyProductIDMonthly, &plan.KiwifyProductIDSemester, &plan.KiwifyProductIDAnnual,
 			&createdAt, &updatedAt, &plan.Description,
 			&plan.PriceMonthly, &plan.PriceSemester, &plan.PriceAnnual,
-			&plan.GroupLimit, &plan.StorageLimit, pq.Array(&plan.Features),
+			&plan.GroupLimit, &plan.StorageLimit, &plan.Features,
 		)
 		if err != nil {
 			return nil, err
@@ -182,7 +181,7 @@ func (r *planRepository) GetByID(ctx context.Context, id string) (*models.Plan, 
 		&plan.KiwifyProductIDMonthly, &plan.KiwifyProductIDSemester, &plan.KiwifyProductIDAnnual,
 		&createdAt, &updatedAt, &plan.Description,
 		&plan.PriceMonthly, &plan.PriceSemester, &plan.PriceAnnual,
-		&plan.GroupLimit, &plan.StorageLimit, pq.Array(&plan.Features),
+		&plan.GroupLimit, &plan.StorageLimit, &plan.Features,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -229,7 +228,7 @@ func (r *planRepository) GetAllPlans(ctx context.Context) ([]models.Plan, error)
 			&plan.KiwifyProductIDMonthly, &plan.KiwifyProductIDSemester, &plan.KiwifyProductIDAnnual,
 			&createdAt, &updatedAt, &plan.Description,
 			&plan.PriceMonthly, &plan.PriceSemester, &plan.PriceAnnual,
-			&plan.GroupLimit, &plan.StorageLimit, pq.Array(&plan.Features),
+			&plan.GroupLimit, &plan.StorageLimit, &plan.Features,
 		)
 		if err != nil {
 			return nil, err
@@ -268,7 +267,7 @@ func (r *planRepository) Create(ctx context.Context, plan *models.Plan) (*models
 		plan.Slug, plan.Name, plan.IsActive,
 		plan.KiwifyProductIDMonthly, plan.KiwifyProductIDSemester, plan.KiwifyProductIDAnnual,
 		plan.Description, plan.PriceMonthly, plan.PriceSemester, plan.PriceAnnual,
-		plan.GroupLimit, plan.StorageLimit, pq.Array(plan.Features),
+		plan.GroupLimit, plan.StorageLimit, plan.Features,
 		now, now,
 	).Scan(&id, &createdAt, &updatedAt)
 	if err != nil {
@@ -356,7 +355,7 @@ func (r *planRepository) Update(ctx context.Context, id string, updates map[stri
 	}
 	if features, ok := updates["features"].([]string); ok {
 		setClauses = append(setClauses, fmt.Sprintf("features = $%d", argIndex))
-		args = append(args, pq.Array(features))
+		args = append(args, features)
 		argIndex++
 	}
 

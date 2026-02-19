@@ -33,8 +33,8 @@ import (
 )
 
 // WAHA webhook signature header name.
-// WAHA sends the HMAC-SHA256 signature in this header when HMAC is configured.
-const wahaSignatureHeader = "X-WAHA-SIGNATURE"
+// WAHA sends the HMAC-SHA512 signature in this header when HMAC is configured.
+const wahaSignatureHeader = "X-Webhook-Hmac"
 
 // traceIDHeader is the header name for trace ID propagation.
 // Clients can send their own trace ID in this header, otherwise one is generated.

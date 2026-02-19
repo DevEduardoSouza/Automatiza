@@ -2,15 +2,18 @@ package connectrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
 	"automatiza-go/internal/adapters/whatsapp"
 	instancesv1 "automatiza-go/internal/gen/instances/v1"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 
 	"connectrpc.com/connect"
+	"github.com/getsentry/sentry-go"
 )
 
 // InstancesHandler implements the instancesv1connect.InstancesServiceHandler interface.
@@ -327,11 +330,34 @@ func (h *InstancesHandler) ReconnectInstance(
 
 	// First, try to restart the session
 	if err := h.waProvider.RestartSession(ctx, instanceName); err != nil {
-		errMsg := err.Error()
-		return connect.NewResponse(&instancesv1.ReconnectInstanceResponse{
-			Success: false,
-			Error:   &errMsg,
-		}), nil
+		var providerErr *whatsapp.ProviderError
+		if errors.As(err, &providerErr) && providerErr.Code == whatsapp.ErrCodeSessionNotFound {
+			// Session lost in WAHA (container restart, timeout, etc.) — create a new one
+			observability.LogAndCapture(nil, sentry.LevelInfo, "session not found in WAHA, falling back to CreateSession", err, map[string]string{
+				"module": "whatsapp", "operation": "reconnect_fallback", "instanceName": instanceName,
+			})
+			_, createErr := h.waProvider.CreateSession(ctx, whatsapp.CreateSessionInput{
+				SessionName: instanceName,
+				Engine: whatsapp.EngineConfig{
+					StorageMessages: true,
+					StorageGroups:   true,
+					StorageChats:    true,
+				},
+			})
+			if createErr != nil {
+				errMsg := createErr.Error()
+				return connect.NewResponse(&instancesv1.ReconnectInstanceResponse{
+					Success: false,
+					Error:   &errMsg,
+				}), nil
+			}
+		} else {
+			errMsg := err.Error()
+			return connect.NewResponse(&instancesv1.ReconnectInstanceResponse{
+				Success: false,
+				Error:   &errMsg,
+			}), nil
+		}
 	}
 
 	// Then, get the QR code

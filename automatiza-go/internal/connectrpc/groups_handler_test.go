@@ -128,6 +128,11 @@ func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID strin
 	return args.Get(0).(*repository.GroupPaginatedResult), args.Error(1)
 }
 
+func (m *mockGroupRepo) CountAll(ctx context.Context) (int64, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 // mockInstanceRepo implements repository.InstanceRepository for testing.
 type mockInstanceRepo struct {
 	mock.Mock

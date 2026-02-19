@@ -116,6 +116,11 @@ func main() {
 	}
 	defer func() {
 		if syncErr := logger.Sync(); syncErr != nil {
+			// In containers, syncing /dev/stdout or /dev/stderr fails with "invalid argument"
+			// because they are pipes, not regular files. This is expected and safe to ignore.
+			if isStdioSyncErr(syncErr) {
+				return
+			}
 			observability.LogAndCapture(logger, sentry.LevelWarning, "logger sync failed on shutdown", syncErr, map[string]string{"module": "main", "flow": "shutdown"})
 		}
 	}()
@@ -1211,4 +1216,15 @@ func buildVersion() string {
 		}
 	}
 	return info.Main.Version
+}
+
+// isStdioSyncErr returns true if the error is the well-known "sync /dev/stdout:
+// invalid argument" (or /dev/stderr) that occurs when zap.Logger.Sync() is called
+// in a container where stdout/stderr are pipes, not regular files.
+func isStdioSyncErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "/dev/stdout") || strings.Contains(msg, "/dev/stderr")
 }

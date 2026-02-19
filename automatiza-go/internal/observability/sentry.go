@@ -3,6 +3,8 @@
 package observability
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -274,6 +276,11 @@ func LogAndCapture(logger *zap.Logger, level sentry.Level, msg string, err error
 			scope.SetExtra("suppressed_count", suppressed)
 		}
 	})
+
+	// Context cancellation is operational (client disconnect, shutdown) — log only, don't pollute Sentry
+	if err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+		return
+	}
 
 	if err != nil {
 		hub.CaptureException(err)

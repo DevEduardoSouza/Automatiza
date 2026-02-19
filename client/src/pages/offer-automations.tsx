@@ -5,6 +5,16 @@ import {
   OffersPreviewDialog,
 } from '@/components/automations';
 import { ErrorBoundary } from '@/components/error-boundary';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAutomations } from '@/hooks/use-automations';
@@ -77,6 +87,13 @@ export default function OfferAutomations() {
     nearLimit,
     refinementOpen,
     savingAutomation,
+    deleteTargetId,
+    setDeleteTargetId,
+    confirmDelete,
+    resetTargetId,
+    resetTargetName,
+    setResetTarget,
+    confirmResetHistory,
     setDialogOpen,
     setPreviewDialogOpen,
     setFormData,
@@ -422,6 +439,46 @@ export default function OfferAutomations() {
         loading={loadingPreview}
         offers={previewOffers}
       />
+
+      <AlertDialog
+        open={deleteTargetId !== null}
+        onOpenChange={(open) => !open && setDeleteTargetId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('pages.offerAutomations.confirm.deleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('pages.offerAutomations.confirm.deleteDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>{t('common.delete')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={resetTargetId !== null}
+        onOpenChange={(open) => !open && setResetTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('pages.offerAutomations.confirm.resetHistoryTitle')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('pages.offerAutomations.confirm.resetHistory', { name: resetTargetName })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmResetHistory}>
+              {t('common.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ErrorBoundary>
   );
 }

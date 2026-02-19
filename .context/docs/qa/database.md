@@ -1,142 +1,92 @@
 ---
-status: filled
 slug: database
 category: features
+generatedAt: 2026-02-18T22:38:13.918Z
+relevantFiles:
+  - client/src/entities/dispatch-text/model/types.ts
+  - client/src/entities/whatsapp-instance/model/types.ts
+  - client/src/entities/ml-link-list/model/types.ts
+  - client/src/entities/whatsapp-instance/lib/waha-helpers.ts
 ---
 
 # How is data stored and accessed?
 
 ## Database Stack
 
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| Primary DB | PostgreSQL 16 | Persistent data storage |
-| Cache | Redis | Session cache, rate limiting, task queues |
-| ORM | Raw SQL (pgx) | Direct PostgreSQL driver |
+- **PostgreSQL 16**: Primary relational database (33 production tables).
+- **Redis**: Caching layer, job queue (Asynq), and real-time state.
+- **pgx**: Go PostgreSQL driver (high-performance, native protocol).
 
-## Repository Pattern
+## Migration Strategy
 
-All data access goes through repository interfaces in `automatiza-go/internal/repository/`.
+Migrations live in `automatiza-go/scripts/db/migrations/` and follow this execution order:
 
-### Repository Structure
-```
-internal/repository/
-├── postgres/           # PostgreSQL implementations
-│   ├── profile.go
-│   ├── instance.go
-│   ├── group.go
-│   ├── automation.go
-│   └── ...
-└── interfaces.go       # Repository interfaces
-```
+1. **`init.sql`**: Extensions, database roles (`anon`, `service_role`, `authenticator`), and the `update_updated_at_column()` trigger function. No tables are created here.
+2. **`000_postgresql_init.sql`**: Consolidated migration that creates all 33 production tables. Runs first.
+3. **`001` through `029`**: Incremental migrations (historical). These are idempotent after `000` runs.
+4. **`seed.sql`**: Test/development seed data (uses `ON CONFLICT (user_id, role)` for the composite UNIQUE constraint on `user_roles`).
 
-### Example Interface
-```go
-type ProfileRepository interface {
-    GetProfile(ctx context.Context, userID string) (*models.Profile, error)
-    CreateProfile(ctx context.Context, profile *models.Profile) (*models.Profile, error)
-    UpdateProfile(ctx context.Context, profile *models.Profile) error
-    GetProfileByEmail(ctx context.Context, email string) (*models.Profile, error)
-}
-```
+**Docker flow**: `init.sql` -> `run-migrations.sh` (000 first, then 001-029) -> `seed.sql`
 
-## Key Domain Models
+**VPS flow**: `./server migrate up` (Go binary subcommand)
 
-Located in `automatiza-go/internal/models/`:
+**Local reset**: `make db-reset && make db-migrate`
 
-| Model | Description |
-|-------|-------------|
-| `Profile` | User account with plan, settings |
-| `Instance` | WhatsApp instance (WAHA connection) |
-| `Group` | WhatsApp group with metadata |
-| `Automation` | Automation workflow definition |
-| `DispatchLog` | Message dispatch history |
-| `ActionHistory` | User action audit trail |
-| `ScheduledJob` | Background job definition |
-| `Coupon` | Discount coupon |
-| `MLLink` | Mercado Livre product link |
-| `RedirectLink` | Shortened redirect link |
+## Key Tables
 
-## Database Schema (Key Tables)
+| Table | Purpose |
+|-------|---------|
+| `users` | User accounts (email, password hash, profile) |
+| `user_roles` | Role assignments (UNIQUE on `user_id, role`) |
+| `plans` | Subscription plans and limits |
+| `automations` | Automation configurations per user |
+| `groups` | WhatsApp groups synced from WAHA |
+| `dispatch_logs` | Message dispatch history (`group_id` is TEXT/JID, not UUID FK) |
+| `dispatch_texts` | Message templates (`body` field, `is_active` flag) |
+| `webhook_events` | Inbound webhook event log (`event_id` is VARCHAR(128)) |
+| `webhook_logs` | Webhook processing audit trail |
+| `jobs` | Background job definitions and scheduling |
+| `action_history` | User action audit log |
+| `sync_jobs` | Group synchronization job tracking |
+| `categories` | System-wide categories (slug, icon, display_order) |
+| `affiliate_credentials` | Third-party affiliate platform credentials |
+| `saved_redirect_links` | Saved redirect/tracking URLs |
+| `ml_link_list_items` | MercadoLivre product link items |
 
-```sql
--- Users and Auth
-profiles (id, email, display_name, plan, settings, created_at)
-user_roles (id, user_id, role)
-password_reset_tokens (id, user_id, token_hash, expires_at)
-rate_limit_attempts (key, count, window_start)
+## Schema Design Decisions
 
--- WhatsApp
-instances (id, user_id, name, status, waha_id, qr_code)
-groups (id, instance_id, jid, name, member_count, settings)
+- **Hard delete only**: No soft-delete pattern. Archival is handled separately when audit is needed.
+- **`dispatch_logs.group_id`** is TEXT (WhatsApp JID format), not a UUID foreign key.
+- **`dispatch_texts`** uses `body` (not `content`), `is_active` (not `is_default`), and has no `variables` column.
+- **`categories`** are system-wide, not per-user.
+- **`user_roles`** has a composite UNIQUE on `(user_id, role)`, allowing multiple roles per user.
 
--- Automations
-automations (id, user_id, name, mode, status, config, schedule)
-dispatch_logs (id, automation_id, group_id, message, status, sent_at)
-scheduled_jobs (id, automation_id, next_run, status)
+## Data Access Patterns
 
--- Commerce
-coupons (id, user_id, store, code, description, active)
-ml_links (id, user_id, url, title, category)
-redirect_links (id, user_id, short_code, target_url, clicks)
+### Repository Layer
 
--- Audit
-action_history (id, user_id, action_type, details, created_at)
-system_events (id, event_type, payload, created_at)
-```
+All database access goes through the repository layer (`internal/repository/`):
 
-## Connection Configuration
+- **Interfaces** defined in `internal/repository/interfaces.go`.
+- **PostgreSQL implementations** in `internal/repository/postgres/`.
+- Services never call the database directly; they use repository interfaces (dependency inversion).
 
-```go
-// automatiza-go/internal/config/database.go
-pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+### Query Patterns
 
-// Pool settings
-config.MaxConns = 25
-config.MinConns = 5
-config.MaxConnLifetime = time.Hour
-config.MaxConnIdleTime = 30 * time.Minute
-```
+- **Cursor pagination** for all list endpoints (no OFFSET-based pagination except admin screens).
+- **Indexes** are created based on actual query patterns with EXPLAIN analysis, never speculatively.
+- **Transactions** wrap multiple related writes with proper rollback on error.
+- **context.Context** is propagated through every database call for cancellation and tracing.
 
-## Redis Usage
+### Redis Usage
 
-```go
-// Session caching
-redis.Set(ctx, "session:"+sessionID, sessionData, 24*time.Hour)
+- **Asynq job queue**: Background job scheduling and processing.
+- **Caching**: Session data, temporary state, rate limiting.
+- **Real-time state**: WhatsApp instance status, active process tracking.
 
-// Rate limiting
-redis.Incr(ctx, "ratelimit:"+key)
-redis.Expire(ctx, "ratelimit:"+key, windowDuration)
+## Performance Considerations
 
-// Task queues (Asynq)
-asynq.NewTask("send_message", payload)
-```
-
-## Frontend Data Access
-
-Frontend accesses data through ConnectRPC hooks:
-
-```typescript
-// Example: useGroupsConnect hook
-const { data: groups, isLoading } = useQuery({
-  queryKey: ['groups', 'list', userId],
-  queryFn: async () => {
-    const client = createClient(GroupsService, transport);
-    const response = await client.listGroups({});
-    return response.groups.map(fromProtoGroup);
-  },
-});
-```
-
-## Migrations
-
-Located in `automatiza-go/scripts/db/`:
-
-```bash
-# Run migrations
-cd automatiza-go
-go run ./scripts/db/migrate up
-
-# Create new migration
-go run ./scripts/db/migrate create <name>
-```
+- All list endpoints enforce server-side pagination.
+- Queries are optimized based on real usage telemetry (EXPLAIN/Datadog traces).
+- Connection pooling is managed by pgx.
+- No N+1 queries; batch operations are preferred for bulk data access.
