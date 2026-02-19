@@ -489,7 +489,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		switch store {
 		case "shopee":
 			if s.shopeeService != nil {
-				limitPerKeyword := max(3, 10/len(keywords))
+				limitPerKeyword := 1
 				for _, kw := range keywords {
 					kwCopy := kw
 					var kwPtr *string
@@ -523,6 +523,11 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 			// ML search would go here
 			// For now, ML is mainly used for affiliate link generation
 		}
+	}
+
+	// Cap to 1 offer per run — interval_minutes controls the cadence
+	if len(allOffers) > 1 {
+		allOffers = allOffers[:1]
 	}
 
 	if len(allOffers) == 0 {
