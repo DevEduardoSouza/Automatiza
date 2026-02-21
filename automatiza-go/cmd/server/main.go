@@ -258,10 +258,12 @@ func main() {
 		}
 
 		adapter, err := whatsapp.NewWahaAdapter(whatsapp.WahaAdapterConfig{
-			APIURL:         wahaAPIURL,
-			APIKey:         wahaAPIKey,
-			WebhookBaseURL: cfg.BackendPublicURL,
-			WebhookSecret:  cfg.WebhookSecret,
+			APIURL:        wahaAPIURL,
+			APIKey:        wahaAPIKey,
+			WebhookSecret: cfg.WebhookSecret,
+			// WebhookBaseURL intentionally omitted: WAHA's global WHATSAPP_HOOK_URL
+			// env var (docker-compose) handles webhook delivery via Docker internal
+			// network. Setting per-session webhooks caused duplicate delivery.
 		}, config.NewModuleLogger(logger, "waha-adapter"))
 		if err != nil {
 			logger.Error("Failed to create WAHA adapter", zap.Error(err))
