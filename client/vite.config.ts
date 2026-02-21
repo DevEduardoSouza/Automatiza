@@ -1,7 +1,6 @@
 import path from 'node:path';
 import react from '@vitejs/plugin-react';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
-import { componentTagger } from 'lovable-tagger';
 import { defineConfig } from 'vite';
 
 const ReactCompilerConfig = {
@@ -36,7 +35,6 @@ export default defineConfig(({ mode }) => ({
         plugins: [['babel-plugin-react-compiler', ReactCompilerConfig]],
       },
     }),
-    mode === 'development' && componentTagger(),
     // Sentry source map upload (production builds only)
     mode === 'production' &&
       sentryVitePlugin({
