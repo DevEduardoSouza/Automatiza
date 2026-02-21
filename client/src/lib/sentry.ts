@@ -166,6 +166,7 @@ export function initSentry(): void {
 
   Sentry.init({
     dsn,
+    tunnel: isProd ? '/api/v1/sentry-tunnel' : undefined,
     environment:
       (import.meta.env.VITE_SENTRY_ENVIRONMENT as string) || import.meta.env.MODE,
     release: import.meta.env.VITE_SENTRY_RELEASE as string | undefined,

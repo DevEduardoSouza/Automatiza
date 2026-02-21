@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"net/url"
+
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/backpressure"
@@ -81,6 +83,15 @@ func SetupRoutes(r *gin.Engine, deps *Dependencies) {
 
 	// Health check (public)
 	api.GET("/health", HealthCheck(deps))
+
+	// Sentry tunnel (public, no auth) — proxies envelopes through same origin
+	// to bypass ad blockers that block direct requests to *.sentry.io
+	if deps.Config.SentryDSN != "" {
+		if parsed, err := url.Parse(deps.Config.SentryDSN); err == nil && parsed.Host != "" {
+			tunnelHandler := NewSentryTunnelHandler(parsed.Host, deps.Logger)
+			api.POST("/sentry-tunnel", tunnelHandler.Handle)
+		}
+	}
 
 	// Create auth middleware using repositories (PostgreSQL)
 	authMW := middleware.AuthMiddlewareWithRepos(deps.ProfileRepo, deps.UserRoleRepo, deps.Logger)
