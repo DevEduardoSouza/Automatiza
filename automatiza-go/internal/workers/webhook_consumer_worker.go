@@ -18,6 +18,8 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -261,6 +263,11 @@ func (w *WebhookConsumerWorker) ProcessTask(ctx context.Context, task *asynq.Tas
 	if w.metrics != nil {
 		duration := time.Since(startTime).Seconds()
 		w.metrics.RecordProcessed(data.Session, data.Event, duration)
+	}
+
+	if observability.GlobalMetrics != nil {
+		observability.GlobalMetrics.WebhookEvents.Add(ctx, 1,
+			metric.WithAttributes(attribute.String("event_type", data.Event)))
 	}
 
 	return nil

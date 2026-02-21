@@ -72,6 +72,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -104,12 +105,43 @@ func main() {
 	}
 	defer sentry.Flush(2 * time.Second)
 
+	// Initialize OpenTelemetry (after Sentry, before logger)
+	serviceName := "automatiza-server"
+	if *workerMode {
+		serviceName = "automatiza-worker"
+	}
+	otelShutdown, otelLogProvider, otelErr := observability.InitOTel(context.Background(), observability.OTelConfig{
+		ServiceName:    serviceName,
+		ServiceVersion: buildVersion(),
+		Environment:    cfg.NodeEnv,
+		OTLPEndpoint:   cfg.OTLPEndpoint,
+		Enabled:        cfg.OTelEnabled,
+	})
+	if otelErr != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize OpenTelemetry: %v\n", otelErr)
+		// Non-fatal: continue without OTel
+	} else if cfg.OTelEnabled {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := otelShutdown(ctx); err != nil {
+				fmt.Fprintf(os.Stderr, "OTel shutdown error: %v\n", err)
+			}
+		}()
+	}
+
+	// Initialize custom business metrics (no-op when OTel disabled)
+	if err := observability.InitMetrics(cfg.OTelEnabled); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize OTel metrics: %v\n", err)
+		// Non-fatal: continue without custom metrics
+	}
+
 	// WaitGroup available for tracking background goroutines
 	wg := &sync.WaitGroup{}
 	_ = wg // available for SafeGo callers that need coordination
 
-	// Create logger
-	logger, err := config.NewLogger(cfg)
+	// Create logger (with OTel log bridge when enabled)
+	logger, err := config.NewLogger(cfg, otelLogProvider)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
 		os.Exit(1)
@@ -128,7 +160,14 @@ func main() {
 	logger.Info("Starting application",
 		zap.String("env", cfg.NodeEnv),
 		zap.String("port", cfg.Port),
-		zap.Bool("workerMode", *workerMode))
+		zap.Bool("workerMode", *workerMode),
+		zap.Bool("otelEnabled", cfg.OTelEnabled))
+
+	if cfg.OTelEnabled {
+		logger.Info("OpenTelemetry initialized",
+			zap.String("service", serviceName),
+			zap.String("endpoint", cfg.OTLPEndpoint))
+	}
 
 	// Initialize token HMAC key for secure token hashing
 	hmacKey := cfg.GetTokenHMACKey()
@@ -407,6 +446,21 @@ func main() {
 		config.NewModuleLogger(logger, "cron"),
 	)
 
+	// Register WAHA failed session cleanup job (P0: reclaims RAM from zombie sessions)
+	if concreteAdapter, ok := wahaAdapter.(*whatsapp.WahaAdapter); ok {
+		cronService.RegisterTask("cleanup_waha_failed_sessions", 1*time.Hour, func(ctx context.Context) error {
+			deleted, err := concreteAdapter.CleanupFailedSessions(ctx)
+			if err != nil {
+				return err
+			}
+			if deleted > 0 {
+				logger.Info("WAHA session cleanup completed",
+					zap.Int("deleted", deleted))
+			}
+			return nil
+		})
+	}
+
 	monitoringService := monitoring.NewMonitoringService(
 		automationRepo,
 		instanceRepo,
@@ -540,7 +594,8 @@ func main() {
 
 	router := gin.New()
 
-	// Add middleware (sentrygin FIRST to capture panics and request context)
+	// Add middleware (otelgin FIRST for distributed tracing, sentrygin SECOND for error capture)
+	router.Use(otelgin.Middleware("automatiza-server"))
 	router.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
 	router.Use(gin.Recovery())
 	router.Use(middleware.LoggingMiddleware(logger))
@@ -665,7 +720,7 @@ func main() {
 	// Create email adapter for password reset
 	var emailProvider emailadapter.EmailProvider
 	smtpHost := os.Getenv("SMTP_HOST")
-	smtpUsername := os.Getenv("SMTP_USERNAME")
+	smtpUsername := os.Getenv("SMTP_USER")
 	smtpPassword := os.Getenv("SMTP_PASSWORD")
 	if smtpHost != "" && smtpUsername != "" && smtpPassword != "" {
 		smtpPort := 587

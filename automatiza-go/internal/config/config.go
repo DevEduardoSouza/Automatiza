@@ -107,6 +107,10 @@ type Config struct {
 	// Sentry
 	SentryDSN string `mapstructure:"SENTRY_DSN"`
 
+	// OpenTelemetry
+	OTelEnabled  bool   `mapstructure:"OTEL_ENABLED"`
+	OTLPEndpoint string `mapstructure:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+
 	// Timezone
 	Timezone string `mapstructure:"TZ"`
 }
@@ -162,6 +166,8 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("LOG_LEVEL", "info")
 	viper.SetDefault("LINK_SAFETY_MODE", "off")
 	viper.SetDefault("TZ", "America/Sao_Paulo")
+	viper.SetDefault("OTEL_ENABLED", false)
+	viper.SetDefault("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4318")
 	viper.SetDefault("AI_MODEL", "gpt-4o-mini")
 	viper.SetDefault("AI_IMAGE_MODEL", "imagen-3.0-generate-002")
 	viper.SetDefault("DB_PORT", "5432")
@@ -266,6 +272,14 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("SENTRY_DSN"); v != "" && cfg.SentryDSN == "" {
 		cfg.SentryDSN = v
+	}
+	if v := os.Getenv("OTEL_ENABLED"); v != "" && !cfg.OTelEnabled {
+		if v == "true" || v == "1" {
+			cfg.OTelEnabled = true
+		}
+	}
+	if v := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); v != "" && cfg.OTLPEndpoint == "" {
+		cfg.OTLPEndpoint = v
 	}
 }
 

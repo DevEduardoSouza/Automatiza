@@ -19,6 +19,7 @@ import (
 	"automatiza-go/internal/repository"
 
 	"github.com/getsentry/sentry-go"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 )
 
@@ -52,7 +53,8 @@ func NewMLService(
 ) Service {
 	return &mlService{
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 		cache:         cache,
 		mlCredsRepo:   mlCredsRepo,

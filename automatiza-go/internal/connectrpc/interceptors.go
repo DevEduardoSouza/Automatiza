@@ -2,8 +2,6 @@ package connectrpc
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -15,6 +13,11 @@ import (
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	"github.com/getsentry/sentry-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
@@ -125,25 +128,40 @@ func (i *RecoveryInterceptor) WrapStreamingHandler(next connect.StreamingHandler
 	}
 }
 
-// TracingInterceptor extracts and propagates trace context.
+// TracingInterceptor extracts and propagates trace context using OpenTelemetry.
+// It creates real distributed tracing spans for each RPC call and maintains
+// backward compatibility by populating TraceIDContextKey for existing code.
 type TracingInterceptor struct {
 	logger *zap.Logger
+	tracer trace.Tracer
 }
 
 // NewTracingInterceptor creates a new tracing interceptor.
 func NewTracingInterceptor(logger *zap.Logger) connect.Interceptor {
-	return &TracingInterceptor{logger: logger}
+	return &TracingInterceptor{
+		logger: logger,
+		tracer: otel.Tracer("connectrpc"),
+	}
 }
 
 func (i *TracingInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		// Extract or generate trace ID
-		traceID := extractTraceID(req.Header())
-		if traceID == "" {
-			traceID = generateTraceID()
-		}
+		// Extract propagated trace context from incoming headers
+		ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(req.Header()))
 
-		// Add trace ID to context
+		procedure := req.Spec().Procedure
+		ctx, span := i.tracer.Start(ctx, procedure,
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(
+				attribute.String("rpc.system", "connect"),
+				attribute.String("rpc.method", procedure),
+			),
+		)
+		defer span.End()
+
+		// Backward compatibility: populate TraceIDContextKey so existing code
+		// (GetTraceIDFromContext, LoggingInterceptor, etc.) continues to work.
+		traceID := span.SpanContext().TraceID().String()
 		ctx = context.WithValue(ctx, TraceIDContextKey, traceID)
 
 		// Extract client IP and User-Agent for audit logging
@@ -156,7 +174,12 @@ func (i *TracingInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 		userAgent := req.Header().Get("User-Agent")
 		ctx = context.WithValue(ctx, UserAgentContextKey, userAgent)
 
-		return next(ctx, req)
+		resp, err := next(ctx, req)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
+		}
+		return resp, err
 	}
 }
 
@@ -166,10 +189,19 @@ func (i *TracingInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 
 func (i *TracingInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		traceID := extractTraceID(conn.RequestHeader())
-		if traceID == "" {
-			traceID = generateTraceID()
-		}
+		ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(conn.RequestHeader()))
+
+		procedure := conn.Spec().Procedure
+		ctx, span := i.tracer.Start(ctx, procedure,
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(
+				attribute.String("rpc.system", "connect"),
+				attribute.String("rpc.method", procedure),
+			),
+		)
+		defer span.End()
+
+		traceID := span.SpanContext().TraceID().String()
 		ctx = context.WithValue(ctx, TraceIDContextKey, traceID)
 
 		// Extract client IP and User-Agent for audit logging
@@ -182,28 +214,13 @@ func (i *TracingInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 		userAgent := conn.RequestHeader().Get("User-Agent")
 		ctx = context.WithValue(ctx, UserAgentContextKey, userAgent)
 
-		return next(ctx, conn)
-	}
-}
-
-func extractTraceID(header http.Header) string {
-	// Try W3C Trace Context format
-	traceparent := header.Get("traceparent")
-	if traceparent != "" {
-		parts := strings.Split(traceparent, "-")
-		if len(parts) >= 2 {
-			return parts[1]
+		err := next(ctx, conn)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
 		}
+		return err
 	}
-
-	// Fallback to custom header
-	return header.Get("x-trace-id")
-}
-
-func generateTraceID() string {
-	bytes := make([]byte, 16)
-	_, _ = rand.Read(bytes)
-	return hex.EncodeToString(bytes)
 }
 
 // LoggingInterceptor logs requests and responses.

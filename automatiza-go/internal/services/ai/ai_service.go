@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 )
 
@@ -50,7 +51,8 @@ func NewAIService(
 
 	return &aiService{
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout:   60 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 		apiURL: apiURL,
 		apiKey: apiKey,

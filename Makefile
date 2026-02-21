@@ -6,6 +6,7 @@
 
 .PHONY: help dev dev-client dev-go dev-worker build lint format test clean \
         sonar-up sonar-down sonar-logs sonar-clean \
+        otel-up otel-down otel-logs otel-clean \
         proto-generate proto-lint proto-breaking proto-deps install \
         db-up db-down db-reset db-migrate db-shell db-logs db-wait \
         waha-up waha-down waha-logs \
@@ -45,6 +46,9 @@ help: ## Show this help message
 	@echo ""
 	@echo "$(GREEN)SonarQube:$(RESET)"
 	@grep -E '^sonar-[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-20s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(GREEN)Observability (OTel + Jaeger + Loki + Grafana):$(RESET)"
+	@grep -E '^otel-[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-20s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
 
 # =============================================================================
@@ -265,6 +269,32 @@ sonar-clean: ## Remove SonarQube containers and volumes
 	@docker compose -f docker-compose.sonarqube.yml down -v
 
 # =============================================================================
+# Observability (OpenTelemetry + Jaeger + Loki + Grafana)
+# =============================================================================
+
+otel-up: ## Start observability stack (OTel Collector + Jaeger + Loki + Grafana)
+	@echo "$(GREEN)Starting observability stack...$(RESET)"
+	@docker compose -f docker-compose.observability.yml up -d
+	@echo ""
+	@echo "$(CYAN)Jaeger UI:        http://localhost:16686$(RESET)"
+	@echo "$(CYAN)Grafana UI:       http://localhost:3002  (admin/admin)$(RESET)"
+	@echo "$(CYAN)Loki API:         http://localhost:3100$(RESET)"
+	@echo "$(CYAN)OTel Collector:   grpc=:4317  http=:4318  metrics=:8889$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Run backend with: OTEL_ENABLED=true go run ./cmd/server/main.go$(RESET)"
+
+otel-down: ## Stop observability stack
+	@echo "$(YELLOW)Stopping observability stack...$(RESET)"
+	@docker compose -f docker-compose.observability.yml down
+
+otel-logs: ## Show OTel Collector logs
+	@docker compose -f docker-compose.observability.yml logs -f otel-collector
+
+otel-clean: ## Remove observability containers and volumes
+	@echo "$(RED)Removing observability containers and volumes...$(RESET)"
+	@docker compose -f docker-compose.observability.yml down -v
+
+# =============================================================================
 # Deploy
 # =============================================================================
 
@@ -303,6 +333,7 @@ clean-all: clean ## Clean everything (including node_modules, containers)
 	@rm -rf client/node_modules
 	@cd automatiza-go && docker compose down -v 2>/dev/null || true
 	@docker compose -f docker-compose.sonarqube.yml down -v 2>/dev/null || true
+	@docker compose -f docker-compose.observability.yml down -v 2>/dev/null || true
 	@echo "$(GREEN)Full clean complete!$(RESET)"
 
 # =============================================================================
@@ -315,6 +346,9 @@ status: ## Show status of all services
 	@echo ""
 	@echo "$(CYAN)SonarQube:$(RESET)"
 	@docker compose -f docker-compose.sonarqube.yml ps 2>/dev/null || echo "  Not running"
+	@echo ""
+	@echo "$(CYAN)Observability:$(RESET)"
+	@docker compose -f docker-compose.observability.yml ps 2>/dev/null || echo "  Not running"
 
 logs: ## Show logs from all services
 	@cd automatiza-go && docker compose logs -f
@@ -323,4 +357,5 @@ stop: ## Stop all services
 	@echo "$(YELLOW)Stopping all services...$(RESET)"
 	@cd automatiza-go && docker compose down 2>/dev/null || true
 	@docker compose -f docker-compose.sonarqube.yml down 2>/dev/null || true
+	@docker compose -f docker-compose.observability.yml down 2>/dev/null || true
 	@echo "$(GREEN)All services stopped!$(RESET)"

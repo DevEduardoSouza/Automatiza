@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 )
 
@@ -88,6 +89,7 @@ func NewService(cfg Config, cache *cache.Cache, logger *zap.Logger) *Service {
 		logger:               logger,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 10 {
 					return http.ErrUseLastResponse

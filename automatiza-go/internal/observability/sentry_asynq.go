@@ -2,23 +2,85 @@ package observability
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"runtime/debug"
 	"time"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
-// SentryAsynqMiddleware wraps an Asynq handler with Sentry error capture
-// and panic recovery. It clones the Sentry hub per task, captures errors
-// with worker/task tags, and marks max-retries-reached as Critical (dlq=true).
+// SentryAsynqMiddleware wraps an Asynq handler with Sentry error capture,
+// panic recovery, and OpenTelemetry distributed tracing. It creates a span
+// per task for end-to-end visibility in Jaeger.
 func SentryAsynqMiddleware(handlerName string, handler asynq.Handler) asynq.Handler {
+	tracer := otel.Tracer("asynq")
+
 	return asynq.HandlerFunc(func(ctx context.Context, task *asynq.Task) (retErr error) {
+		taskStart := time.Now()
+		defer func() {
+			if GlobalMetrics != nil {
+				durationMs := float64(time.Since(taskStart).Milliseconds())
+				GlobalMetrics.WorkerTaskDuration.Record(ctx, durationMs,
+					metric.WithAttributes(
+						attribute.String("task_type", task.Type()),
+						attribute.String("handler", handlerName),
+					))
+			}
+		}()
+
+		// Extract traceId from payload to create span link to the enqueue trace
+		var spanOpts []trace.SpanStartOption
+		spanOpts = append(spanOpts,
+			trace.WithSpanKind(trace.SpanKindConsumer),
+			trace.WithAttributes(
+				attribute.String("asynq.task_type", task.Type()),
+				attribute.String("asynq.handler", handlerName),
+			),
+		)
+
+		// Try to extract trace_id from payload for enqueue→worker correlation
+		var payload struct {
+			TraceID string `json:"trace_id"`
+		}
+		if err := json.Unmarshal(task.Payload(), &payload); err == nil && payload.TraceID != "" {
+			if tid, err := trace.TraceIDFromHex(payload.TraceID); err == nil {
+				linkedCtx := trace.NewSpanContext(trace.SpanContextConfig{
+					TraceID: tid,
+				})
+				spanOpts = append(spanOpts, trace.WithLinks(trace.Link{
+					SpanContext: linkedCtx,
+					Attributes: []attribute.KeyValue{
+						attribute.String("link.type", "enqueue"),
+					},
+				}))
+			}
+		}
+
+		// Start OTel span for the task
+		ctx, span := tracer.Start(ctx, "asynq/"+task.Type(), spanOpts...)
+		defer func() {
+			if retErr != nil {
+				span.SetStatus(codes.Error, retErr.Error())
+				span.RecordError(retErr)
+			}
+			span.End()
+		}()
+
 		hub := sentry.CurrentHub().Clone()
 		hub.ConfigureScope(func(scope *sentry.Scope) {
 			scope.SetTag("worker", handlerName)
 			scope.SetTag("task_type", task.Type())
+			// Link Sentry scope to OTel trace for correlation
+			if span.SpanContext().HasTraceID() {
+				scope.SetTag("traceId", span.SpanContext().TraceID().String())
+			}
 		})
 		ctx = sentry.SetHubOnContext(ctx, hub)
 
@@ -54,6 +116,11 @@ func SentryAsynqMiddleware(handlerName string, handler asynq.Handler) asynq.Hand
 
 			queueName, _ := asynq.GetQueueName(ctx)
 
+			span.SetAttributes(
+				attribute.Int("asynq.retry_count", retried),
+				attribute.String("asynq.queue", queueName),
+			)
+
 			level := sentry.LevelError
 			tags := map[string]string{
 				"worker":      handlerName,
@@ -65,6 +132,7 @@ func SentryAsynqMiddleware(handlerName string, handler asynq.Handler) asynq.Hand
 			if isLastRetry {
 				level = sentry.LevelFatal
 				tags["dlq"] = "true"
+				span.SetAttributes(attribute.Bool("asynq.dlq", true))
 			}
 
 			hub.WithScope(func(scope *sentry.Scope) {

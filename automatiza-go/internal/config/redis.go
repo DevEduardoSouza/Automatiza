@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -24,6 +25,12 @@ func NewRedisClient(cfg *Config) (*RedisClient, error) {
 	}
 
 	client := redis.NewClient(opts)
+
+	// OTel: instrument all Redis operations for distributed tracing
+	if err := redisotel.InstrumentTracing(client); err != nil {
+		// Non-fatal: continue without tracing if instrumentation fails
+		fmt.Printf("warning: failed to instrument Redis tracing: %v\n", err)
+	}
 
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

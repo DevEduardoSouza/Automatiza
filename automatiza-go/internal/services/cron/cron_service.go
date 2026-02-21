@@ -9,6 +9,10 @@ import (
 	"automatiza-go/internal/services/jobs"
 
 	"github.com/getsentry/sentry-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -253,6 +257,14 @@ func (s *cronService) executeTask(task *cronTask) {
 	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Minute)
 	defer cancel()
 
+	// OTel: create root span per cron execution for end-to-end tracing
+	tracer := otel.Tracer("cron")
+	ctx, span := tracer.Start(ctx, "cron/"+task.name,
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(attribute.String("cron.task", task.name)),
+	)
+	defer span.End()
+
 	err := task.task(ctx)
 
 	s.tasksMu.Lock()
@@ -260,6 +272,8 @@ func (s *cronService) executeTask(task *cronTask) {
 	s.tasksMu.Unlock()
 
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Cron task failed", err,
 			map[string]string{
 				"module": "cron",

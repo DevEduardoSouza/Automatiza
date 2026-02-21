@@ -17,6 +17,8 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -310,6 +312,11 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		zap.String("automationID", data.AutomationID),
 		zap.String("instanceName", data.InstanceName),
 		zap.String("groupId", data.GroupID))
+
+	if observability.GlobalMetrics != nil {
+		observability.GlobalMetrics.MessagesDispatched.Add(ctx, 1,
+			metric.WithAttributes(attribute.String("instance", data.InstanceName)))
+	}
 
 	w.updateHistoryStatus(ctx, data.HistoryID, "completed")
 	w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{

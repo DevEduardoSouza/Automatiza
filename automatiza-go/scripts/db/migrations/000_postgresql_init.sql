@@ -886,8 +886,8 @@ INSERT INTO settings (key, value, description) VALUES
     ('ai_api_key', '', 'AI API Key'),
     ('ai_model', 'gemini-1.5-flash', 'AI Model'),
     ('platform_name', 'Automatiza Grupos', 'Platform Name'),
-    ('platform_url', 'https://astecwms.com.br', 'Platform URL'),
-    ('support_email', 'suporte@astecwms.com.br', 'Support Email'),
+    ('platform_url', 'https://v2automatisagrupos.com', 'Platform URL'),
+    ('support_email', 'atendimento.automatiza@gmail.com', 'Support Email'),
     ('max_free_automations', '1', 'Max automations for free plan'),
     ('max_free_groups', '10', 'Max groups for free plan'),
     ('trial_days', '7', 'Trial period in days'),
@@ -996,9 +996,9 @@ INSERT INTO profiles (
 )
 SELECT
     uuid_generate_v4(),
-    'admin@astecwms.com.br',
-    -- bcrypt hash for 'admin123' (cost 10)
-    '$2a$10$vH6t09grEgKBPA/eY3zBAOeF4kbMNM6tRcO2qfwvjdzX2PlSiJxau',
+    'admin@v2automatisagrupos.com',
+    -- bcrypt hash for 'semSenha123!' (cost 10)
+    '$2b$10$..129RAHx/Lbp0HvgHnKTebwZ/FpntwIfEnDFKFDyQP6IpNVGeEqO',
     'Administrador',
     'Administrador',
     (SELECT id FROM roles_lookup WHERE name = 'admin'),
@@ -1007,19 +1007,19 @@ SELECT
     10000,
     100,
     TRUE
-WHERE NOT EXISTS (SELECT 1 FROM profiles WHERE email = 'admin@astecwms.com.br')
+WHERE NOT EXISTS (SELECT 1 FROM profiles WHERE email = 'admin@v2automatisagrupos.com')
 RETURNING id;
 
 -- Create admin credentials in user_credentials table (used by Go auth code)
 INSERT INTO user_credentials (user_id, password_hash)
-SELECT id, '$2a$10$vH6t09grEgKBPA/eY3zBAOeF4kbMNM6tRcO2qfwvjdzX2PlSiJxau'
-FROM profiles WHERE email = 'admin@astecwms.com.br'
+SELECT id, '$2b$10$..129RAHx/Lbp0HvgHnKTebwZ/FpntwIfEnDFKFDyQP6IpNVGeEqO'
+FROM profiles WHERE email = 'admin@v2automatisagrupos.com'
 ON CONFLICT (user_id) DO NOTHING;
 
 -- Create admin role mapping in user_roles table (used by Go auth code)
 INSERT INTO user_roles (user_id, role)
 SELECT id, 'admin'
-FROM profiles WHERE email = 'admin@astecwms.com.br'
+FROM profiles WHERE email = 'admin@v2automatisagrupos.com'
 ON CONFLICT (user_id) DO UPDATE SET role = 'admin';
 
 -- =============================================================================

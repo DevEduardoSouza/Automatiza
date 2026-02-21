@@ -8,6 +8,7 @@ import (
 
 	"automatiza-go/internal/observability"
 
+	"github.com/exaring/otelpgx"
 	"github.com/getsentry/sentry-go"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -71,6 +72,9 @@ func NewDB(ctx context.Context, cfg *Config, logger *zap.Logger) (*DB, error) {
 	if _, exists := poolConfig.ConnConfig.RuntimeParams["statement_timeout"]; !exists {
 		poolConfig.ConnConfig.RuntimeParams["statement_timeout"] = "30000"
 	}
+
+	// OTel: instrument all queries via otelpgx tracer hook
+	poolConfig.ConnConfig.Tracer = otelpgx.NewTracer()
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {

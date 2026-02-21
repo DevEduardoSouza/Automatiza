@@ -304,3 +304,10 @@ O que hoje o mcp "chrome-devtools" consegue fazer com a configuração atual e o
         "SAFETY_ALLOW_DESTRUCTIVE_OPERATIONS": "false"
       }
     },
+
+
+
+TODO:
+- Email de suporte — trocar suporte@astecwms.com.br por atendimento.automatiza@gmail.com
+
+

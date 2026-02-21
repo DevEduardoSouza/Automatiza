@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -37,6 +38,7 @@ type MessageJobData struct {
 	PTT           bool     `json:"ptt,omitempty"`
 	UserID        string   `json:"userId"`
 	AutomationID  string   `json:"automationId,omitempty"`
+	TraceID       string   `json:"trace_id,omitempty"`
 }
 
 // GroupsSyncJobData represents data for a groups sync job
@@ -44,6 +46,7 @@ type GroupsSyncJobData struct {
 	UserID       string `json:"userId"`
 	InstanceName string `json:"instanceName"`
 	InstanceID   int    `json:"instanceId"`
+	TraceID      string `json:"trace_id,omitempty"`
 }
 
 // WebhookJobData represents data for a WAHA webhook processing job
@@ -79,6 +82,13 @@ func (q *QueueClient) Close() error {
 
 // EnqueueMessage enqueues a message sending job
 func (q *QueueClient) EnqueueMessage(ctx context.Context, data *MessageJobData, delay time.Duration) (*asynq.TaskInfo, error) {
+	// OTel: propagate traceId from caller context for enqueue→worker correlation
+	if data.TraceID == "" {
+		if span := trace.SpanFromContext(ctx); span.SpanContext().HasTraceID() {
+			data.TraceID = span.SpanContext().TraceID().String()
+		}
+	}
+
 	payload, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
@@ -117,6 +127,13 @@ func (q *QueueClient) EnqueueMessage(ctx context.Context, data *MessageJobData, 
 
 // EnqueueGroupsSync enqueues a groups sync job
 func (q *QueueClient) EnqueueGroupsSync(ctx context.Context, data *GroupsSyncJobData) (*asynq.TaskInfo, error) {
+	// OTel: propagate traceId from caller context for enqueue→worker correlation
+	if data.TraceID == "" {
+		if span := trace.SpanFromContext(ctx); span.SpanContext().HasTraceID() {
+			data.TraceID = span.SpanContext().TraceID().String()
+		}
+	}
+
 	payload, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
@@ -133,6 +150,13 @@ func (q *QueueClient) EnqueueGroupsSync(ctx context.Context, data *GroupsSyncJob
 
 // EnqueueWebhook enqueues a WAHA webhook processing job
 func (q *QueueClient) EnqueueWebhook(ctx context.Context, data *WebhookJobData) (*asynq.TaskInfo, error) {
+	// OTel: propagate traceId from caller context for enqueue→worker correlation
+	if data.TraceID == "" {
+		if span := trace.SpanFromContext(ctx); span.SpanContext().HasTraceID() {
+			data.TraceID = span.SpanContext().TraceID().String()
+		}
+	}
+
 	payload, err := json.Marshal(data)
 	if err != nil {
 		return nil, err

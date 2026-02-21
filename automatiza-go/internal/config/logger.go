@@ -4,12 +4,17 @@ import (
 	"os"
 	"strings"
 
+	"go.opentelemetry.io/contrib/bridges/otelzap"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-// NewLogger creates a new logger instance based on configuration
-func NewLogger(cfg *Config) (*zap.Logger, error) {
+// NewLogger creates a new logger instance based on configuration.
+// When an OTel LoggerProvider is passed, logs are tee'd to both stdout and
+// the OTel pipeline (which forwards to Loki via the Collector). The bridge
+// automatically injects traceId/spanId into log records for correlation.
+func NewLogger(cfg *Config, loggerProvider ...*sdklog.LoggerProvider) (*zap.Logger, error) {
 	var level zapcore.Level
 	switch strings.ToLower(cfg.LogLevel) {
 	case "debug":
@@ -47,11 +52,18 @@ func NewLogger(cfg *Config) (*zap.Logger, error) {
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
 	}
 
-	core := zapcore.NewCore(
+	stdoutCore := zapcore.NewCore(
 		encoder,
 		zapcore.AddSync(os.Stdout),
 		level,
 	)
+
+	// Tee stdout + OTel bridge when a LoggerProvider is available
+	core := stdoutCore
+	if len(loggerProvider) > 0 && loggerProvider[0] != nil {
+		otelCore := otelzap.NewCore("automatiza", otelzap.WithLoggerProvider(loggerProvider[0]))
+		core = zapcore.NewTee(stdoutCore, otelCore)
+	}
 
 	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 

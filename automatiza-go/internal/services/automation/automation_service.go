@@ -21,6 +21,8 @@ import (
 	"automatiza-go/internal/workers"
 
 	"github.com/getsentry/sentry-go"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -433,6 +435,15 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 		s.logger.Warn("Failed to update last_run_at",
 			zap.String("automationID", automation.ID),
 			zap.Error(updateErr))
+	}
+
+	if observability.GlobalMetrics != nil {
+		mode := "unknown"
+		if automation.Mode != nil {
+			mode = *automation.Mode
+		}
+		observability.GlobalMetrics.AutomationRuns.Add(ctx, 1,
+			metric.WithAttributes(attribute.String("mode", mode)))
 	}
 
 	return result, nil

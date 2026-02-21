@@ -28,6 +28,7 @@ import (
 	"automatiza-go/internal/observability"
 
 	"github.com/getsentry/sentry-go"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 )
 
@@ -299,11 +300,12 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 	}
 
 	// C6: Configure HTTP transport with connection pool limits
-	transport := &http.Transport{
+	// OTel: wrap with otelhttp for distributed tracing of external HTTP calls
+	transport := otelhttp.NewTransport(&http.Transport{
 		MaxIdleConns:    100,
 		MaxConnsPerHost: 20,
 		IdleConnTimeout: 90 * time.Second,
-	}
+	})
 
 	// N3: Retry enabled by default, controllable via env var for rollback
 	retryEnabled := true
@@ -1338,6 +1340,87 @@ func (a *WahaAdapter) ClearAllStatusCache() {
 	defer a.statusCacheMu.Unlock()
 
 	a.statusCache = make(map[string]*statusCacheEntry)
+}
+
+// =============================================================================
+// Session Maintenance (not part of WhatsAppProvider interface)
+// =============================================================================
+
+// ListAllSessions retrieves all WAHA sessions via GET /api/sessions.
+// Returns raw session info including status for each session.
+// This is used for maintenance operations like cleanup of FAILED sessions.
+func (a *WahaAdapter) ListAllSessions(ctx context.Context) ([]SessionInfo, error) {
+	resp, err := a.doRequest(ctx, http.MethodGet, "/api/sessions", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all sessions: %w", err)
+	}
+
+	var wahaSessions []wahaSession
+	if err := json.Unmarshal(resp, &wahaSessions); err != nil {
+		return nil, NewProviderError(ErrCodeProviderError, "failed to parse sessions list response", err)
+	}
+
+	sessions := make([]SessionInfo, 0, len(wahaSessions))
+	for i := range wahaSessions {
+		sessions = append(sessions, *a.mapper.SessionInfoFromWaha(&wahaSessions[i]))
+	}
+
+	return sessions, nil
+}
+
+// CleanupFailedSessions lists all WAHA sessions and deletes those in FAILED status.
+// Returns the number of sessions deleted. This is intended to be called periodically
+// from a cron job to reclaim resources from zombie sessions (e.g., sessions where the
+// user never scanned the QR code or disconnected WhatsApp without ending the session).
+func (a *WahaAdapter) CleanupFailedSessions(ctx context.Context) (int, error) {
+	sessions, err := a.ListAllSessions(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list sessions for cleanup: %w", err)
+	}
+
+	var failed []string
+	for _, s := range sessions {
+		if s.Status == SessionStatusFailed {
+			failed = append(failed, s.Name)
+		}
+	}
+
+	if len(failed) == 0 {
+		a.logger.Debug("no FAILED sessions to clean up",
+			zap.Int("totalSessions", len(sessions)))
+		return 0, nil
+	}
+
+	a.logger.Info("cleaning up FAILED WAHA sessions",
+		zap.Int("failedCount", len(failed)),
+		zap.Int("totalSessions", len(sessions)))
+
+	deleted := 0
+	for _, name := range failed {
+		if err := a.DeleteSession(ctx, name); err != nil {
+			a.logger.Warn("failed to delete FAILED session",
+				zap.String("session", name),
+				zap.Error(err))
+			continue
+		}
+		deleted++
+		a.logger.Info("deleted FAILED session",
+			zap.String("session", name))
+	}
+
+	if deleted > 0 {
+		observability.CaptureMessage(sentry.LevelInfo,
+			fmt.Sprintf("WAHA session cleanup: deleted %d/%d FAILED sessions", deleted, len(failed)),
+			map[string]string{
+				"module":         "waha-adapter",
+				"flow":           "session-cleanup",
+				"deleted":        strconv.Itoa(deleted),
+				"failed_total":   strconv.Itoa(len(failed)),
+				"sessions_total": strconv.Itoa(len(sessions)),
+			})
+	}
+
+	return deleted, nil
 }
 
 // =============================================================================
