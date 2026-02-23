@@ -23,7 +23,6 @@ import {
   UpdateUserPlanRequestSchema,
 } from '@/gen/profiles/v1/profiles_pb';
 import { useAdminConnect } from '@/hooks/use-admin-connect';
-import { useLoadBalancerConnect } from '@/hooks/use-loadbalancer-connect';
 import { getErrorInfo } from '@/lib/connect-transport';
 import { create } from '@bufbuild/protobuf';
 import { createClient } from '@connectrpc/connect';
@@ -35,8 +34,6 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import type {
   CreateUserFormData,
-  LoadBalancerServer,
-  SystemEvent,
   User,
   UserAutomationRow,
   UserInvestigation,
@@ -88,15 +85,6 @@ export interface UseUsersTabReturn {
   setBlockReason: (reason: string) => void;
   blockKind: 'payment' | 'manual';
   setBlockKind: (kind: 'payment' | 'manual') => void;
-  lbUserLoading: boolean;
-  lbUserServer: LoadBalancerServer | null;
-  lbTargetServerId: string;
-  setLbTargetServerId: (id: string) => void;
-  lbMigrating: boolean;
-  systemEvents: SystemEvent[];
-  systemEventsLoading: boolean;
-  systemEventsSinceMinutes: number;
-  setSystemEventsSinceMinutes: (minutes: number) => void;
   handleWhatsAppCall: (phoneNumber: string | null) => void;
   handleCreateUser: () => Promise<void>;
   isAdmin: (userId: string) => boolean;
@@ -104,14 +92,12 @@ export interface UseUsersTabReturn {
   revokeAdmin: (userId: string) => Promise<void>;
   updateMaxAutomations: (userId: string, value: number | null) => Promise<void>;
   openUserDetails: (user: User) => Promise<void>;
-  fetchSystemEvents: (userId: string) => Promise<void>;
   blockUserAccount: () => Promise<void>;
   unblockUserAccount: () => Promise<void>;
   handleResetPassword: () => Promise<void>;
   pauseAllActiveAutomations: () => Promise<void>;
   activatePausedAutomations: (alsoSpreadNextRun?: boolean) => Promise<void>;
   spreadNextRunAt: () => Promise<void>;
-  migrateUserServer: () => Promise<void>;
   handleRefreshDetails: () => void;
 }
 
@@ -167,6 +153,7 @@ function fromProtoAutomation(auto: AdminUserAutomation): UserAutomationRow {
     status: (auto.status as 'active' | 'paused' | 'inactive') ?? 'paused',
     mode: auto.mode ?? null,
     interval_minutes: auto.intervalMinutes ?? null,
+    delay_seconds: auto.delaySeconds ?? null,
     start_time: auto.startTime ?? null,
     end_time: auto.endTime ?? null,
     stores: auto.stores ?? null,
@@ -185,8 +172,7 @@ function fromProtoAutomation(auto: AdminUserAutomation): UserAutomationRow {
 export function useUsersTab(): UseUsersTabReturn {
   const { t } = useTranslation();
   const { user: authUser } = useAuth();
-  const { fetchSystemEvents: fetchSystemEventsApi, resetUserPassword } = useAdminConnect();
-  const { getUserServer, migrateUser } = useLoadBalancerConnect();
+  const { resetUserPassword } = useAdminConnect();
   const transport = useTransport();
   const queryClient = useQueryClient();
 
@@ -213,15 +199,6 @@ export function useUsersTab(): UseUsersTabReturn {
   const [spreadMinutes, setSpreadMinutes] = useState<number>(2);
   const [blockReason, setBlockReason] = useState<string>('');
   const [blockKind, setBlockKind] = useState<'payment' | 'manual'>('payment');
-
-  const [lbUserLoading, setLbUserLoading] = useState(false);
-  const [lbUserServer, setLbUserServer] = useState<LoadBalancerServer | null>(null);
-  const [lbTargetServerId, setLbTargetServerId] = useState<string>('2');
-  const [lbMigrating, setLbMigrating] = useState(false);
-
-  const [systemEvents, setSystemEvents] = useState<SystemEvent[]>([]);
-  const [systemEventsLoading, setSystemEventsLoading] = useState(false);
-  const [systemEventsSinceMinutes, setSystemEventsSinceMinutes] = useState<number>(60 * 24);
 
   // Use ConnectRPC query for listing profiles
   const {
@@ -439,7 +416,6 @@ export function useUsersTab(): UseUsersTabReturn {
     setDetailsOpen(true);
     setDetailsLoading(true);
     setDetails(null);
-    setLbUserServer(null);
     try {
       const client = createClient(AdminService, transport);
       const response = await client.getUserInvestigation(
@@ -461,57 +437,12 @@ export function useUsersTab(): UseUsersTabReturn {
         },
         automations: response.automations.map(fromProtoAutomation),
       });
-
-      // Fetch load balancer server (non-blocking)
-      setLbUserLoading(true);
-      try {
-        const server = await getUserServer(u.id);
-        if (server?.id && server?.url) {
-          setLbUserServer({
-            id: Number(server.id),
-            name: String(server.name || `Servidor ${server.id}`),
-            url: String(server.url),
-          });
-          setLbTargetServerId(String(Number(server.id) === 1 ? 2 : 1));
-        }
-      } finally {
-        setLbUserLoading(false);
-      }
     } catch (e: unknown) {
       const errInfo = getErrorInfo(e);
       toast.error(errInfo.userMessage || t('admin.users.errors.loadDetailsError'));
       setDetailsOpen(false);
     } finally {
       setDetailsLoading(false);
-    }
-  };
-
-  const fetchSystemEvents = async (userId: string) => {
-    setSystemEventsLoading(true);
-    try {
-      const events = await fetchSystemEventsApi({
-        userId,
-        limit: 100,
-        sinceMinutes: systemEventsSinceMinutes,
-      });
-      setSystemEvents(
-        events.map((e) => ({
-          id: e.id,
-          created_at: e.created_at,
-          user_id: e.user_id,
-          instance_id: e.instance_id,
-          level: e.level,
-          scope: e.scope,
-          message: e.message,
-          meta: e.meta,
-        }))
-      );
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t('admin.users.errors.systemEventsError');
-      toast.error(msg);
-      setSystemEvents([]);
-    } finally {
-      setSystemEventsLoading(false);
     }
   };
 
@@ -708,38 +639,6 @@ export function useUsersTab(): UseUsersTabReturn {
     }
   };
 
-  const migrateUserServer = async () => {
-    if (!details) return;
-    const target = Number(lbTargetServerId || 0);
-    if (!Number.isFinite(target) || target <= 0) {
-      toast.error(t('admin.users.errors.invalidServer'));
-      return;
-    }
-
-    const ok = window.confirm(t('admin.users.confirm.migrate', { server: target }));
-    if (!ok) return;
-
-    setLbMigrating(true);
-    try {
-      await migrateUser(details.profile.id, target);
-      toast.success(t('admin.users.success.migrated', { server: target }));
-
-      const server = await getUserServer(details.profile.id);
-      if (server?.id && server?.url) {
-        setLbUserServer({
-          id: Number(server.id),
-          name: String(server.name || `Servidor ${server.id}`),
-          url: String(server.url),
-        });
-      }
-    } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : t('admin.users.errors.migrateError');
-      toast.error(errMsg);
-    } finally {
-      setLbMigrating(false);
-    }
-  };
-
   const handleRefreshDetails = () => {
     if (details) {
       openUserDetails(details.profile);
@@ -775,15 +674,6 @@ export function useUsersTab(): UseUsersTabReturn {
     setBlockReason,
     blockKind,
     setBlockKind,
-    lbUserLoading,
-    lbUserServer,
-    lbTargetServerId,
-    setLbTargetServerId,
-    lbMigrating,
-    systemEvents,
-    systemEventsLoading,
-    systemEventsSinceMinutes,
-    setSystemEventsSinceMinutes,
     handleWhatsAppCall,
     handleCreateUser,
     isAdmin,
@@ -791,14 +681,12 @@ export function useUsersTab(): UseUsersTabReturn {
     revokeAdmin,
     updateMaxAutomations,
     openUserDetails,
-    fetchSystemEvents,
     blockUserAccount,
     unblockUserAccount,
     handleResetPassword,
     pauseAllActiveAutomations,
     activatePausedAutomations,
     spreadNextRunAt,
-    migrateUserServer,
     handleRefreshDetails,
   };
 }

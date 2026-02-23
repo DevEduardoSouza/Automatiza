@@ -104,10 +104,10 @@ export function ShopeeAuditCard({
             {loading ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {t('admin.dashboard.loadBalancer.refreshing')}
+                {t('common.refreshing')}
               </span>
             ) : (
-              t('admin.dashboard.loadBalancer.refresh')
+              t('common.refresh')
             )}
           </Button>
         </div>

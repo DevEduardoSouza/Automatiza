@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"automatiza-go/internal/config"
-	"automatiza-go/internal/lib/backpressure"
+	bpLib "automatiza-go/internal/lib/backpressure"
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/urlsafety"
@@ -43,6 +43,17 @@ type Service interface {
 	CanCreateAutomation(ctx context.Context, userID string) (canCreate bool, currentCount int, maxCount int, err error)
 }
 
+// urlSafetyEvaluator abstracts URL safety evaluation for testability.
+type urlSafetyEvaluator interface {
+	Evaluate(ctx context.Context, message string) (*urlsafety.UrlSafetyDecision, error)
+}
+
+// backpressureProvider abstracts backpressure checking for testability.
+type backpressureProvider interface {
+	CanEnqueue(ctx context.Context, userID string) (bool, string, error)
+	RecordEnqueue(ctx context.Context, userID string) error
+}
+
 type automationService struct {
 	automationRepo     repository.AutomationRepository
 	automationRunRepo  repository.AutomationRunRepository
@@ -56,8 +67,8 @@ type automationService struct {
 
 	shopeeService    shopee.Service
 	mlService        mercadolivre.Service
-	urlSafetyService *urlsafety.Service
-	backpressure     *backpressure.ProducerBackpressure
+	urlSafetyService urlSafetyEvaluator
+	backpressure     backpressureProvider
 
 	queueClient *workers.QueueClient
 	cache       *cache.Cache
@@ -82,12 +93,12 @@ func NewAutomationService(
 	shopeeService shopee.Service,
 	mlService mercadolivre.Service,
 	urlSafetyService *urlsafety.Service,
-	backpressure *backpressure.ProducerBackpressure,
+	bp *bpLib.ProducerBackpressure,
 	queueClient *workers.QueueClient,
 	cache *cache.Cache,
 	logger *zap.Logger,
 ) Service {
-	return &automationService{
+	svc := &automationService{
 		automationRepo:     automationRepo,
 		automationRunRepo:  automationRunRepo,
 		instanceRepo:       instanceRepo,
@@ -99,12 +110,19 @@ func NewAutomationService(
 		mlLinkListItemRepo: mlLinkListItemRepo,
 		shopeeService:      shopeeService,
 		mlService:          mlService,
-		urlSafetyService:   urlSafetyService,
-		backpressure:       backpressure,
 		queueClient:        queueClient,
 		cache:              cache,
 		logger:             logger,
 	}
+	// Assign concrete pointers to interface fields only when non-nil
+	// to preserve correct nil-check semantics (avoid non-nil interface wrapping nil pointer).
+	if urlSafetyService != nil {
+		svc.urlSafetyService = urlSafetyService
+	}
+	if bp != nil {
+		svc.backpressure = bp
+	}
+	return svc
 }
 
 func (s *automationService) DiagnoseAutomation(ctx context.Context, automationID, userID string) (*models.DiagnoseResult, error) {
@@ -635,6 +653,21 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					zap.Float64("finalOriginal", allOffers[i].OriginalPrice))
 				offer = allOffers[i]
 			}
+		}
+
+		// Skip offers with no real discount (price >= original price)
+		if !offer.HasRealDiscount() {
+			s.logger.Info("Offer skipped: no discount (price >= original)",
+				zap.String("automationID", automation.ID),
+				zap.Float64("price", offer.Price),
+				zap.Float64("originalPrice", offer.OriginalPrice),
+				zap.Int64("itemID", offer.ItemID),
+				zap.Int("offerIndex", i))
+			for _, groupID := range targetGroups {
+				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "no_discount", withCanonicalKey(canonicalKey, store))
+			}
+			skippedCount += len(targetGroups)
+			continue
 		}
 
 		// Generate proper affiliate link via generateShortLink mutation

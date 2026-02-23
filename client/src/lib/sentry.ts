@@ -97,7 +97,7 @@ export function captureHookError(
   error: unknown,
   hookName: string,
   operation: string,
-  extra?: Record<string, unknown>,
+  extra?: Record<string, unknown>
 ): void {
   Sentry.captureException(error, {
     tags: {
@@ -112,9 +112,7 @@ export function captureHookError(
  * Sets Sentry user context for error tracking.
  * Pass null to clear user on logout.
  */
-export function setSentryUser(
-  user: { id: string; email: string; role?: string } | null,
-): void {
+export function setSentryUser(user: { id: string; email: string; role?: string } | null): void {
   if (user) {
     Sentry.setUser({ id: user.id, email: user.email });
     if (user.role) {
@@ -153,9 +151,7 @@ export function initSentry(): void {
 
   // FG15: Dev mode console logger without DSN
   if (!dsn && isDevMode) {
-    console.info(
-      '[Sentry] Dev mode enabled without DSN. Errors will be logged to console.',
-    );
+    console.info('[Sentry] Dev mode enabled without DSN. Errors will be logged to console.');
     return;
   }
 
@@ -167,8 +163,7 @@ export function initSentry(): void {
   Sentry.init({
     dsn,
     tunnel: isProd ? '/api/v1/sentry-tunnel' : undefined,
-    environment:
-      (import.meta.env.VITE_SENTRY_ENVIRONMENT as string) || import.meta.env.MODE,
+    environment: (import.meta.env.VITE_SENTRY_ENVIRONMENT as string) || import.meta.env.MODE,
     release: import.meta.env.VITE_SENTRY_RELEASE as string | undefined,
     integrations: [
       Sentry.browserTracingIntegration(),
@@ -187,6 +182,13 @@ export function initSentry(): void {
       'ResizeObserver loop',
       'ResizeObserver loop completed with undelivered notifications',
       'Non-Error promise rejection captured',
+      'AbortError',
+      'The user aborted a request',
+      'signal is aborted without reason',
+      /Failed to fetch/i,
+      /Load failed/i,
+      /NetworkError when attempting/i,
+      /ChunkLoadError/i,
     ],
 
     // T4.5: PII redaction in beforeSend
@@ -209,9 +211,7 @@ export function initSentry(): void {
       if (event.breadcrumbs) {
         for (const breadcrumb of event.breadcrumbs) {
           if (breadcrumb.message) {
-            breadcrumb.message = scrubPII(
-              stripSensitiveParams(breadcrumb.message),
-            );
+            breadcrumb.message = scrubPII(stripSensitiveParams(breadcrumb.message));
           }
           if (breadcrumb.data && breadcrumb.category === 'ui.input') {
             breadcrumb.data = undefined;

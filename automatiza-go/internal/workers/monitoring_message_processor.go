@@ -275,6 +275,9 @@ func (p *MonitoringMessageProcessor) parsePayload(
 		msg.QuotedMsg = p.parseQuotedMessage(quotedMsg)
 	}
 
+	// Extract link preview data from extendedTextMessage (Shopee/ML links with thumbnail)
+	p.enrichWithLinkPreview(msg, payload)
+
 	// Validate required fields
 	if msg.MessageID == "" {
 		return nil, fmt.Errorf("message ID not found in payload")
@@ -376,6 +379,9 @@ func (p *MonitoringMessageProcessor) parseMessageObject(
 		msg.PushName = pushName
 	}
 
+	// Extract link preview from extendedTextMessage inside nested message object
+	p.enrichWithLinkPreview(msg, msgObj)
+
 	// Validate
 	if msg.MessageID == "" {
 		return nil, fmt.Errorf("message ID not found in message object")
@@ -412,6 +418,111 @@ func (p *MonitoringMessageProcessor) parseQuotedMessage(
 	}
 
 	return quoted
+}
+
+// enrichWithLinkPreview extracts link preview data (description, title, thumbnail)
+// from WAHA extendedTextMessage payloads and enriches the IncomingMessage.
+//
+// When a user sends a Shopee/ML link, WhatsApp generates a link preview with
+// product description, title, and a JPEG thumbnail. This data arrives in the
+// extendedTextMessage structure. Without extraction, only the bare URL is forwarded.
+func (p *MonitoringMessageProcessor) enrichWithLinkPreview(msg *models.IncomingMessage, payload map[string]interface{}) {
+	description, title, thumbnail := extractLinkPreviewData(payload)
+
+	if description == "" && title == "" && thumbnail == "" {
+		return
+	}
+
+	p.logger.Debug("Link preview data extracted",
+		zap.String("messageID", msg.MessageID),
+		zap.Bool("hasDescription", description != ""),
+		zap.Bool("hasTitle", title != ""),
+		zap.Bool("hasThumbnail", thumbnail != ""))
+
+	// Enrich body if it's just a URL and we have description/title
+	if (description != "" || title != "") && isPlainURL(msg.Body) {
+		var parts []string
+		if title != "" {
+			parts = append(parts, "*"+title+"*")
+		}
+		if description != "" {
+			parts = append(parts, description)
+		}
+		parts = append(parts, msg.Body)
+		msg.Body = strings.Join(parts, "\n\n")
+	}
+
+	// Set thumbnail as inline image (avoids needing DownloadMedia)
+	if thumbnail != "" && !msg.HasMedia {
+		msg.HasMedia = true
+		msg.MediaBase64 = thumbnail
+		msg.MediaType = "image"
+		msg.MimeType = "image/jpeg"
+	}
+}
+
+// extractLinkPreviewData searches for link preview fields in multiple locations
+// within the WAHA webhook payload. WAHA GoWS engine places extendedTextMessage
+// data in different structures depending on the payload format.
+//
+// Search order:
+//  1. payload["_data"]["message"]["extendedTextMessage"]
+//  2. payload["message"]["extendedTextMessage"]
+//  3. payload["_data"] (flat fields)
+//  4. Top-level payload (flat fields)
+func extractLinkPreviewData(payload map[string]interface{}) (description, title, thumbnail string) {
+	// Try nested paths first (most specific)
+	searchPaths := [][]string{
+		{"_data", "message", "extendedTextMessage"},
+		{"message", "extendedTextMessage"},
+		{"_data"},
+	}
+
+	for _, path := range searchPaths {
+		obj := navigatePayload(payload, path)
+		if obj == nil {
+			continue
+		}
+		d, _ := extractStringFromPayload(obj, "description")
+		t, _ := extractStringFromPayload(obj, "title")
+		th, _ := extractStringFromPayload(obj, "jpegThumbnail")
+		if th == "" {
+			th, _ = extractStringFromPayload(obj, "JPEGThumbnail")
+		}
+		if d != "" || t != "" || th != "" {
+			return d, t, th
+		}
+	}
+
+	// Fallback: check top-level
+	d, _ := extractStringFromPayload(payload, "description")
+	t, _ := extractStringFromPayload(payload, "title")
+	th, _ := extractStringFromPayload(payload, "jpegThumbnail")
+	if th == "" {
+		th, _ = extractStringFromPayload(payload, "JPEGThumbnail")
+	}
+	return d, t, th
+}
+
+// navigatePayload traverses a nested map following the given key path.
+func navigatePayload(payload map[string]interface{}, keys []string) map[string]interface{} {
+	current := payload
+	for _, key := range keys {
+		next, ok := current[key].(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		current = next
+	}
+	return current
+}
+
+// isPlainURL checks if the string is just a URL (no surrounding text).
+func isPlainURL(s string) bool {
+	trimmed := strings.TrimSpace(s)
+	return trimmed != "" &&
+		(strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://")) &&
+		!strings.ContainsAny(trimmed, " \n\r\t")
 }
 
 // extractStringFromPayload safely extracts a string from a map.

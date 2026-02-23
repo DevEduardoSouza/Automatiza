@@ -52,6 +52,10 @@ type AuthService struct {
 	emailService  email.Service
 	publicBaseURL string
 	logger        *zap.Logger
+
+	// getUserOverride is a test hook: when non-nil, GetCurrentUser uses this
+	// function instead of the DB-backed getUser method. Set via testing helpers only.
+	getUserOverride getUserOverrideFunc
 }
 
 // AuthServiceConfig holds configuration for AuthService.
@@ -340,7 +344,12 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, sessionID string) (*Us
 		return nil, nil, err
 	}
 
-	user, err := s.getUser(ctx, session.UserID)
+	var user *User
+	if s.getUserOverride != nil {
+		user, err = s.getUserOverride(ctx, session.UserID)
+	} else {
+		user, err = s.getUser(ctx, session.UserID)
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get user: %w", err)
 	}

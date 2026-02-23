@@ -2,176 +2,144 @@ import type { Locator, Page } from '@playwright/test';
 
 /**
  * Page Object Model for the History page.
- * Encapsulates all history page interactions.
+ *
+ * Key UI notes:
+ * - Page title is an h2 (not h1).
+ * - 4 stat cards in a 2x2 / 1x4 grid (total, completed, running, failed).
+ * - Filters use shadcn Select (trigger is a button with role="combobox").
+ * - Desktop table is visible on md+ (hidden md:block).
+ * - Mobile card list is visible below md (md:hidden).
+ * - Pagination with first/prev/page-info/next/last buttons.
+ * - Clear history button opens an AlertDialog.
+ * - Loading spinner is a div with animate-spin class.
  */
 export class HistoryPage {
   readonly page: Page;
 
-  // Page elements
+  // -- Page structure --
   readonly pageTitle: Locator;
+  readonly pageSubtitle: Locator;
 
-  // Stats section
-  readonly statsSection: Locator;
-  readonly totalActionsCard: Locator;
-  readonly actionsTodayCard: Locator;
-  readonly successRateCard: Locator;
+  // -- Stats cards --
+  readonly statCards: Locator;
 
-  // Filters
-  readonly filterSection: Locator;
-  readonly filterByType: Locator;
-  readonly dateRangePicker: Locator;
-  readonly searchInput: Locator;
-  readonly clearFiltersButton: Locator;
+  // -- Table --
+  readonly table: Locator;
+  readonly tableRows: Locator;
 
-  // Action type filters
-  readonly filterOfferSent: Locator;
-  readonly filterAutomationRun: Locator;
-  readonly filterGroupSync: Locator;
-  readonly filterJobExecuted: Locator;
-  readonly filterAll: Locator;
+  // -- Mobile cards --
+  readonly mobileCards: Locator;
 
-  // History list
-  readonly historyList: Locator;
-  readonly historyEntries: Locator;
+  // -- Empty state --
   readonly emptyState: Locator;
 
-  // Entry details
-  readonly entryDetailDialog: Locator;
-  readonly entryTimestamp: Locator;
-  readonly entryDescription: Locator;
-  readonly entryMetadata: Locator;
+  // -- Loading spinner --
+  readonly loadingSpinner: Locator;
 
-  // Actions
+  // -- Filters --
+  readonly eventTypeFilter: Locator;
+  readonly statusFilter: Locator;
+  readonly clearFiltersButton: Locator;
+
+  // -- Pagination --
+  readonly paginationSection: Locator;
+  readonly firstPageButton: Locator;
+  readonly prevPageButton: Locator;
+  readonly nextPageButton: Locator;
+  readonly lastPageButton: Locator;
+  readonly paginationInfo: Locator;
+
+  // -- Actions --
   readonly clearHistoryButton: Locator;
-  readonly exportButton: Locator;
-  readonly loadMoreButton: Locator;
 
-  // Confirmation dialog
+  // -- Confirmation dialog (AlertDialog) --
   readonly confirmDialog: Locator;
   readonly confirmButton: Locator;
   readonly cancelButton: Locator;
 
-  // Loading states
-  readonly loadingSpinner: Locator;
-
   constructor(page: Page) {
     this.page = page;
 
-    // Page elements
-    this.pageTitle = page.locator('h1');
+    // Page title is an h2
+    this.pageTitle = page.locator('h2').first();
+    this.pageSubtitle = page.locator('h2 + p').first();
 
-    // Stats section
-    this.statsSection = page
-      .locator('section')
-      .filter({
-        has: page.locator('[class*="card"]'),
-      })
-      .first();
-    this.totalActionsCard = page
-      .locator('[class*="card"]')
-      .filter({ hasText: /total.*acoes|total.*actions/i });
-    this.actionsTodayCard = page.locator('[class*="card"]').filter({ hasText: /hoje|today/i });
-    this.successRateCard = page
-      .locator('[class*="card"]')
-      .filter({ hasText: /taxa.*sucesso|success.*rate/i });
+    // Stat cards: 4 cards in grid-cols-2 / lg:grid-cols-4
+    this.statCards = page.locator('.grid.grid-cols-2 > div');
 
-    // Filters
-    this.filterSection = page.locator('[class*="filter"]').first();
-    this.filterByType = page
-      .locator('[data-testid="filter-type"]')
-      .or(page.getByRole('combobox').first());
-    this.dateRangePicker = page
-      .locator('[data-testid="date-range"]')
-      .or(page.getByRole('button', { name: /data|date/i }));
-    this.searchInput = page
-      .locator('input[type="search"]')
-      .or(page.getByPlaceholder(/buscar|search/i));
-    this.clearFiltersButton = page.getByRole('button', {
-      name: /limpar.*filtros|clear.*filters/i,
+    // Desktop table (hidden md:block)
+    this.table = page.locator('.hidden.md\\:block table').or(page.locator('table').first());
+    this.tableRows = page.locator('table tbody tr');
+
+    // Mobile cards (md:hidden)
+    this.mobileCards = page.locator('.md\\:hidden > div');
+
+    // Empty state text
+    this.emptyState = page.getByText(
+      /nenhum.*registro|no.*records|sem.*historico|no.*history/i
+    );
+
+    // Loading spinner
+    this.loadingSpinner = page.locator('[class*="animate-spin"]').first();
+
+    // Filters: shadcn Select triggers (role="combobox")
+    // First combobox is event type, second is status
+    this.eventTypeFilter = page.locator('[role="combobox"]').first();
+    this.statusFilter = page.locator('[role="combobox"]').nth(1);
+    this.clearFiltersButton = page.locator('button').filter({
+      has: page.locator('.lucide-x'),
     });
 
-    // Action type filters
-    this.filterOfferSent = page.getByRole('button', {
-      name: /oferta.*enviada|offer.*sent/i,
+    // Pagination: buttons with ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight icons
+    this.paginationSection = page.locator('.flex.items-center.gap-0\\.5, .flex.items-center.gap-1');
+    this.firstPageButton = page.getByRole('button', {
+      name: /primeira|first/i,
     });
-    this.filterAutomationRun = page.getByRole('button', {
-      name: /automacao.*executada|automation.*run/i,
+    this.prevPageButton = page.getByRole('button', {
+      name: /anterior|previous/i,
     });
-    this.filterGroupSync = page.getByRole('button', {
-      name: /sincronizacao|sync/i,
+    this.nextPageButton = page.getByRole('button', {
+      name: /pr[oó]xima|next/i,
     });
-    this.filterJobExecuted = page.getByRole('button', {
-      name: /job|tarefa/i,
+    this.lastPageButton = page.getByRole('button', {
+      name: /[uú]ltima|last/i,
     });
-    this.filterAll = page.getByRole('button', {
-      name: /todos|all/i,
-    });
+    // Pagination info text: "X-Y de Z" or "1 / 5"
+    this.paginationInfo = page.getByText(/\d+\s*[/-]\s*\d+/);
 
-    // History list
-    this.historyList = page
-      .locator('[class*="history-list"]')
-      .or(page.locator('ul, [role="list"]').first());
-    this.historyEntries = page
-      .locator('[class*="history-entry"], [class*="history-item"]')
-      .or(page.locator('li[class*="entry"]'));
-    this.emptyState = page.getByText(/nenhum.*historico|no.*history|sem.*registros|no.*records/i);
+    // Clear history button (has Trash2 icon)
+    this.clearHistoryButton = page
+      .locator('button')
+      .filter({ has: page.locator('.lucide-trash-2, .lucide-trash2') });
 
-    // Entry details
-    this.entryDetailDialog = page.locator('[role="dialog"]');
-    this.entryTimestamp = this.entryDetailDialog
-      .locator('[class*="timestamp"]')
-      .or(this.entryDetailDialog.getByText(/\d{2}\/\d{2}\/\d{4}/));
-    this.entryDescription = this.entryDetailDialog.locator('[class*="description"]');
-    this.entryMetadata = this.entryDetailDialog
-      .locator('[class*="metadata"]')
-      .or(this.entryDetailDialog.locator('pre, code'));
-
-    // Actions
-    this.clearHistoryButton = page.getByRole('button', {
-      name: /limpar.*historico|clear.*history/i,
-    });
-    this.exportButton = page.getByRole('button', {
-      name: /exportar|export/i,
-    });
-    this.loadMoreButton = page.getByRole('button', {
-      name: /carregar.*mais|load.*more|ver.*mais|see.*more/i,
-    });
-
-    // Confirmation dialog
-    this.confirmDialog = page
-      .locator('[role="alertdialog"]')
-      .or(page.locator('[role="dialog"]').filter({ hasText: /confirmar|confirm/i }));
+    // AlertDialog for clear confirmation
+    this.confirmDialog = page.locator('[role="alertdialog"]');
     this.confirmButton = this.confirmDialog.getByRole('button', {
-      name: /confirmar|confirm|sim|yes|limpar|clear/i,
+      name: /confirmar|confirm/i,
     });
     this.cancelButton = this.confirmDialog.getByRole('button', {
-      name: /cancelar|cancel|nao|no/i,
+      name: /cancelar|cancel/i,
     });
-
-    // Loading states
-    this.loadingSpinner = page.locator('[class*="animate-spin"]').first();
   }
 
   /**
-   * Navigates to the history page.
+   * Navigates to the history page and waits for the h2 title to appear.
    */
   async goto(): Promise<void> {
     await this.page.goto('/history');
-    await this.page.waitForSelector('h1', { state: 'visible' });
+    await this.page.waitForSelector('h2', { state: 'visible' });
   }
 
   /**
-   * Waits for the page to load.
+   * Waits for the page to fully load (title visible + spinner gone).
    */
   async waitForLoad(): Promise<void> {
-    await this.page.waitForSelector('h1', { state: 'visible' });
+    await this.page.waitForSelector('h2', { state: 'visible' });
     await this.page
       .waitForFunction(
         () => {
-          const loading =
-            document.body.textContent?.includes('Carregando') ||
-            document.body.textContent?.includes('Loading');
-          return !loading;
+          const spinner = document.querySelector('[class*="animate-spin"]');
+          return !spinner || getComputedStyle(spinner).display === 'none';
         },
         { timeout: 10000 }
       )
@@ -179,135 +147,59 @@ export class HistoryPage {
   }
 
   /**
-   * Gets a history entry by its description.
+   * Gets the displayed stat value from a stat card by index (0-3).
+   * Index order: 0=total, 1=completed, 2=running, 3=failed.
    */
-  getEntryByDescription(description: string): Locator {
-    return this.historyEntries.filter({ hasText: description });
+  async getStatValue(index: number): Promise<string | null> {
+    const card = this.statCards.nth(index);
+    const valueEl = card.locator('.text-xl, .text-2xl').first();
+    return valueEl.textContent();
   }
 
   /**
-   * Filters history by action type.
-   */
-  async filterByActionType(
-    type: 'offer_sent' | 'automation_run' | 'group_sync' | 'job' | 'all'
-  ): Promise<void> {
-    const filterButtons = {
-      offer_sent: this.filterOfferSent,
-      automation_run: this.filterAutomationRun,
-      group_sync: this.filterGroupSync,
-      job: this.filterJobExecuted,
-      all: this.filterAll,
-    };
-    await filterButtons[type].click();
-  }
-
-  /**
-   * Searches history.
-   */
-  async search(query: string): Promise<void> {
-    await this.searchInput.fill(query);
-  }
-
-  /**
-   * Clears search input.
-   */
-  async clearSearch(): Promise<void> {
-    await this.searchInput.clear();
-  }
-
-  /**
-   * Clears all filters.
-   */
-  async clearFilters(): Promise<void> {
-    await this.clearFiltersButton.click();
-  }
-
-  /**
-   * Opens entry details.
-   */
-  async openEntryDetails(description: string): Promise<void> {
-    const entry = this.getEntryByDescription(description);
-    await entry.click();
-  }
-
-  /**
-   * Closes entry details dialog.
-   */
-  async closeEntryDetails(): Promise<void> {
-    const closeButton = this.entryDetailDialog.locator('button').filter({
-      has: this.page.locator('svg.lucide-x'),
-    });
-    await closeButton.click();
-  }
-
-  /**
-   * Clears all history.
+   * Clears history by clicking the clear button and confirming in the dialog.
    */
   async clearHistory(): Promise<void> {
     await this.clearHistoryButton.click();
-    if (await this.confirmDialog.isVisible()) {
-      await this.confirmButton.click();
-    }
+    await this.confirmDialog.waitFor({ state: 'visible' });
+    await this.confirmButton.click();
   }
 
   /**
-   * Exports history.
+   * Selects an event type filter option by clicking the combobox and choosing an option.
+   * @param optionText - Visible text of the option (regex-compatible)
    */
-  async exportHistory(): Promise<void> {
-    await this.exportButton.click();
+  async selectEventTypeFilter(optionText: string): Promise<void> {
+    await this.eventTypeFilter.click();
+    const option = this.page
+      .locator('[role="option"]')
+      .filter({ hasText: new RegExp(optionText, 'i') });
+    await option.click();
   }
 
   /**
-   * Loads more entries.
+   * Selects a status filter option by clicking the combobox and choosing an option.
+   * @param optionText - Visible text of the option (regex-compatible)
    */
-  async loadMore(): Promise<void> {
-    await this.loadMoreButton.click();
+  async selectStatusFilter(optionText: string): Promise<void> {
+    await this.statusFilter.click();
+    const option = this.page
+      .locator('[role="option"]')
+      .filter({ hasText: new RegExp(optionText, 'i') });
+    await option.click();
   }
 
   /**
-   * Gets the count of displayed entries.
+   * Returns the count of table rows in the desktop table.
    */
-  async getEntryCount(): Promise<number> {
-    return this.historyEntries.count();
+  async getTableRowCount(): Promise<number> {
+    return this.tableRows.count();
   }
 
   /**
-   * Checks if empty state is shown.
+   * Checks whether the empty state message is visible.
    */
   async isEmpty(): Promise<boolean> {
     return this.emptyState.isVisible();
-  }
-
-  /**
-   * Checks if load more button is visible.
-   */
-  async hasMoreEntries(): Promise<boolean> {
-    return this.loadMoreButton.isVisible();
-  }
-
-  /**
-   * Gets stat value from a card.
-   */
-  async getStatValue(card: Locator): Promise<string | null> {
-    const value = card.locator('h2, h3, [class*="value"], span').first();
-    return value.textContent();
-  }
-
-  /**
-   * Checks if entry was successful.
-   */
-  async isEntrySuccessful(description: string): Promise<boolean> {
-    const entry = this.getEntryByDescription(description);
-    const successIndicator = entry.locator('[class*="success"], svg.lucide-check');
-    return successIndicator.isVisible();
-  }
-
-  /**
-   * Checks if entry failed.
-   */
-  async isEntryFailed(description: string): Promise<boolean> {
-    const entry = this.getEntryByDescription(description);
-    const failIndicator = entry.locator('[class*="error"], [class*="failed"], svg.lucide-x');
-    return failIndicator.isVisible();
   }
 }

@@ -1,83 +1,68 @@
 import type { Page } from '@playwright/test';
 
 /**
- * Coupon status enum.
- */
-export const COUPON_STATUS = {
-  ACTIVE: 1,
-  EXPIRED: 2,
-  DISABLED: 3,
-} as const;
-
-/**
- * Store types enum.
- */
-export const STORE_TYPES = {
-  SHOPEE: 1,
-  MERCADO_LIVRE: 2,
-  AMAZON: 3,
-  MAGAZINE_LUIZA: 4,
-} as const;
-
-/**
- * Mock coupons data.
+ * Mock coupons data matching proto Coupon message fields.
+ * Uses camelCase field names as ConnectRPC JSON serialization.
  */
 export const MOCK_COUPONS = [
   {
     id: 'coupon-1',
+    userId: 'user-123',
     code: 'PROMO10',
-    description: '10% off em compras acima de R$100',
-    discountValue: 10,
-    discountType: 'PERCENTAGE',
-    minOrderValue: 100,
-    maxDiscount: 50,
-    store: STORE_TYPES.SHOPEE,
-    status: COUPON_STATUS.ACTIVE,
+    title: '10% off em compras acima de R$100',
+    store: 1, // Store.SHOPEE
+    isActive: true,
     expiresAt: new Date(Date.now() + 7 * 24 * 3600000).toISOString(),
-    usageCount: 45,
+    discountType: 1, // DiscountType.FIXED
+    discountValue: 10,
+    maxDiscount: 50,
+    minProductPrice: 100,
+    affiliateLink: 'https://shopee.com.br/promo',
+    category: 'generalOffers',
+    couponText: 'Use este cupom!',
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
   {
     id: 'coupon-2',
+    userId: 'user-123',
     code: 'FRETE15',
-    description: 'R$15 de desconto no frete',
-    discountValue: 15,
-    discountType: 'FIXED',
-    minOrderValue: 50,
-    maxDiscount: null,
-    store: STORE_TYPES.MERCADO_LIVRE,
-    status: COUPON_STATUS.ACTIVE,
+    title: 'R$15 de desconto no frete',
+    store: 4, // Store.MERCADO_LIVRE
+    isActive: true,
     expiresAt: new Date(Date.now() + 3 * 24 * 3600000).toISOString(),
-    usageCount: 120,
+    discountType: 1, // FIXED
+    discountValue: 15,
     createdAt: new Date(Date.now() - 86400000).toISOString(),
+    updatedAt: new Date(Date.now() - 86400000).toISOString(),
   },
   {
     id: 'coupon-3',
+    userId: 'user-123',
     code: 'OFERTAEXP',
-    description: 'Cupom expirado de teste',
-    discountValue: 20,
-    discountType: 'PERCENTAGE',
-    minOrderValue: 0,
-    maxDiscount: 100,
-    store: STORE_TYPES.AMAZON,
-    status: COUPON_STATUS.EXPIRED,
+    title: 'Cupom expirado de teste',
+    store: 2, // Store.AMAZON
+    isActive: true, // active but expired
     expiresAt: new Date(Date.now() - 86400000).toISOString(),
-    usageCount: 200,
+    discountType: 2, // PERCENT
+    discountValue: 20,
+    maxDiscount: 100,
     createdAt: new Date(Date.now() - 7 * 24 * 3600000).toISOString(),
+    updatedAt: new Date(Date.now() - 7 * 24 * 3600000).toISOString(),
   },
   {
     id: 'coupon-4',
+    userId: 'user-123',
     code: 'DESATIVADO',
-    description: 'Cupom desativado manualmente',
-    discountValue: 5,
-    discountType: 'FIXED',
-    minOrderValue: 30,
-    maxDiscount: null,
-    store: STORE_TYPES.MAGAZINE_LUIZA,
-    status: COUPON_STATUS.DISABLED,
+    title: 'Cupom desativado manualmente',
+    store: 3, // Store.MAGALU
+    isActive: false,
     expiresAt: new Date(Date.now() + 30 * 24 * 3600000).toISOString(),
-    usageCount: 15,
+    discountType: 1,
+    discountValue: 5,
+    minProductPrice: 30,
     createdAt: new Date(Date.now() - 3 * 24 * 3600000).toISOString(),
+    updatedAt: new Date(Date.now() - 3 * 24 * 3600000).toISOString(),
   },
 ];
 
@@ -86,12 +71,12 @@ export const MOCK_COUPONS = [
  */
 export const TEST_COUPON = {
   code: 'TESTE20',
-  description: 'Cupom de teste E2E',
+  title: 'Cupom de teste E2E',
+  store: 1, // Store.SHOPEE
+  discountType: 2, // PERCENT
   discountValue: 20,
-  discountType: 'PERCENTAGE',
-  minOrderValue: 80,
   maxDiscount: 40,
-  store: STORE_TYPES.SHOPEE,
+  minProductPrice: 80,
   expiresAt: new Date(Date.now() + 14 * 24 * 3600000).toISOString(),
 };
 
@@ -102,9 +87,8 @@ export async function mockCouponsListApi(page: Page, coupons = MOCK_COUPONS): Pr
   await page.route('**/coupons.v1.CouponsService/ListCoupons', async (route) => {
     await route.fulfill({
       status: 200,
-      contentType: 'application/grpc-web+proto',
-      headers: { 'grpc-status': '0' },
-      body: Buffer.from(JSON.stringify({ coupons })),
+      contentType: 'application/json',
+      body: JSON.stringify({ coupons }),
     });
   });
 }
@@ -121,41 +105,39 @@ export async function mockCreateCouponApi(
       case 'success':
         await route.fulfill({
           status: 200,
-          contentType: 'application/grpc-web+proto',
-          headers: { 'grpc-status': '0' },
-          body: Buffer.from(
-            JSON.stringify({
-              coupon: {
-                id: 'new-coupon-id',
-                ...TEST_COUPON,
-                status: COUPON_STATUS.ACTIVE,
-                usageCount: 0,
-                createdAt: new Date().toISOString(),
-              },
-            })
-          ),
+          contentType: 'application/json',
+          body: JSON.stringify({
+            coupon: {
+              id: 'new-coupon-id',
+              userId: 'user-123',
+              ...TEST_COUPON,
+              isActive: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          }),
         });
         break;
       case 'duplicate':
         await route.fulfill({
           status: 200,
-          contentType: 'application/grpc-web+proto',
+          contentType: 'application/json',
           headers: {
             'grpc-status': '6', // ALREADY_EXISTS
             'grpc-message': 'Coupon code already exists',
           },
-          body: Buffer.from([]),
+          body: JSON.stringify({}),
         });
         break;
       case 'error':
         await route.fulfill({
           status: 200,
-          contentType: 'application/grpc-web+proto',
+          contentType: 'application/json',
           headers: {
             'grpc-status': '13', // INTERNAL
             'grpc-message': 'Failed to create coupon',
           },
-          body: Buffer.from([]),
+          body: JSON.stringify({}),
         });
         break;
     }
@@ -173,19 +155,18 @@ export async function mockUpdateCouponApi(
     if (scenario === 'success') {
       await route.fulfill({
         status: 200,
-        contentType: 'application/grpc-web+proto',
-        headers: { 'grpc-status': '0' },
-        body: Buffer.from(JSON.stringify({ coupon: MOCK_COUPONS[0] })),
+        contentType: 'application/json',
+        body: JSON.stringify({ coupon: MOCK_COUPONS[0] }),
       });
     } else {
       await route.fulfill({
         status: 200,
-        contentType: 'application/grpc-web+proto',
+        contentType: 'application/json',
         headers: {
           'grpc-status': '13', // INTERNAL
           'grpc-message': 'Failed to update coupon',
         },
-        body: Buffer.from([]),
+        body: JSON.stringify({}),
       });
     }
   });
@@ -202,81 +183,18 @@ export async function mockDeleteCouponApi(
     if (scenario === 'success') {
       await route.fulfill({
         status: 200,
-        contentType: 'application/grpc-web+proto',
-        headers: { 'grpc-status': '0' },
-        body: Buffer.from([]),
+        contentType: 'application/json',
+        body: JSON.stringify({}),
       });
     } else {
       await route.fulfill({
         status: 200,
-        contentType: 'application/grpc-web+proto',
+        contentType: 'application/json',
         headers: {
           'grpc-status': '13', // INTERNAL
           'grpc-message': 'Failed to delete coupon',
         },
-        body: Buffer.from([]),
-      });
-    }
-  });
-}
-
-/**
- * Mocks the toggle coupon status API.
- */
-export async function mockToggleCouponStatusApi(
-  page: Page,
-  scenario: 'success' | 'error' = 'success'
-): Promise<void> {
-  await page.route('**/coupons.v1.CouponsService/ToggleCouponStatus', async (route) => {
-    if (scenario === 'success') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/grpc-web+proto',
-        headers: { 'grpc-status': '0' },
-        body: Buffer.from(
-          JSON.stringify({
-            coupon: { ...MOCK_COUPONS[0], status: COUPON_STATUS.DISABLED },
-          })
-        ),
-      });
-    } else {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/grpc-web+proto',
-        headers: {
-          'grpc-status': '13', // INTERNAL
-          'grpc-message': 'Failed to toggle coupon status',
-        },
-        body: Buffer.from([]),
-      });
-    }
-  });
-}
-
-/**
- * Mocks the copy coupon to clipboard API (track usage).
- */
-export async function mockCopyCouponApi(
-  page: Page,
-  scenario: 'success' | 'error' = 'success'
-): Promise<void> {
-  await page.route('**/coupons.v1.CouponsService/TrackCouponCopy', async (route) => {
-    if (scenario === 'success') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/grpc-web+proto',
-        headers: { 'grpc-status': '0' },
-        body: Buffer.from(JSON.stringify({ success: true })),
-      });
-    } else {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/grpc-web+proto',
-        headers: {
-          'grpc-status': '13', // INTERNAL
-          'grpc-message': 'Failed to track copy',
-        },
-        body: Buffer.from([]),
+        body: JSON.stringify({}),
       });
     }
   });
@@ -290,8 +208,6 @@ export async function setupCouponsMocks(page: Page): Promise<void> {
   await mockCreateCouponApi(page);
   await mockUpdateCouponApi(page);
   await mockDeleteCouponApi(page);
-  await mockToggleCouponStatusApi(page);
-  await mockCopyCouponApi(page);
 }
 
 /**

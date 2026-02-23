@@ -1103,3 +1103,328 @@ func TestNewMessageQueueWorker_MinimalConfig(t *testing.T) {
 	require.NotNil(t, worker)
 	assert.Nil(t, worker.actionHistoryRepo)
 }
+
+// =============================================================================
+// Invalid Payload (Unmarshal Error) Tests
+// =============================================================================
+
+func TestProcessTask_TextMessage_InvalidPayload(t *testing.T) {
+	worker, _, actionHistoryRepo := createTestMessageWorker(t)
+
+	ctx := context.Background()
+
+	// Build outer MessageTask JSON manually so the inner "payload" is invalid JSON
+	// that will fail when handleTextMessage tries to unmarshal it into TextMessagePayload.
+	// Using a JSON number (42) as payload — valid JSON at the outer level but not an object
+	// for TextMessagePayload unmarshal.
+	outerJSON := `{"type":"message:text","user_id":"user-123","instance_id":"","session_name":"test-session","group_id":"group@g.us","payload":42,"action_id":"action-text-invalid"}`
+	task := asynq.NewTask(TypeMessageText, []byte(outerJSON))
+
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-text-invalid", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-text-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	// Unmarshal error for text payload — "cannot unmarshal number" triggers retryable by default
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to unmarshal text payload")
+	actionHistoryRepo.AssertExpectations(t)
+}
+
+func TestProcessTask_AudioMessage_InvalidPayload(t *testing.T) {
+	worker, _, actionHistoryRepo := createTestMessageWorker(t)
+
+	ctx := context.Background()
+
+	outerJSON := `{"type":"message:audio","user_id":"user-123","instance_id":"","session_name":"test-session","group_id":"group@g.us","payload":"not-an-object","action_id":"action-audio-invalid"}`
+	task := asynq.NewTask(TypeMessageAudio, []byte(outerJSON))
+
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio-invalid", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to unmarshal audio payload")
+	actionHistoryRepo.AssertExpectations(t)
+}
+
+func TestProcessTask_ImageMessage_InvalidPayload(t *testing.T) {
+	worker, _, actionHistoryRepo := createTestMessageWorker(t)
+
+	ctx := context.Background()
+
+	outerJSON := `{"type":"message:image","user_id":"user-123","instance_id":"","session_name":"test-session","group_id":"group@g.us","payload":true,"action_id":"action-image-invalid"}`
+	task := asynq.NewTask(TypeMessageImage, []byte(outerJSON))
+
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-invalid", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to unmarshal image payload")
+	actionHistoryRepo.AssertExpectations(t)
+}
+
+func TestProcessTask_PollMessage_InvalidPayload(t *testing.T) {
+	worker, _, actionHistoryRepo := createTestMessageWorker(t)
+
+	ctx := context.Background()
+
+	outerJSON := `{"type":"message:poll","user_id":"user-123","instance_id":"","session_name":"test-session","group_id":"group@g.us","payload":[1,2,3],"action_id":"action-poll-invalid"}`
+	task := asynq.NewTask(TypeMessagePoll, []byte(outerJSON))
+
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll-invalid", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to unmarshal poll payload")
+	actionHistoryRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// Image Message Edge Cases
+// =============================================================================
+
+func TestProcessTask_ImageMessage_DataURLWithoutComma(t *testing.T) {
+	worker, fakeAdapter, actionHistoryRepo := createTestMessageWorker(t)
+
+	ctx := context.Background()
+
+	// data: prefix present but no comma separator — SplitN produces len(parts) != 2,
+	// so imageData is NOT stripped and stays as the full string.
+	imagePayload, _ := json.Marshal(ImageMessagePayload{
+		ImageBase64: "data:image/png;base64CORRUPT",
+	})
+
+	msgTask := MessageTask{
+		Type:        TypeMessageImage,
+		UserID:      "user-123",
+		SessionName: "test-session",
+		GroupID:     "group@g.us",
+		Payload:     imagePayload,
+		ActionID:    "action-image-nocomma",
+	}
+
+	task := createMessageTask(t, msgTask)
+
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-nocomma", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-nocomma", models.ActionStatusCompleted, "").Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	require.NoError(t, err)
+
+	lastCall := fakeAdapter.LastCall("SendImage")
+	require.NotNil(t, lastCall)
+
+	input := lastCall.Args[0].(whatsapp.SendImageInput)
+	// The full string should be kept since SplitN(",", 2) returns only 1 part
+	assert.Equal(t, "data:image/png;base64CORRUPT", input.ImageBase64)
+	actionHistoryRepo.AssertExpectations(t)
+}
+
+func TestProcessTask_ImageMessage_DefaultMimetype(t *testing.T) {
+	worker, fakeAdapter, actionHistoryRepo := createTestMessageWorker(t)
+
+	ctx := context.Background()
+
+	// ImageBase64 set but Mimetype empty — should default to "image/jpeg"
+	imagePayload, _ := json.Marshal(ImageMessagePayload{
+		ImageBase64: "iVBORw0KGgoAAAANSUhEUg==",
+		Mimetype:    "", // empty
+	})
+
+	msgTask := MessageTask{
+		Type:        TypeMessageImage,
+		UserID:      "user-123",
+		SessionName: "test-session",
+		GroupID:     "group@g.us",
+		Payload:     imagePayload,
+		ActionID:    "action-image-defmime",
+	}
+
+	task := createMessageTask(t, msgTask)
+
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-defmime", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-defmime", models.ActionStatusCompleted, "").Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	require.NoError(t, err)
+
+	lastCall := fakeAdapter.LastCall("SendImage")
+	require.NotNil(t, lastCall)
+
+	input := lastCall.Args[0].(whatsapp.SendImageInput)
+	assert.Equal(t, "image/jpeg", input.Mimetype)
+	actionHistoryRepo.AssertExpectations(t)
+}
+
+func TestProcessTask_ImageMessage_URLPriority(t *testing.T) {
+	worker, fakeAdapter, actionHistoryRepo := createTestMessageWorker(t)
+
+	ctx := context.Background()
+
+	// Both ImageURL and ImageBase64 are provided.
+	// handleImageMessage passes both to SendImageInput — the adapter decides priority.
+	imagePayload, _ := json.Marshal(ImageMessagePayload{
+		ImageURL:    "https://example.com/photo.jpg",
+		ImageBase64: "iVBORw0KGgoAAAANSUhEUg==",
+		Mimetype:    "image/png",
+		Caption:     "Both provided",
+	})
+
+	msgTask := MessageTask{
+		Type:        TypeMessageImage,
+		UserID:      "user-123",
+		SessionName: "test-session",
+		GroupID:     "group@g.us",
+		Payload:     imagePayload,
+		ActionID:    "action-image-both",
+	}
+
+	task := createMessageTask(t, msgTask)
+
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-both", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-both", models.ActionStatusCompleted, "").Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	require.NoError(t, err)
+
+	lastCall := fakeAdapter.LastCall("SendImage")
+	require.NotNil(t, lastCall)
+
+	input := lastCall.Args[0].(whatsapp.SendImageInput)
+	// Both fields should be passed to the adapter
+	assert.Equal(t, "https://example.com/photo.jpg", input.ImageURL)
+	assert.Equal(t, "iVBORw0KGgoAAAANSUhEUg==", input.ImageBase64)
+	assert.Equal(t, "Both provided", input.Caption)
+	assert.Equal(t, "image/png", input.Mimetype)
+	actionHistoryRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// Send Failure Tests (ProviderError retryable vs non-retryable)
+// =============================================================================
+
+func TestProcessTask_AudioMessage_SendFails(t *testing.T) {
+	worker, fakeAdapter, actionHistoryRepo := createTestMessageWorker(t)
+
+	ctx := context.Background()
+
+	audioPayload, _ := json.Marshal(AudioMessagePayload{
+		AudioBase64: "base64audiodata",
+		Mimetype:    "audio/ogg; codecs=opus",
+	})
+
+	msgTask := MessageTask{
+		Type:        TypeMessageAudio,
+		UserID:      "user-123",
+		SessionName: "test-session",
+		GroupID:     "group@g.us",
+		Payload:     audioPayload,
+		ActionID:    "action-audio-fail",
+	}
+
+	task := createMessageTask(t, msgTask)
+
+	// Retryable error — SessionNotConnected
+	fakeAdapter.SimulateError = whatsapp.NewProviderError(
+		whatsapp.ErrCodeSessionNotConnected,
+		"session not connected",
+		nil,
+	)
+
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio-fail", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio-fail", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	// Retryable error should be returned for retry
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "session not connected")
+	actionHistoryRepo.AssertExpectations(t)
+}
+
+func TestProcessTask_PollMessage_SendFails(t *testing.T) {
+	worker, fakeAdapter, actionHistoryRepo := createTestMessageWorker(t)
+
+	ctx := context.Background()
+
+	pollPayload, _ := json.Marshal(PollMessagePayload{
+		Question:        "Best language?",
+		Options:         []string{"Go", "Rust", "Python"},
+		SelectableCount: 1,
+	})
+
+	msgTask := MessageTask{
+		Type:        TypeMessagePoll,
+		UserID:      "user-123",
+		SessionName: "test-session",
+		GroupID:     "group@g.us",
+		Payload:     pollPayload,
+		ActionID:    "action-poll-fail",
+	}
+
+	task := createMessageTask(t, msgTask)
+
+	// Non-retryable error — InvalidInput
+	fakeAdapter.SimulateError = whatsapp.NewProviderError(
+		whatsapp.ErrCodeInvalidInput,
+		"invalid poll format",
+		nil,
+	)
+
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll-fail", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll-fail", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	// Non-retryable error returns nil (no retry)
+	require.NoError(t, err)
+	actionHistoryRepo.AssertExpectations(t)
+}
+
+func TestProcessTask_ImageMessage_SendFails(t *testing.T) {
+	worker, fakeAdapter, actionHistoryRepo := createTestMessageWorker(t)
+
+	ctx := context.Background()
+
+	imagePayload, _ := json.Marshal(ImageMessagePayload{
+		ImageURL: "https://example.com/broken.jpg",
+		Caption:  "This will fail",
+	})
+
+	msgTask := MessageTask{
+		Type:        TypeMessageImage,
+		UserID:      "user-123",
+		SessionName: "test-session",
+		GroupID:     "group@g.us",
+		Payload:     imagePayload,
+		ActionID:    "action-image-fail",
+	}
+
+	task := createMessageTask(t, msgTask)
+
+	// Retryable error — RateLimited
+	fakeAdapter.SimulateError = whatsapp.NewProviderError(
+		whatsapp.ErrCodeRateLimited,
+		"rate limited",
+		nil,
+	)
+
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-fail", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-fail", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	// Retryable error should be returned for retry
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rate limited")
+	actionHistoryRepo.AssertExpectations(t)
+}

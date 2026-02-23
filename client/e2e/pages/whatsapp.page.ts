@@ -47,6 +47,21 @@ export class WhatsAppPage {
   readonly confirmButton: Locator;
   readonly cancelButton: Locator;
 
+  // Auto-sync toggle
+  readonly autoSyncToggle: Locator;
+
+  // Import progress
+  readonly importProgressBar: Locator;
+
+  // How it works section
+  readonly howItWorksCard: Locator;
+
+  // Last sync display
+  readonly lastSyncDisplay: Locator;
+
+  // Error boundary card
+  readonly errorBoundaryCard: Locator;
+
   constructor(page: Page) {
     this.page = page;
 
@@ -127,6 +142,25 @@ export class WhatsAppPage {
     });
     this.cancelButton = this.confirmDialog.getByRole('button', {
       name: /cancelar|cancel|nao|no/i,
+    });
+
+    // Auto-sync toggle
+    this.autoSyncToggle = page.getByRole('button', {
+      name: /ativar|ativado|activate|activated/i,
+    });
+
+    // Import progress
+    this.importProgressBar = page.locator('[role="progressbar"]');
+
+    // How it works section
+    this.howItWorksCard = page.getByText(/como funciona\??/i);
+
+    // Last sync display
+    this.lastSyncDisplay = page.getByText(/último sync|last sync/i);
+
+    // Error boundary card
+    this.errorBoundaryCard = page.locator('[class*="card"]').filter({
+      hasText: /erro na conexão whatsapp/i,
     });
   }
 

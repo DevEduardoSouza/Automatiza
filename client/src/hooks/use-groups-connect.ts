@@ -455,6 +455,28 @@ export function useGroupsConnect(): UseGroupsConnectReturn {
   }, [refetchQuery]);
 
   // ============================================================
+  // All Groups Query (no admin filter, used for monitoring selection)
+  // ============================================================
+
+  const { data: allGroupsResponse, isLoading: allGroupsLoading } = useQuery({
+    queryKey: ['groups', 'list-all', user?.id],
+    queryFn: async (): Promise<LocalGroup[]> => {
+      if (!user?.id) return [];
+      const client = createClient(GroupsService, transport);
+
+      const response: ListGroupsResponse = await client.listGroups(
+        create(ListGroupsRequestSchema, { adminOnly: false })
+      );
+      return response.groups.map(fromProtoGroup);
+    },
+    enabled: !!user?.id,
+    staleTime: 30000,
+    refetchInterval: 60000,
+  });
+
+  const allGroups = allGroupsResponse ?? [];
+
+  // ============================================================
   // List Groups Mutation (for explicit calls)
   // ============================================================
 
@@ -1544,7 +1566,9 @@ export function useGroupsConnect(): UseGroupsConnectReturn {
 
   return {
     groups,
+    allGroups,
     loading,
+    allGroupsLoading,
     refetch,
 
     // CRUD

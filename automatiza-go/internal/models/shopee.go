@@ -179,6 +179,12 @@ func (c *AffiliateCredentials) HasValidCredentials() bool {
 	}
 }
 
+// HasRealDiscount returns true if the offer has a meaningful discount
+// (final price is strictly less than the original price).
+func (o *ShopeeOffer) HasRealDiscount() bool {
+	return o.Price > 0 && o.OriginalPrice > 0 && o.Price < o.OriginalPrice
+}
+
 // CanonicalKeyFromShopeeOffer generates a canonical key for deduplication
 func CanonicalKeyFromShopeeOffer(offer *ShopeeOffer) string {
 	return FormatCanonicalKey("shopee", offer.ShopID, offer.ItemID)

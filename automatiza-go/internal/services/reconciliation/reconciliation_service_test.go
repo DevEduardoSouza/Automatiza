@@ -226,7 +226,7 @@ func itoa(i int) string {
 
 func TestReconciliationService_Watchdog_SilenceDetection(t *testing.T) {
 	t.Run("detects silence and triggers health check", func(t *testing.T) {
-		svc, deps := newTestService(t)
+		svc, deps := newWatchdogTestService(t, fastWatchdogConfig())
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
@@ -256,7 +256,7 @@ func TestReconciliationService_Watchdog_SilenceDetection(t *testing.T) {
 	})
 
 	t.Run("resets silence timer on event", func(t *testing.T) {
-		svc, deps := newTestService(t)
+		svc, deps := newWatchdogTestService(t, fastWatchdogConfig())
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
@@ -289,18 +289,12 @@ func TestReconciliationService_Watchdog_SilenceDetection(t *testing.T) {
 	})
 
 	t.Run("handles session not connected and attempts restart", func(t *testing.T) {
-		config := reconciliation.Config{
-			SilenceTimeout:     50 * time.Millisecond,
-			BatchSize:          10,
-			MaxConcurrent:      5,
-			CheckInterval:      30 * time.Millisecond,
-			MaxRetries:         1,
-			RetryBackoff:       5 * time.Millisecond,
-			HealthCheckEnabled: true,
-			MaxRestartAttempts: 2,
-			RestartBackoff:     5 * time.Millisecond,
-		}
-		svc, deps := newTestServiceWithConfig(t, config)
+		config := fastWatchdogConfig()
+		config.SilenceTimeout = 50 * time.Millisecond
+		config.CheckInterval = 30 * time.Millisecond
+		config.RetryBackoff = 5 * time.Millisecond
+		config.RestartBackoff = 5 * time.Millisecond
+		svc, deps := newWatchdogTestService(t, config)
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 

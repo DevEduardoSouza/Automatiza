@@ -790,6 +790,8 @@ export function useWhatsApp(): UseWhatsAppReturn {
   const handleConnect = useCallback(async () => {
     setConnecting(true);
     setQrCode(null);
+    // Guard against SSE STOPPED events from the delete below
+    refreshingQrRef.current = true;
 
     try {
       if (hasRealInstanceName(instanceName)) {
@@ -809,6 +811,7 @@ export function useWhatsApp(): UseWhatsAppReturn {
 
       if (data.success) {
         setInstanceName(data.instanceName || '');
+        instanceNameRef.current = data.instanceName || '';
 
         if (data.qrcodeBase64) {
           setQrCode(data.qrcodeBase64);
@@ -833,6 +836,8 @@ export function useWhatsApp(): UseWhatsAppReturn {
       });
       setConnecting(false);
       setConnected(false);
+    } finally {
+      refreshingQrRef.current = false;
     }
   }, [instanceName, toast, t, createInstance, deleteInstance]);
 

@@ -30,6 +30,7 @@
     "create": "Criar",
     "update": "Atualizar",
     "refresh": "Atualizar",
+    "refreshing": "Atualizando...",
     "search": "Buscar",
     "filter": "Filtrar",
     "actions": "Ações",
@@ -1740,121 +1741,6 @@
         "removeLinkMessage": "Tem certeza que deseja remover este link da lista? Esta ação não pode ser desfeita."
       }
     },
-    "aiTools": {
-      "title": "Ferramentas de IA",
-      "subtitle": "Use inteligência artificial para criar campanhas, analisar engajamento e identificar tendências",
-      "tabs": {
-        "campaign": "Criar Campanha",
-        "engagement": "Engajamento",
-        "trends": "Tendências",
-        "messages": "Mensagens"
-      },
-      "campaign": {
-        "title": "Crie sua Campanha com IA",
-        "description": "Descreva sua campanha e a IA gerará nomes de grupos, fotos, descrições e cronograma completo",
-        "promptLabel": "Descrição da Campanha",
-        "promptPlaceholder": "Ex: \"Quero fazer uma oferta de produtos da Shopee e captar gente interessada em descontos.\"",
-        "generate": "Gerar Campanha Completa",
-        "generating": "Gerando campanha...",
-        "newCampaign": "Gerar Nova Campanha",
-        "results": {
-          "groupNames": "Nomes dos Grupos",
-          "groupPhoto": "Foto do Grupo",
-          "groupImageAlt": "Imagem sugerida para o grupo",
-          "description": "Descrição",
-          "welcomeMessage": "Mensagem de Boas-vindas",
-          "schedule": "Cronograma de 7 Dias",
-          "day": "Dia"
-        },
-        "success": "Campanha criada!",
-        "successMessage": "Sua campanha foi gerada com sucesso e está salva",
-        "ready": "Pronto!",
-        "readyMessage": "Você pode criar uma nova campanha agora"
-      },
-      "engagement": {
-        "title": "IA de Engajamento Automatizado",
-        "description": "Analise a interação do grupo e receba sugestões para reativar membros",
-        "selectGroup": "Selecione um grupo para analisar",
-        "loadingGroups": "Carregando grupos...",
-        "noGroups": "Nenhum grupo encontrado",
-        "analyze": "Analisar Engajamento",
-        "analyzing": "Analisando...",
-        "results": {
-          "status": "Status do Grupo",
-          "suggestions": "Sugestões de Reativação",
-          "actionPlan": "Plano de Ação"
-        },
-        "success": "Análise concluída!",
-        "successMessage": "Confira as sugestões de engajamento"
-      },
-      "trends": {
-        "title": "Identificador de Tendências",
-        "description": "Descubra os produtos mais vendidos e tendências do momento",
-        "platformPlaceholder": "Selecione a plataforma",
-        "platforms": {
-          "shopee": "Shopee",
-          "shein": "Shein",
-          "mercadolivre": "Mercado Livre",
-          "aliexpress": "AliExpress"
-        },
-        "categoryPlaceholder": "Ex: \"Moda feminina\", \"Eletrônicos\", \"Casa e decoração\"",
-        "identify": "Identificar Tendências",
-        "identifying": "Identificando tendências...",
-        "results": {
-          "products": "Produtos em Alta",
-          "sales": "vendas",
-          "searchProduct": "Buscar Produto",
-          "marketAnalysis": "Análise de Mercado",
-          "recommendations": "Recomendações"
-        },
-        "success": "Tendências identificadas!",
-        "successMessage": "Veja os produtos em alta"
-      },
-      "messages": {
-        "title": "Criador de Mensagens Personalizadas",
-        "description": "Cole os links dos produtos da Shopee e escolha o estilo de copy para criar mensagens persuasivas",
-        "productLink": "Link do Produto",
-        "productLinkPlaceholder": "Cole o link do produto aqui\nEx: https://shopee.com.br/produto",
-        "productLinkHint": "Cole apenas um link de produto por vez para melhores resultados",
-        "affiliateLink": "Link de Afiliado (Opcional)",
-        "affiliateLinkPlaceholder": "Ex: https://s.shopee.com.br/seu-link-afiliado",
-        "affiliateLinkHint": "Se você tem um link de afiliado, cole aqui para ser incluído nas mensagens geradas",
-        "stylePlaceholder": "Selecione o estilo de copy",
-        "styles": {
-          "aggressive": "Venda Agressiva",
-          "scarcity": "Escassez e Urgência",
-          "emotional": "Apelo Emocional",
-          "benefit": "Foco em Benefícios",
-          "social": "Prova Social",
-          "storytelling": "Storytelling"
-        },
-        "generate": "Gerar Mensagens",
-        "generating": "Criando mensagens...",
-        "results": {
-          "productInfo": "Informações dos Produtos",
-          "option": "Opção",
-          "copy": "Copiar",
-          "whyItWorks": "Por que funciona:",
-          "tips": "Dicas de Uso"
-        },
-        "copied": "Copiado!",
-        "copiedMessage": "Mensagem copiada para a área de transferência",
-        "success": "Mensagens criadas!",
-        "successMessage": "Escolha a que mais combina com você"
-      },
-      "errors": {
-        "emptyPrompt": "Por favor, descreva sua campanha",
-        "emptyGroup": "Por favor, selecione um grupo",
-        "emptyCategory": "Por favor, informe a categoria de produtos",
-        "emptyLinks": "Por favor, cole os links dos produtos",
-        "loadGroups": "Erro ao carregar grupos",
-        "loadGroupsMessage": "Não foi possível carregar seus grupos",
-        "createCampaign": "Não foi possível criar a campanha",
-        "analyzeEngagement": "Erro na análise",
-        "analyzeTrends": "Não foi possível identificar tendências",
-        "enhanceMessage": "Não foi possível criar as mensagens"
-      }
-    },
     "jobs": {
       "title": "Agendamentos",
       "subtitle": "Agende ações para serem executadas automaticamente",
@@ -2391,33 +2277,9 @@
         "inactiveUsers": "inativos",
         "activeLast30Days": "Ativos nos últimos 30 dias",
         "contractedPlans": "Planos Contratados",
-        "differentPlans": "Diferentes planos ativos"
-      },
-      "loadBalancer": {
-        "title": "Load Balancer (WAHA)",
-        "description": "Usuários por servidor (capacidade e uso)",
-        "refresh": "Atualizar",
-        "refreshing": "Atualizando...",
-        "forceWebhooks": "Forçar Webhooks (Srv2)",
-        "forcing": "Forçando...",
-        "summary": "Resumo",
-        "server": "Servidor",
-        "url": "URL",
-        "users": "Usuários",
-        "waha": "WAHA",
-        "slots": "Slots",
-        "usage": "Uso",
-        "capacityLimitTitle": "Capacidade do Load Balancer no limite",
-        "capacityLimitDesc": "Os servidores atingiram (ou passaram) a capacidade planejada. Novos usuários podem ser alocados mesmo assim (fallback), mas isso tende a aumentar erros/instabilidade. Considere aumentar a capacidade no Admin → Settings → Load Balancer, ou adicionar mais servidores.",
-        "nearLimitTitle": "Atenção: Load Balancer acima de 80%",
-        "nearLimitDesc": "A capacidade planejada está alta (≥80%). Recomendo já preparar expansão (aumentar capacidade no Admin → Settings → Load Balancer, ou adicionar mais servidores) para evitar bater 100%.",
-        "unavailable": "Não foi possível carregar os dados do load balancer agora.",
-        "loadError": "Falha ao carregar stats do load balancer",
-        "forceWebhooksError": "Erro ao forçar webhooks do servidor 2",
-        "forceWebhooksSuccess": "Webhooks (Srv2): ok {{ok}}/{{total}} • falhas {{fail}}",
-        "unavailableShort": "indisp.",
-        "forceWebhooksTitle": "Força a configuração de webhook nas instâncias mapeadas no Servidor 2",
-        "wahaLabels": "open/connecting/close/total"
+        "differentPlans": "Diferentes planos ativos",
+        "usersWithAutomations": "Automações Rodando",
+        "automationsRunning": "{{count}} automações ativas"
       },
       "observability": {
         "title": "Observabilidade (Operação)",
@@ -2456,10 +2318,6 @@
         "avgGroups": {
           "title": "Média grupos/automação",
           "slots": "slots @g.us"
-        },
-        "lbMapped": {
-          "title": "LB (map.)",
-          "capacity": "cap."
         },
         "sends": {
           "title": "Envios (últimos {{minutes}}min)",
@@ -2641,16 +2499,7 @@
           "admin": "Admin",
           "automationLimit": "Limite automações",
           "default": "padrão",
-          "registration": "Cadastro",
-          "loadBalancer": "Servidor (Load Balancer)",
-          "stickyMapping": "Mapeamento sticky em",
-          "current": "Atual",
-          "update": "Atualizar",
-          "updating": "Atualizando...",
-          "targetServer": "Servidor destino",
-          "server": "Servidor",
-          "migrateUser": "Migrar usuário",
-          "migrating": "Migrando..."
+          "registration": "Cadastro"
         },
         "instances": {
           "title": "Instâncias WhatsApp",
@@ -2666,6 +2515,7 @@
           "showing": "Mostrando 50 de {{total}} automações.",
           "showingLimit": "Mostrando 50 de {{count}} automações.",
           "noName": "(sem nome)",
+          "delay": "Delay",
           "columns": {
             "name": "Nome",
             "status": "Status",
@@ -3063,10 +2913,7 @@
         "apiKeyHint": "Chave da API de IA. Para Gemini, obtenha em: Google AI Studio",
         "model": "Modelo de IA",
         "modelPlaceholder": "gemini-2.0-flash-exp",
-        "modelHint": "Modelo a ser usado para geração de texto. Exemplos: gemini-2.0-flash-exp (Gemini), gpt-4 (OpenAI)",
-        "imageModel": "Modelo de IA para Imagens",
-        "imageModelPlaceholder": "imagen-3.0-generate-002",
-        "imageModelHint": "Modelo para geração de imagens. Exemplo: imagen-3.0-generate-002 (Gemini Imagen)"
+        "modelHint": "Modelo a ser usado para geração de texto. Exemplos: gemini-2.0-flash-exp (Gemini), gpt-4 (OpenAI)"
       },
       "app": {
         "title": "Configurações da Aplicação",
@@ -3077,15 +2924,6 @@
         "tutorialLink": "Link dos Tutoriais",
         "tutorialLinkPlaceholder": "https://exemplo.com/tutoriais",
         "tutorialLinkHint": "Link para a página de tutoriais da ferramenta"
-      },
-      "loadBalancer": {
-        "title": "Load Balancer",
-        "description": "Capacidade lógica por servidor (impacta alocação e métricas do painel).",
-        "server1": "Servidor 1 — max usuários",
-        "server2": "Servidor 2 — max usuários",
-        "server3": "Servidor 3 — max usuários",
-        "example": "Ex: 100",
-        "tip": "Dica: isso não é um limite do WAHA em si — é a capacidade \"planejada\" do load balancer para distribuir usuários e calcular uso/slots."
       },
       "linkSafety": {
         "title": "Segurança de Links",
@@ -3601,7 +3439,8 @@
     "tutorials": "Tutoriais",
     "lightTheme": "Tema Claro",
     "darkTheme": "Tema Escuro",
-    "logout": "Sair"
+    "logout": "Sair",
+    "menu": "Menu"
   },
   "billing": {
     "suspended": {

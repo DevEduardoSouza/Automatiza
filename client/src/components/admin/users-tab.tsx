@@ -63,29 +63,18 @@ export default function UsersTab() {
     setBlockReason,
     blockKind,
     setBlockKind,
-    lbUserLoading,
-    lbUserServer,
-    lbTargetServerId,
-    setLbTargetServerId,
-    lbMigrating,
-    systemEvents,
-    systemEventsLoading,
-    systemEventsSinceMinutes,
-    setSystemEventsSinceMinutes,
     handleWhatsAppCall,
     handleCreateUser,
     makeAdmin,
     revokeAdmin,
     updateMaxAutomations,
     openUserDetails,
-    fetchSystemEvents,
     blockUserAccount,
     unblockUserAccount,
     handleResetPassword,
     pauseAllActiveAutomations,
     activatePausedAutomations,
     spreadNextRunAt,
-    migrateUserServer,
     handleRefreshDetails,
   } = useUsersTab();
 
@@ -164,7 +153,11 @@ export default function UsersTab() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-6 xs:py-8" role="status" aria-live="polite">
+            <div
+              className="flex items-center justify-center py-6 xs:py-8"
+              role="status"
+              aria-live="polite"
+            >
               <div className="text-center space-y-4">
                 <div
                   className="h-8 w-8 xs:h-10 xs:w-10 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
@@ -222,23 +215,12 @@ export default function UsersTab() {
         onBlockReasonChange={setBlockReason}
         blockKind={blockKind}
         onBlockKindChange={setBlockKind}
-        lbUserLoading={lbUserLoading}
-        lbUserServer={lbUserServer}
-        lbTargetServerId={lbTargetServerId}
-        onLbTargetServerIdChange={setLbTargetServerId}
-        lbMigrating={lbMigrating}
-        systemEvents={systemEvents}
-        systemEventsLoading={systemEventsLoading}
-        systemEventsSinceMinutes={systemEventsSinceMinutes}
-        onSystemEventsSinceMinutesChange={setSystemEventsSinceMinutes}
         onBlockUser={blockUserAccount}
         onUnblockUser={unblockUserAccount}
         onResetPassword={handleResetPassword}
         onPauseAllAutomations={pauseAllActiveAutomations}
         onActivatePausedAutomations={activatePausedAutomations}
         onSpreadNextRunAt={spreadNextRunAt}
-        onMigrateServer={migrateUserServer}
-        onFetchSystemEvents={fetchSystemEvents}
         onRefreshDetails={handleRefreshDetails}
       />
     </div>

@@ -293,3 +293,69 @@ export async function setupEmptyAutomationLogsMocks(page: Page): Promise<void> {
   await mockQueueStatusApi(page);
   await mockListJobsApi(page);
 }
+
+/**
+ * Mocks the ListDispatchLogs API to return a 500 error.
+ */
+export async function mockDispatchLogsApiError(page: Page): Promise<void> {
+  await page.route('**/automations.v1.AutomationsService/ListDispatchLogs', async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'internal', message: 'Internal server error' }),
+    });
+  });
+}
+
+/**
+ * Mocks the ListDispatchLogs API with a slow response.
+ */
+export async function mockDispatchLogsApiSlow(page: Page, delayMs = 3000): Promise<void> {
+  await page.route('**/automations.v1.AutomationsService/ListDispatchLogs', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ logs: [], totalCount: 0, hasMore: false }),
+    });
+  });
+}
+
+/**
+ * Mocks the ListAutomations API to return a 500 error.
+ */
+export async function mockLogAutomationsApiError(page: Page): Promise<void> {
+  await page.route('**/automations.v1.AutomationsService/ListAutomations', async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'internal', message: 'Internal server error' }),
+    });
+  });
+}
+
+/**
+ * Sets up mocks with dispatch logs API returning error.
+ */
+export async function setupAutomationLogsMocksWithApiError(page: Page): Promise<void> {
+  await mockAppShellApis(page);
+  await mockAuthApi(page);
+  await mockDispatchLogsApiError(page);
+  await mockLogAutomationsApi(page);
+  await mockLogGroupsApi(page);
+  await mockQueueStatusApi(page);
+  await mockListJobsApi(page);
+}
+
+/**
+ * Sets up mocks with automations API returning error.
+ */
+export async function setupAutomationLogsMocksWithAutomationsError(page: Page): Promise<void> {
+  await mockAppShellApis(page);
+  await mockAuthApi(page);
+  await mockDispatchLogsApi(page);
+  await mockLogAutomationsApiError(page);
+  await mockLogGroupsApi(page);
+  await mockQueueStatusApi(page);
+  await mockListJobsApi(page);
+}

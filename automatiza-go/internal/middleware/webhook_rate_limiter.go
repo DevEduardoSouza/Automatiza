@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/getsentry/sentry-go"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -36,13 +35,17 @@ type WebhookRateLimiterConfig struct {
 
 	// Logger for logging rate limit events.
 	Logger *zap.Logger
+
+	// CleanupInterval controls how often expired in-memory entries are purged.
+	// Defaults to 1 minute when zero.
+	CleanupInterval time.Duration
 }
 
 // DefaultWebhookRateLimitConfig returns default configuration.
-// 500 requests per minute per IP - generous for legitimate WAHA webhooks.
+// 2000 requests per minute per IP — WAHA sends webhooks from a single IP in bursts.
 func DefaultWebhookRateLimitConfig() *WebhookRateLimiterConfig {
 	return &WebhookRateLimiterConfig{
-		MaxRequests: 500,
+		MaxRequests: 2000,
 		WindowSize:  time.Minute,
 		UseRedis:    false,
 		KeyPrefix:   "webhook_rl",
@@ -86,7 +89,11 @@ func newWebhookRateLimiter(config *WebhookRateLimiterConfig, ctx context.Context
 // cleanupLoop periodically removes expired entries from the in-memory store.
 // Respects context cancellation for graceful shutdown (T3.9).
 func (rl *webhookRateLimiter) cleanupLoop(ctx context.Context) {
-	ticker := time.NewTicker(time.Minute)
+	interval := rl.config.CleanupInterval
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -218,9 +225,6 @@ func WebhookRateLimitMiddlewareWithContext(config *WebhookRateLimiterConfig, ctx
 					zap.String("ip", ip),
 					zap.Duration("retry_after", retryAfter))
 			}
-			// N16: Capture rate limit violations in Sentry for observability
-			observability.CaptureMessage(sentry.LevelWarning, "webhook rate limit exceeded",
-				map[string]string{"module": "webhook-rate-limiter", "ip": ip})
 
 			c.Header("Retry-After", retryAfter.String())
 			c.JSON(http.StatusTooManyRequests, gin.H{

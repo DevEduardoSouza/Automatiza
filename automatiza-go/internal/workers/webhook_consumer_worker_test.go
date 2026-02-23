@@ -8,9 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"automatiza-go/internal/metrics"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/services/reconciliation"
 
 	"github.com/hibiken/asynq"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1288,4 +1291,858 @@ func TestRouteEvent_SessionStatusInstanceNil(t *testing.T) {
 
 	// Should not return error when instance is nil
 	assert.NoError(t, err)
+}
+
+// =============================================================================
+// Context Cancellation Tests
+// =============================================================================
+
+func TestProcessTask_ContextCancelled(t *testing.T) {
+	worker, _, _ := createTestWorker(t)
+
+	data := &WebhookJobData{
+		EventID: "evt-cancelled",
+		Event:   "message",
+		Session: "session-1",
+		Payload: map[string]interface{}{},
+	}
+	task := createTestTask(t, data)
+
+	// Cancel context before processing starts
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := worker.ProcessTask(ctx, task)
+
+	// Should return context.Canceled
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestRouteEvent_ContextCancelled(t *testing.T) {
+	worker, _, _ := createTestWorker(t)
+
+	data := &WebhookJobData{
+		EventID: "evt-cancelled-route",
+		Event:   "message",
+		Session: "session-1",
+		Payload: map[string]interface{}{},
+	}
+
+	// Cancel context before routing starts
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := worker.routeEvent(ctx, data)
+
+	// Should return context.Canceled
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestProcessTask_ContextDeadlineExceeded(t *testing.T) {
+	worker, _, _ := createTestWorker(t)
+
+	data := &WebhookJobData{
+		EventID: "evt-deadline",
+		Event:   "message",
+		Session: "session-1",
+		Payload: map[string]interface{}{},
+	}
+	task := createTestTask(t, data)
+
+	// Create context with already-expired deadline
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-1*time.Second))
+	defer cancel()
+
+	err := worker.ProcessTask(ctx, task)
+
+	// Should return context.DeadlineExceeded
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+// =============================================================================
+// QR Code Event with Status Processor Tests
+// =============================================================================
+
+func TestRouteEvent_QRCodeWithStatusProcessor(t *testing.T) {
+	statusProcessor := new(mockStatusProcessor)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		StatusProcessor: statusProcessor,
+		Logger:          logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-qr-status",
+		Event:   "qr.code",
+		Session: "session-1",
+		Payload: map[string]interface{}{},
+	}
+
+	// Verify the status processor is called with "SCAN_QR_CODE"
+	statusProcessor.On("ProcessStatus", ctx, "session-1", "SCAN_QR_CODE").Return(nil)
+
+	err := worker.routeEvent(ctx, data)
+
+	assert.NoError(t, err)
+	statusProcessor.AssertExpectations(t)
+}
+
+func TestRouteEvent_QRCodeWithStatusProcessorError(t *testing.T) {
+	statusProcessor := new(mockStatusProcessor)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		StatusProcessor: statusProcessor,
+		Logger:          logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-qr-err",
+		Event:   "qr.code",
+		Session: "session-1",
+		Payload: map[string]interface{}{},
+	}
+
+	// Status processor returns error - should log warning but not fail
+	statusProcessor.On("ProcessStatus", ctx, "session-1", "SCAN_QR_CODE").
+		Return(errors.New("SSE broadcast failed"))
+
+	err := worker.routeEvent(ctx, data)
+
+	// handleQRCodeEvent always returns nil even when status processor errors
+	assert.NoError(t, err)
+	statusProcessor.AssertExpectations(t)
+}
+
+func TestRouteEvent_QREventType(t *testing.T) {
+	statusProcessor := new(mockStatusProcessor)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		StatusProcessor: statusProcessor,
+		Logger:          logger,
+	})
+
+	ctx := context.Background()
+
+	// Test the "qr" event type (not "qr.code")
+	data := &WebhookJobData{
+		EventID: "evt-qr-bare",
+		Event:   "qr",
+		Session: "session-1",
+		Payload: map[string]interface{}{},
+	}
+
+	statusProcessor.On("ProcessStatus", ctx, "session-1", "SCAN_QR_CODE").Return(nil)
+
+	err := worker.routeEvent(ctx, data)
+
+	assert.NoError(t, err)
+	statusProcessor.AssertExpectations(t)
+}
+
+// =============================================================================
+// handleProcessingError DLQ Path Tests
+// =============================================================================
+
+func TestHandleProcessingError_RetryableWithoutQueueClient(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+
+	// Worker without queueClient - verify it doesn't panic when queueClient is nil
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		Logger:            logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-dlq",
+		Event:   "message",
+		Session: "session-1",
+	}
+	task := createTestTask(t, data)
+	processErr := errors.New("persistent failure") // retryable (unknown error defaults to retryable)
+
+	// With retryCount=0 from plain context, the error is retryable,
+	// so MarkFailed is called (not MarkDLQ) and the error is returned for retry
+	webhookEventsRepo.On("MarkFailed", ctx, "evt-dlq", "persistent failure").Return(nil)
+
+	err := worker.handleProcessingError(ctx, task, data, processErr)
+
+	// Should return error for retry since retryCount=0 < MaxWebhookRetries=3
+	assert.Error(t, err)
+	assert.Equal(t, processErr, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+func TestHandleProcessingError_MarkDLQError(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		Logger:            logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-dlq-err",
+		Event:   "message",
+		Session: "session-1",
+	}
+	task := createTestTask(t, data)
+	processErr := errors.New("resource not found") // non-retryable
+
+	// Non-retryable error should go to MarkFailed path
+	webhookEventsRepo.On("MarkFailed", ctx, "evt-dlq-err", "resource not found").Return(nil)
+
+	err := worker.handleProcessingError(ctx, task, data, processErr)
+
+	// Non-retryable error returns nil to stop retries
+	assert.NoError(t, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+func TestHandleProcessingError_MarkFailedError(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		Logger:            logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-markfail-err",
+		Event:   "message",
+		Session: "session-1",
+	}
+	task := createTestTask(t, data)
+	processErr := errors.New("connection timeout") // retryable
+
+	// MarkFailed itself fails - should still return the process error for retry
+	webhookEventsRepo.On("MarkFailed", ctx, "evt-markfail-err", "connection timeout").
+		Return(errors.New("db connection lost"))
+
+	err := worker.handleProcessingError(ctx, task, data, processErr)
+
+	// Should still return the original error for retry
+	assert.Error(t, err)
+	assert.Equal(t, processErr, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// Trace ID Propagation Tests
+// =============================================================================
+
+func TestProcessTask_WithTraceID(t *testing.T) {
+	worker, webhookEventsRepo, _ := createTestWorker(t)
+
+	data := &WebhookJobData{
+		EventID:    "evt-traced",
+		Event:      "message.ack",
+		Session:    "session-1",
+		TraceID:    "abc123def456",
+		ReceivedAt: time.Now().Unix(),
+		Payload:    map[string]interface{}{},
+	}
+
+	task := createTestTask(t, data)
+	ctx := context.Background()
+
+	webhookEventsRepo.On("Exists", ctx, "evt-traced").Return(true, nil)
+	webhookEventsRepo.On("MarkProcessing", ctx, "evt-traced").Return(nil)
+	webhookEventsRepo.On("MarkProcessed", ctx, "evt-traced").Return(nil)
+
+	// Should process successfully with trace ID in logger context
+	err := worker.ProcessTask(ctx, task)
+
+	assert.NoError(t, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+func TestHandleProcessingError_WithTraceID(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		Logger:            logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-traced-err",
+		Event:   "message",
+		Session: "session-1",
+		TraceID: "trace-xyz-789",
+	}
+	task := createTestTask(t, data)
+	processErr := errors.New("temporary failure")
+
+	webhookEventsRepo.On("MarkFailed", ctx, "evt-traced-err", "temporary failure").Return(nil)
+
+	// Verify trace ID path in handleProcessingError logger creation
+	err := worker.handleProcessingError(ctx, task, data, processErr)
+
+	assert.Error(t, err)
+	assert.Equal(t, processErr, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// Reconciliation Service Integration Tests
+// =============================================================================
+
+func TestProcessTask_WithReconcileService(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+
+	// Create a real reconciliation.Service with minimal config
+	// RecordEvent only touches an internal map, so nil dependencies are safe
+	reconcileSvc := reconciliation.New(nil, nil, nil, logger, reconciliation.DefaultConfig())
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		ReconcileSvc:      reconcileSvc,
+		Logger:            logger,
+	})
+
+	data := &WebhookJobData{
+		EventID:    "evt-reconcile",
+		Event:      "message.ack",
+		Session:    "session-reconcile",
+		ReceivedAt: time.Now().Unix(),
+		Payload:    map[string]interface{}{},
+	}
+
+	task := createTestTask(t, data)
+	ctx := context.Background()
+
+	webhookEventsRepo.On("Exists", ctx, "evt-reconcile").Return(true, nil)
+	webhookEventsRepo.On("MarkProcessing", ctx, "evt-reconcile").Return(nil)
+	webhookEventsRepo.On("MarkProcessed", ctx, "evt-reconcile").Return(nil)
+
+	// RecordEvent should be called (resets silence timer) without error
+	err := worker.ProcessTask(ctx, task)
+
+	assert.NoError(t, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// Session Status with Nil Instance Repo Tests
+// =============================================================================
+
+func TestRouteEvent_SessionStatusWithNilInstanceRepo(t *testing.T) {
+	logger := zap.NewNop()
+
+	// Worker without instanceRepo
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		Logger: logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-nil-repo",
+		Event:   "session.status",
+		Session: "session-1",
+		Payload: map[string]interface{}{"status": "CONNECTED"},
+	}
+
+	// Should not panic with nil instanceRepo
+	err := worker.routeEvent(ctx, data)
+
+	assert.NoError(t, err)
+}
+
+func TestRouteEvent_SessionStatusNilInstanceRepoWithStatusProcessor(t *testing.T) {
+	statusProcessor := new(mockStatusProcessor)
+	logger := zap.NewNop()
+
+	// Worker without instanceRepo but WITH status processor
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		StatusProcessor: statusProcessor,
+		Logger:          logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-nil-repo-sp",
+		Event:   "session.status",
+		Session: "session-1",
+		Payload: map[string]interface{}{"status": "DISCONNECTED"},
+	}
+
+	// Status processor should still be called even without instanceRepo
+	statusProcessor.On("ProcessStatus", ctx, "session-1", "DISCONNECTED").Return(nil)
+
+	err := worker.routeEvent(ctx, data)
+
+	assert.NoError(t, err)
+	statusProcessor.AssertExpectations(t)
+}
+
+// =============================================================================
+// Session Status Processor Error Tests
+// =============================================================================
+
+func TestRouteEvent_SessionStatusProcessorError(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	instanceRepo := new(mockInstanceRepo)
+	statusProcessor := new(mockStatusProcessor)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		InstanceRepo:      instanceRepo,
+		StatusProcessor:   statusProcessor,
+		Logger:            logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-sp-err",
+		Event:   "session.status",
+		Session: "session-1",
+		Payload: map[string]interface{}{"status": "CONNECTED"},
+	}
+
+	instanceRepo.On("GetInstanceByName", ctx, "session-1").
+		Return(&models.Instance{ID: 1, InstanceID: "session-1"}, nil)
+	instanceRepo.On("UpdateInstanceStatus", ctx, 1, "connected").Return(nil)
+
+	// Status processor returns error - should log warning but NOT fail the task
+	statusProcessor.On("ProcessStatus", ctx, "session-1", "CONNECTED").
+		Return(errors.New("SSE connection broken"))
+
+	err := worker.routeEvent(ctx, data)
+
+	// handleSessionStatusEvent should NOT propagate statusProcessor errors
+	assert.NoError(t, err)
+	instanceRepo.AssertExpectations(t)
+	statusProcessor.AssertExpectations(t)
+}
+
+func TestRouteEvent_SessionStatusProcessorErrorNoInstanceRepo(t *testing.T) {
+	statusProcessor := new(mockStatusProcessor)
+	logger := zap.NewNop()
+
+	// No instance repo, but status processor that errors
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		StatusProcessor: statusProcessor,
+		Logger:          logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-sp-err-norepo",
+		Event:   "session.status",
+		Session: "session-1",
+		Payload: map[string]interface{}{"status": "SCAN_QR_CODE"},
+	}
+
+	// Status processor returns error - should not fail even without instance repo
+	statusProcessor.On("ProcessStatus", ctx, "session-1", "SCAN_QR_CODE").
+		Return(errors.New("broadcast failed"))
+
+	err := worker.routeEvent(ctx, data)
+
+	assert.NoError(t, err)
+	statusProcessor.AssertExpectations(t)
+}
+
+// =============================================================================
+// QR Event Type Variations Tests
+// =============================================================================
+
+func TestRouteEvent_QREventTypeBare(t *testing.T) {
+	// Test that bare "qr" event is handled (not just "qr.code")
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		Logger: logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-qr-bare-type",
+		Event:   "qr",
+		Session: "session-1",
+		Payload: map[string]interface{}{},
+	}
+
+	// Should handle "qr" without error (no status processor = just logs)
+	err := worker.routeEvent(ctx, data)
+
+	assert.NoError(t, err)
+}
+
+func TestRouteEvent_QREventTypeBareNoStatusProcessor(t *testing.T) {
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		Logger: logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-qr-no-sp",
+		Event:   "qr.code",
+		Session: "session-1",
+		Payload: map[string]interface{}{},
+	}
+
+	// Without status processor, QR event should be handled gracefully
+	err := worker.routeEvent(ctx, data)
+
+	assert.NoError(t, err)
+}
+
+// =============================================================================
+// Full Flow with All Processors Tests
+// =============================================================================
+
+func TestProcessTask_FullQRCodeFlowWithStatusProcessor(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	statusProcessor := new(mockStatusProcessor)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		StatusProcessor:   statusProcessor,
+		Logger:            logger,
+	})
+
+	data := &WebhookJobData{
+		EventID:    "evt-qr-full",
+		Event:      "qr.code",
+		Session:    "session-1",
+		ReceivedAt: time.Now().Unix(),
+		Payload:    map[string]interface{}{},
+	}
+
+	task := createTestTask(t, data)
+	ctx := context.Background()
+
+	webhookEventsRepo.On("Exists", ctx, "evt-qr-full").Return(true, nil)
+	webhookEventsRepo.On("MarkProcessing", ctx, "evt-qr-full").Return(nil)
+	statusProcessor.On("ProcessStatus", ctx, "session-1", "SCAN_QR_CODE").Return(nil)
+	webhookEventsRepo.On("MarkProcessed", ctx, "evt-qr-full").Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	assert.NoError(t, err)
+	webhookEventsRepo.AssertExpectations(t)
+	statusProcessor.AssertExpectations(t)
+}
+
+func TestProcessTask_FullFlowWithReconcileAndTraceID(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+	reconcileSvc := reconciliation.New(nil, nil, nil, logger, reconciliation.DefaultConfig())
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		ReconcileSvc:      reconcileSvc,
+		Logger:            logger,
+	})
+
+	data := &WebhookJobData{
+		EventID:    "evt-full-traced",
+		Event:      "message.ack",
+		Session:    "session-traced",
+		TraceID:    "trace-full-flow-123",
+		ReceivedAt: time.Now().Unix(),
+		Payload: map[string]interface{}{
+			"id":  "msg-traced",
+			"ack": 3,
+		},
+	}
+
+	task := createTestTask(t, data)
+	ctx := context.Background()
+
+	webhookEventsRepo.On("Exists", ctx, "evt-full-traced").Return(true, nil)
+	webhookEventsRepo.On("MarkProcessing", ctx, "evt-full-traced").Return(nil)
+	webhookEventsRepo.On("MarkProcessed", ctx, "evt-full-traced").Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	assert.NoError(t, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// handleProcessingError with Trace ID in Logger
+// =============================================================================
+
+func TestHandleProcessingError_NonRetryableWithTraceID(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		Logger:            logger,
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-nrt-trace",
+		Event:   "message",
+		Session: "session-1",
+		TraceID: "trace-non-retryable-456",
+	}
+	task := createTestTask(t, data)
+	processErr := errors.New("malformed payload data")
+
+	webhookEventsRepo.On("MarkFailed", ctx, "evt-nrt-trace", "malformed payload data").Return(nil)
+
+	err := worker.handleProcessingError(ctx, task, data, processErr)
+
+	// Non-retryable error (contains "malformed") returns nil
+	assert.NoError(t, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// Metrics Helper
+// =============================================================================
+
+// newTestWebhookMetrics creates a WebhookMetrics instance with manually constructed
+// Prometheus collectors to avoid promauto registration conflicts with the default registry.
+func newTestWebhookMetrics() *metrics.WebhookMetrics {
+	return &metrics.WebhookMetrics{
+		ProcessedTotal:     prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_wh_processed"}, []string{"session", "event_type"}),
+		FailedTotal:        prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_wh_failed"}, []string{"session", "event_type", "error_type"}),
+		DLQTotal:           prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_wh_dlq"}, []string{"session", "event_type"}),
+		ProcessingDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "test_wh_duration"}, []string{"session", "event_type"}),
+		InFlight:           prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "test_wh_inflight"}, []string{"session"}),
+		RetryTotal:         prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_wh_retry"}, []string{"session", "event_type", "attempt"}),
+	}
+}
+
+// =============================================================================
+// handleProcessingError with Metrics Tests
+// =============================================================================
+
+func TestHandleProcessingError_RetryableWithMetrics(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		Logger:            logger,
+		Metrics:           newTestWebhookMetrics(),
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-retry-metrics",
+		Event:   "message",
+		Session: "session-1",
+	}
+	task := createTestTask(t, data)
+	processErr := errors.New("temporary failure")
+
+	webhookEventsRepo.On("MarkFailed", ctx, "evt-retry-metrics", "temporary failure").Return(nil)
+
+	// Execute with retryCount=0 (default from background context) < MaxWebhookRetries=3
+	// This is retryable, so RecordRetry is called and the error is returned.
+	err := worker.handleProcessingError(ctx, task, data, processErr)
+
+	// Should return error to trigger retry
+	assert.Error(t, err)
+	assert.Equal(t, processErr, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+func TestHandleProcessingError_NonRetryableWithMetrics(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		Logger:            logger,
+		Metrics:           newTestWebhookMetrics(),
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-nonretry-metrics",
+		Event:   "message",
+		Session: "session-1",
+	}
+	task := createTestTask(t, data)
+	processErr := errors.New("resource not found")
+
+	webhookEventsRepo.On("MarkFailed", ctx, "evt-nonretry-metrics", "resource not found").Return(nil)
+
+	// Execute - non-retryable error calls RecordFailed and returns nil
+	err := worker.handleProcessingError(ctx, task, data, processErr)
+
+	// Should return nil to stop retries
+	assert.NoError(t, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+func TestHandleProcessingError_MarkFailedErrorNonRetryable(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		Logger:            logger,
+		Metrics:           newTestWebhookMetrics(),
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-markfail-nonretry-metrics",
+		Event:   "message",
+		Session: "session-1",
+	}
+	task := createTestTask(t, data)
+	processErr := errors.New("resource not found")
+
+	// MarkFailed itself returns an error
+	webhookEventsRepo.On("MarkFailed", ctx, "evt-markfail-nonretry-metrics", "resource not found").
+		Return(errors.New("db connection lost"))
+
+	// Even though MarkFailed errors, RecordFailed is still called (metrics != nil)
+	// and we return nil because the error is non-retryable
+	err := worker.handleProcessingError(ctx, task, data, processErr)
+
+	assert.NoError(t, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// ProcessTask with Metrics Tests
+// =============================================================================
+
+func TestProcessTask_SuccessWithMetrics(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		Logger:            logger,
+		Metrics:           newTestWebhookMetrics(),
+	})
+
+	data := &WebhookJobData{
+		EventID:    "evt-success-metrics",
+		Event:      "message.ack",
+		Session:    "session-1",
+		ReceivedAt: time.Now().Unix(),
+		Payload: map[string]interface{}{
+			"id":  "msg-789",
+			"ack": 2,
+		},
+	}
+
+	task := createTestTask(t, data)
+	ctx := context.Background()
+
+	webhookEventsRepo.On("Exists", ctx, "evt-success-metrics").Return(true, nil)
+	webhookEventsRepo.On("MarkProcessing", ctx, "evt-success-metrics").Return(nil)
+	webhookEventsRepo.On("MarkProcessed", ctx, "evt-success-metrics").Return(nil)
+
+	// Execute - IncrementInFlight/DecrementInFlight (via defer) and RecordProcessed
+	// are called during normal processing because metrics != nil.
+	err := worker.ProcessTask(ctx, task)
+
+	assert.NoError(t, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+func TestProcessTask_SuccessWithMetricsAndReconcileSvc(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	logger := zap.NewNop()
+	reconcileSvc := reconciliation.New(nil, nil, nil, logger, reconciliation.DefaultConfig())
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		ReconcileSvc:      reconcileSvc,
+		Logger:            logger,
+		Metrics:           newTestWebhookMetrics(),
+	})
+
+	data := &WebhookJobData{
+		EventID:    "evt-metrics-reconcile",
+		Event:      "message.ack",
+		Session:    "session-reconcile",
+		ReceivedAt: time.Now().Unix(),
+		Payload: map[string]interface{}{
+			"id":  "msg-reconcile",
+			"ack": 3,
+		},
+	}
+
+	task := createTestTask(t, data)
+	ctx := context.Background()
+
+	webhookEventsRepo.On("Exists", ctx, "evt-metrics-reconcile").Return(true, nil)
+	webhookEventsRepo.On("MarkProcessing", ctx, "evt-metrics-reconcile").Return(nil)
+	webhookEventsRepo.On("MarkProcessed", ctx, "evt-metrics-reconcile").Return(nil)
+
+	// Both metrics (IncrementInFlight, DecrementInFlight, RecordProcessed)
+	// and RecordEvent (reconcileSvc) are exercised together.
+	err := worker.ProcessTask(ctx, task)
+
+	assert.NoError(t, err)
+	webhookEventsRepo.AssertExpectations(t)
+}
+
+func TestProcessTask_RouteEventErrorWithMetrics(t *testing.T) {
+	webhookEventsRepo := new(mockWebhookEventsRepo)
+	msgProcessor := new(mockMessageProcessor)
+	logger := zap.NewNop()
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo: webhookEventsRepo,
+		MessageProcessor:  msgProcessor,
+		Logger:            logger,
+		Metrics:           newTestWebhookMetrics(),
+	})
+
+	data := &WebhookJobData{
+		EventID:    "evt-route-err-metrics",
+		Event:      "message",
+		Session:    "session-1",
+		ReceivedAt: time.Now().Unix(),
+		Payload:    map[string]interface{}{"body": "hello"},
+	}
+
+	task := createTestTask(t, data)
+	ctx := context.Background()
+
+	webhookEventsRepo.On("Exists", ctx, "evt-route-err-metrics").Return(true, nil)
+	webhookEventsRepo.On("MarkProcessing", ctx, "evt-route-err-metrics").Return(nil)
+
+	// MessageProcessor returns a retryable error, which triggers handleProcessingError
+	msgProcessor.On("ProcessMessage", ctx, "session-1", data.Payload).
+		Return(errors.New("temporary failure"))
+
+	// handleProcessingError calls MarkFailed (retryable, retryCount=0 < MaxWebhookRetries=3)
+	// and metrics.RecordRetry
+	webhookEventsRepo.On("MarkFailed", ctx, "evt-route-err-metrics", "temporary failure").Return(nil)
+
+	err := worker.ProcessTask(ctx, task)
+
+	// Should return error to trigger retry (retryable error + retryCount < max)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "temporary failure")
+	webhookEventsRepo.AssertExpectations(t)
+	msgProcessor.AssertExpectations(t)
 }

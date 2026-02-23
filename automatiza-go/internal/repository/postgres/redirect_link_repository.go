@@ -36,14 +36,14 @@ func (r *redirectLinkRepository) GetByID(ctx context.Context, linkID string) (*m
 
 	var link models.RedirectLink
 	var targetGroupsJSON, groupClicksJSON []byte
-	var name *string
+	var name, strategy *string
 
 	err := r.db.QueryRow(ctx, query, linkID).Scan(
 		&link.ID,
 		&link.UserID,
 		&link.Slug,
 		&name,
-		&link.Strategy,
+		&strategy,
 		&targetGroupsJSON,
 		&link.ClickCount,
 		&groupClicksJSON,
@@ -62,6 +62,9 @@ func (r *redirectLinkRepository) GetByID(ctx context.Context, linkID string) (*m
 	}
 	if name != nil {
 		link.Name = *name
+	}
+	if strategy != nil {
+		link.Strategy = *strategy
 	}
 
 	// Unmarshal JSONB fields
@@ -92,14 +95,14 @@ func (r *redirectLinkRepository) GetBySlug(ctx context.Context, slug string) (*m
 
 	var link models.RedirectLink
 	var targetGroupsJSON, groupClicksJSON []byte
-	var name *string
+	var name, strategy *string
 
 	err := r.db.QueryRow(ctx, query, slug).Scan(
 		&link.ID,
 		&link.UserID,
 		&link.Slug,
 		&name,
-		&link.Strategy,
+		&strategy,
 		&targetGroupsJSON,
 		&link.ClickCount,
 		&groupClicksJSON,
@@ -118,6 +121,9 @@ func (r *redirectLinkRepository) GetBySlug(ctx context.Context, slug string) (*m
 	}
 	if name != nil {
 		link.Name = *name
+	}
+	if strategy != nil {
+		link.Strategy = *strategy
 	}
 
 	// Unmarshal JSONB fields
@@ -160,14 +166,14 @@ func (r *redirectLinkRepository) GetByUserID(ctx context.Context, userID string)
 	for rows.Next() {
 		var link models.RedirectLink
 		var targetGroupsJSON, groupClicksJSON []byte
-		var name *string
+		var name, strategy *string
 
 		err := rows.Scan(
 			&link.ID,
 			&link.UserID,
 			&link.Slug,
 			&name,
-			&link.Strategy,
+			&strategy,
 			&targetGroupsJSON,
 			&link.ClickCount,
 			&groupClicksJSON,
@@ -180,6 +186,9 @@ func (r *redirectLinkRepository) GetByUserID(ctx context.Context, userID string)
 		}
 		if name != nil {
 			link.Name = *name
+		}
+		if strategy != nil {
+			link.Strategy = *strategy
 		}
 
 		// Unmarshal JSONB fields

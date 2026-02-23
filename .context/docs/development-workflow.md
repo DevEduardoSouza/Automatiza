@@ -54,7 +54,7 @@ make dev
 |------|---------|-------|
 | Start everything | `make dev` | DB + Backend + Frontend |
 | Start everything + WAHA | `make dev-all` | Includes WhatsApp API |
-| Frontend only | `make dev-client` | Vite dev server on port 5173 |
+| Frontend only | `make dev-client` | Vite dev server on port 3003 |
 | Backend only | `make dev-go` | Gin server on port 3000 |
 | Run worker | `cd automatiza-go && go run ./cmd/server/main.go -worker` | Background job processor |
 | Generate protobuf stubs | `make proto-generate` | Run after any `.proto` change |
@@ -67,7 +67,7 @@ make dev
 
 | Service | Port |
 |---------|------|
-| Frontend (Vite) | 5173 |
+| Frontend (Vite) | 3003 |
 | Backend (Go/Gin) | 3000 |
 | PostgreSQL | 5432 |
 | Redis | 6379 |

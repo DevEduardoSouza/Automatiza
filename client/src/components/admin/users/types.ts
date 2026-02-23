@@ -10,6 +10,7 @@ export interface UserAutomationRow {
   status: AutomationStatus;
   mode?: string | null;
   interval_minutes?: number | null;
+  delay_seconds?: number | null;
   start_time?: string | null;
   end_time?: string | null;
   stores?: string[] | null;
@@ -30,17 +31,6 @@ export interface UserInvestigation {
   }>;
   automationStats: { total: number; active: number; paused: number };
   automations: UserAutomationRow[];
-}
-
-export interface SystemEvent {
-  id: string;
-  created_at: string;
-  user_id: string | null;
-  instance_id: string | null;
-  level: 'debug' | 'info' | 'warn' | 'error';
-  scope: string;
-  message: string;
-  meta: Record<string, unknown>;
 }
 
 export interface User {
@@ -89,22 +79,9 @@ export interface AutomationNextRunUpdate {
   updated_at: string;
 }
 
-export interface LoadBalancerMapping {
-  userId: string;
-  serverId: number;
-  serverName: string;
-  createdAt: string | null;
-}
-
 export interface CreateUserFormData {
   email: string;
   password: string;
   phone_number: string;
   plan: string;
-}
-
-export interface LoadBalancerServer {
-  id: number;
-  name: string;
-  url: string;
 }

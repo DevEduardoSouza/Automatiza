@@ -5,6 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Mock Modules (inline values to avoid TDZ issues with vi.mock hoisting)
 // ============================================================
 
+vi.mock('@/lib/sentry', () => ({
+  captureHookError: vi.fn(),
+  safeLocalStorage: {
+    getItem: vi.fn().mockReturnValue(null),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+  },
+}));
+
 const mockToast = vi.fn();
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({

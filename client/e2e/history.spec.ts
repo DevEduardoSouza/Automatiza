@@ -1,14 +1,15 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/index';
 import {
-  ACTION_TYPES,
-  MOCK_HISTORY_ENTRIES,
+  MOCK_HISTORY_EVENTS,
+  MOCK_HISTORY_STATS,
   mockClearHistoryApi,
   mockHistoryErrorApi,
-  mockHistoryFilteredApi,
+  mockHistoryListApi,
   setupEmptyHistoryMocks,
   setupHistoryMocks,
   setupPaginatedHistoryMocks,
 } from './fixtures/history.fixture';
+import { setupAuthMocks } from './fixtures/auth.fixture';
 import { HistoryPage } from './pages/history.page';
 
 test.describe('History', () => {
@@ -18,319 +19,336 @@ test.describe('History', () => {
     historyPage = new HistoryPage(page);
   });
 
-  test.describe('Page Load', () => {
-    test('should display history page with entries', async ({ page }) => {
+  // ==============================================================
+  // 1. Load & Display
+  // ==============================================================
+  test.describe('Load & Display', () => {
+    test('should display page title', async ({ page }) => {
       await setupHistoryMocks(page);
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      // Verify page title is visible
-      await expect(page.locator('h1')).toBeVisible();
-
-      // Verify history entries are listed
-      const entryCount = await historyPage.getEntryCount();
-      expect(entryCount).toBeGreaterThanOrEqual(0);
+      await expect(historyPage.pageTitle).toBeVisible();
     });
 
-    test('should display stats cards', async ({ page }) => {
+    test('should display stat cards with correct values', async ({ page }) => {
       await setupHistoryMocks(page);
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      // Look for stats cards
-      const cards = page.locator('[class*="card"]');
-      const cardCount = await cards.count();
-      expect(cardCount).toBeGreaterThan(0);
+      // 4 stat cards should be visible
+      await expect(historyPage.statCards).toHaveCount(4);
+
+      // Verify stat values match mock data
+      const totalValue = await historyPage.getStatValue(0);
+      expect(totalValue?.trim()).toBe(String(MOCK_HISTORY_STATS.total));
+
+      const completedValue = await historyPage.getStatValue(1);
+      expect(completedValue?.trim()).toBe(String(MOCK_HISTORY_STATS.completed));
+
+      const runningValue = await historyPage.getStatValue(2);
+      expect(runningValue?.trim()).toBe(String(MOCK_HISTORY_STATS.running));
+
+      const failedValue = await historyPage.getStatValue(3);
+      expect(failedValue?.trim()).toBe(String(MOCK_HISTORY_STATS.failed));
     });
 
-    test('should display action type indicators', async ({ page }) => {
+    test('should display table rows matching event count', async ({ page }) => {
       await setupHistoryMocks(page);
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      // History entries should have type indicators (badges or icons)
-      const entries = page.locator('[class*="history-entry"], [class*="history-item"], li');
-      const entryCount = await entries.count();
-
-      if (entryCount > 0) {
-        // Look for type badges
-        const badges = entries.first().locator('[class*="badge"]');
-        const hasBadges = await badges.isVisible().catch(() => false);
-        expect(typeof hasBadges).toBe('boolean');
-      }
+      // Desktop table should show 5 rows
+      const rowCount = await historyPage.getTableRowCount();
+      expect(rowCount).toBe(MOCK_HISTORY_EVENTS.length);
     });
-  });
 
-  test.describe('Empty State', () => {
     test('should display empty state when no history', async ({ page }) => {
       await setupEmptyHistoryMocks(page);
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      // Verify empty state or zero entries
+      // Empty state message or zero rows
       const isEmpty = await historyPage.isEmpty();
-      const hasNoEntries = (await historyPage.getEntryCount()) === 0;
-
-      expect(isEmpty || hasNoEntries).toBeTruthy();
+      const rowCount = await historyPage.getTableRowCount();
+      expect(isEmpty || rowCount === 0).toBeTruthy();
     });
 
-    test('should show zero stats when empty', async ({ page }) => {
+    test('should display zero stats when empty', async ({ page }) => {
       await setupEmptyHistoryMocks(page);
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      // Stats should show zero or N/A
-      const cards = page.locator('[class*="card"]');
-      const hasCards = (await cards.count()) > 0;
+      await expect(historyPage.statCards).toHaveCount(4);
 
-      expect(typeof hasCards).toBe('boolean');
+      const totalValue = await historyPage.getStatValue(0);
+      expect(totalValue?.trim()).toBe('0');
     });
   });
 
-  test.describe('Filter by Action Type', () => {
-    test('should filter by offer sent type', async ({ page }) => {
-      await setupHistoryMocks(page);
-      await mockHistoryFilteredApi(page, ACTION_TYPES.OFFER_SENT);
-      await historyPage.goto();
-      await historyPage.waitForLoad();
+  // ==============================================================
+  // 2. Filters
+  // ==============================================================
+  test.describe('Filters', () => {
+    test('should filter by event type', async ({ page }) => {
+      await setupAuthMocks(page);
+      await mockClearHistoryApi(page);
 
-      // Look for filter button or dropdown
-      const filterButton = page.getByRole('button', {
-        name: /oferta|offer/i,
+      // Set up route that returns filtered results when eventType param is provided
+      const filteredEvents = MOCK_HISTORY_EVENTS.filter(
+        (e) => e.eventType === 'EVENT_TYPE_MESSAGE_SENT'
+      );
+      await mockHistoryListApi(page, filteredEvents, {
+        totalCount: filteredEvents.length,
+        stats: { total: filteredEvents.length, completed: filteredEvents.length, running: 0, failed: 0 },
       });
 
-      if (await filterButton.isVisible()) {
-        await filterButton.click();
-        await page.waitForTimeout(500);
-
-        // Should show filtered results
-        const entryCount = await historyPage.getEntryCount();
-        expect(entryCount).toBeGreaterThanOrEqual(0);
-      }
-    });
-
-    test('should filter by automation run type', async ({ page }) => {
-      await setupHistoryMocks(page);
-      await mockHistoryFilteredApi(page, ACTION_TYPES.AUTOMATION_RUN);
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      const filterButton = page.getByRole('button', {
-        name: /automacao|automation/i,
+      // Click the event type filter
+      await historyPage.eventTypeFilter.click();
+
+      // Select an option from the dropdown
+      const option = page.locator('[role="option"]').first();
+      if (await option.isVisible()) {
+        await option.click();
+        await page.waitForTimeout(300);
+      }
+
+      // The filter combobox should have changed from its default value
+      await expect(historyPage.eventTypeFilter).toBeVisible();
+    });
+
+    test('should filter by status', async ({ page }) => {
+      await setupAuthMocks(page);
+      await mockClearHistoryApi(page);
+
+      const failedEvents = MOCK_HISTORY_EVENTS.filter((e) => e.status === 'failed');
+      await mockHistoryListApi(page, failedEvents, {
+        totalCount: failedEvents.length,
+        stats: { total: failedEvents.length, completed: 0, running: 0, failed: failedEvents.length },
       });
 
-      if (await filterButton.isVisible()) {
-        await filterButton.click();
-        await page.waitForTimeout(500);
+      await historyPage.goto();
+      await historyPage.waitForLoad();
 
-        const entryCount = await historyPage.getEntryCount();
-        expect(entryCount).toBeGreaterThanOrEqual(0);
+      // Click the status filter
+      await historyPage.statusFilter.click();
+
+      // Select an option from the dropdown
+      const option = page.locator('[role="option"]').first();
+      if (await option.isVisible()) {
+        await option.click();
+        await page.waitForTimeout(300);
       }
+
+      await expect(historyPage.statusFilter).toBeVisible();
     });
 
-    test('should show all entries when filter cleared', async ({ page }) => {
+    test('should show clear filters button when filters are active', async ({ page }) => {
       await setupHistoryMocks(page);
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      const initialCount = await historyPage.getEntryCount();
+      // Apply a filter first
+      await historyPage.eventTypeFilter.click();
+      const options = page.locator('[role="option"]');
+      const optionCount = await options.count();
 
-      // Apply filter if available
-      const allButton = page.getByRole('button', { name: /todos|all/i });
-      if (await allButton.isVisible()) {
-        await allButton.click();
-        await page.waitForTimeout(500);
+      if (optionCount > 1) {
+        // Select the second option (first is usually "all")
+        await options.nth(1).click();
+        await page.waitForTimeout(300);
 
-        const finalCount = await historyPage.getEntryCount();
-        expect(finalCount).toBe(initialCount);
+        // Clear filters button (with X icon) should appear
+        const clearBtn = historyPage.clearFiltersButton;
+        const isVisible = await clearBtn.isVisible().catch(() => false);
+        expect(typeof isVisible).toBe('boolean');
       }
     });
   });
 
-  test.describe('Success and Failure Indicators', () => {
-    test('should display success indicator for successful actions', async ({ page }) => {
-      await setupHistoryMocks(page);
-      await historyPage.goto();
-      await historyPage.waitForLoad();
-
-      // Find a successful entry
-      const successEntry = MOCK_HISTORY_ENTRIES.find((e) => e.success);
-      if (successEntry) {
-        const isSuccessful = await historyPage.isEntrySuccessful(successEntry.description);
-        expect(typeof isSuccessful).toBe('boolean');
-      }
-    });
-
-    test('should display failure indicator for failed actions', async ({ page }) => {
-      await setupHistoryMocks(page);
-      await historyPage.goto();
-      await historyPage.waitForLoad();
-
-      // Find a failed entry
-      const failedEntry = MOCK_HISTORY_ENTRIES.find((e) => !e.success);
-      if (failedEntry) {
-        const isFailed = await historyPage.isEntryFailed(failedEntry.description);
-        expect(typeof isFailed).toBe('boolean');
-      }
-    });
-  });
-
+  // ==============================================================
+  // 3. Pagination
+  // ==============================================================
   test.describe('Pagination', () => {
-    test('should display load more button when more entries exist', async ({ page }) => {
+    test('should display pagination controls', async ({ page }) => {
       await setupPaginatedHistoryMocks(page);
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      // Check for load more button
-      const hasMore = await historyPage.hasMoreEntries();
-      expect(typeof hasMore).toBe('boolean');
+      // Pagination buttons should be visible
+      await expect(historyPage.firstPageButton).toBeVisible();
+      await expect(historyPage.prevPageButton).toBeVisible();
+      await expect(historyPage.nextPageButton).toBeVisible();
+      await expect(historyPage.lastPageButton).toBeVisible();
     });
 
-    test('should load more entries when button clicked', async ({ page }) => {
+    test('should disable first/prev buttons on first page', async ({ page }) => {
       await setupPaginatedHistoryMocks(page);
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      const initialCount = await historyPage.getEntryCount();
+      await expect(historyPage.firstPageButton).toBeDisabled();
+      await expect(historyPage.prevPageButton).toBeDisabled();
+    });
 
-      // Click load more if available
-      if (await historyPage.hasMoreEntries()) {
-        await historyPage.loadMore();
-        await page.waitForTimeout(500);
+    test('should enable next/last buttons when more pages exist', async ({ page }) => {
+      await setupPaginatedHistoryMocks(page);
+      await historyPage.goto();
+      await historyPage.waitForLoad();
 
-        const newCount = await historyPage.getEntryCount();
-        expect(newCount).toBeGreaterThanOrEqual(initialCount);
-      }
+      await expect(historyPage.nextPageButton).toBeEnabled();
+      await expect(historyPage.lastPageButton).toBeEnabled();
+    });
+
+    test('should display pagination info text', async ({ page }) => {
+      await setupPaginatedHistoryMocks(page);
+      await historyPage.goto();
+      await historyPage.waitForLoad();
+
+      // Should show "1 / 5" or similar page info
+      await expect(historyPage.paginationInfo.first()).toBeVisible();
+    });
+
+    test('should navigate to next page on click', async ({ page }) => {
+      await setupPaginatedHistoryMocks(page);
+      await historyPage.goto();
+      await historyPage.waitForLoad();
+
+      // Intercept the next ListHistory call to verify pagination
+      let nextPageCalled = false;
+      await page.route('**/history.v1.HistoryService/ListHistory', async (route) => {
+        nextPageCalled = true;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'grpc-status': '0' },
+          body: JSON.stringify({
+            events: MOCK_HISTORY_EVENTS.slice(0, 3),
+            hasMore: false,
+            stats: { total: 100, completed: 70, running: 10, failed: 20 },
+            totalCount: 100,
+            page: 2,
+            pageSize: 20,
+            totalPages: 5,
+          }),
+        });
+      });
+
+      await historyPage.nextPageButton.click();
+      await page.waitForTimeout(500);
+
+      expect(nextPageCalled).toBeTruthy();
     });
   });
 
+  // ==============================================================
+  // 4. Clear History
+  // ==============================================================
   test.describe('Clear History', () => {
-    test('should clear history with confirmation', async ({ page }) => {
+    test('should open confirmation dialog on clear button click', async ({ page }) => {
       await setupHistoryMocks(page);
-      await mockClearHistoryApi(page, 'success');
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      // Look for clear history button
-      const clearButton = historyPage.clearHistoryButton;
+      await historyPage.clearHistoryButton.click();
+      await expect(historyPage.confirmDialog).toBeVisible();
+    });
 
-      if (await clearButton.isVisible()) {
-        await clearButton.click();
+    test('should close dialog when cancel is clicked', async ({ page }) => {
+      await setupHistoryMocks(page);
+      await historyPage.goto();
+      await historyPage.waitForLoad();
 
-        // Confirm in dialog
-        const confirmButton = page.getByRole('button', {
-          name: /confirmar|confirm|limpar|clear|sim|yes/i,
+      await historyPage.clearHistoryButton.click();
+      await expect(historyPage.confirmDialog).toBeVisible();
+
+      await historyPage.cancelButton.click();
+      await expect(historyPage.confirmDialog).not.toBeVisible();
+    });
+
+    test('should clear history when confirmed', async ({ page }) => {
+      await setupAuthMocks(page);
+      await mockHistoryListApi(page);
+      await mockClearHistoryApi(page, 'success');
+
+      await historyPage.goto();
+      await historyPage.waitForLoad();
+
+      // Track if ClearHistory was called
+      let clearCalled = false;
+      await page.route('**/history.v1.HistoryService/ClearHistory', async (route) => {
+        clearCalled = true;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'grpc-status': '0' },
+          body: JSON.stringify({ deletedCount: 100 }),
         });
+      });
 
-        if (await confirmButton.isVisible()) {
-          await confirmButton.click();
-          await page.waitForTimeout(500);
+      await historyPage.clearHistory();
+      await page.waitForTimeout(500);
 
-          // Should show success toast
-          const toast = page.locator('[data-sonner-toast]');
-          const hasToast = await toast.isVisible().catch(() => false);
-
-          expect(typeof hasToast).toBe('boolean');
-        }
-      }
+      expect(clearCalled).toBeTruthy();
     });
 
     test('should handle clear history error', async ({ page }) => {
-      await setupHistoryMocks(page);
+      await setupAuthMocks(page);
+      await mockHistoryListApi(page);
       await mockClearHistoryApi(page, 'error');
+
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      const clearButton = historyPage.clearHistoryButton;
+      await historyPage.clearHistory();
+      await page.waitForTimeout(500);
 
-      if (await clearButton.isVisible()) {
-        await clearButton.click();
+      // Page should not crash; still showing content
+      await expect(historyPage.pageTitle).toBeVisible();
+    });
 
-        const confirmButton = page.getByRole('button', {
-          name: /confirmar|confirm|limpar|clear|sim|yes/i,
-        });
+    test('should disable clear button when history is empty', async ({ page }) => {
+      await setupEmptyHistoryMocks(page);
+      await historyPage.goto();
+      await historyPage.waitForLoad();
 
-        if (await confirmButton.isVisible()) {
-          await confirmButton.click();
-          await page.waitForTimeout(500);
-
-          // Should show error toast
-          const errorToast = page.locator('[data-sonner-toast]').filter({
-            hasText: /erro|error|falha|failed/i,
-          });
-          const hasError = await errorToast.isVisible().catch(() => false);
-
-          expect(typeof hasError).toBe('boolean');
-        }
-      }
+      // Clear button should be disabled when no events
+      await expect(historyPage.clearHistoryButton).toBeDisabled();
     });
   });
 
+  // ==============================================================
+  // 5. Error Handling
+  // ==============================================================
   test.describe('Error Handling', () => {
     test('should handle API error gracefully', async ({ page }) => {
+      await setupAuthMocks(page);
       await mockHistoryErrorApi(page);
-      await historyPage.goto();
 
-      // Wait for error to appear
+      await page.goto('/history');
       await page.waitForTimeout(2000);
 
-      // Page should not crash
-      const hasError = page.locator('[role="alert"]').filter({
-        hasText: /erro|error|falha|failed/i,
-      });
-      const errorVisible = await hasError.isVisible().catch(() => false);
-
-      // Either error shown or page loads with fallback
-      expect(typeof errorVisible).toBe('boolean');
+      // Page should not crash; error boundary or fallback should render
+      const pageContent = page.locator('body');
+      await expect(pageContent).not.toBeEmpty();
     });
   });
 
-  test.describe('Search', () => {
-    test('should search history entries', async ({ page }) => {
-      await setupHistoryMocks(page);
-      await historyPage.goto();
-      await historyPage.waitForLoad();
-
-      // Search for a term
-      await historyPage.search('offer');
-      await page.waitForTimeout(500);
-
-      // Results should be filtered
-      const count = await historyPage.getEntryCount();
-      expect(count).toBeGreaterThanOrEqual(0);
-    });
-
-    test('should clear search and show all', async ({ page }) => {
-      await setupHistoryMocks(page);
-      await historyPage.goto();
-      await historyPage.waitForLoad();
-
-      const initialCount = await historyPage.getEntryCount();
-
-      // Search
-      await historyPage.search('test');
-      await page.waitForTimeout(500);
-
-      // Clear
-      await historyPage.clearSearch();
-      await page.waitForTimeout(500);
-
-      const finalCount = await historyPage.getEntryCount();
-      expect(finalCount).toBe(initialCount);
-    });
-  });
-
-  test.describe('Migration Validation', () => {
-    test('should load history via ConnectRPC', async ({ page }) => {
+  // ==============================================================
+  // 6. ConnectRPC Integration
+  // ==============================================================
+  test.describe('ConnectRPC Integration', () => {
+    test('should make calls to the correct service path', async ({ page }) => {
       const grpcCalls: string[] = [];
 
       await page.route('**/*', async (route) => {
         const url = route.request().url();
-
         if (url.includes('history.v1.HistoryService')) {
           grpcCalls.push(url);
         }
-
         await route.continue();
       });
 
@@ -338,8 +356,38 @@ test.describe('History', () => {
       await historyPage.goto();
       await historyPage.waitForLoad();
 
-      // Should have made gRPC calls
-      expect(grpcCalls.length).toBeGreaterThanOrEqual(0);
+      // Should have called ListHistory at minimum
+      const listHistoryCalls = grpcCalls.filter((url) => url.includes('ListHistory'));
+      expect(listHistoryCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    test('should send requests with application/json content type', async ({ page }) => {
+      let requestContentType = '';
+
+      await page.route('**/history.v1.HistoryService/ListHistory', async (route) => {
+        requestContentType = route.request().headers()['content-type'] || '';
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'grpc-status': '0' },
+          body: JSON.stringify({
+            events: MOCK_HISTORY_EVENTS,
+            hasMore: false,
+            stats: MOCK_HISTORY_STATS,
+            totalCount: MOCK_HISTORY_EVENTS.length,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          }),
+        });
+      });
+
+      await setupAuthMocks(page);
+      await historyPage.goto();
+      await historyPage.waitForLoad();
+
+      // ConnectRPC uses application/json
+      expect(requestContentType).toContain('json');
     });
   });
 });

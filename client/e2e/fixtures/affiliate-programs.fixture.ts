@@ -262,15 +262,81 @@ export async function mockMlCreateLink(
 }
 
 /**
+ * Mocks the AffiliateCredentials ListActiveStores RPC.
+ */
+export async function mockListActiveStores(
+  page: Page,
+  scenario: 'all_configured' | 'partial' | 'none' | 'error' = 'partial'
+): Promise<void> {
+  await page.route(
+    '**/affiliates.v1.AffiliateCredentialsService/ListActiveStores',
+    async (route) => {
+      if (scenario === 'error') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/grpc-web+proto',
+          headers: {
+            'grpc-status': '13',
+            'grpc-message': 'Failed to list active stores',
+          },
+          body: Buffer.from([]),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/grpc-web+proto',
+          headers: { 'grpc-status': '0' },
+          body: Buffer.from([]),
+        });
+      }
+    }
+  );
+}
+
+/**
+ * Mocks the MercadoLivre InvalidatePreviewCache RPC.
+ */
+export async function mockMlInvalidateCache(
+  page: Page,
+  scenario: 'success' | 'error' = 'success'
+): Promise<void> {
+  await page.route(
+    '**/affiliates.v1.MercadoLivreService/InvalidatePreviewCache',
+    async (route) => {
+      if (scenario === 'success') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/grpc-web+proto',
+          headers: { 'grpc-status': '0' },
+          body: Buffer.from([]),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/grpc-web+proto',
+          headers: {
+            'grpc-status': '13',
+            'grpc-message': 'Failed to invalidate cache',
+          },
+          body: Buffer.from([]),
+        });
+      }
+    }
+  );
+}
+
+/**
  * Mocks all affiliate-related RPCs for a complete test flow.
  */
 export async function mockAllAffiliateApis(page: Page): Promise<void> {
   await mockListCredentials(page);
+  await mockListActiveStores(page);
   await mockUpsertCredential(page);
   await mockDeleteCredential(page);
   await mockMlConnect(page);
   await mockMlPreview(page);
   await mockMlCreateLink(page);
+  await mockMlInvalidateCache(page);
 }
 
 export { expect } from '@playwright/test';

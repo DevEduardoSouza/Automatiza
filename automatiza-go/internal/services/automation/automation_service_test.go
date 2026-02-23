@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	bpLib "automatiza-go/internal/lib/backpressure"
+	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/automation"
@@ -1218,6 +1220,782 @@ func TestRunAutomation_RepositoryError(t *testing.T) {
 // Table-Driven Tests for Automation Types
 // =============================================================================
 
+// =============================================================================
+// DiagnoseAutomation - Additional Gap Coverage Tests
+// =============================================================================
+
+func TestDiagnoseAutomation_RepoError(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(nil, errors.New("db error"))
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "failed to get automation")
+}
+
+func TestDiagnoseAutomation_ListTypeWithValidList(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	listType := "list"
+	listID := "list-123"
+	automation := &models.Automation{
+		ID:           "auto-123",
+		UserID:       "user-1",
+		Name:         "List Automation",
+		Status:       models.AutomationStatusActive,
+		Type:         &listType,
+		GroupIDs:     []string{"group1@g.us"},
+		MlLinkListID: &listID,
+		Stores:       []string{"mercadolivre"},
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", 1).Return([]*models.MlLinkListItem{
+		{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123"},
+	}, nil)
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result.Status)
+
+	// Verify ML_LINK_LIST check is present
+	var mlCheck *models.DiagnoseCheck
+	for _, c := range result.Checks {
+		if c.Name == "ML_LINK_LIST" {
+			mlCheck = &c
+			break
+		}
+	}
+	require.NotNil(t, mlCheck)
+	assert.Equal(t, "ok", mlCheck.Status)
+	assert.Contains(t, mlCheck.Message, "itens disponiveis")
+}
+
+func TestDiagnoseAutomation_ListTypeWithEmptyList(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	listType := "list"
+	listID := "list-123"
+	automation := &models.Automation{
+		ID:           "auto-123",
+		UserID:       "user-1",
+		Name:         "List Automation",
+		Status:       models.AutomationStatusActive,
+		Type:         &listType,
+		GroupIDs:     []string{"group1@g.us"},
+		MlLinkListID: &listID,
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", 1).Return([]*models.MlLinkListItem{}, nil)
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+
+	var mlCheck *models.DiagnoseCheck
+	for _, c := range result.Checks {
+		if c.Name == "ML_LINK_LIST" {
+			mlCheck = &c
+			break
+		}
+	}
+	require.NotNil(t, mlCheck)
+	assert.Equal(t, "warning", mlCheck.Status)
+	assert.Contains(t, mlCheck.Message, "sem itens")
+}
+
+func TestDiagnoseAutomation_ListTypeWithListError(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	listType := "list"
+	listID := "list-123"
+	automation := &models.Automation{
+		ID:           "auto-123",
+		UserID:       "user-1",
+		Name:         "List Automation",
+		Status:       models.AutomationStatusActive,
+		Type:         &listType,
+		GroupIDs:     []string{"group1@g.us"},
+		MlLinkListID: &listID,
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", 1).Return(nil, errors.New("db error"))
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+
+	var mlCheck *models.DiagnoseCheck
+	for _, c := range result.Checks {
+		if c.Name == "ML_LINK_LIST" {
+			mlCheck = &c
+			break
+		}
+	}
+	require.NotNil(t, mlCheck)
+	assert.Equal(t, "warning", mlCheck.Status)
+	assert.Contains(t, mlCheck.Message, "Erro")
+}
+
+func TestDiagnoseAutomation_ShopeeAPIError(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:       "auto-123",
+		UserID:   "user-1",
+		Name:     "Test Automation",
+		Status:   models.AutomationStatusActive,
+		Type:     &searchType,
+		GroupIDs: []string{"group1@g.us"},
+		Stores:   []string{"shopee"},
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.shopeeService.On("GetCategories", ctx, (*int64)(nil)).Return(nil, errors.New("API timeout"))
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+
+	var buscaCheck *models.DiagnoseCheck
+	for _, c := range result.Checks {
+		if c.Name == "BUSCA_STORE" {
+			buscaCheck = &c
+			break
+		}
+	}
+	require.NotNil(t, buscaCheck)
+	assert.Equal(t, "error", buscaCheck.Status)
+	assert.Contains(t, buscaCheck.Message, "Shopee")
+}
+
+func TestDiagnoseAutomation_MLNotConnected(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:       "auto-123",
+		UserID:   "user-1",
+		Name:     "Test Automation",
+		Status:   models.AutomationStatusActive,
+		Type:     &searchType,
+		GroupIDs: []string{"group1@g.us"},
+		Stores:   []string{"mercadolivre"},
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.mlService.On("IsConnected", ctx, "user-1").Return(false, nil)
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+
+	var buscaCheck *models.DiagnoseCheck
+	for _, c := range result.Checks {
+		if c.Name == "BUSCA_STORE" {
+			buscaCheck = &c
+			break
+		}
+	}
+	require.NotNil(t, buscaCheck)
+	assert.Equal(t, "error", buscaCheck.Status)
+	assert.Contains(t, buscaCheck.Message, "Mercado Livre")
+}
+
+func TestDiagnoseAutomation_NoCacheConfigured(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:       "auto-123",
+		UserID:   "user-1",
+		Name:     "Test Automation",
+		Status:   models.AutomationStatusActive,
+		Type:     &searchType,
+		GroupIDs: []string{"group1@g.us"},
+		Stores:   []string{"shopee"},
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.shopeeService.On("GetCategories", ctx, (*int64)(nil)).Return([]models.ShopeeCategory{}, nil)
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+
+	// Cache is nil in newTestService, so ANTIDUP should be warning
+	var antidupCheck *models.DiagnoseCheck
+	for _, c := range result.Checks {
+		if c.Name == "ANTIDUP" {
+			antidupCheck = &c
+			break
+		}
+	}
+	require.NotNil(t, antidupCheck)
+	assert.Equal(t, "warning", antidupCheck.Status)
+	assert.Contains(t, antidupCheck.Message, "Cache nao configurado")
+}
+
+func TestDiagnoseAutomation_NoInstances(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:       "auto-123",
+		UserID:   "user-1",
+		Name:     "Test Automation",
+		Status:   models.AutomationStatusActive,
+		Type:     &searchType,
+		GroupIDs: []string{"group1@g.us"},
+		Stores:   []string{"shopee"},
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(nil, errors.New("db error"))
+	deps.shopeeService.On("GetCategories", ctx, (*int64)(nil)).Return([]models.ShopeeCategory{}, nil)
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+	assert.Equal(t, "error", result.Status)
+}
+
+// =============================================================================
+// RunAutomation - Additional Gap Coverage Tests
+// =============================================================================
+
+func TestRunAutomation_DefaultType(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	// No Type set → defaults to search via default case
+	automation := &models.Automation{
+		ID:       "auto-123",
+		UserID:   "user-1",
+		Name:     "Default Type Automation",
+		Status:   models.AutomationStatusActive,
+		Type:     nil, // No type → default case
+		GroupIDs: []string{"group1@g.us"},
+		Stores:   []string{"shopee"},
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	lockTime := time.Now().Add(10 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(nil, nil)
+	deps.automationRunRepo.On("AcquireLock", ctx, "auto-123", mock.AnythingOfType("time.Duration")).Return(&lockTime, nil)
+	deps.automationRunRepo.On("ReleaseLock", ctx, "auto-123").Return(nil)
+	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
+	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(&models.ShopeeSearchResult{Offers: []models.ShopeeOffer{}}, nil)
+	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestRunAutomation_HistoryCreateError(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:       "auto-123",
+		UserID:   "user-1",
+		Name:     "Test Automation",
+		Status:   models.AutomationStatusActive,
+		Type:     &searchType,
+		GroupIDs: []string{"group1@g.us"},
+		Stores:   []string{"shopee"},
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	lockTime := time.Now().Add(10 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(nil, nil)
+	deps.automationRunRepo.On("AcquireLock", ctx, "auto-123", mock.AnythingOfType("time.Duration")).Return(&lockTime, nil)
+	deps.automationRunRepo.On("ReleaseLock", ctx, "auto-123").Return(nil)
+	// History create fails (fire-and-forget, should not stop execution)
+	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(nil, errors.New("db error"))
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(&models.ShopeeSearchResult{Offers: []models.ShopeeOffer{}}, nil)
+	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestRunAutomation_WithIntervalUpdateNextRunAt(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	interval := 30
+	automation := &models.Automation{
+		ID:              "auto-123",
+		UserID:          "user-1",
+		Name:            "Test Automation",
+		Status:          models.AutomationStatusActive,
+		Type:            &searchType,
+		GroupIDs:        []string{"group1@g.us"},
+		Stores:          []string{"shopee"},
+		IntervalMinutes: &interval,
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	lockTime := time.Now().Add(10 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(nil, nil)
+	deps.automationRunRepo.On("AcquireLock", ctx, "auto-123", mock.AnythingOfType("time.Duration")).Return(&lockTime, nil)
+	deps.automationRunRepo.On("ReleaseLock", ctx, "auto-123").Return(nil)
+	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
+	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(&models.ShopeeSearchResult{Offers: []models.ShopeeOffer{}}, nil)
+	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	// The defer should call UpdateNextRunAt with the interval
+	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil)
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	deps.automationRepo.AssertCalled(t, "UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time"))
+}
+
+func TestRunAutomation_HistoryUpdateErrors(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:       "auto-123",
+		UserID:   "user-1",
+		Name:     "Test Automation",
+		Status:   models.AutomationStatusActive,
+		Type:     &searchType,
+		GroupIDs: []string{"group1@g.us"},
+		Stores:   []string{"shopee"},
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	lockTime := time.Now().Add(10 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(nil, nil)
+	deps.automationRunRepo.On("AcquireLock", ctx, "auto-123", mock.AnythingOfType("time.Duration")).Return(&lockTime, nil)
+	deps.automationRunRepo.On("ReleaseLock", ctx, "auto-123").Return(nil)
+	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
+	// History Update fails (fire-and-forget)
+	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(errors.New("update error"))
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(&models.ShopeeSearchResult{Offers: []models.ShopeeOffer{}}, nil)
+	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+
+	// Should still succeed despite history update errors
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestRunAutomation_MonitoringType(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	monitorType := "monitoring"
+	automation := &models.Automation{
+		ID:              "auto-123",
+		UserID:          "user-1",
+		Name:            "Monitor Automation",
+		Status:          models.AutomationStatusActive,
+		Type:            &monitorType,
+		GroupIDs:        []string{"target@g.us"},
+		MonitorGroupIDs: []string{"source@g.us"},
+		Stores:          []string{"shopee"},
+	}
+
+	lockTime := time.Now().Add(10 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(nil, nil)
+	deps.automationRunRepo.On("AcquireLock", ctx, "auto-123", mock.AnythingOfType("time.Duration")).Return(&lockTime, nil)
+	deps.automationRunRepo.On("ReleaseLock", ctx, "auto-123").Return(nil)
+	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
+	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.Success)
+	assert.Contains(t, result.Message, "Monitoramento ativo")
+}
+
+func TestRunAutomation_ListType(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	listType := "list"
+	listID := "list-123"
+	automation := &models.Automation{
+		ID:           "auto-123",
+		UserID:       "user-1",
+		Name:         "List Automation",
+		Status:       models.AutomationStatusActive,
+		Type:         &listType,
+		GroupIDs:     []string{"target@g.us"},
+		MlLinkListID: &listID,
+	}
+
+	lockTime := time.Now().Add(10 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(nil, nil)
+	deps.automationRunRepo.On("AcquireLock", ctx, "auto-123", mock.AnythingOfType("time.Duration")).Return(&lockTime, nil)
+	deps.automationRunRepo.On("ReleaseLock", ctx, "auto-123").Return(nil)
+	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
+	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", 1).Return([]*models.MlLinkListItem{}, nil)
+	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.Success)
+}
+
+func TestRunAutomation_ExecutionErrorUpdatesHistory(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:       "auto-123",
+		UserID:   "user-1",
+		Name:     "Test Automation",
+		Status:   models.AutomationStatusActive,
+		Type:     &searchType,
+		GroupIDs: []string{}, // No groups → executeSearchAutomation returns error
+		Stores:   []string{"shopee"},
+	}
+
+	lockTime := time.Now().Add(10 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(nil, nil)
+	deps.automationRunRepo.On("AcquireLock", ctx, "auto-123", mock.AnythingOfType("time.Duration")).Return(&lockTime, nil)
+	deps.automationRunRepo.On("ReleaseLock", ctx, "auto-123").Return(nil)
+	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
+	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err) // RunAutomation wraps inner error into result
+	require.NotNil(t, result)
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Message, "no target groups")
+}
+
+func TestRunAutomation_LockConflict(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:     "auto-123",
+		UserID: "user-1",
+		Name:   "Test Automation",
+		Type:   &searchType,
+	}
+
+	existingLock := time.Now().Add(5 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(&existingLock, nil)
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "lock")
+}
+
+func TestRunAutomation_LockCheckError(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:     "auto-123",
+		UserID: "user-1",
+		Name:   "Test Automation",
+		Type:   &searchType,
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(nil, errors.New("db error"))
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "failed to acquire lock")
+}
+
+func TestCanCreateAutomation_GetMaxError(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	// GetMaxAutomations errors → uses default of 5
+	deps.profileRepo.On("GetMaxAutomations", ctx, "user-1").Return(0, errors.New("db error"))
+	deps.profileRepo.On("CountUserAutomations", ctx, "user-1").Return(3, nil)
+
+	canCreate, currentCount, maxCount, err := svc.CanCreateAutomation(ctx, "user-1")
+	require.NoError(t, err)
+	assert.True(t, canCreate)
+	assert.Equal(t, 3, currentCount)
+	assert.Equal(t, 5, maxCount) // default
+}
+
+func TestResetHistory_DeleteError(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:     "auto-123",
+		UserID: "user-1",
+		Name:   "Test Automation",
+		Type:   &searchType,
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.dispatchLogRepo.On("DeleteRecentByAutomation", ctx, "auto-123", 1).Return(int64(0), errors.New("db error"))
+
+	err := svc.ResetHistory(ctx, "auto-123", "user-1")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to reset history")
+}
+
+func TestDiagnoseAutomation_WithTimeWindow(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	startTime := "03:00"
+	endTime := "03:01"
+	scheduleDays := []string{"0", "1", "2", "3", "4", "5", "6"}
+	automation := &models.Automation{
+		ID:           "auto-123",
+		UserID:       "user-1",
+		Name:         "Test Automation",
+		Status:       models.AutomationStatusActive,
+		Type:         &searchType,
+		GroupIDs:     []string{"group1@g.us"},
+		Stores:       []string{"shopee"},
+		StartTime:    &startTime,
+		EndTime:      &endTime,
+		ScheduleDays: scheduleDays,
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+	deps.shopeeService.On("GetCategories", ctx, (*int64)(nil)).Return([]models.ShopeeCategory{}, nil)
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+	// Time window is 03:00-03:01, almost certainly outside current time
+	// so we should see a warning about being outside the time window
+	assert.NotNil(t, result)
+}
+
+func TestDiagnoseAutomation_MonitoringTypeStoreCheck(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	monitorType := "monitoring"
+	automation := &models.Automation{
+		ID:              "auto-123",
+		UserID:          "user-1",
+		Name:            "Monitor Automation",
+		Status:          models.AutomationStatusActive,
+		Type:            &monitorType,
+		GroupIDs:        []string{"target@g.us"},
+		MonitorGroupIDs: []string{"source@g.us"},
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+
+	// For non-search types, BUSCA_STORE should be "ok" with "nao necessaria" message
+	var buscaCheck *models.DiagnoseCheck
+	for _, c := range result.Checks {
+		if c.Name == "BUSCA_STORE" {
+			buscaCheck = &c
+			break
+		}
+	}
+	require.NotNil(t, buscaCheck)
+	assert.Equal(t, "ok", buscaCheck.Status)
+	assert.Contains(t, buscaCheck.Message, "nao necessaria")
+}
+
+func TestDiagnoseAutomation_ListTypeNoListID(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	listType := "list"
+	automation := &models.Automation{
+		ID:           "auto-123",
+		UserID:       "user-1",
+		Name:         "List Automation",
+		Status:       models.AutomationStatusActive,
+		Type:         &listType,
+		GroupIDs:     []string{"group1@g.us"},
+		MlLinkListID: nil, // No list ID
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+	assert.Equal(t, "error", result.Status)
+
+	var mlCheck *models.DiagnoseCheck
+	for _, c := range result.Checks {
+		if c.Name == "ML_LINK_LIST" {
+			mlCheck = &c
+			break
+		}
+	}
+	require.NotNil(t, mlCheck)
+	assert.Equal(t, "error", mlCheck.Status)
+	assert.Contains(t, mlCheck.Message, "Lista de links nao configurada")
+}
+
+func TestDiagnoseAutomation_EmptyStoresDefaultsToShopee(t *testing.T) {
+	t.Parallel()
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	automation := &models.Automation{
+		ID:       "auto-123",
+		UserID:   "user-1",
+		Name:     "Test Automation",
+		Status:   models.AutomationStatusActive,
+		Type:     &searchType,
+		GroupIDs: []string{"group1@g.us"},
+		Stores:   []string{}, // Empty → defaults to shopee
+	}
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+	deps.shopeeService.On("GetCategories", ctx, (*int64)(nil)).Return([]models.ShopeeCategory{}, nil)
+
+	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
+	require.NoError(t, err)
+
+	var buscaCheck *models.DiagnoseCheck
+	for _, c := range result.Checks {
+		if c.Name == "BUSCA_STORE" {
+			buscaCheck = &c
+			break
+		}
+	}
+	require.NotNil(t, buscaCheck)
+	assert.Equal(t, "ok", buscaCheck.Status)
+	assert.Contains(t, buscaCheck.Message, "shopee")
+}
+
 func TestDiagnoseAutomation_AllTypes(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -1280,4 +2058,21 @@ func TestDiagnoseAutomation_AllTypes(t *testing.T) {
 			assert.Equal(t, tt.expectStatus, result.Status)
 		})
 	}
+}
+
+func TestNewAutomationService_WithNonNilDependencies(t *testing.T) {
+	t.Parallel()
+	logger := zaptest.NewLogger(t)
+
+	usSvc := urlsafety.NewService(urlsafety.Config{Mode: "off"}, nil, logger)
+	bpSvc := bpLib.NewProducerBackpressure(bpLib.Config{Enabled: false}, nil, logger)
+
+	svc := automation.NewAutomationService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil,
+		usSvc, bpSvc,
+		nil, nil,
+		logger,
+	)
+	assert.NotNil(t, svc)
 }

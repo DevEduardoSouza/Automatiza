@@ -42,7 +42,6 @@ export function useSettingsTab(): UseSettingsTabReturn {
         ai_api_key: (remoteSettings.ai_api_key as string) || '',
         ai_api_url: (remoteSettings.ai_api_url as string) || '',
         ai_model: (remoteSettings.ai_model as string) || '',
-        ai_image_model: (remoteSettings.ai_image_model as string) || '',
         support_whatsapp: (remoteSettings.support_whatsapp as string) || '',
         tutorial_link: (remoteSettings.tutorial_link as string) || '',
         dashboard_announcement_enabled:
@@ -63,12 +62,6 @@ export function useSettingsTab(): UseSettingsTabReturn {
           (remoteSettings.link_safety_redirect_timeout_ms as string) || '3500',
         link_safety_redirect_cache_seconds:
           (remoteSettings.link_safety_redirect_cache_seconds as string) || '21600',
-        load_balancer_server_1_max_users:
-          (remoteSettings.load_balancer_server_1_max_users as string) || '100',
-        load_balancer_server_2_max_users:
-          (remoteSettings.load_balancer_server_2_max_users as string) || '100',
-        load_balancer_server_3_max_users:
-          (remoteSettings.load_balancer_server_3_max_users as string) || '100',
       });
     }
   }, [loading, remoteSettings]);
@@ -113,18 +106,6 @@ export function useSettingsTab(): UseSettingsTabReturn {
         {
           key: 'link_safety_redirect_cache_seconds',
           value: settings.link_safety_redirect_cache_seconds,
-        },
-        {
-          key: 'load_balancer_server_1_max_users',
-          value: settings.load_balancer_server_1_max_users,
-        },
-        {
-          key: 'load_balancer_server_2_max_users',
-          value: settings.load_balancer_server_2_max_users,
-        },
-        {
-          key: 'load_balancer_server_3_max_users',
-          value: settings.load_balancer_server_3_max_users,
         },
       ];
 

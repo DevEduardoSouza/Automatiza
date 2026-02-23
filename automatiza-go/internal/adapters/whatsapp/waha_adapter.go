@@ -327,7 +327,7 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 		mapper:         newMapperWithLogger(namedLogger),
 		statusCache:    make(map[string]*statusCacheEntry),
 		statusCacheTTL: statusCacheTTL,
-		circuitBreaker: newCircuitBreaker(3, 15*time.Second), // 3 failures = 15s backoff
+		circuitBreaker: newCircuitBreaker(3, 60*time.Second), // 3 failures = 60s backoff (aligned with watchdog CheckInterval)
 		retryEnabled:   retryEnabled,
 		retryCfg:       defaultRetryConfig(),
 	}, nil
@@ -574,7 +574,7 @@ func (a *WahaAdapter) GetSessionStatus(ctx context.Context, sessionName string) 
 	if !a.circuitBreaker.canRequest() {
 		a.logger.Warn("circuit breaker open, blocking status check",
 			zap.String("session", sessionName))
-		return nil, NewProviderError(ErrCodeProviderError, "service temporarily unavailable (circuit breaker open)", nil)
+		return nil, NewProviderError(ErrCodeCircuitBreakerOpen, "service temporarily unavailable (circuit breaker open)", nil)
 	}
 
 	// N2: 10s timeout for status checks
@@ -1048,6 +1048,9 @@ func (a *WahaAdapter) requireWorkingSession(ctx context.Context, sessionName str
 	info, err := a.GetSessionStatus(ctx, sessionName)
 	if err != nil {
 		return fmt.Errorf("failed to check session status before sending: %w", err)
+	}
+	if info == nil {
+		return NewProviderError(ErrCodeProviderError, "unexpected nil session status", nil)
 	}
 
 	if info.Status != SessionStatusConnected {

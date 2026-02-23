@@ -67,7 +67,6 @@ type Config struct {
 	AIApiURL     string `mapstructure:"AI_API_URL"`
 	AIApiKey     string `mapstructure:"AI_API_KEY"`
 	AIModel      string `mapstructure:"AI_MODEL"`
-	AIImageModel string `mapstructure:"AI_IMAGE_MODEL"`
 
 	// Worker
 	WorkerConcurrency          int `mapstructure:"WORKER_CONCURRENCY"`
@@ -156,7 +155,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("PORT", "3000")
 	viper.SetDefault("NODE_ENV", "development")
 	viper.SetDefault("API_VERSION", "v1")
-	viper.SetDefault("CORS_ORIGIN", "http://localhost:5173")
+	viper.SetDefault("CORS_ORIGIN", "http://localhost:3003")
 	viper.SetDefault("CACHE_REDIS_URI", "redis://localhost:6379/0")
 	viper.SetDefault("APP_CACHE_PREFIX", "zappgrupos")
 	viper.SetDefault("WORKER_CONCURRENCY", 5)
@@ -169,7 +168,6 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("OTEL_ENABLED", false)
 	viper.SetDefault("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4318")
 	viper.SetDefault("AI_MODEL", "gpt-4o-mini")
-	viper.SetDefault("AI_IMAGE_MODEL", "imagen-3.0-generate-002")
 	viper.SetDefault("DB_PORT", "5432")
 	viper.SetDefault("DB_SSLMODE", "disable")
 	viper.SetDefault("DB_MAX_CONNS", 25)

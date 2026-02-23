@@ -40,6 +40,11 @@ type SSERedisBridge struct {
 	cacheClear  SessionCacheClearer // optional: clear adapter cache on status events
 	logger      *zap.Logger
 	channel     string
+
+	// Backoff config for reconnect loop. Zero values use defaults.
+	baseBackoff  time.Duration // default 100ms
+	maxBackoff   time.Duration // default 30s
+	closePubSub  func(*redis.PubSub) error // injectable for testing
 }
 
 // NewSSERedisBridge creates a new Redis bridge for SSE event relay.
@@ -48,6 +53,7 @@ func NewSSERedisBridge(redisClient *redis.Client, logger *zap.Logger) *SSERedisB
 		redisClient: redisClient,
 		logger:      logger.Named("sse-redis-bridge"),
 		channel:     sseRedisChannel,
+		closePubSub: func(ps *redis.PubSub) error { return ps.Close() },
 	}
 }
 
@@ -127,17 +133,21 @@ func (b *SSERedisBridge) Subscribe(ctx context.Context) error {
 // subscribeLoop runs the subscription loop with reconnect support.
 // On channel close or error, it reconnects with exponential backoff (N10).
 func (b *SSERedisBridge) subscribeLoop(ctx context.Context, pubsub *redis.PubSub) {
-	const (
+	baseBackoff := b.baseBackoff
+	if baseBackoff == 0 {
 		baseBackoff = 100 * time.Millisecond
-		maxBackoff  = 30 * time.Second
-		multiplier  = 2
-	)
+	}
+	maxBackoff := b.maxBackoff
+	if maxBackoff == 0 {
+		maxBackoff = 30 * time.Second
+	}
+	const multiplier = 2
 
 	// Run initial subscription
 	b.drainPubSub(ctx, pubsub)
 
 	// C8: Cancel context before closing pubsub to avoid race
-	if err := pubsub.Close(); err != nil {
+	if err := b.closePubSub(pubsub); err != nil {
 		b.logger.Warn("Failed to close Redis subscription on initial drain", zap.Error(err))
 	}
 
@@ -190,7 +200,7 @@ func (b *SSERedisBridge) subscribeLoop(ctx context.Context, pubsub *redis.PubSub
 		b.drainPubSub(ctx, newPubSub)
 
 		// C8: Close after context is already handled
-		if err := newPubSub.Close(); err != nil {
+		if err := b.closePubSub(newPubSub); err != nil {
 			b.logger.Warn("Failed to close Redis subscription after drain", zap.Error(err))
 		}
 	}

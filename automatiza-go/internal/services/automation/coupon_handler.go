@@ -181,18 +181,14 @@ func (h *CouponHandler) formatCouponText(coupon *models.Coupon) string {
 	}
 
 	// Join all lines with newlines and prefix with double newline for separation
-	if len(lines) > 0 {
-		result := "\n\n"
-		for i, line := range lines {
-			if i > 0 {
-				result += "\n"
-			}
-			result += line
+	result := "\n\n"
+	for i, line := range lines {
+		if i > 0 {
+			result += "\n"
 		}
-		return result
+		result += line
 	}
-
-	return ""
+	return result
 }
 
 // LoadCouponOnce loads and validates a coupon once at the start of automation execution.

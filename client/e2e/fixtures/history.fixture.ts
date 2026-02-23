@@ -1,163 +1,147 @@
 import type { Page } from '@playwright/test';
+import { setupAuthMocks } from './auth.fixture';
+
+// ============================================================
+// Mock Data
+// ============================================================
 
 /**
- * Action types enum matching the proto.
+ * Mock history events matching the HistoryEvent proto shape.
+ * Covers different event types and statuses for comprehensive testing.
  */
-export const ACTION_TYPES = {
-  OFFER_SENT: 1,
-  AUTOMATION_RUN: 2,
-  GROUP_SYNC: 3,
-  WHATSAPP_CONNECT: 4,
-  WHATSAPP_DISCONNECT: 5,
-  MESSAGE_SENT: 6,
-  JOB_EXECUTED: 7,
-} as const;
-
-/**
- * Mock history entries.
- */
-export const MOCK_HISTORY_ENTRIES = [
+export const MOCK_HISTORY_EVENTS = [
   {
     id: 'history-1',
-    actionType: ACTION_TYPES.OFFER_SENT,
-    description: 'Offer sent to Promocoes Tech',
-    timestamp: new Date().toISOString(),
-    metadata: {
-      groupName: 'Promocoes Tech',
-      offerId: 'offer-123',
-      productName: 'iPhone 15 Pro',
-      originalPrice: 7999.0,
-      discountPrice: 6499.0,
-      store: 'SHOPEE',
-    },
-    success: true,
+    userId: 'user-123',
+    eventType: 'EVENT_TYPE_MESSAGE_SENT',
+    description: 'Message sent to Promocoes Tech',
+    metadata: { groupName: 'Promocoes Tech' },
+    createdAt: '2026-01-15T10:00:00Z',
+    status: 'completed',
+    errorMessage: '',
+    completedAt: '2026-01-15T10:00:05Z',
+    targetCount: 5,
+    successCount: 5,
+    errorCount: 0,
   },
   {
     id: 'history-2',
-    actionType: ACTION_TYPES.AUTOMATION_RUN,
+    userId: 'user-123',
+    eventType: 'EVENT_TYPE_AUTOMATION_RUN',
     description: 'Automation "Search Shopee" executed',
-    timestamp: new Date(Date.now() - 1800000).toISOString(),
-    metadata: {
-      automationId: 'automation-1',
-      automationName: 'Search Shopee',
-      offersFound: 15,
-      offersSent: 12,
-      duration: 45,
-    },
-    success: true,
+    metadata: { automationName: 'Search Shopee', offersFound: 15 },
+    createdAt: '2026-01-15T09:30:00Z',
+    status: 'completed',
+    errorMessage: '',
+    completedAt: '2026-01-15T09:30:45Z',
+    targetCount: 12,
+    successCount: 12,
+    errorCount: 0,
   },
   {
     id: 'history-3',
-    actionType: ACTION_TYPES.GROUP_SYNC,
-    description: 'Groups synchronized',
-    timestamp: new Date(Date.now() - 3600000).toISOString(),
-    metadata: {
-      groupsAdded: 2,
-      groupsUpdated: 8,
-      groupsRemoved: 0,
-    },
-    success: true,
+    userId: 'user-123',
+    eventType: 'EVENT_TYPE_CLOSE_GROUPS',
+    description: 'Groups closed for maintenance',
+    metadata: {},
+    createdAt: '2026-01-15T08:00:00Z',
+    status: 'running',
+    errorMessage: '',
+    completedAt: '',
+    targetCount: 3,
+    successCount: 1,
+    errorCount: 0,
   },
   {
     id: 'history-4',
-    actionType: ACTION_TYPES.OFFER_SENT,
-    description: 'Failed to send offer',
-    timestamp: new Date(Date.now() - 5400000).toISOString(),
-    metadata: {
-      groupName: 'Ofertas Casa',
-      error: 'Group not accessible',
-    },
-    success: false,
+    userId: 'user-123',
+    eventType: 'EVENT_TYPE_CHANGE_NAME',
+    description: 'Failed to change group name',
+    metadata: { groupName: 'Ofertas Casa', error: 'Group not accessible' },
+    createdAt: '2026-01-15T07:00:00Z',
+    status: 'failed',
+    errorMessage: 'Group not accessible',
+    completedAt: '2026-01-15T07:00:02Z',
+    targetCount: 1,
+    successCount: 0,
+    errorCount: 1,
   },
   {
     id: 'history-5',
-    actionType: ACTION_TYPES.JOB_EXECUTED,
-    description: 'Scheduled job executed',
-    timestamp: new Date(Date.now() - 7200000).toISOString(),
-    metadata: {
-      jobId: 'job-1',
-      jobName: 'Daily Message',
-      groupsSent: 5,
-    },
-    success: true,
+    userId: 'user-123',
+    eventType: 'EVENT_TYPE_GROUP_SYNC',
+    description: 'Groups synchronized successfully',
+    metadata: { groupsAdded: 2, groupsUpdated: 8 },
+    createdAt: '2026-01-15T06:00:00Z',
+    status: 'completed',
+    errorMessage: '',
+    completedAt: '2026-01-15T06:00:10Z',
+    targetCount: 10,
+    successCount: 10,
+    errorCount: 0,
   },
 ];
 
 /**
- * Mock history stats.
+ * Mock history stats matching the HistoryStats proto shape.
+ * Values: total / completed / running / failed.
  */
 export const MOCK_HISTORY_STATS = {
-  totalActions: 1250,
-  actionsToday: 45,
-  successRate: 98.5,
-  byActionType: {
-    [ACTION_TYPES.OFFER_SENT]: 850,
-    [ACTION_TYPES.AUTOMATION_RUN]: 200,
-    [ACTION_TYPES.GROUP_SYNC]: 100,
-    [ACTION_TYPES.JOB_EXECUTED]: 100,
-  },
+  total: 5,
+  completed: 3,
+  running: 1,
+  failed: 1,
 };
 
+// ============================================================
+// Mock API Functions
+// ============================================================
+
 /**
- * Mocks the history list API.
+ * Mocks the ListHistory ConnectRPC endpoint.
+ * Returns events wrapped in the correct response envelope with pagination and stats.
  */
 export async function mockHistoryListApi(
   page: Page,
-  entries = MOCK_HISTORY_ENTRIES,
-  options: { hasMore?: boolean; totalCount?: number } = {}
+  events = MOCK_HISTORY_EVENTS,
+  options: {
+    hasMore?: boolean;
+    totalCount?: number;
+    stats?: typeof MOCK_HISTORY_STATS;
+    currentPage?: number;
+    pageSize?: number;
+    totalPages?: number;
+  } = {}
 ): Promise<void> {
-  const { hasMore = false, totalCount = entries.length } = options;
+  const {
+    hasMore = false,
+    totalCount = events.length,
+    stats = MOCK_HISTORY_STATS,
+    currentPage = 1,
+    pageSize = 20,
+    totalPages = 1,
+  } = options;
 
   await page.route('**/history.v1.HistoryService/ListHistory', async (route) => {
     await route.fulfill({
       status: 200,
-      contentType: 'application/grpc-web+proto',
+      contentType: 'application/json',
       headers: { 'grpc-status': '0' },
-      body: Buffer.from(
-        JSON.stringify({
-          entries,
-          hasMore,
-          totalCount,
-          nextCursor: hasMore ? 'cursor-next' : null,
-        })
-      ),
+      body: JSON.stringify({
+        events,
+        hasMore,
+        stats,
+        totalCount,
+        page: currentPage,
+        pageSize,
+        totalPages,
+      }),
     });
   });
 }
 
 /**
- * Mocks the history stats API.
- */
-export async function mockHistoryStatsApi(page: Page, stats = MOCK_HISTORY_STATS): Promise<void> {
-  await page.route('**/history.v1.HistoryService/GetStats', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/grpc-web+proto',
-      headers: { 'grpc-status': '0' },
-      body: Buffer.from(JSON.stringify(stats)),
-    });
-  });
-}
-
-/**
- * Mocks the history entry details API.
- */
-export async function mockHistoryEntryApi(
-  page: Page,
-  entry = MOCK_HISTORY_ENTRIES[0]
-): Promise<void> {
-  await page.route('**/history.v1.HistoryService/GetEntry', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/grpc-web+proto',
-      headers: { 'grpc-status': '0' },
-      body: Buffer.from(JSON.stringify({ entry })),
-    });
-  });
-}
-
-/**
- * Mocks the clear history API.
+ * Mocks the ClearHistory ConnectRPC endpoint.
  */
 export async function mockClearHistoryApi(
   page: Page,
@@ -167,100 +151,82 @@ export async function mockClearHistoryApi(
     if (scenario === 'success') {
       await route.fulfill({
         status: 200,
-        contentType: 'application/grpc-web+proto',
+        contentType: 'application/json',
         headers: { 'grpc-status': '0' },
-        body: Buffer.from(JSON.stringify({ deletedCount: 100 })),
+        body: JSON.stringify({ deletedCount: 100 }),
       });
     } else {
       await route.fulfill({
         status: 200,
-        contentType: 'application/grpc-web+proto',
+        contentType: 'application/json',
         headers: {
-          'grpc-status': '13', // INTERNAL
+          'grpc-status': '13',
           'grpc-message': 'Failed to clear history',
         },
-        body: Buffer.from([]),
+        body: JSON.stringify({}),
       });
     }
   });
 }
 
 /**
- * Mocks history with filter applied.
- */
-export async function mockHistoryFilteredApi(page: Page, actionType: number): Promise<void> {
-  const filtered = MOCK_HISTORY_ENTRIES.filter((e) => e.actionType === actionType);
-
-  await page.route('**/history.v1.HistoryService/ListHistory', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/grpc-web+proto',
-      headers: { 'grpc-status': '0' },
-      body: Buffer.from(
-        JSON.stringify({
-          entries: filtered,
-          hasMore: false,
-          totalCount: filtered.length,
-        })
-      ),
-    });
-  });
-}
-
-/**
- * Mocks history with error state.
+ * Mocks history with a gRPC error for all endpoints.
  */
 export async function mockHistoryErrorApi(page: Page): Promise<void> {
   await page.route('**/history.v1.HistoryService/**', async (route) => {
     await route.fulfill({
       status: 200,
-      contentType: 'application/grpc-web+proto',
+      contentType: 'application/json',
       headers: {
-        'grpc-status': '13', // INTERNAL
+        'grpc-status': '13',
         'grpc-message': 'Failed to load history',
       },
-      body: Buffer.from([]),
+      body: JSON.stringify({}),
     });
   });
 }
 
+// ============================================================
+// Setup Helpers
+// ============================================================
+
 /**
  * Sets up all common mocks for history tests.
+ * Includes auth, list, and clear history endpoints.
  */
 export async function setupHistoryMocks(page: Page): Promise<void> {
+  await setupAuthMocks(page);
   await mockHistoryListApi(page);
-  await mockHistoryStatsApi(page);
   await mockClearHistoryApi(page);
 }
 
 /**
- * Sets up mocks for empty history state.
+ * Sets up mocks for the empty history state.
+ * Returns zero events and zero stats.
  */
 export async function setupEmptyHistoryMocks(page: Page): Promise<void> {
-  await mockHistoryListApi(page, []);
-  await mockHistoryStatsApi(page, {
-    totalActions: 0,
-    actionsToday: 0,
-    successRate: 0,
-    byActionType: {
-      [ACTION_TYPES.OFFER_SENT]: 0,
-      [ACTION_TYPES.AUTOMATION_RUN]: 0,
-      [ACTION_TYPES.GROUP_SYNC]: 0,
-      [ACTION_TYPES.JOB_EXECUTED]: 0,
-    },
+  await setupAuthMocks(page);
+  await mockHistoryListApi(page, [], {
+    totalCount: 0,
+    stats: { total: 0, completed: 0, running: 0, failed: 0 },
+    totalPages: 0,
   });
+  await mockClearHistoryApi(page);
 }
 
 /**
  * Sets up mocks for paginated history.
+ * First page has hasMore=true, totalPages > 1.
  */
 export async function setupPaginatedHistoryMocks(page: Page): Promise<void> {
-  await mockHistoryListApi(page, MOCK_HISTORY_ENTRIES, {
+  await setupAuthMocks(page);
+  await mockHistoryListApi(page, MOCK_HISTORY_EVENTS, {
     hasMore: true,
     totalCount: 100,
+    stats: { total: 100, completed: 70, running: 10, failed: 20 },
+    currentPage: 1,
+    pageSize: 20,
+    totalPages: 5,
   });
-  await mockHistoryStatsApi(page, {
-    ...MOCK_HISTORY_STATS,
-    totalActions: 100,
-  });
+  await mockClearHistoryApi(page);
 }

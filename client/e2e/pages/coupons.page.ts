@@ -32,7 +32,7 @@ export class CouponsPage {
 
   // Form fields
   readonly codeInput: Locator;
-  readonly descriptionInput: Locator;
+  readonly titleInput: Locator;
   readonly discountValueInput: Locator;
   readonly discountTypeSelect: Locator;
   readonly minOrderValueInput: Locator;
@@ -44,10 +44,6 @@ export class CouponsPage {
   readonly saveButton: Locator;
   readonly cancelButton: Locator;
 
-  // Confirmation dialog
-  readonly confirmDialog: Locator;
-  readonly confirmButton: Locator;
-
   // Toasts
   readonly successToast: Locator;
   readonly errorToast: Locator;
@@ -55,17 +51,15 @@ export class CouponsPage {
   constructor(page: Page) {
     this.page = page;
 
-    // Page elements
-    this.pageTitle = page.locator('h1');
+    // Page elements - page uses h2
+    this.pageTitle = page.locator('h2').first();
     this.couponCountBadge = page.locator('[class*="badge"]').first();
 
     // Actions
     this.createButton = page.getByRole('button', {
       name: /novo.*cupom|new.*coupon|criar|create/i,
     });
-    this.searchInput = page
-      .locator('input[type="search"]')
-      .or(page.getByPlaceholder(/buscar|search/i));
+    this.searchInput = page.getByPlaceholder(/buscar|search|pesquis/i);
 
     // Filters
     this.filterAll = page.getByRole('button', { name: /todos|all/i });
@@ -87,34 +81,24 @@ export class CouponsPage {
     this.dialogTitle = this.dialogContent.locator('h2').first();
 
     // Form fields
-    this.codeInput = page.getByLabel(/codigo/i).or(page.locator('input[placeholder*="codigo"]'));
-    this.descriptionInput = page
-      .getByLabel(/descricao/i)
-      .or(page.locator('textarea, input[placeholder*="descricao"]'));
+    this.codeInput = page.getByLabel(/codigo|code/i).or(page.locator('#code'));
+    this.titleInput = page.getByLabel(/titulo|title|descri/i).or(page.locator('#title'));
     this.discountValueInput = page
       .getByLabel(/valor.*desconto|discount.*value/i)
       .or(page.locator('input[type="number"]').first());
     this.discountTypeSelect = page
       .getByLabel(/tipo.*desconto|discount.*type/i)
       .or(page.locator('[data-testid="discount-type"]'));
-    this.minOrderValueInput = page.getByLabel(/valor.*minimo|min.*order/i);
+    this.minOrderValueInput = page.getByLabel(/valor.*minimo|min.*order|preco.*minimo/i);
     this.maxDiscountInput = page.getByLabel(/desconto.*maximo|max.*discount/i);
     this.storeSelect = page.getByLabel(/loja/i).or(page.locator('[data-testid="store-select"]'));
     this.expiresAtInput = page
       .getByLabel(/validade|expires/i)
-      .or(page.locator('input[type="date"]'));
+      .or(page.locator('input[type="datetime-local"]'));
 
     // Form actions
     this.saveButton = page.getByRole('button', { name: /salvar|criar|save|create/i }).last();
     this.cancelButton = page.getByRole('button', { name: /cancelar|cancel/i });
-
-    // Confirmation dialog
-    this.confirmDialog = page
-      .locator('[role="alertdialog"]')
-      .or(page.locator('[role="dialog"]').filter({ hasText: /confirmar|confirm/i }));
-    this.confirmButton = this.confirmDialog.getByRole('button', {
-      name: /confirmar|confirm|sim|yes|excluir|delete/i,
-    });
 
     // Toasts
     this.successToast = page.locator('[data-sonner-toast]').filter({
@@ -130,14 +114,14 @@ export class CouponsPage {
    */
   async goto(): Promise<void> {
     await this.page.goto('/coupons');
-    await this.page.waitForSelector('h1', { state: 'visible' });
+    await this.page.waitForSelector('h2', { state: 'visible' });
   }
 
   /**
    * Waits for the page to load.
    */
   async waitForLoad(): Promise<void> {
-    await this.page.waitForSelector('h1', { state: 'visible' });
+    await this.page.waitForSelector('h2', { state: 'visible' });
     await this.page
       .waitForFunction(
         () => {
@@ -160,10 +144,17 @@ export class CouponsPage {
   }
 
   /**
-   * Gets a coupon row by code.
+   * Gets a coupon row by code (desktop table).
    */
   getCouponByCode(code: string): Locator {
     return this.page.getByRole('row').filter({ hasText: code });
+  }
+
+  /**
+   * Gets a coupon card by code (mobile view).
+   */
+  getCouponCardByCode(code: string): Locator {
+    return this.page.locator('.md\\:hidden >> div').filter({ hasText: code }).first();
   }
 
   /**
@@ -195,16 +186,17 @@ export class CouponsPage {
 
   /**
    * Gets the toggle status button for a coupon row.
+   * Uses aria-label to find the activate/deactivate button.
    */
   getToggleStatusButton(row: Locator): Locator {
-    return row.locator('button[role="switch"]');
+    return row.getByRole('button', { name: /ativar|desativar|activate|deactivate/i });
   }
 
   /**
    * Gets the status badge for a coupon row.
    */
   getStatusBadge(row: Locator): Locator {
-    return row.locator('[class*="badge"]').first();
+    return row.locator('[class*="badge"], span').filter({ hasText: /ativo|inativo|expirado|active|inactive|expired/i }).first();
   }
 
   /**
@@ -212,7 +204,7 @@ export class CouponsPage {
    */
   async fillCouponForm(options: {
     code: string;
-    description?: string;
+    title?: string;
     discountValue: number;
     discountType?: 'percentage' | 'fixed';
     minOrderValue?: number;
@@ -221,8 +213,8 @@ export class CouponsPage {
   }): Promise<void> {
     await this.codeInput.fill(options.code);
 
-    if (options.description) {
-      await this.descriptionInput.fill(options.description);
+    if (options.title) {
+      await this.titleInput.fill(options.title);
     }
 
     await this.discountValueInput.fill(String(options.discountValue));
@@ -285,37 +277,62 @@ export class CouponsPage {
   }
 
   /**
-   * Deletes a coupon.
+   * Deletes a coupon using window.confirm dialog.
    */
   async deleteCoupon(code: string): Promise<void> {
     const row = this.getCouponByCode(code);
     const deleteBtn = this.getDeleteButton(row);
-    await deleteBtn.click();
 
-    if (await this.confirmDialog.isVisible()) {
-      await this.confirmButton.click();
-    }
+    this.page.on('dialog', async (dialog) => {
+      await dialog.accept();
+    });
+    await deleteBtn.click();
   }
 
   /**
-   * Toggles coupon status.
+   * Toggles coupon status using window.confirm dialog.
    */
   async toggleCouponStatus(code: string): Promise<void> {
     const row = this.getCouponByCode(code);
     const toggle = this.getToggleStatusButton(row);
+
+    this.page.on('dialog', async (dialog) => {
+      await dialog.accept();
+    });
     await toggle.click();
   }
 
   /**
-   * Filters coupons by status.
+   * Filters coupons by status using Select component.
    */
-  async filterByStatus(status: 'all' | 'active' | 'expired'): Promise<void> {
-    const filters = {
-      all: this.filterAll,
-      active: this.filterActive,
-      expired: this.filterExpired,
+  async filterByStatus(status: 'all' | 'active' | 'inactive' | 'expired'): Promise<void> {
+    // The status filter is a Select component, not buttons
+    const statusLabels: Record<string, RegExp> = {
+      all: /todos|all/i,
+      active: /^ativo|^active/i,
+      inactive: /inativo|inactive/i,
+      expired: /expirado|expired/i,
     };
-    await filters[status].click();
+
+    // Find the status Select trigger (second combobox in the filter section)
+    const statusTrigger = this.page.locator('[role="combobox"]').nth(1);
+    await statusTrigger.click();
+
+    const option = this.page.getByRole('option', { name: statusLabels[status] });
+    await option.click();
+  }
+
+  /**
+   * Filters coupons by store using Select component.
+   */
+  async filterByStore(storeName: RegExp | string): Promise<void> {
+    const storeTrigger = this.page.locator('[role="combobox"]').first();
+    await storeTrigger.click();
+
+    const option = this.page.getByRole('option', {
+      name: typeof storeName === 'string' ? new RegExp(storeName, 'i') : storeName,
+    });
+    await option.click();
   }
 
   /**
@@ -333,7 +350,7 @@ export class CouponsPage {
   }
 
   /**
-   * Gets the count of displayed coupons.
+   * Gets the count of displayed coupons (desktop rows).
    */
   async getCouponCount(): Promise<number> {
     return this.couponRows.count();

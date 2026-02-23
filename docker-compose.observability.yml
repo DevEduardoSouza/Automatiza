@@ -1,0 +1,100 @@
+# =============================================================================
+# Observability Stack - Docker Compose
+# =============================================================================
+# OpenTelemetry Collector + Jaeger + Loki + Grafana
+# Usage: docker compose -f docker-compose.observability.yml up -d
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # OpenTelemetry Collector (receives OTLP, exports to Jaeger/Loki/Prometheus)
+  # ===========================================================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    container_name: automatiza-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics exporter
+    networks:
+      - observability-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      jaeger:
+        condition: service_started
+      loki:
+        condition: service_started
+
+  # ===========================================================================
+  # Jaeger (distributed tracing UI)
+  # ===========================================================================
+  jaeger:
+    image: jaegertracing/all-in-one:1.54
+    container_name: automatiza-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # Jaeger UI
+    networks:
+      - observability-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Loki (log aggregation)
+  # ===========================================================================
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: automatiza-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - observability-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Grafana (unified dashboard for traces, logs, metrics)
+  # ===========================================================================
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: automatiza-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./observability/grafana-dashboard-provisioning.yaml:/etc/grafana/provisioning/dashboards/provisioning.yaml:ro
+      - ./observability/grafana-dashboards/:/etc/grafana/provisioning/dashboards/json/:ro
+    ports:
+      - "3002:3000" # Avoid conflict with Go backend on :3000
+    networks:
+      - observability-network
+    restart: unless-stopped
+    depends_on:
+      - jaeger
+      - loki
+      - otel-collector
+
+networks:
+  observability-network:
+    driver: bridge
+
+volumes:
+  loki_data:
+    driver: local
+  grafana_data:
+    driver: local

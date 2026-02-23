@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useGroupsData } from '../use-groups-data';
 
@@ -67,15 +67,21 @@ const mockGroups = [
 const mockRefetch = vi.fn();
 const mockSyncGroups = vi.fn();
 const mockGetSyncStatus = vi.fn();
+const mockListGroupsPaginated = vi.fn();
 
 vi.mock('@/hooks/use-groups-connect', () => ({
   useGroupsConnect: () => ({
     groups: mockGroups,
     loading: false,
     refetch: mockRefetch,
+    listGroupsPaginated: mockListGroupsPaginated,
     syncGroups: mockSyncGroups,
     getSyncStatus: mockGetSyncStatus,
   }),
+}));
+
+vi.mock('@/lib/sentry', () => ({
+  captureHookError: vi.fn(),
 }));
 
 // Mock useInstancesConnect
@@ -109,27 +115,49 @@ describe('useGroupsData', () => {
     mockRefetch.mockResolvedValue(undefined);
     mockSyncGroups.mockResolvedValue({ success: true, job_id: 'job-123' });
     mockGetSyncStatus.mockResolvedValue({ status: 'completed' });
+    mockListGroupsPaginated.mockResolvedValue({
+      groups: mockGroups,
+      totalCount: 2,
+      page: 1,
+      pageSize: 10,
+      totalPages: 1,
+      hasMore: false,
+    });
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.resetAllMocks();
   });
+
+  /**
+   * Helper: render + wait for the initial paginated fetch to resolve.
+   * Most tests need this since usePagination defaults to true and
+   * triggers fetchPaginatedGroups() via useEffect on mount.
+   */
+  async function renderAndWait() {
+    const hook = renderHook(() => useGroupsData());
+    await waitFor(() => {
+      expect(hook.result.current.groups).toHaveLength(2);
+    });
+    return hook;
+  }
 
   // ============================================================
   // Initial State Tests
   // ============================================================
 
   describe('initial state', () => {
-    it('should have correct initial values', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should have correct initial values', async () => {
+      const { result } = await renderAndWait();
 
       expect(result.current.searchQuery).toBe('');
       expect(result.current.syncing).toBe(false);
       expect(result.current.loading).toBe(false);
     });
 
-    it('should return groups from useGroupsConnect', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should return groups from paginated fetch', async () => {
+      const { result } = await renderAndWait();
 
       expect(result.current.groups).toHaveLength(2);
       expect(result.current.groups[0].id).toBe('group-1');
@@ -142,8 +170,8 @@ describe('useGroupsData', () => {
   // ============================================================
 
   describe('group mapping', () => {
-    it('should map gRPC groups to local Group type', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should map gRPC groups to local Group type', async () => {
+      const { result } = await renderAndWait();
 
       const group = result.current.groups[0];
 
@@ -170,9 +198,14 @@ describe('useGroupsData', () => {
   // Search/Filter Tests
   // ============================================================
 
-  describe('search and filtering', () => {
-    it('should filter groups by search query', () => {
-      const { result } = renderHook(() => useGroupsData());
+  describe('search and filtering (client-side)', () => {
+    it('should filter groups by search query', async () => {
+      const { result } = await renderAndWait();
+
+      // Disable pagination to test client-side filtering
+      act(() => {
+        result.current.disablePagination();
+      });
 
       act(() => {
         result.current.setSearchQuery('Test');
@@ -182,8 +215,12 @@ describe('useGroupsData', () => {
       expect(result.current.filteredGroups[0].name).toBe('Test Group 1');
     });
 
-    it('should be case-insensitive when filtering', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should be case-insensitive when filtering', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
 
       act(() => {
         result.current.setSearchQuery('test');
@@ -193,8 +230,12 @@ describe('useGroupsData', () => {
       expect(result.current.filteredGroups[0].name).toBe('Test Group 1');
     });
 
-    it('should return all groups when search query is empty', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should return all groups when search query is empty', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
 
       expect(result.current.filteredGroups).toHaveLength(2);
 
@@ -205,8 +246,12 @@ describe('useGroupsData', () => {
       expect(result.current.filteredGroups).toHaveLength(2);
     });
 
-    it('should return empty array when no groups match', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should return empty array when no groups match', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
 
       act(() => {
         result.current.setSearchQuery('NonExistent');
@@ -215,8 +260,12 @@ describe('useGroupsData', () => {
       expect(result.current.filteredGroups).toHaveLength(0);
     });
 
-    it('should filter partial matches', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should filter partial matches', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
 
       act(() => {
         result.current.setSearchQuery('Group');
@@ -226,8 +275,12 @@ describe('useGroupsData', () => {
       expect(result.current.filteredGroups).toHaveLength(2);
     });
 
-    it('should handle special characters in search', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should handle special characters in search', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
 
       act(() => {
         result.current.setSearchQuery('@');
@@ -243,8 +296,24 @@ describe('useGroupsData', () => {
   // ============================================================
 
   describe('loadGroups', () => {
-    it('should call refetch', async () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should call fetchPaginatedGroups when paginated', async () => {
+      const { result } = await renderAndWait();
+
+      mockListGroupsPaginated.mockClear();
+
+      await act(async () => {
+        await result.current.loadGroups();
+      });
+
+      expect(mockListGroupsPaginated).toHaveBeenCalled();
+    });
+
+    it('should call refetch when non-paginated', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
 
       await act(async () => {
         await result.current.loadGroups();
@@ -260,7 +329,7 @@ describe('useGroupsData', () => {
 
   describe('handleSyncGroups', () => {
     it('should sync groups successfully', async () => {
-      const { result } = renderHook(() => useGroupsData());
+      const { result } = await renderAndWait();
 
       expect(result.current.syncing).toBe(false);
 
@@ -278,57 +347,32 @@ describe('useGroupsData', () => {
     });
 
     it('should poll for sync status until completed', async () => {
-      vi.useFakeTimers();
-
-      // First call returns pending, second returns completed
       mockGetSyncStatus
         .mockResolvedValueOnce({ status: 'pending' })
         .mockResolvedValueOnce({ status: 'pending' })
         .mockResolvedValueOnce({ status: 'completed' });
 
-      const { result } = renderHook(() => useGroupsData());
-
-      const syncPromise = result.current.handleSyncGroups();
-
-      // Advance timers for each poll
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1000);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1000);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1000);
-      });
+      const { result } = await renderAndWait();
 
       await act(async () => {
-        await syncPromise;
+        await result.current.handleSyncGroups();
       });
 
       expect(mockGetSyncStatus).toHaveBeenCalledWith('job-123');
-      expect(mockRefetch).toHaveBeenCalled(); // loadGroups called after sync
-
-      vi.useRealTimers();
-    });
+      expect(mockGetSyncStatus).toHaveBeenCalledTimes(3);
+      expect(mockListGroupsPaginated).toHaveBeenCalled();
+    }, 10_000);
 
     it('should handle sync failure', async () => {
-      vi.useFakeTimers();
-
       mockGetSyncStatus.mockResolvedValue({
         status: 'failed',
         error: 'Sync failed',
       });
 
-      const { result } = renderHook(() => useGroupsData());
-
-      const syncPromise = result.current.handleSyncGroups();
+      const { result } = await renderAndWait();
 
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(2000);
-      });
-
-      await act(async () => {
-        await syncPromise;
+        await result.current.handleSyncGroups();
       });
 
       expect(mockToast).toHaveBeenCalledWith({
@@ -336,53 +380,39 @@ describe('useGroupsData', () => {
         title: 'pages.groups.errors.sync',
         description: 'Sync failed',
       });
-
-      vi.useRealTimers();
     });
 
     it('should handle job not found as completed', async () => {
-      vi.useFakeTimers();
-
       mockGetSyncStatus.mockRejectedValue(new Error('job not found'));
 
-      const { result } = renderHook(() => useGroupsData());
-
-      const syncPromise = result.current.handleSyncGroups();
+      const { result } = await renderAndWait();
 
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(2000);
+        await result.current.handleSyncGroups();
       });
 
-      await act(async () => {
-        await syncPromise;
-      });
-
-      // Should show success since "job not found" is treated as completed
       expect(mockToast).toHaveBeenCalledWith({
         title: 'pages.groups.success.synced',
         description: 'pages.groups.success.syncedMessage',
       });
-
-      vi.useRealTimers();
     });
 
     it('should handle timeout', async () => {
-      vi.useFakeTimers();
+      const realDateNow = Date.now.bind(Date);
+      let jumpAmount = 0;
+      vi.spyOn(Date, 'now').mockImplementation(() => realDateNow() + jumpAmount);
 
-      // Always return pending
-      mockGetSyncStatus.mockResolvedValue({ status: 'pending' });
-
-      const { result } = renderHook(() => useGroupsData());
-
-      const syncPromise = result.current.handleSyncGroups();
-
-      // Advance past the 2 minute timeout
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
+      // After first getSyncStatus call, jump 3 minutes ahead so the
+      // while-loop deadline (2 min) is exceeded on the next iteration.
+      mockGetSyncStatus.mockImplementation(async () => {
+        jumpAmount = 3 * 60 * 1000;
+        return { status: 'pending' };
       });
 
+      const { result } = await renderAndWait();
+
       await act(async () => {
-        await syncPromise;
+        await result.current.handleSyncGroups();
       });
 
       expect(mockToast).toHaveBeenCalledWith(
@@ -392,25 +422,16 @@ describe('useGroupsData', () => {
         })
       );
 
-      vi.useRealTimers();
-    });
+      vi.spyOn(Date, 'now').mockRestore();
+    }, 10_000);
 
-    it('should not start another sync while syncing', async () => {
-      // This test verifies that the syncing flag prevents concurrent syncs
-      const { result, rerender } = renderHook(() => useGroupsData());
-
-      // Start sync - this sets syncing to true internally
-      const syncPromise = result.current.handleSyncGroups();
-
-      // After starting, syncing should be true (preventing concurrent calls)
-      // Note: Due to the async nature, the hook protects against concurrent calls
-      // by returning early if syncing is true at the start of handleSyncGroups
+    it('should verify syncing state resets after completion', async () => {
+      const { result } = await renderAndWait();
 
       await act(async () => {
-        await syncPromise;
+        await result.current.handleSyncGroups();
       });
 
-      // After completion, syncing should be false
       expect(result.current.syncing).toBe(false);
       expect(mockSyncGroups).toHaveBeenCalled();
     });
@@ -423,7 +444,7 @@ describe('useGroupsData', () => {
         }),
       }));
 
-      const { result } = renderHook(() => useGroupsData());
+      const { result } = await renderAndWait();
 
       await act(async () => {
         await result.current.handleSyncGroups();
@@ -437,7 +458,7 @@ describe('useGroupsData', () => {
     it('should handle sync queue failure', async () => {
       mockSyncGroups.mockResolvedValue({ success: false });
 
-      const { result } = renderHook(() => useGroupsData());
+      const { result } = await renderAndWait();
 
       await act(async () => {
         await result.current.handleSyncGroups();
@@ -457,8 +478,8 @@ describe('useGroupsData', () => {
   // ============================================================
 
   describe('setSearchQuery', () => {
-    it('should update search query', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should update search query', async () => {
+      const { result } = await renderAndWait();
 
       act(() => {
         result.current.setSearchQuery('new search');
@@ -467,8 +488,8 @@ describe('useGroupsData', () => {
       expect(result.current.searchQuery).toBe('new search');
     });
 
-    it('should handle empty string', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should handle empty string', async () => {
+      const { result } = await renderAndWait();
 
       act(() => {
         result.current.setSearchQuery('something');
@@ -489,8 +510,12 @@ describe('useGroupsData', () => {
   // ============================================================
 
   describe('edge cases', () => {
-    it('should handle search with leading/trailing whitespace', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should handle search with leading/trailing whitespace', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
 
       act(() => {
         result.current.setSearchQuery('  Test  ');
@@ -500,8 +525,12 @@ describe('useGroupsData', () => {
       expect(result.current.filteredGroups).toHaveLength(0);
     });
 
-    it('should handle unicode in search', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should handle unicode in search', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
 
       act(() => {
         result.current.setSearchQuery('test');
@@ -511,8 +540,12 @@ describe('useGroupsData', () => {
       expect(result.current.filteredGroups).toBeDefined();
     });
 
-    it('should handle very long search strings', () => {
-      const { result } = renderHook(() => useGroupsData());
+    it('should handle very long search strings', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
 
       const longSearch = 'a'.repeat(1000);
 
@@ -522,6 +555,386 @@ describe('useGroupsData', () => {
 
       expect(result.current.searchQuery).toBe(longSearch);
       expect(result.current.filteredGroups).toHaveLength(0);
+    });
+  });
+
+  // ============================================================
+  // Pagination Tests
+  // ============================================================
+
+  describe('pagination', () => {
+    it('should default to paginated mode', async () => {
+      const { result } = await renderAndWait();
+
+      expect(result.current.usePagination).toBe(true);
+      expect(result.current.currentPage).toBe(1);
+      expect(result.current.pageSize).toBe(10);
+    });
+
+    it('should call listGroupsPaginated on mount', async () => {
+      await renderAndWait();
+
+      expect(mockListGroupsPaginated).toHaveBeenCalledWith({
+        adminOnly: true,
+        page: 1,
+        pageSize: 10,
+        search: undefined,
+      });
+    });
+
+    it('should navigate to next page when hasMore is true', async () => {
+      mockListGroupsPaginated.mockResolvedValue({
+        groups: mockGroups,
+        totalCount: 20,
+        page: 1,
+        pageSize: 10,
+        totalPages: 2,
+        hasMore: true,
+      });
+
+      const { result } = await renderAndWait();
+
+      expect(result.current.hasMore).toBe(true);
+
+      act(() => {
+        result.current.goToNextPage();
+      });
+
+      expect(result.current.currentPage).toBe(2);
+    });
+
+    it('should NOT navigate past last page', async () => {
+      mockListGroupsPaginated.mockResolvedValue({
+        groups: mockGroups,
+        totalCount: 2,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
+        hasMore: false,
+      });
+
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.goToNextPage();
+      });
+
+      expect(result.current.currentPage).toBe(1);
+    });
+
+    it('should NOT navigate before page 1', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.goToPreviousPage();
+      });
+
+      expect(result.current.currentPage).toBe(1);
+    });
+
+    it('should navigate to specific page within valid range', async () => {
+      mockListGroupsPaginated.mockResolvedValue({
+        groups: mockGroups,
+        totalCount: 50,
+        page: 1,
+        pageSize: 10,
+        totalPages: 5,
+        hasMore: true,
+      });
+
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.setCurrentPage(3);
+      });
+
+      expect(result.current.currentPage).toBe(3);
+    });
+
+    it('should NOT navigate to page beyond totalPages', async () => {
+      mockListGroupsPaginated.mockResolvedValue({
+        groups: mockGroups,
+        totalCount: 20,
+        page: 1,
+        pageSize: 10,
+        totalPages: 2,
+        hasMore: true,
+      });
+
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.setCurrentPage(10);
+      });
+
+      // Should stay at current page since 10 > totalPages(2)
+      expect(result.current.currentPage).toBe(1);
+    });
+
+    it('should reset to page 1 when changing page size', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.setPageSize(25);
+      });
+
+      expect(result.current.pageSize).toBe(25);
+      expect(result.current.currentPage).toBe(1);
+    });
+
+    it('should switch to non-paginated mode with disablePagination', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
+
+      expect(result.current.usePagination).toBe(false);
+    });
+
+    it('should switch back to paginated mode with enablePagination', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
+
+      expect(result.current.usePagination).toBe(false);
+
+      act(() => {
+        result.current.enablePagination();
+      });
+
+      expect(result.current.usePagination).toBe(true);
+    });
+
+    it('should return totalCount and totalPages from paginated data', async () => {
+      mockListGroupsPaginated.mockResolvedValue({
+        groups: mockGroups,
+        totalCount: 42,
+        page: 1,
+        pageSize: 10,
+        totalPages: 5,
+        hasMore: true,
+      });
+
+      const { result } = await renderAndWait();
+
+      expect(result.current.totalCount).toBe(42);
+      expect(result.current.totalPages).toBe(5);
+    });
+
+    it('should fall back to non-paginated mode on listGroupsPaginated error', async () => {
+      mockListGroupsPaginated.mockRejectedValue(new Error('Server error'));
+
+      const { result } = renderHook(() => useGroupsData());
+
+      await waitFor(() => {
+        expect(result.current.usePagination).toBe(false);
+      });
+
+      expect(result.current.error).toBeInstanceOf(Error);
+    });
+
+    it('should use refetch in loadGroups when non-paginated', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
+
+      await act(async () => {
+        await result.current.loadGroups();
+      });
+
+      expect(mockRefetch).toHaveBeenCalled();
+    });
+
+    it('should use fetchPaginatedGroups in loadGroups when paginated', async () => {
+      const { result } = await renderAndWait();
+
+      mockListGroupsPaginated.mockClear();
+
+      await act(async () => {
+        await result.current.loadGroups();
+      });
+
+      expect(mockListGroupsPaginated).toHaveBeenCalled();
+    });
+
+    it('should pass search query to server when paginated', async () => {
+      const { result } = await renderAndWait();
+
+      mockListGroupsPaginated.mockClear();
+
+      act(() => {
+        result.current.setSearchQuery('Alpha');
+      });
+
+      await waitFor(() => {
+        expect(mockListGroupsPaginated).toHaveBeenCalledWith(
+          expect.objectContaining({
+            search: 'Alpha',
+          })
+        );
+      });
+    });
+  });
+
+  // ============================================================
+  // Optimistic Updates Tests
+  // ============================================================
+
+  describe('optimistic updates', () => {
+    it('should apply optimistic update to a group', async () => {
+      const { result } = await renderAndWait();
+
+      // Switch to non-paginated mode to use mockGroups directly
+      act(() => {
+        result.current.disablePagination();
+      });
+
+      act(() => {
+        result.current.updateGroupOptimistic('group-1', { name: 'Updated Name' });
+      });
+
+      const updatedGroup = result.current.groups.find((g) => g.id === 'group-1');
+      expect(updatedGroup?.name).toBe('Updated Name');
+    });
+
+    it('should not affect other groups', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
+
+      act(() => {
+        result.current.updateGroupOptimistic('group-1', { name: 'Updated Name' });
+      });
+
+      const otherGroup = result.current.groups.find((g) => g.id === 'group-2');
+      expect(otherGroup?.name).toBe('Alpha Group');
+    });
+
+    it('should clear optimistic update for specific group', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
+
+      act(() => {
+        result.current.updateGroupOptimistic('group-1', { name: 'Temporary Name' });
+      });
+
+      expect(result.current.groups.find((g) => g.id === 'group-1')?.name).toBe('Temporary Name');
+
+      act(() => {
+        result.current.clearOptimisticUpdate('group-1');
+      });
+
+      expect(result.current.groups.find((g) => g.id === 'group-1')?.name).toBe('Test Group 1');
+    });
+
+    it('should merge multiple optimistic updates for same group', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
+
+      act(() => {
+        result.current.updateGroupOptimistic('group-1', { name: 'New Name' });
+      });
+
+      act(() => {
+        result.current.updateGroupOptimistic('group-1', { status: 'closed' });
+      });
+
+      const group = result.current.groups.find((g) => g.id === 'group-1');
+      expect(group?.name).toBe('New Name');
+      expect(group?.status).toBe('closed');
+    });
+
+    it('should handle optimistic update for non-existent group', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
+
+      // Should not throw
+      act(() => {
+        result.current.updateGroupOptimistic('nonexistent-id', { name: 'Ghost' });
+      });
+
+      // Groups should remain unchanged
+      expect(result.current.groups).toHaveLength(2);
+    });
+
+    it('should return groups unchanged when no optimistic updates', async () => {
+      const { result } = await renderAndWait();
+
+      act(() => {
+        result.current.disablePagination();
+      });
+
+      expect(result.current.groups[0].name).toBe('Test Group 1');
+      expect(result.current.groups[1].name).toBe('Alpha Group');
+    });
+  });
+
+  // ============================================================
+  // Error State Tests
+  // ============================================================
+
+  describe('error state', () => {
+    it('should have null error initially', async () => {
+      const { result } = await renderAndWait();
+
+      expect(result.current.error).toBeNull();
+    });
+
+    it('should set error when paginated fetch fails', async () => {
+      mockListGroupsPaginated.mockRejectedValue(new Error('Connection refused'));
+
+      const { result } = renderHook(() => useGroupsData());
+
+      await waitFor(() => {
+        expect(result.current.error).toBeInstanceOf(Error);
+      });
+
+      expect(result.current.error?.message).toBe('Connection refused');
+    });
+
+    it('should clear error on successful fetch', async () => {
+      // First fail
+      mockListGroupsPaginated.mockRejectedValueOnce(new Error('Network error'));
+
+      const { result } = renderHook(() => useGroupsData());
+
+      await waitFor(() => {
+        expect(result.current.error).toBeInstanceOf(Error);
+      });
+
+      // Re-enable pagination and retry
+      mockListGroupsPaginated.mockResolvedValue({
+        groups: mockGroups,
+        totalCount: 2,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
+        hasMore: false,
+      });
+
+      act(() => {
+        result.current.enablePagination();
+      });
+
+      await waitFor(() => {
+        expect(result.current.error).toBeNull();
+      });
     });
   });
 });

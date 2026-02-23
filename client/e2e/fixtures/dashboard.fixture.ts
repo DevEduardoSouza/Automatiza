@@ -1,169 +1,145 @@
 import type { Page } from '@playwright/test';
 
 /**
- * Mock dashboard statistics data.
+ * Mock dashboard statistics data matching proto GetDashboardStatsResponse.
  */
 export const MOCK_DASHBOARD_STATS = {
-  totalOffersSent: 1250,
-  offersSentToday: 45,
-  totalGroups: 12,
-  activeGroups: 8,
-  totalAutomations: 5,
-  activeAutomations: 3,
-  whatsappStatus: 'CONNECTED',
-  lastActivity: new Date().toISOString(),
+  stats: {
+    totalGroups: 12,
+    fullGroups: 3,
+    totalMembers: 1250,
+    activeLinks: 8,
+  },
 };
 
 /**
- * Mock recent activity data.
+ * Mock enabled announcement matching proto GetAnnouncementResponse.
  */
-export const MOCK_RECENT_ACTIVITY = [
-  {
-    id: 'activity-1',
-    type: 'OFFER_SENT',
-    description: 'Offer sent to Test Group 1',
-    timestamp: new Date().toISOString(),
-    metadata: { groupName: 'Test Group 1', offerId: 'offer-123' },
+export const MOCK_ANNOUNCEMENT_ENABLED = {
+  announcement: {
+    enabled: true,
+    title: 'Novidade!',
+    body: 'Temos uma atualização importante para você.\nConfira as novidades.',
   },
-  {
-    id: 'activity-2',
-    type: 'AUTOMATION_RUN',
-    description: 'Automation "Search Shopee" executed',
-    timestamp: new Date(Date.now() - 3600000).toISOString(),
-    metadata: { automationName: 'Search Shopee', offersFound: 10 },
-  },
-  {
-    id: 'activity-3',
-    type: 'GROUP_SYNC',
-    description: 'Groups synchronized successfully',
-    timestamp: new Date(Date.now() - 7200000).toISOString(),
-    metadata: { groupsAdded: 2, groupsRemoved: 0 },
-  },
-];
+};
 
 /**
- * Mock chart data for offers over time.
+ * Mock disabled announcement.
  */
-export const MOCK_OFFERS_CHART_DATA = [
-  { date: '2026-01-25', count: 120 },
-  { date: '2026-01-26', count: 150 },
-  { date: '2026-01-27', count: 180 },
-  { date: '2026-01-28', count: 140 },
-  { date: '2026-01-29', count: 200 },
-  { date: '2026-01-30', count: 165 },
-  { date: '2026-01-31', count: 195 },
-];
+export const MOCK_ANNOUNCEMENT_DISABLED = {
+  announcement: {
+    enabled: false,
+    title: '',
+    body: '',
+  },
+};
 
 /**
- * Mocks the dashboard stats API.
+ * Mock weekly history data matching proto GetDashboardHistoryResponse.
  */
-export async function mockDashboardStatsApi(
+export const MOCK_HISTORY_WEEKLY = {
+  dataPoints: [
+    { label: 'Seg', members: 100, groups: 5, newMembers: 10, newGroups: 1 },
+    { label: 'Ter', members: 120, groups: 6, newMembers: 20, newGroups: 1 },
+    { label: 'Qua', members: 150, groups: 7, newMembers: 30, newGroups: 1 },
+    { label: 'Qui', members: 180, groups: 7, newMembers: 30, newGroups: 0 },
+    { label: 'Sex', members: 200, groups: 8, newMembers: 20, newGroups: 1 },
+    { label: 'Sáb', members: 210, groups: 8, newMembers: 10, newGroups: 0 },
+    { label: 'Dom', members: 230, groups: 9, newMembers: 20, newGroups: 1 },
+  ],
+};
+
+/**
+ * Mock empty stats (all zeros).
+ */
+export const MOCK_EMPTY_STATS = {
+  stats: {
+    totalGroups: 0,
+    fullGroups: 0,
+    totalMembers: 0,
+    activeLinks: 0,
+  },
+};
+
+/**
+ * Mocks the GetDashboardStats endpoint.
+ */
+export async function mockGetDashboardStats(
   page: Page,
-  stats = MOCK_DASHBOARD_STATS
+  data = MOCK_DASHBOARD_STATS
 ): Promise<void> {
-  await page.route('**/dashboard.v1.DashboardService/GetStats', async (route) => {
+  await page.route('**/dashboard.v1.DashboardService/GetDashboardStats', async (route) => {
     await route.fulfill({
       status: 200,
-      contentType: 'application/grpc-web+proto',
-      headers: { 'grpc-status': '0' },
-      body: Buffer.from(JSON.stringify(stats)),
+      contentType: 'application/json',
+      body: JSON.stringify(data),
     });
   });
 }
 
 /**
- * Mocks the recent activity API.
+ * Mocks the GetAnnouncement endpoint.
  */
-export async function mockRecentActivityApi(
+export async function mockGetAnnouncement(
   page: Page,
-  activities = MOCK_RECENT_ACTIVITY
+  data = MOCK_ANNOUNCEMENT_DISABLED
 ): Promise<void> {
-  await page.route('**/dashboard.v1.DashboardService/GetRecentActivity', async (route) => {
+  await page.route('**/dashboard.v1.DashboardService/GetAnnouncement', async (route) => {
     await route.fulfill({
       status: 200,
-      contentType: 'application/grpc-web+proto',
-      headers: { 'grpc-status': '0' },
-      body: Buffer.from(JSON.stringify({ activities })),
+      contentType: 'application/json',
+      body: JSON.stringify(data),
     });
   });
 }
 
 /**
- * Mocks the offers chart data API.
+ * Mocks the GetDashboardHistory endpoint.
  */
-export async function mockOffersChartApi(page: Page, data = MOCK_OFFERS_CHART_DATA): Promise<void> {
-  await page.route('**/dashboard.v1.DashboardService/GetOffersChart', async (route) => {
+export async function mockGetDashboardHistory(
+  page: Page,
+  data = MOCK_HISTORY_WEEKLY
+): Promise<void> {
+  await page.route('**/dashboard.v1.DashboardService/GetDashboardHistory', async (route) => {
     await route.fulfill({
       status: 200,
-      contentType: 'application/grpc-web+proto',
-      headers: { 'grpc-status': '0' },
-      body: Buffer.from(JSON.stringify({ data })),
+      contentType: 'application/json',
+      body: JSON.stringify(data),
     });
   });
 }
 
 /**
- * Mocks the WhatsApp status API for dashboard.
+ * Sets up all dashboard mocks with populated data.
  */
-export async function mockDashboardWhatsAppStatus(page: Page, connected = true): Promise<void> {
-  await page.route('**/whatsapp.v1.WhatsAppService/GetStatus', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/grpc-web+proto',
-      headers: { 'grpc-status': '0' },
-      body: Buffer.from(
-        JSON.stringify({
-          connected,
-          status: connected ? 'CONNECTED' : 'DISCONNECTED',
-          phoneNumber: connected ? '+5511999999999' : null,
-        })
-      ),
-    });
-  });
+export async function setupDashboardMocks(page: Page): Promise<void> {
+  await mockGetDashboardStats(page);
+  await mockGetAnnouncement(page, MOCK_ANNOUNCEMENT_ENABLED);
+  await mockGetDashboardHistory(page);
 }
 
 /**
- * Mocks dashboard with empty state.
+ * Sets up dashboard mocks with empty/zero state.
  */
 export async function mockDashboardEmptyState(page: Page): Promise<void> {
-  await mockDashboardStatsApi(page, {
-    totalOffersSent: 0,
-    offersSentToday: 0,
-    totalGroups: 0,
-    activeGroups: 0,
-    totalAutomations: 0,
-    activeAutomations: 0,
-    whatsappStatus: 'DISCONNECTED',
-    lastActivity: '',
-  });
-  await mockRecentActivityApi(page, []);
-  await mockOffersChartApi(page, []);
-  await mockDashboardWhatsAppStatus(page, false);
+  await mockGetDashboardStats(page, MOCK_EMPTY_STATS);
+  await mockGetAnnouncement(page, MOCK_ANNOUNCEMENT_DISABLED);
+  await mockGetDashboardHistory(page, { dataPoints: [] });
 }
 
 /**
- * Mocks dashboard with error state.
+ * Sets up dashboard mocks that return gRPC INTERNAL error.
  */
 export async function mockDashboardError(page: Page): Promise<void> {
   await page.route('**/dashboard.v1.DashboardService/**', async (route) => {
     await route.fulfill({
       status: 200,
-      contentType: 'application/grpc-web+proto',
+      contentType: 'application/json',
       headers: {
-        'grpc-status': '13', // INTERNAL
+        'grpc-status': '13',
         'grpc-message': 'Failed to load dashboard data',
       },
-      body: Buffer.from([]),
+      body: JSON.stringify({}),
     });
   });
-}
-
-/**
- * Sets up all common mocks for dashboard tests.
- */
-export async function setupDashboardMocks(page: Page): Promise<void> {
-  await mockDashboardStatsApi(page);
-  await mockRecentActivityApi(page);
-  await mockOffersChartApi(page);
-  await mockDashboardWhatsAppStatus(page);
 }

@@ -32,6 +32,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// randSource provides randomness for fallback IDs. Override in tests.
+var randSource = rand.Read
+
 // WAHA webhook signature header name.
 // WAHA sends the HMAC-SHA512 signature in this header when HMAC is configured.
 const wahaSignatureHeader = "X-Webhook-Hmac"
@@ -388,7 +391,7 @@ func extractEventID(event *WAHAWebhookEvent) string {
 // W14: Uses crypto/rand for uniqueness instead of timestamp-only.
 func generateFallbackEventID(session, eventType string) string {
 	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := randSource(b); err != nil {
 		// Fallback to timestamp if crypto/rand fails
 		return fmt.Sprintf("%d:%s:%s", time.Now().UnixNano(), session, eventType)
 	}
@@ -411,7 +414,7 @@ func truncateBytes(b []byte, maxLen int) []byte {
 // This follows the W3C Trace Context format for trace-id.
 func generateTraceID() string {
 	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := randSource(b); err != nil {
 		// Fallback to timestamp-based ID if crypto/rand fails
 		return fmt.Sprintf("%016x%016x", time.Now().UnixNano(), time.Now().UnixNano()>>8)
 	}

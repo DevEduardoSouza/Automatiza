@@ -707,6 +707,7 @@ message AdminUserAutomation {
   optional string last_run_at = 11;
   optional string next_run_at = 12;
   optional string created_at = 13;
+  optional int32 delay_seconds = 14;
 }
 
 message GetUserInvestigationRequest {

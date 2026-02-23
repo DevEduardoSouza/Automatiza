@@ -311,3 +311,146 @@ TODO:
 - Email de suporte — trocar suporte@astecwms.com.br por atendimento.automatiza@gmail.com
 
 
+Crie testes ( unit - integração - e2e ) não só para a geração de qrcode mas para todos os possíveis casos de erro e todas as funcionalidades da página /history IMPORTANTE: se possível, use paralelismo
+
+
+  Backend (Go) - Cobertura por Pacote
+
+  Pacote: services/profile
+  Cobertura: 80.1%
+  Status: Excelente
+  ────────────────────────────────────────
+  Pacote: services/reconciliation
+  Cobertura: 79.3%
+  Status: Excelente
+  ────────────────────────────────────────
+  Pacote: lib/urlvalidation
+  Cobertura: 78.8%
+  Status: Bom
+  ────────────────────────────────────────
+  Pacote: services/coupons
+  Cobertura: 73.5%
+  Status: Bom
+  ────────────────────────────────────────
+  Pacote: services/automation
+  Cobertura: 65.9%
+  Status: Razoável
+  ────────────────────────────────────────
+  Pacote: lib/backpressure
+  Cobertura: 64.2%
+  Status: Razoável
+  ────────────────────────────────────────
+  Pacote: observability
+  Cobertura: 63.1%
+  Status: Razoável
+  ────────────────────────────────────────
+  Pacote: startup
+  Cobertura: 51.0%
+  Status: Médio
+  ────────────────────────────────────────
+  Pacote: workers - Concluído ( limite de contexto ) ✅
+  Cobertura: 83.2%
+  Status: Baixo
+  ────────────────────────────────────────
+  Pacote: services/mllinklists
+  Cobertura: 40.9%
+  Status: Baixo
+  ────────────────────────────────────────
+  Pacote: services/jobs
+  Cobertura: 32.7%
+  Status: Baixo
+  ────────────────────────────────────────
+  Pacote: models
+  Cobertura: 100%
+  Status: Crítico
+  ────────────────────────────────────────
+  Pacote: repository/postgres
+  Cobertura: 100%
+  Status: Crítico + 4 testes falhando
+  ────────────────────────────────────────
+  Pacote: services/kiwify
+  Cobertura: 100%
+  Status: Crítico
+  ────────────────────────────────────────
+  Pacote: handlers
+  Cobertura: 100%
+  Status: Quase zero
+  ────────────────────────────────────────
+  Pacote: services/{ai,cron,dashboard,email,redire
+  ct,shopee,mercadolivre,monitoring,user}
+  Cobertura: 0%
+  Status: Sem testes
+  ────────────────────────────────────────
+  Pacote: middleware, shared/errors,
+    lib/{cache,crypto,text,urlsafety}
+  Cobertura: 0%
+  Status: Sem testes
+
+
+
+
+## Testes Automatizados — Pacote `Pacote: middleware, shared/errors,
+    lib/{cache,crypto,text,urlsafety}`
+
+```
+  ────────────────────────────────────────
+  Pacote: Pacote: middleware, shared/errors,
+    lib/{cache,crypto,text,urlsafety}
+  Cobertura: 15.7%
+  Status: Crítico
+  ────────────────────────────────────────
+```
+
+Implemente uma estratégia completa de testes automatizados para o pacote `Pacote: middleware, shared/errors,
+    lib/{cache,crypto,text,urlsafety}`, cobrindo unitários, integração e e2e, com foco em qualidade, isolamento e confiabilidade.
+
+### Objetivo
+
+Alcançar o máximo de cobertura possível (meta: **100%**), incluindo:
+
+- Todos os fluxos felizes
+- Casos de erro
+- Validações
+- Edge cases
+- Branches condicionais
+- Tratamento de exceções
+
+### Requisitos
+
+#### Testes unitários
+
+- Isolar dependências com mocks/stubs.
+- Testar regras de negócio de forma determinística.
+- Garantir cobertura de branches.
+
+#### Testes de integração
+
+- Testar Pacote: middleware, shared/errors,
+    lib/{cache,crypto,text,urlsafety} com dependências reais ou ambiente controlado.
+- Validar integração com serviços, banco ou middlewares.
+- Garantir contratos de entrada e saída.
+
+#### Testes e2e
+
+- Simular chamadas reais da aplicação.
+- Validar comportamento completo do fluxo.
+- Cobrir cenários críticos de negócio.
+
+### Boas práticas obrigatórias
+
+- Testes legíveis e organizados por domínio.
+- Uso consistente de factories/fixtures.
+- Nenhum teste frágil ou dependente de ordem.
+- Evitar duplicação.
+- Garantir que todos os arquivos do pacote estejam cobertos.
+
+### Entregáveis esperados
+
+- Estrutura de testes organizada.
+- Configuração de cobertura ativada.
+- Relatório comprovando aumento progressivo até atingir a meta.
+- Nenhum código do pacote `Pacote: middleware, shared/errors,
+    lib/{cache,crypto,text,urlsafety}` sem teste correspondente.
+
+> **Meta final:** cobertura total e confiável, não apenas números artificiais.
+> **IMPORTANTE:** use paralelismo sempre que possívelN

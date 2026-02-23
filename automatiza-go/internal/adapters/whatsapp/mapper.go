@@ -212,13 +212,15 @@ func (m *Mapper) GroupInfoFromWaha(w *wahaGroup) GroupInfo {
 	}
 
 	info := GroupInfo{
-		ID:          w.ID,
-		Subject:     w.Subject,
-		Description: w.Description,
-		Owner:       w.Owner,
-		Announce:    w.Announce,
-		Restrict:    w.Restrict,
-		Size:        w.Size,
+		ID:           w.ID,
+		Subject:      w.Subject,
+		Description:  w.Description,
+		Owner:        w.Owner,
+		Announce:     w.Announce,
+		Restrict:     w.Restrict,
+		Size:         w.Size,
+		IsAdmin:      w.IsAdmin,
+		IsSuperAdmin: w.IsSuperAdmin,
 	}
 
 	// Convert creation timestamp

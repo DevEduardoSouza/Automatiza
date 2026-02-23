@@ -299,9 +299,10 @@ export function useAutomations(): UseAutomationsReturn {
     [groupsConnect.groups]
   );
 
+  // All groups (including non-admin) for monitoring group selection
   const allGroups: AutomationGroup[] = useMemo(
     () =>
-      groupsConnect.groups
+      groupsConnect.allGroups
         .map((g) => ({
           id: g.id,
           name: g.name,
@@ -313,7 +314,7 @@ export function useAutomations(): UseAutomationsReturn {
           if (!a.is_favorite && b.is_favorite) return 1;
           return a.name.localeCompare(b.name);
         }),
-    [groupsConnect.groups]
+    [groupsConnect.allGroups]
   );
 
   // Dispatch texts from ConnectRPC (only active texts available for selection)
@@ -958,9 +959,13 @@ export function useAutomations(): UseAutomationsReturn {
           storeName: offer.storeName,
           commissionRate: offer.commissionRate,
         }));
-        setPreviewOffers(offers);
+        // Filter out offers with no real discount (matches backend behavior)
+        const filteredOffers = offers.filter(
+          (o) => o.finalPrice > 0 && o.originalPrice > 0 && o.finalPrice < o.originalPrice
+        );
+        setPreviewOffers(filteredOffers);
 
-        if (offers.length === 0) {
+        if (filteredOffers.length === 0) {
           toast({
             title: t('pages.offerAutomations.errors.noOffersFound'),
             description: t('pages.offerAutomations.errors.adjustFilters'),

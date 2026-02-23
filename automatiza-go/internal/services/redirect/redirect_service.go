@@ -167,10 +167,9 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 	// Get the instance for this group
 	instanceIDInt, parseErr := strconv.Atoi(group.InstanceID)
 	if parseErr != nil || instanceIDInt <= 0 {
-		s.logger.Error("Invalid instance ID for group",
+		s.logger.Warn("Invalid instance ID for group — skipping redirect",
 			zap.String("groupID", targetGroup.GroupID),
-			zap.String("rawInstanceID", group.InstanceID),
-			zap.Error(parseErr))
+			zap.String("rawInstanceID", group.InstanceID))
 		return &models.ProcessRedirectResult{
 			Success: false,
 			Error:   "instance not found",

@@ -18,21 +18,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Table, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronDown, ChevronUp, Key, Loader2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { ChevronDown, ChevronUp, Key } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { SystemEvent, UserInvestigation } from './types';
-
-interface LoadBalancerServer {
-  id: number;
-  name: string;
-  url: string;
-}
+import type { UserInvestigation } from './types';
 
 interface UserDetailsDialogProps {
   open: boolean;
@@ -46,28 +45,17 @@ interface UserDetailsDialogProps {
   onBlockReasonChange: (reason: string) => void;
   blockKind: 'payment' | 'manual';
   onBlockKindChange: (kind: 'payment' | 'manual') => void;
-  lbUserLoading: boolean;
-  lbUserServer: LoadBalancerServer | null;
-  lbTargetServerId: string;
-  onLbTargetServerIdChange: (id: string) => void;
-  lbMigrating: boolean;
-  systemEvents: SystemEvent[];
-  systemEventsLoading: boolean;
-  systemEventsSinceMinutes: number;
-  onSystemEventsSinceMinutesChange: (minutes: number) => void;
   onBlockUser: () => void;
   onUnblockUser: () => void;
   onResetPassword: () => void;
   onPauseAllAutomations: () => void;
   onActivatePausedAutomations: (alsoSpread: boolean) => void;
   onSpreadNextRunAt: () => void;
-  onMigrateServer: () => void;
-  onFetchSystemEvents: (userId: string) => void;
   onRefreshDetails: () => void;
 }
 
 /**
- * Dialog de detalhes do usuário com tabs para perfil, instâncias, automações e logs.
+ * Dialog de detalhes do usuário com perfil, ações rápidas e automações.
  */
 export function UserDetailsDialog({
   open,
@@ -81,27 +69,16 @@ export function UserDetailsDialog({
   onBlockReasonChange,
   blockKind,
   onBlockKindChange,
-  lbUserLoading,
-  lbUserServer,
-  lbTargetServerId,
-  onLbTargetServerIdChange,
-  lbMigrating,
-  systemEvents,
-  systemEventsLoading,
-  systemEventsSinceMinutes,
-  onSystemEventsSinceMinutesChange,
   onBlockUser,
   onUnblockUser,
   onResetPassword,
   onPauseAllAutomations,
   onActivatePausedAutomations,
   onSpreadNextRunAt,
-  onMigrateServer,
-  onFetchSystemEvents,
   onRefreshDetails,
 }: UserDetailsDialogProps) {
   const { t } = useTranslation();
-  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(true);
 
   const isSuspended = String(details?.profile.billing_status || '').toLowerCase() === 'suspended';
 
@@ -272,49 +249,10 @@ export function UserDetailsDialog({
               </CollapsibleContent>
             </Collapsible>
 
-            {/* Tabs para organizar conteúdo */}
-            <Tabs defaultValue="profile" className="flex-1 flex flex-col min-h-0">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="profile">{t('admin.users.details.tabs.profile')}</TabsTrigger>
-                <TabsTrigger value="instances">WhatsApp ({details.instances.length})</TabsTrigger>
-                <TabsTrigger value="automations">
-                  {t('admin.users.details.tabs.automations')} ({details.automationStats.total})
-                </TabsTrigger>
-                <TabsTrigger value="logs">{t('admin.users.details.tabs.logs')}</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="profile" className="flex-1 overflow-y-auto">
-                <ProfileTab
-                  details={details}
-                  lbUserLoading={lbUserLoading}
-                  lbUserServer={lbUserServer}
-                  lbTargetServerId={lbTargetServerId}
-                  onLbTargetServerIdChange={onLbTargetServerIdChange}
-                  lbMigrating={lbMigrating}
-                  onMigrateServer={onMigrateServer}
-                  onRefreshDetails={onRefreshDetails}
-                />
-              </TabsContent>
-
-              <TabsContent value="instances" className="flex-1 overflow-y-auto">
-                <InstancesTab instances={details.instances} />
-              </TabsContent>
-
-              <TabsContent value="automations" className="flex-1 overflow-y-auto">
-                <AutomationsTab automations={details.automations} stats={details.automationStats} />
-              </TabsContent>
-
-              <TabsContent value="logs" className="flex-1 overflow-y-auto">
-                <LogsTab
-                  userId={details.profile.id}
-                  systemEvents={systemEvents}
-                  systemEventsLoading={systemEventsLoading}
-                  systemEventsSinceMinutes={systemEventsSinceMinutes}
-                  onSystemEventsSinceMinutesChange={onSystemEventsSinceMinutesChange}
-                  onFetchSystemEvents={onFetchSystemEvents}
-                />
-              </TabsContent>
-            </Tabs>
+            <div className="flex-1 overflow-y-auto space-y-4">
+              <ProfileTab details={details} onRefreshDetails={onRefreshDetails} />
+              <AutomationsTab automations={details.automations} stats={details.automationStats} />
+            </div>
           </div>
         )}
       </DialogContent>
@@ -324,25 +262,10 @@ export function UserDetailsDialog({
 
 interface ProfileTabProps {
   details: UserInvestigation;
-  lbUserLoading: boolean;
-  lbUserServer: LoadBalancerServer | null;
-  lbTargetServerId: string;
-  onLbTargetServerIdChange: (id: string) => void;
-  lbMigrating: boolean;
-  onMigrateServer: () => void;
   onRefreshDetails: () => void;
 }
 
-function ProfileTab({
-  details,
-  lbUserLoading,
-  lbUserServer,
-  lbTargetServerId,
-  onLbTargetServerIdChange,
-  lbMigrating,
-  onMigrateServer,
-  onRefreshDetails,
-}: ProfileTabProps) {
+function ProfileTab({ details, onRefreshDetails }: ProfileTabProps) {
   const { t } = useTranslation();
   const isSuspended = String(details.profile.billing_status || '').toLowerCase() === 'suspended';
 
@@ -425,123 +348,6 @@ function ProfileTab({
             locale: ptBR,
           })}
         </div>
-
-        <div className="md:col-span-2 border-t pt-3 mt-2">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <div className="text-sm font-medium">
-                  {t('admin.users.details.profile.loadBalancer')}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {t('admin.users.details.profile.stickyMapping')} <code>user_servers</code>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onRefreshDetails}
-                disabled={lbUserLoading || lbMigrating}
-              >
-                {lbUserLoading ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {t('admin.users.details.profile.updating')}
-                  </span>
-                ) : (
-                  t('admin.users.details.profile.update')
-                )}
-              </Button>
-            </div>
-
-            <div className="text-xs text-muted-foreground">
-              {t('admin.users.details.profile.current')}:{' '}
-              {lbUserServer ? (
-                <span className="font-mono">
-                  {lbUserServer.name} ({lbUserServer.url})
-                </span>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-              <Select value={lbTargetServerId} onValueChange={onLbTargetServerIdChange}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder={t('admin.users.details.profile.targetServer')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">{t('admin.users.details.profile.server')} 1</SelectItem>
-                  <SelectItem value="2">{t('admin.users.details.profile.server')} 2</SelectItem>
-                  <SelectItem value="3">{t('admin.users.details.profile.server')} 3</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                onClick={onMigrateServer}
-                disabled={lbMigrating}
-                className="w-full sm:w-auto"
-              >
-                {lbMigrating
-                  ? t('admin.users.details.profile.migrating')
-                  : t('admin.users.details.profile.migrateUser')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-interface InstancesTabProps {
-  instances: Array<{
-    instance_id: string;
-    status: string;
-    updated_at: string | null;
-  }>;
-}
-
-function InstancesTab({ instances }: InstancesTabProps) {
-  const { t } = useTranslation();
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{t('admin.users.details.instances.title')}</CardTitle>
-        <CardDescription className="text-xs">
-          {t('admin.users.details.instances.found', {
-            count: instances.length,
-          })}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        {instances.length === 0 ? (
-          <div className="text-muted-foreground">
-            {t('admin.users.details.instances.noInstances')}
-          </div>
-        ) : (
-          instances.map((i) => (
-            <div
-              key={i.instance_id}
-              className="flex flex-col md:flex-row md:items-center md:justify-between gap-1 border rounded p-2"
-            >
-              <div className="font-mono text-xs">{i.instance_id}</div>
-              <div className="flex items-center gap-2 text-xs">
-                <Badge variant={i.status === 'connected' ? 'default' : 'secondary'}>
-                  {String(i.status || '-').toUpperCase()}
-                </Badge>
-                <span className="text-muted-foreground">
-                  {i.updated_at
-                    ? format(new Date(i.updated_at), 'dd/MM HH:mm', {
-                        locale: ptBR,
-                      })
-                    : '-'}
-                </span>
-              </div>
-            </div>
-          ))
-        )}
       </CardContent>
     </Card>
   );
@@ -552,7 +358,9 @@ interface AutomationsTabProps {
     id: string;
     name: string;
     status: string;
+    mode?: string | null;
     interval_minutes?: number | null;
+    delay_seconds?: number | null;
     start_time?: string | null;
     end_time?: string | null;
     next_run_at?: string | null;
@@ -560,21 +368,11 @@ interface AutomationsTabProps {
   stats: { total: number; active: number; paused: number };
 }
 
-const ROW_HEIGHT = 60;
-
 /**
- * Tabela virtualizada de automações do usuário.
+ * Tabela de automações do usuário.
  */
 function AutomationsTab({ automations, stats }: AutomationsTabProps) {
   const { t } = useTranslation();
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  const virtualizer = useVirtualizer({
-    count: automations.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 5,
-  });
 
   return (
     <Card>
@@ -592,9 +390,9 @@ function AutomationsTab({ automations, stats }: AutomationsTabProps) {
             {t('admin.users.details.automations.noAutomations')}
           </div>
         ) : (
-          <div className="border rounded-lg overflow-hidden">
+          <div className="max-h-[340px] overflow-y-auto">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-background z-10">
                 <TableRow>
                   <TableHead>{t('admin.users.details.automations.columns.name')}</TableHead>
                   <TableHead>{t('admin.users.details.automations.columns.status')}</TableHead>
@@ -603,215 +401,48 @@ function AutomationsTab({ automations, stats }: AutomationsTabProps) {
                   <TableHead>{t('admin.users.details.automations.columns.next')}</TableHead>
                 </TableRow>
               </TableHeader>
-            </Table>
-            <div ref={parentRef} className="max-h-[340px] overflow-y-auto">
-              <div
-                style={{
-                  height: `${virtualizer.getTotalSize()}px`,
-                  width: '100%',
-                  position: 'relative',
-                }}
-              >
-                {virtualizer.getVirtualItems().map((virtualRow) => {
-                  const a = automations[virtualRow.index];
-                  return (
-                    <div
-                      key={a.id}
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: `${virtualRow.size}px`,
-                        transform: `translateY(${virtualRow.start}px)`,
-                      }}
-                      className="flex items-center border-b text-sm"
-                    >
-                      <div className="flex-1 px-4 max-w-[260px]">
-                        <div className="font-medium truncate">
-                          {a.name || t('admin.users.details.automations.noName')}
-                        </div>
-                        <div className="text-xs text-muted-foreground font-mono">{a.id}</div>
+              <TableBody>
+                {automations.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell>
+                      <div className="font-medium truncate max-w-[260px]">
+                        {a.name || t('admin.users.details.automations.noName')}
                       </div>
-                      <div className="w-24 px-2">
-                        <Badge variant={a.status === 'active' ? 'default' : 'secondary'}>
-                          {String(a.status || '-').toUpperCase()}
-                        </Badge>
-                      </div>
-                      <div className="w-24 px-2 text-muted-foreground">
-                        {a.interval_minutes ? `${a.interval_minutes} min` : '-'}
-                      </div>
-                      <div className="w-32 px-2 text-muted-foreground">
-                        {a.start_time && a.end_time ? `${a.start_time} - ${a.end_time}` : '-'}
-                      </div>
-                      <div className="w-28 px-2 text-muted-foreground">
-                        {a.next_run_at
-                          ? format(new Date(a.next_run_at), 'dd/MM HH:mm', {
-                              locale: ptBR,
-                            })
+                      <div className="text-xs text-muted-foreground font-mono">{a.id}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={a.status === 'active' ? 'default' : 'secondary'}>
+                        {String(a.status || '-').toUpperCase()}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {a.mode === 'monitor'
+                        ? (() => {
+                            const s = Number(a.delay_seconds || 10);
+                            return s >= 60 && s % 60 === 0
+                              ? `${s / 60} min (${t('admin.users.details.automations.delay')})`
+                              : `${s}s (${t('admin.users.details.automations.delay')})`;
+                          })()
+                        : a.interval_minutes
+                          ? `${a.interval_minutes} min`
                           : '-'}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {a.start_time && a.end_time ? `${a.start_time} - ${a.end_time}` : '-'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {a.next_run_at
+                        ? format(new Date(a.next_run_at), 'dd/MM HH:mm', {
+                            locale: ptBR,
+                          })
+                        : '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-interface LogsTabProps {
-  userId: string;
-  systemEvents: SystemEvent[];
-  systemEventsLoading: boolean;
-  systemEventsSinceMinutes: number;
-  onSystemEventsSinceMinutesChange: (minutes: number) => void;
-  onFetchSystemEvents: (userId: string) => void;
-}
-
-const LOG_ROW_HEIGHT = 48;
-
-/**
- * Tabela virtualizada de logs do sistema.
- */
-function LogsTab({
-  userId,
-  systemEvents,
-  systemEventsLoading,
-  systemEventsSinceMinutes,
-  onSystemEventsSinceMinutesChange,
-  onFetchSystemEvents,
-}: LogsTabProps) {
-  const { t } = useTranslation();
-  const logsParentRef = useRef<HTMLDivElement>(null);
-
-  const logsVirtualizer = useVirtualizer({
-    count: systemEvents.length,
-    getScrollElement: () => logsParentRef.current,
-    estimateSize: () => LOG_ROW_HEIGHT,
-    overscan: 5,
-  });
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{t('admin.users.details.logs.title')}</CardTitle>
-        <CardDescription className="text-xs">
-          {t('admin.users.details.logs.description')}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-end sm:justify-between">
-          <div className="flex items-end gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs">{t('admin.users.details.logs.window')}</Label>
-              <Input
-                type="number"
-                className="w-28"
-                min={1}
-                value={systemEventsSinceMinutes}
-                onChange={(e) =>
-                  onSystemEventsSinceMinutesChange(Math.max(1, Number(e.target.value || 1)))
-                }
-              />
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => onFetchSystemEvents(userId)}
-              disabled={systemEventsLoading}
-            >
-              {systemEventsLoading ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t('common.loading')}
-                </span>
-              ) : (
-                t('admin.users.details.logs.load')
-              )}
-            </Button>
-          </div>
-          <div className="text-xs text-muted-foreground">{t('admin.users.details.logs.hint')}</div>
-        </div>
-
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-32">{t('admin.users.details.logs.columns.when')}</TableHead>
-                <TableHead className="w-20">
-                  {t('admin.users.details.logs.columns.level')}
-                </TableHead>
-                <TableHead className="w-28">
-                  {t('admin.users.details.logs.columns.scope')}
-                </TableHead>
-                <TableHead>{t('admin.users.details.logs.columns.message')}</TableHead>
-                <TableHead className="w-36">
-                  {t('admin.users.details.logs.columns.instance')}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-          </Table>
-          {systemEvents.length === 0 ? (
-            <div className="text-sm text-muted-foreground p-4">
-              {t('admin.users.details.logs.noLogs')}
-            </div>
-          ) : (
-            <div ref={logsParentRef} className="max-h-[300px] overflow-y-auto">
-              <div
-                style={{
-                  height: `${logsVirtualizer.getTotalSize()}px`,
-                  width: '100%',
-                  position: 'relative',
-                }}
-              >
-                {logsVirtualizer.getVirtualItems().map((virtualRow) => {
-                  const ev = systemEvents[virtualRow.index];
-                  return (
-                    <div
-                      key={ev.id}
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: `${virtualRow.size}px`,
-                        transform: `translateY(${virtualRow.start}px)`,
-                      }}
-                      className="flex items-center border-b text-xs"
-                    >
-                      <div className="w-32 px-4 whitespace-nowrap">
-                        {ev.created_at
-                          ? format(new Date(ev.created_at), 'dd/MM HH:mm:ss', {
-                              locale: ptBR,
-                            })
-                          : '-'}
-                      </div>
-                      <div className="w-20 px-2">
-                        <Badge
-                          variant={
-                            ev.level === 'error'
-                              ? 'destructive'
-                              : ev.level === 'warn'
-                                ? 'secondary'
-                                : 'secondary'
-                          }
-                        >
-                          {String(ev.level || '').toUpperCase()}
-                        </Badge>
-                      </div>
-                      <div className="w-28 px-2 font-mono">{ev.scope}</div>
-                      <div className="flex-1 px-2 truncate">{ev.message}</div>
-                      <div className="w-36 px-4 font-mono truncate">{ev.instance_id || '-'}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
       </CardContent>
     </Card>
   );

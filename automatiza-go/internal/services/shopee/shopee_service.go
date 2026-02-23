@@ -158,14 +158,17 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 		errMsg := gqlResp.Errors[0].Message
 		gqlErr := fmt.Errorf("shopee API error: %s", errMsg)
 
-		// Downgrade known user/data errors to Warning (not code bugs)
-		level := sentry.LevelError
+		// "Invalid Signature" / "invalid value" are user-config issues (wrong credentials),
+		// not code bugs. Log locally only — no Sentry event to avoid flooding.
 		if strings.Contains(errMsg, "Invalid Signature") ||
 			strings.Contains(errMsg, "invalid value") {
-			level = sentry.LevelWarning
+			s.logger.Warn("Shopee GraphQL returned user-config error (not sent to Sentry)",
+				zap.String("external_service", "shopee"),
+				zap.String("error", errMsg))
+			return nil, gqlErr
 		}
 
-		observability.LogAndCapture(s.logger, level, "Shopee GraphQL returned error", gqlErr, map[string]string{
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee GraphQL returned error", gqlErr, map[string]string{
 			"external_service": "shopee",
 			"endpoint":        "graphql",
 		})
@@ -402,6 +405,11 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 			} else {
 				originalPrice = effectivePrice
 			}
+		}
+
+		// Skip offers with no real discount
+		if effectivePrice > 0 && originalPrice > 0 && effectivePrice >= originalPrice {
+			continue
 		}
 
 		offer := models.ShopeeOffer{

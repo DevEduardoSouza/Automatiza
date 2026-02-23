@@ -12,12 +12,15 @@ import (
 
 // mockCouponRepository is a mock implementation of CouponRepository for testing
 type mockCouponRepository struct {
-	coupons      map[string]*models.Coupon
-	couponsByID  map[string]*models.Coupon
-	createErr    error
-	updateErr    error
-	getByCodeErr error
-	getByIDErr   error
+	coupons                  map[string]*models.Coupon
+	couponsByID              map[string]*models.Coupon
+	createErr                error
+	updateErr                error
+	getByCodeErr             error
+	getByIDErr               error
+	getUserCouponsErr        error
+	deleteErr                error
+	getActiveCouponsByStoreErr error
 }
 
 func newMockCouponRepository() *mockCouponRepository {
@@ -28,6 +31,9 @@ func newMockCouponRepository() *mockCouponRepository {
 }
 
 func (m *mockCouponRepository) GetUserCoupons(ctx context.Context, userID string, filters map[string]interface{}) ([]models.Coupon, error) {
+	if m.getUserCouponsErr != nil {
+		return nil, m.getUserCouponsErr
+	}
 	var result []models.Coupon
 	for _, c := range m.couponsByID {
 		if c.UserID == userID {
@@ -105,6 +111,9 @@ func (m *mockCouponRepository) UpdateCoupon(ctx context.Context, couponID, userI
 }
 
 func (m *mockCouponRepository) DeleteCoupon(ctx context.Context, couponID, userID string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
 	key := userID + ":" + couponID
 	if c, ok := m.couponsByID[key]; ok {
 		codeKey := userID + ":" + normalizeCode(c.Code)
@@ -116,6 +125,9 @@ func (m *mockCouponRepository) DeleteCoupon(ctx context.Context, couponID, userI
 }
 
 func (m *mockCouponRepository) GetActiveCouponsByStore(ctx context.Context, userID, store string) ([]models.Coupon, error) {
+	if m.getActiveCouponsByStoreErr != nil {
+		return nil, m.getActiveCouponsByStoreErr
+	}
 	var result []models.Coupon
 	for _, c := range m.couponsByID {
 		if c.UserID == userID && c.Store == store && c.IsActive {
@@ -402,6 +414,355 @@ func TestNormalizeString(t *testing.T) {
 		if result != tc.expected {
 			t.Errorf("normalizeString(%q) = %q, expected %q", tc.input, result, tc.expected)
 		}
+	}
+}
+
+func TestCreateCoupon_WithAllOptionalFields(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+	userID := "user-opt"
+
+	data := &CreateCouponData{
+		Code:            "ALLOPTS",
+		Title:           "Full Coupon",
+		Store:           "shopee",
+		AffiliateLink:   "https://example.com/aff",
+		ExpiresAt:       time.Now().Add(72 * time.Hour).Format(time.RFC3339),
+		Category:        "electronics",
+		DiscountType:    "percent",
+		DiscountValue:   25.0,
+		MaxDiscount:     50.0,
+		MinProductPrice: 10.0,
+		CouponText:      "Desconto especial",
+	}
+
+	coupon, err := svc.CreateCoupon(ctx, userID, data)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if coupon.Code != "ALLOPTS" {
+		t.Errorf("expected code ALLOPTS, got %s", coupon.Code)
+	}
+	if coupon.AffiliateLink == nil || *coupon.AffiliateLink != "https://example.com/aff" {
+		t.Errorf("expected affiliate link to be set")
+	}
+	if coupon.Category == nil || *coupon.Category != "electronics" {
+		t.Errorf("expected category to be set")
+	}
+	if coupon.DiscountType == nil || *coupon.DiscountType != "percent" {
+		t.Errorf("expected discount type percent")
+	}
+	if coupon.DiscountValue == nil || *coupon.DiscountValue != 25.0 {
+		t.Errorf("expected discount value 25.0")
+	}
+	if coupon.MaxDiscount == nil || *coupon.MaxDiscount != 50.0 {
+		t.Errorf("expected max discount 50.0")
+	}
+	if coupon.MinProductPrice == nil || *coupon.MinProductPrice != 10.0 {
+		t.Errorf("expected min product price 10.0")
+	}
+	if coupon.CouponText == nil || *coupon.CouponText != "Desconto especial" {
+		t.Errorf("expected coupon text to be set")
+	}
+}
+
+func TestGetUserCoupons_RecalculatesExpiredAsInactive(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+	userID := "user-expired"
+
+	pastTime := time.Now().Add(-24 * time.Hour).Format(time.RFC3339)
+	repo.addCoupon(userID, &models.Coupon{
+		ID:        "c-expired",
+		UserID:    userID,
+		Code:      "EXPIRED",
+		Title:     "Expired Coupon",
+		Store:     "shopee",
+		IsActive:  true, // active in DB but expired
+		ExpiresAt: &pastTime,
+	})
+
+	coupons, err := svc.GetUserCoupons(ctx, userID, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if len(coupons) != 1 {
+		t.Fatalf("expected 1 coupon, got %d", len(coupons))
+	}
+	// Should be recalculated to inactive because it is expired
+	if coupons[0].IsActive {
+		t.Error("expected coupon to be recalculated as inactive due to expiration")
+	}
+}
+
+func TestValidateCoupon_Valid(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+	userID := "user-val"
+
+	futureTime := time.Now().Add(48 * time.Hour).Format(time.RFC3339)
+	repo.addCoupon(userID, &models.Coupon{
+		ID:        "c-valid",
+		UserID:    userID,
+		Code:      "VALID",
+		Title:     "Valid Coupon",
+		Store:     "shopee",
+		IsActive:  true,
+		ExpiresAt: &futureTime,
+	})
+
+	validation, err := svc.ValidateCoupon(ctx, "c-valid", userID)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if !validation.IsValid {
+		t.Error("expected coupon to be valid")
+	}
+	if validation.IsExpired {
+		t.Error("expected coupon to not be expired")
+	}
+	if !validation.IsActive {
+		t.Error("expected coupon to be active")
+	}
+}
+
+func TestValidateCoupon_Expired(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+	userID := "user-valexp"
+
+	pastTime := time.Now().Add(-24 * time.Hour).Format(time.RFC3339)
+	repo.addCoupon(userID, &models.Coupon{
+		ID:        "c-valexp",
+		UserID:    userID,
+		Code:      "VALEXP",
+		Title:     "Expired",
+		Store:     "shopee",
+		IsActive:  true,
+		ExpiresAt: &pastTime,
+	})
+
+	validation, err := svc.ValidateCoupon(ctx, "c-valexp", userID)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if validation.IsValid {
+		t.Error("expected coupon to be invalid")
+	}
+	if !validation.IsExpired {
+		t.Error("expected coupon to be expired")
+	}
+	if validation.Reason != "Cupom expirado" {
+		t.Errorf("expected reason 'Cupom expirado', got '%s'", validation.Reason)
+	}
+}
+
+func TestValidateCoupon_Inactive(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+	userID := "user-valinact"
+
+	repo.addCoupon(userID, &models.Coupon{
+		ID:       "c-valinact",
+		UserID:   userID,
+		Code:     "INACTIVE",
+		Title:    "Inactive Coupon",
+		Store:    "shopee",
+		IsActive: false,
+	})
+
+	validation, err := svc.ValidateCoupon(ctx, "c-valinact", userID)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if validation.IsValid {
+		t.Error("expected coupon to be invalid")
+	}
+	if validation.Reason != "Cupom desativado" {
+		t.Errorf("expected reason 'Cupom desativado', got '%s'", validation.Reason)
+	}
+}
+
+func TestValidateCoupon_NotFound(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+
+	validation, err := svc.ValidateCoupon(ctx, "nonexistent", "user-nf")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if validation.IsValid {
+		t.Error("expected coupon to be invalid")
+	}
+}
+
+func TestGetActiveCoupons_DelegatesWithFilter(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+	userID := "user-active"
+
+	futureTime := time.Now().Add(48 * time.Hour).Format(time.RFC3339)
+	repo.addCoupon(userID, &models.Coupon{
+		ID:        "c-active",
+		UserID:    userID,
+		Code:      "ACTIVE1",
+		Title:     "Active",
+		Store:     "shopee",
+		IsActive:  true,
+		ExpiresAt: &futureTime,
+	})
+	repo.addCoupon(userID, &models.Coupon{
+		ID:       "c-inactive",
+		UserID:   userID,
+		Code:     "INACTIVE1",
+		Title:    "Inactive",
+		Store:    "shopee",
+		IsActive: false,
+	})
+
+	coupons, err := svc.GetActiveCoupons(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Both are returned by mock but recalculated: one active, one inactive
+	activeCount := 0
+	for _, c := range coupons {
+		if c.IsActive {
+			activeCount++
+		}
+	}
+	if activeCount == 0 {
+		t.Error("expected at least one active coupon after recalculation")
+	}
+}
+
+func TestUpdateCoupon_ClearsOptionalFields(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+	userID := "user-clear"
+
+	// Create coupon with optional fields
+	data := &CreateCouponData{
+		Code:          "CLEARTEST",
+		Title:         "Clear Test",
+		Store:         "shopee",
+		AffiliateLink: "https://example.com",
+		CouponText:    "Some text",
+	}
+	coupon, err := svc.CreateCoupon(ctx, userID, data)
+	if err != nil {
+		t.Fatalf("expected no error creating coupon, got: %v", err)
+	}
+
+	// Update with empty affiliate link and coupon text to clear them
+	emptyLink := ""
+	emptyText := ""
+	updateData := &UpdateCouponData{
+		AffiliateLink: &emptyLink,
+		CouponText:    &emptyText,
+	}
+	_, err = svc.UpdateCoupon(ctx, coupon.ID, userID, updateData)
+	if err != nil {
+		t.Fatalf("expected no error updating coupon, got: %v", err)
+	}
+	// The update itself succeeds. The mock does not track all field changes
+	// but verifies the flow completes without error.
+}
+
+func TestNormalizeOptionalString_Empty(t *testing.T) {
+	t.Parallel()
+	result := normalizeOptionalString("")
+	if result != nil {
+		t.Errorf("expected nil for empty string, got %v", *result)
+	}
+}
+
+func TestNormalizeOptionalString_Whitespace(t *testing.T) {
+	t.Parallel()
+	result := normalizeOptionalString("   ")
+	if result != nil {
+		t.Errorf("expected nil for whitespace-only string, got %v", *result)
+	}
+}
+
+func TestNormalizeOptionalString_Value(t *testing.T) {
+	t.Parallel()
+	result := normalizeOptionalString("  hello  ")
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if *result != "hello" {
+		t.Errorf("expected 'hello', got '%s'", *result)
+	}
+}
+
+func TestCreateCoupon_EmptyCode(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+
+	data := &CreateCouponData{
+		Code:  "",
+		Title: "No Code",
+		Store: "shopee",
+	}
+	_, err := svc.CreateCoupon(ctx, "user-1", data)
+	if err == nil {
+		t.Fatal("expected error for empty code")
+	}
+}
+
+func TestCreateCoupon_EmptyTitle(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+
+	data := &CreateCouponData{
+		Code:  "NOTITLE",
+		Title: "",
+		Store: "shopee",
+	}
+	_, err := svc.CreateCoupon(ctx, "user-1", data)
+	if err == nil {
+		t.Fatal("expected error for empty title")
+	}
+}
+
+func TestCreateCoupon_EmptyStore(t *testing.T) {
+	t.Parallel()
+	repo := newMockCouponRepository()
+	svc := newTestService(repo)
+	ctx := context.Background()
+
+	data := &CreateCouponData{
+		Code:  "NOSTORE",
+		Title: "No Store",
+		Store: "",
+	}
+	_, err := svc.CreateCoupon(ctx, "user-1", data)
+	if err == nil {
+		t.Fatal("expected error for empty store")
 	}
 }
 

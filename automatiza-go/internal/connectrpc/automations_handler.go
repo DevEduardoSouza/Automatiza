@@ -13,6 +13,7 @@ import (
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/automation"
 	"automatiza-go/internal/services/jobs"
+	sharedErrors "automatiza-go/internal/shared/errors"
 
 	"connectrpc.com/connect"
 	"github.com/getsentry/sentry-go"
@@ -224,6 +225,14 @@ func (h *AutomationsHandler) RunAutomation(
 	// Run automation synchronously so the caller gets the real result
 	result, err := h.automationService.RunAutomation(ctx, automationID, userID)
 	if err != nil {
+		// Lock conflict is expected (concurrent execution) — return Aborted, not Internal
+		if sharedErrors.IsConflictError(err) {
+			h.logger.Warn("RunAutomation lock conflict",
+				zap.String("automationID", automationID),
+				zap.String("userID", userID))
+			return nil, sharedErrors.MapToConnectError(err)
+		}
+
 		h.logger.Error("RunAutomation failed",
 			zap.String("automationID", automationID),
 			zap.String("userID", userID),

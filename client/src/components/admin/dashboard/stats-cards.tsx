@@ -1,7 +1,8 @@
+import { Package, Play, TrendingUp, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { Package, TrendingUp, Users } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { ObservabilityData } from '../types/dashboard.types';
 
 const colors = {
   wine: '#8D2D53',
@@ -25,6 +26,7 @@ interface DashboardStats {
 
 interface StatsCardsProps {
   stats: DashboardStats;
+  obs: ObservabilityData | null;
 }
 
 interface StatCardItemProps {
@@ -73,11 +75,11 @@ function StatCardItem({ label, value, subtitle, icon }: StatCardItemProps) {
  * Cards de estatísticas do dashboard admin.
  * Exibe total de usuários, usuários ativos e planos contratados.
  */
-export function StatsCards({ stats }: StatsCardsProps) {
+export function StatsCards({ stats, obs }: StatsCardsProps) {
   const { t } = useTranslation();
 
   return (
-    <div className="grid gap-3 xs:gap-4 grid-cols-1 xs:grid-cols-2 md:grid-cols-3">
+    <div className="grid gap-3 xs:gap-4 grid-cols-2 md:grid-cols-4">
       <StatCardItem
         label={t('admin.dashboard.stats.totalUsers')}
         value={stats.totalUsers}
@@ -95,6 +97,14 @@ export function StatsCards({ stats }: StatsCardsProps) {
         value={stats.planStats.length}
         subtitle={t('admin.dashboard.stats.differentPlans')}
         icon={<Package className="h-4 w-4" style={{ color: colors.wine }} aria-hidden="true" />}
+      />
+      <StatCardItem
+        label={t('admin.dashboard.stats.usersWithAutomations')}
+        value={obs?.totals.usersWithActiveAutomations ?? 0}
+        subtitle={t('admin.dashboard.stats.automationsRunning', {
+          count: obs?.totals.automationsActive ?? 0,
+        })}
+        icon={<Play className="h-4 w-4" style={{ color: colors.wine }} aria-hidden="true" />}
       />
     </div>
   );

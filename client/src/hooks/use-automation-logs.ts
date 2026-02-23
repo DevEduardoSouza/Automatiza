@@ -56,7 +56,7 @@ interface UseAutomationLogsReturn {
  * This maintains backward compatibility with existing components.
  * Uses all fields from the proto response - no hardcoded values.
  */
-function fromLocalDispatchLog(log: LocalDispatchLog, automationName: string): DispatchLog {
+export function fromLocalDispatchLog(log: LocalDispatchLog, automationName: string): DispatchLog {
   return {
     id: log.id,
     automation_id: log.automationId,

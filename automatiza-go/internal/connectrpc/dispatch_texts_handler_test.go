@@ -549,6 +549,227 @@ func TestDeleteDispatchText_RepositoryError(t *testing.T) {
 }
 
 // =============================================================================
+// GetDispatchText Error Cases
+// =============================================================================
+
+func TestGetDispatchText_Unauthenticated(t *testing.T) {
+	mockRepo := new(mockSettingsRepoForDispatchTexts)
+	handler := NewDispatchTextsHandler(mockRepo)
+
+	ctx := context.Background() // No user in context
+
+	req := connect.NewRequest(&dispatchtextsv1.GetDispatchTextRequest{Id: "dt-1"})
+	_, err := handler.GetDispatchText(ctx, req)
+
+	require.Error(t, err)
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+func TestGetDispatchText_RepositoryError(t *testing.T) {
+	mockRepo := new(mockSettingsRepoForDispatchTexts)
+	handler := NewDispatchTextsHandler(mockRepo)
+
+	userID := "user-123"
+	ctx := createTestUserContextForDispatchTexts(userID)
+
+	mockRepo.On("GetDispatchText", mock.Anything, "dt-1").Return(nil, errors.New("database error"))
+
+	req := connect.NewRequest(&dispatchtextsv1.GetDispatchTextRequest{Id: "dt-1"})
+	_, err := handler.GetDispatchText(ctx, req)
+
+	require.Error(t, err)
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeInternal, connectErr.Code())
+
+	mockRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// CreateDispatchText Error Cases
+// =============================================================================
+
+func TestCreateDispatchText_Unauthenticated(t *testing.T) {
+	mockRepo := new(mockSettingsRepoForDispatchTexts)
+	handler := NewDispatchTextsHandler(mockRepo)
+
+	ctx := context.Background() // No user in context
+
+	req := connect.NewRequest(&dispatchtextsv1.CreateDispatchTextRequest{
+		Name: "New Template",
+		Body: "Hello World",
+	})
+	_, err := handler.CreateDispatchText(ctx, req)
+
+	require.Error(t, err)
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+func TestCreateDispatchText_RepositoryError(t *testing.T) {
+	mockRepo := new(mockSettingsRepoForDispatchTexts)
+	handler := NewDispatchTextsHandler(mockRepo)
+
+	userID := "user-123"
+	ctx := createTestUserContextForDispatchTexts(userID)
+
+	mockRepo.On("CreateDispatchText", mock.Anything, userID, mock.Anything).Return(nil, errors.New("database error"))
+
+	req := connect.NewRequest(&dispatchtextsv1.CreateDispatchTextRequest{
+		Name: "New Template",
+		Body: "Hello World",
+	})
+	_, err := handler.CreateDispatchText(ctx, req)
+
+	require.Error(t, err)
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeInternal, connectErr.Code())
+
+	mockRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// UpdateDispatchText Error Cases
+// =============================================================================
+
+func TestUpdateDispatchText_Unauthenticated(t *testing.T) {
+	mockRepo := new(mockSettingsRepoForDispatchTexts)
+	handler := NewDispatchTextsHandler(mockRepo)
+
+	ctx := context.Background() // No user in context
+
+	newName := "Updated Name"
+	req := connect.NewRequest(&dispatchtextsv1.UpdateDispatchTextRequest{
+		Id:   "dt-1",
+		Name: &newName,
+	})
+	_, err := handler.UpdateDispatchText(ctx, req)
+
+	require.Error(t, err)
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+func TestUpdateDispatchText_NotFound(t *testing.T) {
+	mockRepo := new(mockSettingsRepoForDispatchTexts)
+	handler := NewDispatchTextsHandler(mockRepo)
+
+	userID := "user-123"
+	ctx := createTestUserContextForDispatchTexts(userID)
+
+	mockRepo.On("GetDispatchText", mock.Anything, "dt-nonexistent").Return(nil, nil)
+
+	newName := "Updated Name"
+	req := connect.NewRequest(&dispatchtextsv1.UpdateDispatchTextRequest{
+		Id:   "dt-nonexistent",
+		Name: &newName,
+	})
+	_, err := handler.UpdateDispatchText(ctx, req)
+
+	require.Error(t, err)
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeNotFound, connectErr.Code())
+
+	mockRepo.AssertExpectations(t)
+}
+
+func TestUpdateDispatchText_UpdateRepoError(t *testing.T) {
+	mockRepo := new(mockSettingsRepoForDispatchTexts)
+	handler := NewDispatchTextsHandler(mockRepo)
+
+	userID := "user-123"
+	ctx := createTestUserContextForDispatchTexts(userID)
+
+	existingText := &models.DispatchText{
+		ID:        "dt-1",
+		UserID:    userID,
+		Name:      "Old Name",
+		Body:      "Old Body",
+		IsActive:  true,
+		CreatedAt: "2026-01-01T00:00:00Z",
+		UpdatedAt: "2026-01-01T00:00:00Z",
+	}
+
+	mockRepo.On("GetDispatchText", mock.Anything, "dt-1").Return(existingText, nil).Once()
+	mockRepo.On("UpdateDispatchText", mock.Anything, "dt-1", mock.Anything).Return(errors.New("database error"))
+
+	newName := "New Name"
+	req := connect.NewRequest(&dispatchtextsv1.UpdateDispatchTextRequest{
+		Id:   "dt-1",
+		Name: &newName,
+	})
+	_, err := handler.UpdateDispatchText(ctx, req)
+
+	require.Error(t, err)
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeInternal, connectErr.Code())
+
+	mockRepo.AssertExpectations(t)
+}
+
+func TestUpdateDispatchText_ReGetError(t *testing.T) {
+	mockRepo := new(mockSettingsRepoForDispatchTexts)
+	handler := NewDispatchTextsHandler(mockRepo)
+
+	userID := "user-123"
+	ctx := createTestUserContextForDispatchTexts(userID)
+
+	existingText := &models.DispatchText{
+		ID:        "dt-1",
+		UserID:    userID,
+		Name:      "Old Name",
+		Body:      "Old Body",
+		IsActive:  true,
+		CreatedAt: "2026-01-01T00:00:00Z",
+		UpdatedAt: "2026-01-01T00:00:00Z",
+	}
+
+	mockRepo.On("GetDispatchText", mock.Anything, "dt-1").Return(existingText, nil).Once()
+	mockRepo.On("UpdateDispatchText", mock.Anything, "dt-1", mock.Anything).Return(nil)
+	mockRepo.On("GetDispatchText", mock.Anything, "dt-1").Return(nil, errors.New("database error")).Once()
+
+	newName := "New Name"
+	req := connect.NewRequest(&dispatchtextsv1.UpdateDispatchTextRequest{
+		Id:   "dt-1",
+		Name: &newName,
+	})
+	_, err := handler.UpdateDispatchText(ctx, req)
+
+	require.Error(t, err)
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeInternal, connectErr.Code())
+
+	mockRepo.AssertExpectations(t)
+}
+
+// =============================================================================
+// DeleteDispatchText Error Cases
+// =============================================================================
+
+func TestDeleteDispatchText_Unauthenticated(t *testing.T) {
+	mockRepo := new(mockSettingsRepoForDispatchTexts)
+	handler := NewDispatchTextsHandler(mockRepo)
+
+	ctx := context.Background() // No user in context
+
+	req := connect.NewRequest(&dispatchtextsv1.DeleteDispatchTextRequest{Id: "dt-1"})
+	_, err := handler.DeleteDispatchText(ctx, req)
+
+	require.Error(t, err)
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+// =============================================================================
 // Helper Function Tests
 // =============================================================================
 

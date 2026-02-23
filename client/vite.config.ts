@@ -11,7 +11,7 @@ const ReactCompilerConfig = {
 export default defineConfig(({ mode }) => ({
   server: {
     host: '::',
-    port: 5173, // Porta padrao do Vite (8080 estava em conflito com Evolution API)
+    port: 3003,
     proxy: {
       // Proxy para o backend Go - resolve problema de cookies cross-origin
       '/connect': {

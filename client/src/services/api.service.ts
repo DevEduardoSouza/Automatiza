@@ -6,15 +6,12 @@
  *
  * Migração:
  * - wahaService            → useWhatsAppConnect
- * - loadBalancerService   → useLoadBalancerConnect
  * - adminService          → useAdminConnect
  * - automationsService    → useAutomationsConnect
  * - contactsService       → useContactsConnect
  * - shopeeService         → useShopeeConnect
  * - mercadoLivreService   → useMercadoLivreConnect
  * - aiToolsService        → useAiToolsConnect
- * - imagesService         → useImagesConnect
- * - campaignsService      → useCampaignsConnect
  * - jobsService           → useJobsConnect
  * - webhooksService       → useWebhooksConnect
  * - groupsService         → REMOVIDO (código morto)

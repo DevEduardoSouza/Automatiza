@@ -1,6 +1,5 @@
 import {
   ChartsSection,
-  LoadBalancerCard,
   ObservabilityCard,
   ShopeeAuditSection,
   StatsCards,
@@ -11,23 +10,18 @@ import type { DashboardTabProps } from './types/dashboard.types';
 
 /**
  * Tab do dashboard administrativo.
- * Exibe estatísticas, gráficos, load balancer, observabilidade e webhooks.
+ * Exibe estatísticas, gráficos, observabilidade e webhooks.
  */
 export default function DashboardTab({ onStatsUpdate }: DashboardTabProps) {
   const {
     stats,
     webhookLogs,
-    lbStats,
-    lbLoading,
     obs,
     obsLoading,
     audit,
     auditLoading,
     auditDays,
     setAuditDays,
-    ensureWebhookLoading,
-    fetchLoadBalancerStats,
-    forceWebhooksServer2,
     fetchObservability,
     fetchShopeeAffiliateAudit,
     handleSimulateWebhook,
@@ -35,15 +29,7 @@ export default function DashboardTab({ onStatsUpdate }: DashboardTabProps) {
 
   return (
     <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 xl:space-y-10">
-      <StatsCards stats={stats} />
-
-      <LoadBalancerCard
-        stats={lbStats}
-        loading={lbLoading}
-        ensureWebhookLoading={ensureWebhookLoading}
-        onRefresh={fetchLoadBalancerStats}
-        onForceWebhooks={forceWebhooksServer2}
-      />
+      <StatsCards stats={stats} obs={obs} />
 
       <ObservabilityCard data={obs} loading={obsLoading} onRefresh={fetchObservability} />
 

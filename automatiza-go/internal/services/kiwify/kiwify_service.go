@@ -25,6 +25,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// kiwifyProductIDRegex extracts the product ID from Kiwify checkout URLs.
+// Pre-compiled at package level to avoid repeated compilation.
+var kiwifyProductIDRegex = regexp.MustCompile(`pay\.kiwify\.com\.br/([A-Za-z0-9]+)`)
+
 // Service defines the Kiwify webhook service interface.
 type Service interface {
 	// ProcessWebhook processes an incoming Kiwify webhook and returns the result.
@@ -46,6 +50,10 @@ type kiwifyService struct {
 	emailService email.Service
 	config       *Config
 	logger       *zap.Logger
+
+	// Injected functions for testability (defaults set in NewKiwifyService).
+	generatePasswordFn func() (string, error)
+	hashPasswordFn     func(password string) (string, error)
 }
 
 // NewKiwifyService creates a new Kiwify webhook service.
@@ -62,13 +70,15 @@ func NewKiwifyService(
 		config = &Config{}
 	}
 	return &kiwifyService{
-		profileRepo:  profileRepo,
-		planRepo:     planRepo,
-		settingsRepo: settingsRepo,
-		userRoleRepo: userRoleRepo,
-		emailService: emailService,
-		config:       config,
-		logger:       logger,
+		profileRepo:        profileRepo,
+		planRepo:           planRepo,
+		settingsRepo:       settingsRepo,
+		userRoleRepo:       userRoleRepo,
+		emailService:       emailService,
+		config:             config,
+		logger:             logger,
+		generatePasswordFn: crypto.GenerateTemporaryPassword,
+		hashPasswordFn:     auth.HashPassword,
 	}
 }
 
@@ -124,14 +134,14 @@ func (s *kiwifyService) ProcessWebhook(ctx context.Context, payload *models.Kiwi
 	}
 
 	// Determine plan based on product
-	plan, err := s.mapProductToPlan(ctx, data.ProductName, data.ProductID)
-	if err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to map Kiwify product to plan", err, map[string]string{
-			"external_service": "kiwify",
-			"product":          data.ProductName,
-			"product_id":       data.ProductID,
-		})
-		plan = "starter" // Default fallback
+	plan, planErr := s.mapProductToPlan(ctx, data.ProductName, data.ProductID)
+	if planErr != nil {
+		s.logger.Warn("Failed to map product to plan, using default",
+			zap.Error(planErr),
+			zap.String("product", data.ProductName),
+			zap.String("productID", data.ProductID),
+		)
+		plan = s.mapProductNameToPlan(data.ProductName) // Fallback to name-based mapping
 	}
 
 	s.logger.Info("Plan determined",
@@ -458,31 +468,21 @@ func (s *kiwifyService) parseFlexibleDate(value interface{}) *time.Time {
 }
 
 // mapProductToPlan maps a Kiwify product to a plan slug.
+// It first tries a database lookup by product ID, then falls back to keyword matching on the product name.
 func (s *kiwifyService) mapProductToPlan(ctx context.Context, productName, productID string) (string, error) {
 	// First, try to find by Kiwify product ID
 	if productID != "" {
-		// Try to extract ID from URL if needed
+		// Extract ID from Kiwify checkout URL if needed
 		searchID := productID
 		if strings.Contains(productID, "pay.kiwify.com.br/") {
-			re, regexErr := regexp.Compile(`pay\.kiwify\.com\.br/([A-Za-z0-9]+)`)
-			if regexErr != nil {
-				observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to compile Kiwify product ID regex", regexErr, map[string]string{
-					"external_service": "kiwify",
-				})
-			} else {
-				matches := re.FindStringSubmatch(productID)
-				if len(matches) > 1 {
-					searchID = matches[1]
-				}
+			if matches := kiwifyProductIDRegex.FindStringSubmatch(productID); len(matches) > 1 {
+				searchID = matches[1]
 			}
 		}
 
 		plan, err := s.planRepo.GetByKiwifyProductID(ctx, searchID)
 		if err != nil {
-			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Error looking up plan by Kiwify product ID", err, map[string]string{
-				"external_service": "kiwify",
-				"product_id":       searchID,
-			})
+			return "", fmt.Errorf("plan lookup by product ID %q: %w", searchID, err)
 		}
 		if plan != nil {
 			return plan.Slug, nil
@@ -707,7 +707,7 @@ func (s *kiwifyService) handleNewUserPurchase(
 	userID := uuid.New().String()
 
 	// Generate a temporary password
-	tempPassword, err := crypto.GenerateTemporaryPassword()
+	tempPassword, err := s.generatePasswordFn()
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to generate temporary password for Kiwify new user", err, map[string]string{
 			"external_service": "kiwify",
@@ -717,7 +717,7 @@ func (s *kiwifyService) handleNewUserPurchase(
 	}
 
 	// Hash the password
-	passwordHash, err := auth.HashPassword(tempPassword)
+	passwordHash, err := s.hashPasswordFn(tempPassword)
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to hash password for Kiwify new user", err, map[string]string{
 			"external_service": "kiwify",

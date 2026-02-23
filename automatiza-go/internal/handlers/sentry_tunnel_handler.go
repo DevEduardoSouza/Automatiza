@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -22,6 +23,7 @@ type SentryTunnelHandler struct {
 	allowedHost string
 	logger      *zap.Logger
 	client      *http.Client
+	newRequest  func(ctx context.Context, method, url string, body io.Reader) (*http.Request, error)
 }
 
 // NewSentryTunnelHandler creates a handler that only forwards envelopes
@@ -31,6 +33,7 @@ func NewSentryTunnelHandler(allowedHost string, logger *zap.Logger) *SentryTunne
 		allowedHost: allowedHost,
 		logger:      logger,
 		client:      &http.Client{},
+		newRequest:  http.NewRequestWithContext,
 	}
 }
 
@@ -78,7 +81,7 @@ func (h *SentryTunnelHandler) Handle(c *gin.Context) {
 	projectID := strings.TrimPrefix(dsn.Path, "/")
 	upstream := "https://" + dsn.Host + "/api/" + projectID + "/envelope/"
 
-	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, upstream, strings.NewReader(string(body)))
+	req, err := h.newRequest(c.Request.Context(), http.MethodPost, upstream, strings.NewReader(string(body)))
 	if err != nil {
 		h.logger.Error("sentry-tunnel: failed to create upstream request", zap.Error(err))
 		c.Status(http.StatusInternalServerError)

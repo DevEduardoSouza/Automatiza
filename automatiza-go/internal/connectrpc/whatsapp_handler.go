@@ -62,6 +62,9 @@ func (h *WhatsAppHandler) CreateInstance(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create instance: %w", err))
 	}
+	if sessionInfo == nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create instance: unexpected nil session info"))
+	}
 
 	resp := &whatsappv1.CreateInstanceResponse{
 		Success: true,
@@ -89,6 +92,9 @@ func (h *WhatsAppHandler) CreateInstance(
 				observability.LogAndCapture(nil, sentry.LevelInfo, "failed to poll session status during create", err, map[string]string{
 					"module": "whatsapp-handler", "operation": "create-status-poll", "instance": sessionInfo.Name,
 				})
+				break
+			}
+			if info == nil {
 				break
 			}
 			status = info.Status
@@ -185,6 +191,9 @@ func (h *WhatsAppHandler) ReconnectInstance(
 			})
 			break
 		}
+		if info == nil {
+			break
+		}
 		status = info.Status
 		if status == whatsapp.SessionStatusScanQR || status == whatsapp.SessionStatusConnected {
 			break
@@ -233,6 +242,12 @@ func (h *WhatsAppHandler) CheckStatus(
 			}), nil
 		}
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check status: %w", err))
+	}
+	if sessionInfo == nil {
+		return connect.NewResponse(&whatsappv1.CheckStatusResponse{
+			Success: true,
+			State:   whatsappv1.InstanceState_INSTANCE_STATE_UNSPECIFIED,
+		}), nil
 	}
 
 	resp := &whatsappv1.CheckStatusResponse{

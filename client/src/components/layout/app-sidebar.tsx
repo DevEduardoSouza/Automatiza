@@ -342,14 +342,14 @@ const ToggleSidebarIcon: LucideIcon = ({ className, ...props }) => (
 import { useTranslation } from 'react-i18next';
 import { NavLink, useLocation } from 'react-router';
 
-interface MenuItem {
+export interface MenuItem {
   titleKey: string;
   url: string;
   icon: LucideIcon;
   comingSoon?: boolean;
 }
 
-const menuItems: MenuItem[] = [
+export const menuItems: MenuItem[] = [
   { titleKey: 'sidebar.dashboard', url: '/dashboard', icon: DashboardIcon },
   { titleKey: 'sidebar.whatsapp', url: '/whatsapp', icon: WhatsAppIcon },
   { titleKey: 'sidebar.groups', url: '/groups', icon: GroupsIcon },

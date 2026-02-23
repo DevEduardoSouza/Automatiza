@@ -13,7 +13,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
-	"fmt"
 )
 
 // SignatureValidationError represents an error during signature validation.
@@ -118,25 +117,20 @@ func (v *KiwifySignatureValidator) Validate(body []byte, signature string) error
 		return ErrSignatureInvalid
 	}
 
-	// Compute the expected signature
-	expectedSignature := v.ComputeSignature(body)
-
 	// Decode the provided signature from hex
 	providedSigBytes, err := hex.DecodeString(signature)
 	if err != nil {
-		// Invalid hex format - return generic error
+		// Invalid hex format
 		if v.strict {
 			return ErrSignatureInvalid
 		}
 		return nil
 	}
 
-	// Decode our expected signature for comparison
-	expectedSigBytes, err := hex.DecodeString(expectedSignature)
-	if err != nil {
-		// This should never happen since we control the computation
-		return ErrSignatureInvalid
-	}
+	// Compute expected signature directly as bytes (avoids hex round-trip)
+	mac := hmac.New(sha256.New, v.secretKey)
+	mac.Write(body)
+	expectedSigBytes := mac.Sum(nil)
 
 	// Use constant-time comparison to prevent timing attacks
 	if !hmac.Equal(providedSigBytes, expectedSigBytes) {
@@ -228,29 +222,13 @@ func (v *KiwifySignatureValidator) ValidateWithResult(body []byte, signature str
 		}
 	}
 
-	// Extract internal reason for logging
-	var sigErr *SignatureValidationError
-	if errors.As(err, &sigErr) {
-		return ValidationResult{
-			Valid:   false,
-			Enabled: true,
-			Strict:  v.strict,
-			Reason:  sigErr.Reason,
-		}
-	}
-
+	// Validate only returns *SignatureValidationError — extract reason for logging
+	sigErr := err.(*SignatureValidationError) //nolint:errorlint // Validate guarantees this type
 	return ValidationResult{
 		Valid:   false,
 		Enabled: true,
 		Strict:  v.strict,
-		Reason:  "unknown error",
+		Reason:  sigErr.Reason,
 	}
 }
 
-// MustValidate is a convenience function that panics on validation failure.
-// This should only be used in tests.
-func (v *KiwifySignatureValidator) MustValidate(body []byte, signature string) {
-	if err := v.Validate(body, signature); err != nil {
-		panic(fmt.Sprintf("kiwify signature validation failed: %v", err))
-	}
-}

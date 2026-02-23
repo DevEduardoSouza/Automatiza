@@ -61,6 +61,16 @@ vi.mock('@/hooks/use-instances-connect', () => ({
   }),
 }));
 
+vi.mock('@sentry/react', () => ({
+  addBreadcrumb: vi.fn(),
+  captureMessage: vi.fn(),
+  captureException: vi.fn(),
+}));
+
+vi.mock('@/lib/sentry', () => ({
+  captureHookError: vi.fn(),
+}));
+
 // ============================================================
 // Test Data Factories
 // ============================================================
@@ -114,12 +124,21 @@ describe('useGroupsMessaging', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Restore mockLatestInstance to connected state (may have been mutated by "no instance" tests)
+    Object.assign(mockLatestInstance, {
+      id: 'instance-1',
+      user_id: 'user-1',
+      instance_id: 'test-instance',
+      status: 'connected',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    });
     mockSendGroupMessage.mockResolvedValue({ message_id: 'msg-1', action_id: 'action-1' });
     mockSendGroupImage.mockResolvedValue({ message_id: 'msg-1', action_id: 'action-1' });
     mockCheckInstanceStatus.mockResolvedValue({ success: true, state: 'open' });
     mockGetGroupParticipants.mockResolvedValue([
-      { id: 'participant-1@s.whatsapp.net', is_admin: false, is_super_admin: false },
-      { id: 'participant-2@s.whatsapp.net', is_admin: false, is_super_admin: false },
+      { id: 'participant-1@s.whatsapp.net', phone_number: '5511111111111', is_admin: false, is_super_admin: false },
+      { id: 'participant-2@s.whatsapp.net', phone_number: '5522222222222', is_admin: false, is_super_admin: false },
     ]);
   });
 
@@ -969,6 +988,356 @@ describe('useGroupsMessaging', () => {
       );
 
       vi.useRealTimers();
+    });
+  });
+
+  // ============================================================
+  // File Size Validation Tests
+  // ============================================================
+
+  describe('handleMediaUpload - file size validation', () => {
+    it('should reject files larger than 7MB', () => {
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: [],
+          groups: mockGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      const largeFile = createMockFile('huge.jpg', 'image/jpeg', 8 * 1024 * 1024);
+      const event = createMockChangeEvent(largeFile);
+
+      act(() => {
+        result.current.handleMediaUpload(event);
+      });
+
+      expect(result.current.mediaFile).toBeNull();
+      expect(mockToast).toHaveBeenCalledWith({
+        variant: 'destructive',
+        title: 'pages.groups.errors.fileTooLarge',
+        description: 'pages.groups.errors.fileTooLargeMessage',
+      });
+    });
+
+    it('should accept files exactly at 7MB', () => {
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: [],
+          groups: mockGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      const file = createMockFile('exact.jpg', 'image/jpeg', 7 * 1024 * 1024);
+      const event = createMockChangeEvent(file);
+
+      act(() => {
+        result.current.handleMediaUpload(event);
+      });
+
+      expect(result.current.mediaFile).toBe(file);
+    });
+  });
+
+  // ============================================================
+  // Individual @number Mentions Tests
+  // ============================================================
+
+  describe('handleSendMessage - individual @number mentions', () => {
+    it('should detect and send individual phone mentions', async () => {
+      vi.useFakeTimers();
+
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: ['group-1'],
+          groups: mockGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      act(() => {
+        result.current.setMessage('Hello @5511999999999 check this!');
+      });
+
+      const sendPromise = result.current.handleSendMessage();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      await act(async () => {
+        await sendPromise;
+      });
+
+      expect(mockSendGroupMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mentions: ['5511999999999@s.whatsapp.net'],
+        })
+      );
+
+      vi.useRealTimers();
+    });
+
+    it('should detect multiple individual mentions', async () => {
+      vi.useFakeTimers();
+
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: ['group-1'],
+          groups: mockGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      act(() => {
+        result.current.setMessage('Hey @5511999999999 and @5511888888888');
+      });
+
+      const sendPromise = result.current.handleSendMessage();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      await act(async () => {
+        await sendPromise;
+      });
+
+      expect(mockSendGroupMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mentions: ['5511999999999@s.whatsapp.net', '5511888888888@s.whatsapp.net'],
+        })
+      );
+
+      vi.useRealTimers();
+    });
+
+    it('should NOT match short numbers (less than 8 digits)', async () => {
+      vi.useFakeTimers();
+
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: ['group-1'],
+          groups: mockGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      act(() => {
+        result.current.setMessage('Hey @1234567');
+      });
+
+      const sendPromise = result.current.handleSendMessage();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      await act(async () => {
+        await sendPromise;
+      });
+
+      expect(mockSendGroupMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mentions: undefined,
+        })
+      );
+
+      vi.useRealTimers();
+    });
+  });
+
+  // ============================================================
+  // No Instance Connected Tests
+  // ============================================================
+
+  describe('handleSendMessage - no instance', () => {
+    it('should show error when latestInstance is null', async () => {
+      // Override mock with null instance
+      const originalMock = mockLatestInstance;
+      Object.assign(mockLatestInstance, {
+        id: '',
+        user_id: '',
+        instance_id: '',
+        status: 'disconnected',
+      });
+
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: ['group-1'],
+          groups: mockGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      act(() => {
+        result.current.setMessage('Test');
+      });
+
+      await act(async () => {
+        await result.current.handleSendMessage();
+      });
+
+      expect(mockToast).toHaveBeenCalledWith({
+        variant: 'destructive',
+        title: 'pages.groups.errors.noInstance',
+        description: 'pages.groups.errors.connectWhatsAppFirst',
+      });
+
+      // Restore
+      Object.assign(mockLatestInstance, originalMock);
+    });
+  });
+
+  // ============================================================
+  // File Read Error Tests
+  // ============================================================
+
+  describe('handleSendMessage - file read error', () => {
+    it('should show error and NOT send when file read fails', async () => {
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: ['group-1'],
+          groups: mockGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      const imageFile = createMockFile('broken.jpg', 'image/jpeg', 1024);
+
+      act(() => {
+        result.current.setMessage('Caption');
+        result.current.handleMediaUpload(createMockChangeEvent(imageFile));
+      });
+
+      // Mock FileReader that fails
+      class FailingFileReader {
+        result: string | null = null;
+        onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
+        onerror: ((e: ProgressEvent<FileReader>) => void) | null = null;
+        readAsDataURL() {
+          setTimeout(() => {
+            if (this.onerror) {
+              this.onerror(new ProgressEvent('error') as ProgressEvent<FileReader>);
+            }
+          }, 0);
+        }
+      }
+      vi.stubGlobal('FileReader', FailingFileReader);
+
+      await act(async () => {
+        await result.current.handleSendMessage();
+      });
+
+      // Should NOT have called sendGroupImage
+      expect(mockSendGroupImage).not.toHaveBeenCalled();
+      expect(mockSendGroupMessage).not.toHaveBeenCalled();
+
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: 'destructive',
+          title: 'pages.groups.errors.processImage',
+        })
+      );
+
+      vi.unstubAllGlobals();
+    });
+  });
+
+  // ============================================================
+  // Mention Participants Loading Tests
+  // ============================================================
+
+  describe('mention participants', () => {
+    it('should load participants when mention opens', async () => {
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: ['group-1'],
+          groups: mockGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      await act(async () => {
+        result.current.setMentionOpen(true);
+      });
+
+      expect(result.current.mentionOpen).toBe(true);
+      expect(mockGetGroupParticipants).toHaveBeenCalledWith({
+        instance_name: 'test-instance',
+        group_id: '123@g.us',
+      });
+    });
+
+    it('should NOT load participants when no groups selected', async () => {
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: [],
+          groups: mockGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      await act(async () => {
+        result.current.setMentionOpen(true);
+      });
+
+      expect(mockGetGroupParticipants).not.toHaveBeenCalled();
+    });
+
+    it('should deduplicate participants by phone_number across groups', async () => {
+      // Both groups return same participant
+      mockGetGroupParticipants.mockResolvedValue([
+        {
+          id: 'same@s.whatsapp.net',
+          phone_number: '5511999999999',
+          is_admin: false,
+          is_super_admin: false,
+        },
+      ]);
+
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: ['group-1', 'group-2'],
+          groups: mockGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      await act(async () => {
+        result.current.setMentionOpen(true);
+      });
+
+      // Should have only one entry despite two groups
+      expect(result.current.mentionParticipants).toHaveLength(1);
+    });
+
+    it('should limit participant fetch to 5 groups', async () => {
+      const manyGroups: Group[] = Array.from({ length: 10 }, (_, i) =>
+        createMockGroup({
+          id: `group-${i}`,
+          wa_group_id: `${i}@g.us`,
+          name: `Group ${i}`,
+        })
+      );
+
+      mockGetGroupParticipants.mockResolvedValue([]);
+
+      const { result } = renderHook(() =>
+        useGroupsMessaging({
+          selectedGroups: manyGroups.map((g) => g.id),
+          groups: manyGroups,
+          clearSelection: mockClearSelection,
+        })
+      );
+
+      await act(async () => {
+        result.current.setMentionOpen(true);
+      });
+
+      // Should only fetch for first 5 groups
+      expect(mockGetGroupParticipants).toHaveBeenCalledTimes(5);
     });
   });
 });

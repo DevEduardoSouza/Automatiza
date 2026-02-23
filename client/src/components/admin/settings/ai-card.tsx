@@ -85,19 +85,6 @@ export function AICard({ settings, setSettings, t }: AICardProps) {
             {t('admin.settings.ai.modelHint')}
           </p>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="ai_image_model">{t('admin.settings.ai.imageModel')}</Label>
-          <Input
-            id="ai_image_model"
-            type="text"
-            placeholder={t('admin.settings.ai.imageModelPlaceholder')}
-            value={settings.ai_image_model}
-            onChange={(e) => setSettings({ ...settings, ai_image_model: e.target.value })}
-          />
-          <p className="text-xs" style={{ color: colors.wineTextMuted }}>
-            {t('admin.settings.ai.imageModelHint')}
-          </p>
-        </div>
       </div>
     </div>
   );

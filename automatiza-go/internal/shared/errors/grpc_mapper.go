@@ -88,6 +88,11 @@ func MapToConnectError(err error) *connect.Error {
 		return connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("Use a opção 'Alterar senha' para alterar sua própria senha"))
 
+	// Lock conflict errors -> Aborted (tells client to retry later)
+	case IsConflictError(err):
+		return connect.NewError(connect.CodeAborted,
+			fmt.Errorf("Recurso temporariamente bloqueado. Tente novamente em alguns minutos"))
+
 	// Conflict errors -> AlreadyExists
 	case errors.Is(err, ErrEmailExists):
 		return connect.NewError(connect.CodeAlreadyExists,

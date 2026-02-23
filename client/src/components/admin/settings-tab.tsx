@@ -7,7 +7,6 @@ import {
   AppSettingsCard,
   KiwifyCard,
   LinkSafetyCard,
-  LoadBalancerSettingsCard,
   SMTPCard,
   WahaCard,
 } from './settings';
@@ -27,7 +26,11 @@ export default function SettingsTab() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-6 xs:py-8" role="status" aria-live="polite">
+      <div
+        className="flex items-center justify-center py-6 xs:py-8"
+        role="status"
+        aria-live="polite"
+      >
         <div className="text-center space-y-4">
           <div
             className="h-8 w-8 xs:h-10 xs:w-10 animate-spin rounded-full border-[3px] xs:border-4 border-t-transparent mx-auto"
@@ -48,7 +51,6 @@ export default function SettingsTab() {
       <WahaCard settings={settings} setSettings={setSettings} t={t} />
       <AICard settings={settings} setSettings={setSettings} t={t} />
       <AppSettingsCard settings={settings} setSettings={setSettings} t={t} />
-      <LoadBalancerSettingsCard settings={settings} setSettings={setSettings} t={t} />
       <LinkSafetyCard settings={settings} setSettings={setSettings} t={t} />
       <AnnouncementCard settings={settings} setSettings={setSettings} t={t} />
 

@@ -65,14 +65,12 @@ describe('useGroupsSelection', () => {
     it('should remove group from selection when already selected', () => {
       const { result } = renderHook(() => useGroupsSelection());
 
-      // First add the group
       act(() => {
         result.current.toggleGroup('group-1');
       });
 
       expect(result.current.selectedGroups).toContain('group-1');
 
-      // Then toggle it off
       act(() => {
         result.current.toggleGroup('group-1');
       });
@@ -94,7 +92,6 @@ describe('useGroupsSelection', () => {
       expect(result.current.selectedGroups).toContain('group-2');
       expect(result.current.selectedGroups).toContain('group-3');
 
-      // Remove one
       act(() => {
         result.current.toggleGroup('group-2');
       });
@@ -151,14 +148,12 @@ describe('useGroupsSelection', () => {
         createMockGroup({ id: 'group-3' }),
       ];
 
-      // First select all
       act(() => {
         result.current.toggleAll(groups);
       });
 
       expect(result.current.selectedGroups).toHaveLength(3);
 
-      // Then toggle all (should deselect)
       act(() => {
         result.current.toggleAll(groups);
       });
@@ -174,14 +169,12 @@ describe('useGroupsSelection', () => {
         createMockGroup({ id: 'group-3' }),
       ];
 
-      // Select only one
       act(() => {
         result.current.toggleGroup('group-1');
       });
 
       expect(result.current.selectedGroups).toHaveLength(1);
 
-      // Toggle all (should select all since not all selected)
       act(() => {
         result.current.toggleAll(groups);
       });
@@ -225,7 +218,6 @@ describe('useGroupsSelection', () => {
     it('should clear all selected groups', () => {
       const { result } = renderHook(() => useGroupsSelection());
 
-      // Add some groups
       act(() => {
         result.current.toggleGroup('group-1');
         result.current.toggleGroup('group-2');
@@ -234,7 +226,6 @@ describe('useGroupsSelection', () => {
 
       expect(result.current.selectedGroups).toHaveLength(3);
 
-      // Clear selection
       act(() => {
         result.current.clearSelection();
       });
@@ -257,18 +248,15 @@ describe('useGroupsSelection', () => {
     it('should allow reselection after clearing', () => {
       const { result } = renderHook(() => useGroupsSelection());
 
-      // Add groups
       act(() => {
         result.current.toggleGroup('group-1');
         result.current.toggleGroup('group-2');
       });
 
-      // Clear
       act(() => {
         result.current.clearSelection();
       });
 
-      // Add again
       act(() => {
         result.current.toggleGroup('group-3');
       });
@@ -330,6 +318,40 @@ describe('useGroupsSelection', () => {
       rerender();
 
       expect(result.current.selectedGroups).toEqual(selectionBeforeRerender);
+    });
+
+    it('should handle empty string as group ID', () => {
+      const { result } = renderHook(() => useGroupsSelection());
+
+      act(() => {
+        result.current.toggleGroup('');
+      });
+
+      expect(result.current.selectedGroups).toEqual(['']);
+    });
+
+    it('should handle toggleAll after manual selection of some groups', () => {
+      const { result } = renderHook(() => useGroupsSelection());
+      const groups = [
+        createMockGroup({ id: 'group-1' }),
+        createMockGroup({ id: 'group-2' }),
+      ];
+
+      // Select 2 groups but toggleAll sees only 2, so length matches
+      act(() => {
+        result.current.toggleGroup('group-1');
+        result.current.toggleGroup('group-2');
+      });
+
+      expect(result.current.selectedGroups).toHaveLength(2);
+
+      // toggleAll checks prev.length === groups.length, both are 2
+      act(() => {
+        result.current.toggleAll(groups);
+      });
+
+      // Should deselect all since lengths match
+      expect(result.current.selectedGroups).toHaveLength(0);
     });
   });
 });

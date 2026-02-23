@@ -150,8 +150,10 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 
 		if !tw.IsWithinWindow(time.Now()) {
-			s.logger.Debug("Outside time window, skipping automation",
-				zap.String("automationID", automation.ID))
+			s.logger.Info("Outside time window, skipping automation",
+				zap.String("automationID", automation.ID),
+				zap.String("startTime", *automation.StartTime),
+				zap.String("endTime", *automation.EndTime))
 			return nil
 		}
 	}
@@ -159,7 +161,33 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	// 2. Categorize and resolve links
 	shopeeLinks, mlLinks := s.categorizeLinks(links)
 
-	// 3. Generate affiliate links
+	// 3. Filter by configured stores
+	stores := automation.Stores
+	if len(stores) == 0 {
+		stores = []string{"shopee"}
+	}
+
+	storeSet := make(map[string]bool, len(stores))
+	for _, st := range stores {
+		storeSet[st] = true
+	}
+
+	if !storeSet["shopee"] {
+		shopeeLinks = nil
+	}
+	if !storeSet["mercadolivre"] {
+		mlLinks = nil
+	}
+
+	if len(shopeeLinks) == 0 && len(mlLinks) == 0 {
+		s.logger.Info("No links matching configured stores, skipping",
+			zap.String("automationID", automation.ID),
+			zap.Strings("stores", stores),
+			zap.Int("totalLinks", len(links)))
+		return nil
+	}
+
+	// 4. Generate affiliate links
 	affiliateLinks := make(map[string]string)
 
 	for _, link := range shopeeLinks {
@@ -180,7 +208,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 	}
 
-	// 4. Apply text transformation rules
+	// 5. Apply text transformation rules
 	processedText := msg.Body
 
 	// Get monitoring text rules if configured
@@ -188,28 +216,43 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		processedText = text.ProcessarMensagem(processedText, automation.MonitoringTextRules)
 	}
 
-	// 5. Replace original links with affiliate links
+	// 6. Replace original links with affiliate links
 	for orig, aff := range affiliateLinks {
 		processedText = strings.ReplaceAll(processedText, orig, aff)
 	}
 
-	// 6. Normalize text
+	// 7. Normalize text
 	processedText = text.NormalizeOutgoingWhatsAppText(processedText)
 	if processedText == "" {
+		s.logger.Info("Text empty after normalization, skipping",
+			zap.String("automationID", automation.ID))
 		return nil
 	}
 
-	// 7. Download image media if present
-	// WAHA media.url is internal (localhost) and requires auth, so we download
-	// the media bytes via DownloadMedia (which adds the API key) and send as base64.
+	// 8. Resolve image media if present
+	// Supports two sources:
+	//   a) Inline base64 from link preview thumbnail (JPEGThumbnail extracted by processor)
+	//   b) Download via WAHA media.url (internal localhost, requires API key auth)
 	var imageBase64 string
 	var imageMimetype string
-	if msg.HasMedia && msg.MediaURL != "" && (msg.MediaType == "image" || strings.HasPrefix(msg.MimeType, "image/")) {
-		s.logger.Info("Downloading image media for forwarding",
-			zap.String("automationID", automation.ID),
-			zap.String("mediaURL", msg.MediaURL),
-			zap.String("mimeType", msg.MimeType))
-		if s.waProvider != nil {
+	if msg.HasMedia && (msg.MediaType == "image" || strings.HasPrefix(msg.MimeType, "image/")) {
+		if msg.MediaBase64 != "" {
+			// Use inline base64 directly (link preview thumbnail)
+			imageBase64 = msg.MediaBase64
+			imageMimetype = msg.MimeType
+			if imageMimetype == "" {
+				imageMimetype = "image/jpeg"
+			}
+			s.logger.Info("Using inline base64 image (link preview)",
+				zap.String("automationID", automation.ID),
+				zap.Int("base64Len", len(imageBase64)),
+				zap.String("mimetype", imageMimetype))
+		} else if msg.MediaURL != "" && s.waProvider != nil {
+			// Download via WAHA media URL
+			s.logger.Info("Downloading image media for forwarding",
+				zap.String("automationID", automation.ID),
+				zap.String("mediaURL", msg.MediaURL),
+				zap.String("mimeType", msg.MimeType))
 			result, err := s.waProvider.DownloadMediaByURL(ctx, msg.MediaURL)
 			if err == nil && result != nil && len(result.Data) > 0 {
 				imageBase64 = base64.StdEncoding.EncodeToString(result.Data)
@@ -229,7 +272,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 	}
 
-	// 8. Get destination groups
+	// 9. Get destination groups
 	destinationGroups := automation.SendGroups
 	if len(destinationGroups) == 0 {
 		destinationGroups = automation.GetTargetGroups()
@@ -241,10 +284,10 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		return nil
 	}
 
-	// 9. Get deduplication settings
+	// 10. Get deduplication settings
 	dedupeHours := automation.GetDedupeHours()
 
-	// 10. Send to destination groups
+	// 11. Send to destination groups
 	for _, groupID := range destinationGroups {
 		// Skip if same group
 		if groupID == msg.RemoteJID {
@@ -254,6 +297,11 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// Product dedup check
 		canonicalKey := s.extractCanonicalKey(links)
 		if s.isProductDuplicate(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
+			s.logger.Info("Product already sent (dedup), skipping",
+				zap.String("automationID", automation.ID),
+				zap.String("toGroup", groupID),
+				zap.String("canonicalKey", canonicalKey),
+				zap.Int("dedupeHours", dedupeHours))
 			s.logDispatch(ctx, automation, groupID, links[0], "skipped", "dedupe")
 			continue
 		}
@@ -265,10 +313,11 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 		time.Sleep(time.Duration(delay) * time.Second)
 
-		// Send message via WhatsAppProvider
+		// Send message via WhatsAppProvider with dedicated timeout
+		sendCtx, sendCancel := context.WithTimeout(ctx, 30*time.Second)
 		var err error
 		if imageBase64 != "" {
-			_, err = s.waProvider.SendImage(ctx, whatsapp.SendImageInput{
+			_, err = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
 				SessionName: msg.InstanceName,
 				ChatID:      groupID,
 				Caption:     processedText,
@@ -276,12 +325,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				Mimetype:    imageMimetype,
 			})
 		} else {
-			_, err = s.waProvider.SendText(ctx, whatsapp.SendTextInput{
+			_, err = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
 				SessionName: msg.InstanceName,
 				ChatID:      groupID,
 				Text:        processedText,
 			})
 		}
+		sendCancel()
 
 		if err != nil {
 			s.logDispatch(ctx, automation, groupID, links[0], "failed", err.Error())
@@ -448,7 +498,7 @@ func (s *monitoringService) logDispatch(ctx context.Context, automation *models.
 	}
 
 	automationType := "monitoring"
-	log := &models.DispatchLog{
+	dispatchLog := &models.DispatchLog{
 		UserID:         automation.UserID,
 		AutomationID:   &automation.ID,
 		AutomationName: &automation.Name,
@@ -460,11 +510,15 @@ func (s *monitoringService) logDispatch(ctx context.Context, automation *models.
 	}
 
 	if errorMsg != "" {
-		log.Error = &errorMsg
+		dispatchLog.Error = &errorMsg
 	}
 
+	// Use dedicated timeout to avoid inheriting caller's potentially-exhausted deadline
+	logCtx, logCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer logCancel()
+
 	// W34: Capture dispatch log creation errors with Sentry tags
-	if _, err := s.dispatchLogRepo.Create(ctx, log); err != nil {
+	if _, err := s.dispatchLogRepo.Create(logCtx, dispatchLog); err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to create dispatch log", err, map[string]string{
 			"module":       "monitoring",
 			"operation":    "dispatch_log_create",

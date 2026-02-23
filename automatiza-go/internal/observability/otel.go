@@ -16,7 +16,16 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
+)
+
+// Test seams for error injection in exporters and resource creation.
+var (
+	mergeResources      = resource.Merge
+	newTraceExporter    = otlptracehttp.New
+	newMetricExporter   = otlpmetrichttp.New
+	newLogExporter      = otlploghttp.New
+	startRuntimeMetrics = runtime.Start
 )
 
 // OTelConfig holds configuration for OpenTelemetry initialization.
@@ -37,13 +46,13 @@ func InitOTel(ctx context.Context, cfg OTelConfig) (shutdown func(context.Contex
 	}
 
 	// Build resource with service metadata
-	res, err := resource.Merge(
+	res, err := mergeResources(
 		resource.Default(),
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceName(cfg.ServiceName),
 			semconv.ServiceVersion(cfg.ServiceVersion),
-			semconv.DeploymentEnvironment(cfg.Environment),
+			semconv.DeploymentEnvironmentName(cfg.Environment),
 		),
 	)
 	if err != nil {
@@ -57,7 +66,7 @@ func InitOTel(ctx context.Context, cfg OTelConfig) (shutdown func(context.Contex
 	))
 
 	// --- Trace Provider ---
-	traceExporter, err := otlptracehttp.New(ctx,
+	traceExporter, err := newTraceExporter(ctx,
 		otlptracehttp.WithEndpoint(cfg.OTLPEndpoint),
 		otlptracehttp.WithInsecure(),
 	)
@@ -72,7 +81,7 @@ func InitOTel(ctx context.Context, cfg OTelConfig) (shutdown func(context.Contex
 	otel.SetTracerProvider(tp)
 
 	// --- Metric Provider ---
-	metricExporter, err := otlpmetrichttp.New(ctx,
+	metricExporter, err := newMetricExporter(ctx,
 		otlpmetrichttp.WithEndpoint(cfg.OTLPEndpoint),
 		otlpmetrichttp.WithInsecure(),
 	)
@@ -87,7 +96,7 @@ func InitOTel(ctx context.Context, cfg OTelConfig) (shutdown func(context.Contex
 	otel.SetMeterProvider(mp)
 
 	// --- Log Provider ---
-	logExporter, err := otlploghttp.New(ctx,
+	logExporter, err := newLogExporter(ctx,
 		otlploghttp.WithEndpoint(cfg.OTLPEndpoint),
 		otlploghttp.WithInsecure(),
 	)
@@ -102,7 +111,7 @@ func InitOTel(ctx context.Context, cfg OTelConfig) (shutdown func(context.Contex
 	global.SetLoggerProvider(lp)
 
 	// Runtime metrics (goroutines, heap, GC)
-	if err := runtime.Start(runtime.WithMinimumReadMemStatsInterval(15 * time.Second)); err != nil {
+	if err := startRuntimeMetrics(runtime.WithMinimumReadMemStatsInterval(15 * time.Second)); err != nil {
 		return nil, nil, fmt.Errorf("failed to start runtime metrics: %w", err)
 	}
 

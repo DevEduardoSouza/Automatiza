@@ -7,7 +7,12 @@ import * as Sentry from '@sentry/react';
  * Unauthenticated = session expired (handled by redirect)
  * NotFound = resource not found (handled by UI)
  */
-const IGNORED_CODES = new Set([Code.InvalidArgument, Code.Unauthenticated, Code.NotFound]);
+const IGNORED_CODES = new Set([
+  Code.InvalidArgument,
+  Code.Unauthenticated,
+  Code.NotFound,
+  Code.Aborted,
+]);
 
 /**
  * gRPC error codes that should be reported as WARNING level.
@@ -57,11 +62,14 @@ export const sentryInterceptor: Interceptor = (next) => async (req) => {
 
       // Warning codes: send as message with warning level
       if (WARNING_CODES.has(error.code)) {
-        Sentry.captureMessage(`ConnectRPC ${Code[error.code]}: ${req.service.typeName}/${req.method.name}`, {
-          level: 'warning',
-          tags,
-          extra: { message: error.message },
-        });
+        Sentry.captureMessage(
+          `ConnectRPC ${Code[error.code]}: ${req.service.typeName}/${req.method.name}`,
+          {
+            level: 'warning',
+            tags,
+            extra: { message: error.message },
+          }
+        );
         throw error;
       }
 

@@ -56,6 +56,12 @@ export class AutomationsPage {
   readonly prioritySelector: Locator;
   readonly filterTypeSelector: Locator;
 
+  // Preview & AI elements
+  readonly previewDialog: Locator;
+  readonly previewOfferItems: Locator;
+  readonly suggestAiButton: Locator;
+  readonly couponSelector: Locator;
+
   constructor(page: Page) {
     this.page = page;
 
@@ -128,6 +134,18 @@ export class AutomationsPage {
     this.filterTypeSelector = this.dialogContent
       .locator('button[role="combobox"]')
       .filter({ hasText: /leve|pesado|light|heavy/i });
+
+    // Preview & AI elements
+    this.previewDialog = page.locator('[role="dialog"]').filter({ hasText: /preview|ofertas/i });
+    this.previewOfferItems = this.previewDialog.locator('[data-testid="preview-offer-item"]').or(
+      this.previewDialog.locator('.offer-item')
+    );
+    this.suggestAiButton = this.dialogContent
+      .getByRole('button', { name: /sugerir.*ia|suggest.*ai|ia/i })
+      .or(this.dialogContent.locator('button').filter({ has: page.locator('svg') }).filter({ hasText: /ia|ai/i }));
+    this.couponSelector = this.dialogContent
+      .locator('button[role="combobox"]')
+      .filter({ hasText: /cupom|coupon|selecione/i });
   }
 
   /**
@@ -340,5 +358,16 @@ export class AutomationsPage {
   async automationExists(name: string): Promise<boolean> {
     const row = this.getRowByName(name);
     return row.isVisible();
+  }
+
+  /**
+   * Clicks the preview button for an automation in the table.
+   */
+  async clickPreviewButton(automationName: string): Promise<void> {
+    const row = this.getRowByName(automationName);
+    const previewBtn = row
+      .getByRole('button', { name: /visualizar|preview/i })
+      .or(row.locator('button').filter({ has: this.page.locator('svg.lucide-eye') }));
+    await previewBtn.click();
   }
 }

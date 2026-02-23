@@ -564,7 +564,6 @@ func main() {
 		// Services
 		ShopeeService:     shopeeService,
 		MLService:         mlService,
-		AIService:         aiService,
 		AutomationService: automationService,
 		MonitoringService: monitoringService,
 		JobsService:       jobsService,
@@ -779,7 +778,7 @@ func main() {
 
 	frontendURL := os.Getenv("FRONTEND_URL")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
+		frontendURL = "http://localhost:3003"
 	}
 
 	passwordSvc := profileservice.NewPasswordService(
@@ -1013,6 +1012,21 @@ func main() {
 	logger.Info("Server exited")
 }
 
+// queueEnqueuerAdapter adapts *workers.QueueClient to startup.ReconcileEnqueuer.
+type queueEnqueuerAdapter struct {
+	client *workers.QueueClient
+}
+
+func (a *queueEnqueuerAdapter) EnqueueReconcileSession(ctx context.Context, sessionName string) error {
+	_, err := a.client.EnqueueReconcileSession(ctx, sessionName)
+	return err
+}
+
+func (a *queueEnqueuerAdapter) EnqueueReconcileChat(ctx context.Context, sessionName, chatID string) error {
+	_, err := a.client.EnqueueReconcileChat(ctx, sessionName, chatID)
+	return err
+}
+
 func runWorker(
 	cfg *config.Config,
 	redisAddr string,
@@ -1134,7 +1148,7 @@ func runWorker(
 			instanceRepo,
 			checkpointRepoAdapter,
 			wahaAdapter,
-			queueClient,
+			&queueEnqueuerAdapter{client: queueClient},
 			reconcileSvc,
 			config.NewModuleLogger(logger, "backfill"),
 			startup.DefaultBackfillConfig(),
@@ -1283,5 +1297,7 @@ func isStdioSyncErr(err error) bool {
 		return false
 	}
 	msg := err.Error()
-	return strings.Contains(msg, "/dev/stdout") || strings.Contains(msg, "/dev/stderr")
+	return strings.Contains(msg, "/dev/stdout") ||
+		strings.Contains(msg, "/dev/stderr") ||
+		strings.Contains(msg, "invalid argument")
 }

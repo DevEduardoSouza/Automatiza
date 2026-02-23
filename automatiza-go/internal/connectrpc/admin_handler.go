@@ -22,6 +22,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/getsentry/sentry-go"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -1635,6 +1636,7 @@ func (h *AdminHandler) CreateUser(
 
 	// Create profile
 	profile := &models.Profile{
+		ID:           uuid.New().String(),
 		Email:        email,
 		Plan:         plan,
 		PasswordHash: &hashedStr,
@@ -2026,9 +2028,8 @@ func (h *AdminHandler) GetUserInvestigation(
 			SendGroups: a.SendGroups,
 			Categories: a.Categories,
 		}
-		if a.Mode != nil {
-			protoAuto.Mode = a.Mode
-		}
+		adminMode := modelTypeToAdminMode(a.GetType())
+		protoAuto.Mode = &adminMode
 		if a.IntervalMinutes != nil {
 			protoAuto.IntervalMinutes = int32Ptr(int32(*a.IntervalMinutes))
 		}
@@ -2043,6 +2044,9 @@ func (h *AdminHandler) GetUserInvestigation(
 		}
 		if a.NextRunAt != nil {
 			protoAuto.NextRunAt = a.NextRunAt
+		}
+		if a.DelaySeconds != nil {
+			protoAuto.DelaySeconds = int32Ptr(int32(*a.DelaySeconds))
 		}
 		protoAuto.CreatedAt = stringPtrProto(a.CreatedAt)
 		protoAutomations[i] = protoAuto
@@ -2343,6 +2347,14 @@ func (h *AdminHandler) AdminBlockUser(
 // int32Ptr returns a pointer to an int32
 func int32Ptr(i int32) *int32 {
 	return &i
+}
+
+// modelTypeToAdminMode converts DB type ("monitoring"/"search"/"list") to frontend mode ("monitor"/"search"/"list").
+func modelTypeToAdminMode(dbType string) string {
+	if dbType == models.AutomationTypeMonitoring {
+		return "monitor"
+	}
+	return dbType
 }
 
 // ============================================================

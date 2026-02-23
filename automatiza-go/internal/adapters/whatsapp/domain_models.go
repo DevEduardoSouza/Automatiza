@@ -580,6 +580,8 @@ func (g *Group) ToGroupInfo() GroupInfo {
 		Restrict:     false, // Not tracked in Group
 		Size:         g.ParticipantsCount,
 		Participants: participants,
+		IsAdmin:      g.IsAdmin,
+		IsSuperAdmin: g.IsSuperAdmin,
 	}
 }
 

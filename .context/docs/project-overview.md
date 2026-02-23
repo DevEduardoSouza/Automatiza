@@ -179,4 +179,4 @@ novo-projeto/
    make status
    ```
 
-The frontend will be available at `http://localhost:5173` and the backend API at `http://localhost:3000`.
+The frontend will be available at `http://localhost:3003` and the backend API at `http://localhost:3000`.

@@ -48,19 +48,6 @@ interface ObservabilityData {
     workerConcurrency: number | null;
     estimatedMinutes: number | null;
   };
-  loadBalancer: {
-    summary: {
-      totalServers: number;
-      totalCapacity: number;
-      totalMapped: number;
-      totalAvailable: number;
-      usagePercent: number;
-      wahaInstancesTotal: number;
-      wahaInstancesOpen: number;
-      wahaInstancesConnecting: number;
-      wahaInstancesClose: number;
-    };
-  };
   dispatchLogs: {
     windowMinutes: number;
     total: number;
@@ -120,10 +107,10 @@ export function ObservabilityCard({ data, loading, onRefresh }: ObservabilityCar
           {loading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              {t('admin.dashboard.loadBalancer.refreshing')}
+              {t('common.refreshing')}
             </>
           ) : (
-            t('admin.dashboard.loadBalancer.refresh')
+            t('common.refresh')
           )}
         </button>
       </div>
@@ -242,26 +229,6 @@ export function ObservabilityCard({ data, loading, onRefresh }: ObservabilityCar
                 <div className="text-xl font-bold mt-1">{data.totals.avgGroupsPerAutomation}</div>
                 <div className="text-xs mt-0.5" style={{ color: colors.wineTextMuted }}>
                   {t('admin.dashboard.observability.avgGroups.slots')}
-                </div>
-              </div>
-            </div>
-
-            {/* LB Mapped */}
-            <div className="grid gap-3 xs:gap-4 grid-cols-2 md:grid-cols-4">
-              <div
-                className="rounded-xl border p-3 xs:p-4"
-                style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
-              >
-                <div className="text-xs font-medium" style={{ color: colors.wineText }}>
-                  {t('admin.dashboard.observability.lbMapped.title')}
-                </div>
-                <div className="text-xl font-bold mt-1">
-                  {data.loadBalancer.summary.totalMapped}
-                </div>
-                <div className="text-xs mt-0.5" style={{ color: colors.wineTextMuted }}>
-                  {t('admin.dashboard.observability.lbMapped.capacity')}{' '}
-                  {data.loadBalancer.summary.totalCapacity} •{' '}
-                  {data.loadBalancer.summary.usagePercent}%
                 </div>
               </div>
             </div>

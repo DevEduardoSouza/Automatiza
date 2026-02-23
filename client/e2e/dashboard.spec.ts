@@ -1,214 +1,225 @@
 import { expect, test } from '@playwright/test';
+import { setupAuthMocks } from './fixtures/auth.fixture';
 import {
+  MOCK_ANNOUNCEMENT_DISABLED,
   mockDashboardEmptyState,
   mockDashboardError,
+  mockGetAnnouncement,
   setupDashboardMocks,
 } from './fixtures/dashboard.fixture';
 import { DashboardPage } from './pages/dashboard.page';
 
 test.describe('Dashboard', () => {
-  let dashboardPage: DashboardPage;
+  let dashboard: DashboardPage;
 
   test.beforeEach(async ({ page }) => {
-    dashboardPage = new DashboardPage(page);
+    dashboard = new DashboardPage(page);
   });
+
+  // ================================================================
+  // Page Load
+  // ================================================================
 
   test.describe('Page Load', () => {
-    test('should display dashboard with stats cards', async ({ page }) => {
+    test('should display title, 4 stat cards, welcome panel and chart section', async ({
+      page,
+    }) => {
+      await setupAuthMocks(page);
       await setupDashboardMocks(page);
-      await dashboardPage.goto();
-      await dashboardPage.waitForLoad();
+      await dashboard.goto();
+      await dashboard.waitForLoad();
 
-      // Verify page title is visible
-      await expect(page.locator('h1')).toBeVisible();
+      // Title
+      await expect(dashboard.pageTitle).toBeVisible();
 
-      // Verify stats cards are present
-      await expect(page.locator('[class*="card"]').first()).toBeVisible();
+      // 4 stat cards with correct values
+      await expect(dashboard.totalGroupsCard).toContainText('12');
+      await expect(dashboard.fullGroupsCard).toContainText('3');
+      await expect(dashboard.totalMembersCard).toContainText('1,250');
+      await expect(dashboard.activeLinksCard).toContainText('8');
     });
 
-    test('should display WhatsApp connection status', async ({ page }) => {
+    test('should display welcome panel with 3 steps', async ({ page }) => {
+      await setupAuthMocks(page);
       await setupDashboardMocks(page);
-      await dashboardPage.goto();
-      await dashboardPage.waitForLoad();
+      await dashboard.goto();
+      await dashboard.waitForLoad();
 
-      // Look for WhatsApp status indicator
-      const statusBadge = page
-        .locator('[class*="badge"]')
-        .filter({ hasText: /whatsapp|conectado|connected|desconectado|disconnected/i });
-
-      // Either status badge or some connection indicator should exist
-      const hasStatus = await statusBadge.isVisible().catch(() => false);
-      const hasCard = await page.locator('[class*="card"]').first().isVisible();
-
-      expect(hasStatus || hasCard).toBeTruthy();
+      await expect(dashboard.welcomePanel).toBeVisible();
+      await expect(dashboard.welcomeStep1).toBeVisible();
+      await expect(dashboard.welcomeStep2).toBeVisible();
+      await expect(dashboard.welcomeStep3).toBeVisible();
     });
 
-    test('should display chart when data is available', async ({ page }) => {
+    test('should display chart section with period selector', async ({ page }) => {
+      await setupAuthMocks(page);
       await setupDashboardMocks(page);
-      await dashboardPage.goto();
-      await dashboardPage.waitForLoad();
+      await dashboard.goto();
+      await dashboard.waitForLoad();
 
-      // Look for chart element (recharts or any chart container)
-      const chart = page.locator('.recharts-wrapper, [class*="chart"]').first();
-      const hasChart = await chart.isVisible().catch(() => false);
-
-      // Chart is optional but should be present if data exists
-      // This is implementation-dependent
-      expect(await dashboardPage.isLoaded()).toBeTruthy();
+      await expect(dashboard.periodWeekly).toBeVisible();
+      await expect(dashboard.periodMonthly).toBeVisible();
+      await expect(dashboard.periodYearly).toBeVisible();
     });
   });
+
+  // ================================================================
+  // Announcement
+  // ================================================================
+
+  test.describe('Announcement', () => {
+    test('should display announcement when enabled', async ({ page }) => {
+      await setupAuthMocks(page);
+      await setupDashboardMocks(page); // uses MOCK_ANNOUNCEMENT_ENABLED
+      await dashboard.goto();
+      await dashboard.waitForLoad();
+
+      await expect(dashboard.announcementTitle).toBeVisible();
+    });
+
+    test('should hide announcement when disabled', async ({ page }) => {
+      await setupAuthMocks(page);
+      await setupDashboardMocks(page);
+      // Override announcement to disabled
+      await mockGetAnnouncement(page, MOCK_ANNOUNCEMENT_DISABLED);
+      await dashboard.goto();
+      await dashboard.waitForLoad();
+
+      // Announcement title should not be present
+      const announcementVisible = await page
+        .locator('span')
+        .filter({ hasText: /Novidade/i })
+        .isVisible()
+        .catch(() => false);
+      expect(announcementVisible).toBeFalsy();
+    });
+  });
+
+  // ================================================================
+  // Chart
+  // ================================================================
+
+  test.describe('Chart', () => {
+    test('should change period when clicking monthly button', async ({ page }) => {
+      await setupAuthMocks(page);
+      await setupDashboardMocks(page);
+      await dashboard.goto();
+      await dashboard.waitForLoad();
+
+      await dashboard.periodMonthly.click();
+
+      // Monthly period subtitle should be visible (on xs+ screens)
+      const subtitle = page.getByText(/últimas 4 semanas/i);
+      // On smaller viewport this may be hidden, so check broadly
+      const isVisible = await subtitle.isVisible().catch(() => false);
+      // The button itself should have the active style (white text)
+      await expect(dashboard.periodMonthly).toBeVisible();
+    });
+
+    test('should display chart footer stats', async ({ page }) => {
+      await setupAuthMocks(page);
+      await setupDashboardMocks(page);
+      await dashboard.goto();
+      await dashboard.waitForLoad();
+
+      await expect(dashboard.growthRate).toBeVisible();
+      await expect(dashboard.peakMembers).toBeVisible();
+      await expect(dashboard.activeGroups).toBeVisible();
+    });
+  });
+
+  // ================================================================
+  // Empty State
+  // ================================================================
 
   test.describe('Empty State', () => {
-    test('should display empty state for new users', async ({ page }) => {
+    test('should show zero values in stat cards', async ({ page }) => {
+      await setupAuthMocks(page);
       await mockDashboardEmptyState(page);
-      await dashboardPage.goto();
-      await dashboardPage.waitForLoad();
+      await dashboard.goto();
+      await dashboard.waitForLoad();
 
-      // Page should still load
-      await expect(page.locator('h1')).toBeVisible();
-
-      // Stats should show zero or empty values
-      const cards = page.locator('[class*="card"]');
-      const cardCount = await cards.count();
-      expect(cardCount).toBeGreaterThan(0);
+      await expect(dashboard.totalGroupsCard).toContainText('0');
+      await expect(dashboard.fullGroupsCard).toContainText('0');
+      await expect(dashboard.totalMembersCard).toContainText('0');
+      await expect(dashboard.activeLinksCard).toContainText('0');
     });
 
-    test('should show WhatsApp disconnected alert when not connected', async ({ page }) => {
+    test('should show "no data" message in chart area', async ({ page }) => {
+      await setupAuthMocks(page);
       await mockDashboardEmptyState(page);
-      await dashboardPage.goto();
-      await dashboardPage.waitForLoad();
+      await dashboard.goto();
+      await dashboard.waitForLoad();
 
-      // Look for disconnected status or alert
-      const disconnectedIndicator = page
-        .locator('[class*="badge"], [role="alert"]')
-        .filter({ hasText: /desconectado|disconnected|conectar|connect/i });
-
-      const isDisconnected = await disconnectedIndicator.isVisible().catch(() => false);
-
-      // Either disconnected indicator or page is loaded
-      expect(isDisconnected || (await dashboardPage.isLoaded())).toBeTruthy();
+      await expect(dashboard.noDataMessage).toBeVisible();
     });
   });
+
+  // ================================================================
+  // Error Handling
+  // ================================================================
 
   test.describe('Error Handling', () => {
-    test('should handle API error gracefully', async ({ page }) => {
+    test('should handle API error gracefully without crashing', async ({ page }) => {
+      await setupAuthMocks(page);
       await mockDashboardError(page);
-      await dashboardPage.goto();
+      await dashboard.goto();
 
-      // Wait for some time for error to appear
-      await page.waitForTimeout(2000);
-
-      // Page should not crash
-      const hasError = await dashboardPage.hasError();
-      const isLoaded = await dashboardPage.isLoaded();
-
-      // Either error is shown or page loads (with fallback)
-      expect(hasError || isLoaded).toBeTruthy();
-    });
-
-    test('should display retry option on error', async ({ page }) => {
-      await mockDashboardError(page);
-      await dashboardPage.goto();
-      await page.waitForTimeout(2000);
-
-      // Look for retry button if error is shown
-      const retryButton = page.getByRole('button', {
-        name: /tentar.*novamente|retry|recarregar|reload/i,
-      });
-
-      const hasRetry = await retryButton.isVisible().catch(() => false);
-
-      // Retry is optional based on implementation
-      expect(typeof hasRetry).toBe('boolean');
+      // Page should not crash - title or some element should be visible
+      const isLoaded = await dashboard.isLoaded();
+      expect(isLoaded).toBeTruthy();
     });
   });
 
-  test.describe('Quick Actions', () => {
-    test('should have sync groups action available', async ({ page }) => {
-      await setupDashboardMocks(page);
-      await dashboardPage.goto();
-      await dashboardPage.waitForLoad();
-
-      // Look for sync groups button or link
-      const syncButton = page
-        .getByRole('button', {
-          name: /sincronizar|sync/i,
-        })
-        .or(page.getByRole('link', { name: /grupos|groups/i }));
-
-      const hasSyncAction = await syncButton.isVisible().catch(() => false);
-
-      // Sync action is optional but common
-      expect(typeof hasSyncAction).toBe('boolean');
-    });
-
-    test('should navigate to automations from dashboard', async ({ page }) => {
-      await setupDashboardMocks(page);
-      await dashboardPage.goto();
-      await dashboardPage.waitForLoad();
-
-      // Look for automations link or card
-      const automationsLink = page
-        .getByRole('link', {
-          name: /automacoes|automations/i,
-        })
-        .or(page.locator('a[href*="automation"]'));
-
-      if (await automationsLink.isVisible()) {
-        await automationsLink.click();
-        await page.waitForURL(/\/.*automation/i, { timeout: 5000 });
-      }
-    });
-  });
+  // ================================================================
+  // Responsive Design
+  // ================================================================
 
   test.describe('Responsive Design', () => {
-    test('should display properly on desktop', async ({ page }) => {
+    test('should render correctly on desktop viewport', async ({ page }) => {
       await page.setViewportSize({ width: 1280, height: 720 });
+      await setupAuthMocks(page);
       await setupDashboardMocks(page);
-      await dashboardPage.goto();
-      await dashboardPage.waitForLoad();
+      await dashboard.goto();
+      await dashboard.waitForLoad();
 
-      // Stats cards should be visible in grid layout
-      const cards = page.locator('[class*="card"]');
-      const cardCount = await cards.count();
-      expect(cardCount).toBeGreaterThan(0);
+      await expect(dashboard.pageTitle).toBeVisible();
+      await expect(dashboard.totalGroupsCard).toBeVisible();
     });
 
-    test('should display properly on mobile', async ({ page }) => {
+    test('should render correctly on mobile viewport', async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 667 });
+      await setupAuthMocks(page);
       await setupDashboardMocks(page);
-      await dashboardPage.goto();
-      await dashboardPage.waitForLoad();
+      await dashboard.goto();
+      await dashboard.waitForLoad();
 
-      // Page should still be visible and functional
-      await expect(page.locator('h1')).toBeVisible();
-
-      // Stats cards should stack on mobile
-      const cards = page.locator('[class*="card"]');
-      const cardCount = await cards.count();
-      expect(cardCount).toBeGreaterThan(0);
+      await expect(dashboard.pageTitle).toBeVisible();
+      await expect(dashboard.totalGroupsCard).toBeVisible();
     });
   });
 
-  test.describe('Data Validation - Migration Check', () => {
-    test('should not make Evolution API calls', async ({ page }) => {
+  // ================================================================
+  // Migration Check
+  // ================================================================
+
+  test.describe('Migration Check', () => {
+    test('should not make any Evolution API calls', async ({ page }) => {
       const evolutionCalls: string[] = [];
 
       await page.route('**/*', async (route) => {
         const url = route.request().url();
-
         if (url.includes('evolution') || url.includes(':8080')) {
           evolutionCalls.push(url);
         }
-
         await route.continue();
       });
 
+      await setupAuthMocks(page);
       await setupDashboardMocks(page);
-      await dashboardPage.goto();
-      await dashboardPage.waitForLoad();
+      await dashboard.goto();
+      await dashboard.waitForLoad();
 
-      // Verify no Evolution API calls were made
       expect(evolutionCalls).toHaveLength(0);
     });
   });

@@ -12,7 +12,6 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/reconciliation"
-	"automatiza-go/internal/workers"
 
 	"go.uber.org/zap"
 )
@@ -66,6 +65,18 @@ func (c *BackfillConfig) Validate() {
 	}
 }
 
+// ReconcileEnqueuer abstracts enqueueing reconciliation tasks.
+type ReconcileEnqueuer interface {
+	EnqueueReconcileSession(ctx context.Context, sessionName string) error
+	EnqueueReconcileChat(ctx context.Context, sessionName, chatID string) error
+}
+
+// ReconciliationRunner abstracts direct reconciliation operations.
+type ReconciliationRunner interface {
+	OnStartup(ctx context.Context) error
+	ReconcileSession(ctx context.Context, sessionName string) error
+}
+
 // BackfillService handles startup reconciliation to recover messages missed during downtime.
 // It performs a comprehensive check of all active WAHA sessions, compares checkpoints
 // with the actual last message in WAHA, and enqueues reconciliation tasks for gaps.
@@ -73,8 +84,8 @@ type BackfillService struct {
 	instanceRepo   repository.InstanceRepository
 	checkpointRepo reconciliation.CheckpointRepository
 	wahaProvider   whatsapp.WhatsAppProvider
-	queueClient    *workers.QueueClient
-	reconcileSvc   *reconciliation.Service
+	enqueuer       ReconcileEnqueuer
+	reconciler     ReconciliationRunner
 	logger         *zap.Logger
 	config         BackfillConfig
 }
@@ -106,16 +117,16 @@ type BackfillResult struct {
 //   - instanceRepo: Repository to fetch active WAHA sessions from the database
 //   - checkpointRepo: Repository to access reconciliation checkpoints
 //   - wahaProvider: WhatsApp provider adapter for checking session status and messages
-//   - queueClient: Queue client for enqueueing reconciliation tasks
-//   - reconcileSvc: Optional reconciliation service for direct reconciliation (can be nil)
+//   - enqueuer: Enqueuer for reconciliation tasks (can be nil if using RunWithReconciliationService)
+//   - reconciler: Reconciliation runner for direct reconciliation (can be nil if using RunOnStartup)
 //   - logger: Zap logger for structured logging
 //   - config: Backfill configuration
 func NewBackfillService(
 	instanceRepo repository.InstanceRepository,
 	checkpointRepo reconciliation.CheckpointRepository,
 	wahaProvider whatsapp.WhatsAppProvider,
-	queueClient *workers.QueueClient,
-	reconcileSvc *reconciliation.Service,
+	enqueuer ReconcileEnqueuer,
+	reconciler ReconciliationRunner,
 	logger *zap.Logger,
 	config BackfillConfig,
 ) *BackfillService {
@@ -125,8 +136,8 @@ func NewBackfillService(
 		instanceRepo:   instanceRepo,
 		checkpointRepo: checkpointRepo,
 		wahaProvider:   wahaProvider,
-		queueClient:    queueClient,
-		reconcileSvc:   reconcileSvc,
+		enqueuer:       enqueuer,
+		reconciler:     reconciler,
 		logger:         logger.Named("backfill"),
 		config:         config,
 	}
@@ -289,7 +300,7 @@ func (s *BackfillService) processSession(ctx context.Context, sessionName string
 
 		// No checkpoints means we have never tracked this session.
 		// Enqueue a session-level reconciliation to discover chats and create checkpoints.
-		_, err := s.queueClient.EnqueueReconcileSession(ctx, sessionName)
+		err := s.enqueuer.EnqueueReconcileSession(ctx, sessionName)
 		if err != nil {
 			return false, 0, fmt.Errorf("failed to enqueue session reconciliation: %w", err)
 		}
@@ -316,7 +327,7 @@ func (s *BackfillService) processSession(ctx context.Context, sessionName string
 			hasAnyGap = true
 
 			// Enqueue chat reconciliation
-			_, err := s.queueClient.EnqueueReconcileChat(ctx, sessionName, checkpoint.ChatID)
+			err := s.enqueuer.EnqueueReconcileChat(ctx, sessionName, checkpoint.ChatID)
 			if err != nil {
 				s.logger.Error("Failed to enqueue chat reconciliation",
 					zap.String("session", sessionName),
@@ -410,7 +421,7 @@ func (s *BackfillService) checkChatForGap(
 // This method calls reconcileSvc.OnStartup internally but adds the additional gap detection
 // logic for sessions that don't have checkpoints yet.
 func (s *BackfillService) RunWithReconciliationService(ctx context.Context) (*BackfillResult, error) {
-	if s.reconcileSvc == nil {
+	if s.reconciler == nil {
 		return nil, fmt.Errorf("reconciliation service not configured")
 	}
 
@@ -425,7 +436,7 @@ func (s *BackfillService) RunWithReconciliationService(ctx context.Context) (*Ba
 	result := &BackfillResult{}
 
 	// Step 1: Run the existing reconciliation service startup
-	if err := s.reconcileSvc.OnStartup(ctx); err != nil {
+	if err := s.reconciler.OnStartup(ctx); err != nil {
 		s.logger.Warn("Reconciliation service OnStartup encountered errors",
 			zap.Error(err))
 		result.Errors = append(result.Errors, err)
@@ -465,7 +476,7 @@ func (s *BackfillService) RunWithReconciliationService(ctx context.Context) (*Ba
 			s.logger.Info("Session has no checkpoints, triggering reconciliation",
 				zap.String("session", sessionName))
 
-			if err := s.reconcileSvc.ReconcileSession(ctx, sessionName); err != nil {
+			if err := s.reconciler.ReconcileSession(ctx, sessionName); err != nil {
 				s.logger.Error("Failed to reconcile session",
 					zap.String("session", sessionName),
 					zap.Error(err))

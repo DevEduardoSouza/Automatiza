@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
+import { setupAuthMocks } from './fixtures/auth.fixture';
 import {
-  COUPON_STATUS,
   MOCK_COUPONS,
   TEST_COUPON,
   mockCreateCouponApi,
   mockDeleteCouponApi,
-  mockToggleCouponStatusApi,
+  mockUpdateCouponApi,
   setupCouponsMocks,
   setupEmptyCouponsMocks,
 } from './fixtures/coupons.fixture';
@@ -16,6 +16,7 @@ test.describe('Coupons Management', () => {
 
   test.beforeEach(async ({ page }) => {
     couponsPage = new CouponsPage(page);
+    await setupAuthMocks(page);
   });
 
   test.describe('Page Load', () => {
@@ -24,10 +25,8 @@ test.describe('Coupons Management', () => {
       await couponsPage.goto();
       await couponsPage.waitForLoad();
 
-      // Verify page title is visible
-      await expect(page.locator('h1')).toBeVisible();
+      await expect(couponsPage.pageTitle).toBeVisible();
 
-      // Verify coupons are listed
       const couponCount = await couponsPage.getCouponCount();
       expect(couponCount).toBeGreaterThanOrEqual(0);
     });
@@ -45,11 +44,7 @@ test.describe('Coupons Management', () => {
       await couponsPage.goto();
       await couponsPage.waitForLoad();
 
-      // Look for filter buttons
-      const allFilter = page.getByRole('button', { name: /todos|all/i });
-      const hasFilters = await allFilter.isVisible().catch(() => false);
-
-      expect(typeof hasFilters).toBe('boolean');
+      await expect(couponsPage.searchInput).toBeVisible();
     });
   });
 
@@ -93,19 +88,16 @@ test.describe('Coupons Management', () => {
 
       await couponsPage.openCreateDialog();
 
-      // Fill form
       await couponsPage.fillCouponForm({
         code: TEST_COUPON.code,
-        description: TEST_COUPON.description,
+        title: 'Cupom de teste E2E',
         discountValue: TEST_COUPON.discountValue,
         discountType: 'percentage',
       });
 
-      // Save
       await couponsPage.save();
       await page.waitForTimeout(1000);
 
-      // Should show success toast or close dialog
       const toast = page.locator('[data-sonner-toast]');
       const dialogClosed = await couponsPage.dialogContent.isHidden().catch(() => false);
 
@@ -120,13 +112,12 @@ test.describe('Coupons Management', () => {
 
       await couponsPage.openCreateDialog();
       await couponsPage.fillCouponForm({
-        code: 'PROMO10', // Existing code
+        code: 'PROMO10',
         discountValue: 10,
       });
       await couponsPage.save();
       await page.waitForTimeout(1000);
 
-      // Should show error
       const errorToast = page.locator('[data-sonner-toast]').filter({
         hasText: /existe|already.*exists|duplicado|duplicate/i,
       });
@@ -164,7 +155,6 @@ test.describe('Coupons Management', () => {
           await copyButton.click();
           await page.waitForTimeout(500);
 
-          // Should show copy success
           const toast = page.locator('[data-sonner-toast]').filter({
             hasText: /copiado|copied/i,
           });
@@ -177,11 +167,14 @@ test.describe('Coupons Management', () => {
 
     test('should toggle coupon status', async ({ page }) => {
       await setupCouponsMocks(page);
-      await mockToggleCouponStatusApi(page, 'success');
+      await mockUpdateCouponApi(page, 'success');
       await couponsPage.goto();
       await couponsPage.waitForLoad();
 
-      const activeCoupon = MOCK_COUPONS.find((c) => c.status === COUPON_STATUS.ACTIVE);
+      // Find first active coupon (isActive=true and not expired)
+      const activeCoupon = MOCK_COUPONS.find(
+        (c) => c.isActive && new Date(c.expiresAt) > new Date()
+      );
       if (activeCoupon) {
         await couponsPage.toggleCouponStatus(activeCoupon.code);
         await page.waitForTimeout(500);
@@ -217,10 +210,8 @@ test.describe('Coupons Management', () => {
       const firstCoupon = MOCK_COUPONS[0];
       await couponsPage.editCoupon(firstCoupon.code);
 
-      // Dialog should be open with pre-filled data
       await expect(couponsPage.dialogContent).toBeVisible();
 
-      // Code input should have value
       const codeValue = await couponsPage.codeInput.inputValue();
       expect(codeValue.length).toBeGreaterThan(0);
     });
@@ -306,10 +297,10 @@ test.describe('Coupons Management', () => {
       await couponsPage.goto();
       await couponsPage.waitForLoad();
 
-      const activeCoupon = MOCK_COUPONS.find((c) => c.status === COUPON_STATUS.ACTIVE);
-      if (activeCoupon) {
-        const status = await couponsPage.getCouponStatus(activeCoupon.code);
-        expect(status?.toLowerCase()).toMatch(/ativo|active/i);
+      // PROMO10 is active and not expired
+      const status = await couponsPage.getCouponStatus('PROMO10');
+      if (status) {
+        expect(status.toLowerCase()).toMatch(/ativo|active/i);
       }
     });
 
@@ -318,10 +309,10 @@ test.describe('Coupons Management', () => {
       await couponsPage.goto();
       await couponsPage.waitForLoad();
 
-      const expiredCoupon = MOCK_COUPONS.find((c) => c.status === COUPON_STATUS.EXPIRED);
-      if (expiredCoupon) {
-        const status = await couponsPage.getCouponStatus(expiredCoupon.code);
-        expect(status?.toLowerCase()).toMatch(/expirado|expired/i);
+      // OFERTAEXP is active but expired
+      const status = await couponsPage.getCouponStatus('OFERTAEXP');
+      if (status) {
+        expect(status.toLowerCase()).toMatch(/expirado|expired/i);
       }
     });
   });

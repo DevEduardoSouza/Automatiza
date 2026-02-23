@@ -1,17 +1,16 @@
 package handlers
 
 import (
+	"context"
 	"net/url"
 
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
-	"automatiza-go/internal/lib/backpressure"
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/metrics"
 	"automatiza-go/internal/middleware"
 	"automatiza-go/internal/repository"
-	"automatiza-go/internal/services/ai"
 	"automatiza-go/internal/services/automation"
 	"automatiza-go/internal/services/coupons"
 	"automatiza-go/internal/services/jobs"
@@ -30,6 +29,13 @@ import (
 
 // Note: config import is kept because Dependencies.Config uses it
 
+// BackpressureChecker checks whether the user is allowed to enqueue more messages
+// and records successful enqueues. Satisfied by *backpressure.ProducerBackpressure.
+type BackpressureChecker interface {
+	CanEnqueue(ctx context.Context, userID string) (bool, string, error)
+	RecordEnqueue(ctx context.Context, userID string) error
+}
+
 // Dependencies holds all handler dependencies
 type Dependencies struct {
 	Config           *config.Config
@@ -37,7 +43,7 @@ type Dependencies struct {
 	Logger           *zap.Logger
 	QueueClient      *workers.QueueClient
 	URLSafetyService *urlsafety.Service
-	Backpressure     *backpressure.ProducerBackpressure
+	Backpressure     BackpressureChecker
 
 	// SSE Hub for real-time notifications
 	SSEHub *SSEHub
@@ -48,7 +54,6 @@ type Dependencies struct {
 	// Services
 	ShopeeService     shopee.Service
 	MLService         mercadolivre.Service
-	AIService         ai.Service
 	AutomationService automation.Service
 	MonitoringService monitoring.Service
 	JobsService       jobs.Service
@@ -181,34 +186,6 @@ func SetupRoutes(r *gin.Engine, deps *Dependencies) {
 		ml.POST("/create-link", mlHandler.CreateLink)
 		ml.POST("/preview", mlHandler.Preview)
 		ml.POST("/connect", mlHandler.Connect)
-	}
-
-	// AI routes
-	ai := api.Group("/ai")
-	ai.Use(authMW)
-	{
-		aiHandler := NewAIHandler(deps)
-		ai.POST("/analyze-engagement", aiHandler.AnalyzeEngagement)
-		ai.POST("/analyze-trends", aiHandler.AnalyzeTrends)
-		ai.POST("/enhance-message", aiHandler.EnhanceMessage)
-		ai.POST("/suggest-offer-text", aiHandler.SuggestOfferText)
-	}
-
-	// Images routes
-	images := api.Group("/images")
-	images.Use(authMW)
-	{
-		imagesHandler := NewImagesHandler(deps)
-		images.POST("/generate-offer", imagesHandler.GenerateOffer)
-		images.POST("/generate-offer-post", imagesHandler.GenerateOfferPost)
-	}
-
-	// Campaigns routes
-	campaigns := api.Group("/campaigns")
-	campaigns.Use(authMW)
-	{
-		campaignsHandler := NewCampaignsHandler(deps)
-		campaigns.POST("/", campaignsHandler.Create)
 	}
 
 	// Jobs routes

@@ -23,43 +23,6 @@ export interface WebhookLog {
   processed_at: string;
 }
 
-export interface LoadBalancerServer {
-  serverId: number;
-  serverName: string;
-  url: string;
-  currentUsers: number;
-  maxUsers: number;
-  availableSlots: number;
-  usagePercent: number;
-  status: string;
-  wahaInstancesTotal?: number;
-  wahaInstancesOpen?: number;
-  wahaInstancesConnecting?: number;
-  wahaInstancesClose?: number;
-}
-
-export interface LoadBalancerSummary {
-  totalServers: number;
-  totalCapacity: number;
-  totalUsed: number;
-  totalAvailable: number;
-  usagePercent: number;
-  wahaInstancesTotal?: number;
-  wahaInstancesOpen?: number;
-  wahaInstancesConnecting?: number;
-  wahaInstancesClose?: number;
-}
-
-export interface LoadBalancerStats {
-  servers: LoadBalancerServer[];
-  summary: LoadBalancerSummary;
-}
-
-export type LoadBalancerStatsResponse = {
-  success: boolean;
-  data?: LoadBalancerStats;
-};
-
 export interface ObservabilityData {
   generatedAt: string;
   queue: {
@@ -70,19 +33,6 @@ export interface ObservabilityData {
     limitPerMinute: number | null;
     workerConcurrency: number | null;
     estimatedMinutes: number | null;
-  };
-  loadBalancer: {
-    summary: {
-      totalServers: number;
-      totalCapacity: number;
-      totalMapped: number;
-      totalAvailable: number;
-      usagePercent: number;
-      wahaInstancesTotal: number;
-      wahaInstancesOpen: number;
-      wahaInstancesConnecting: number;
-      wahaInstancesClose: number;
-    };
   };
   dispatchLogs: {
     windowMinutes: number;
@@ -163,17 +113,12 @@ export interface ShopeeAuditSectionProps {
 export interface UseDashboardTabReturn {
   stats: DashboardStats;
   webhookLogs: WebhookLog[];
-  lbStats: LoadBalancerStats | null;
-  lbLoading: boolean;
   obs: ObservabilityData | null;
   obsLoading: boolean;
   audit: ShopeeAuditData | null;
   auditLoading: boolean;
   auditDays: number;
   setAuditDays: (days: number) => void;
-  ensureWebhookLoading: boolean;
-  fetchLoadBalancerStats: () => Promise<void>;
-  forceWebhooksServer2: () => Promise<void>;
   fetchObservability: () => Promise<void>;
   fetchShopeeAffiliateAudit: (days?: number) => Promise<void>;
   handleSimulateWebhook: (email: string, event: string, product: string) => Promise<void>;

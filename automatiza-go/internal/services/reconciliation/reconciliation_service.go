@@ -612,7 +612,14 @@ func (s *Service) checkAndReconcile(ctx context.Context) {
 		if s.config.HealthCheckEnabled {
 			healthy, err := s.checkAndRestartSession(ctx, sessionName)
 			if err != nil {
-				observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to check/restart session during reconciliation watchdog", err, map[string]string{
+				// Circuit breaker open: just log debug and skip — no Sentry event
+				var providerErr *whatsapp.ProviderError
+				if errors.As(err, &providerErr) && providerErr.Code == whatsapp.ErrCodeCircuitBreakerOpen {
+					s.logger.Debug("Skipping session check — circuit breaker open",
+						zap.String("session", sessionName))
+					continue
+				}
+				observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to check/restart session during reconciliation watchdog", err, map[string]string{
 					"module":  "reconciliation",
 					"session": sessionName,
 				})
@@ -637,10 +644,35 @@ func (s *Service) checkAndRestartSession(ctx context.Context, sessionName string
 	// Check session status via WAHA
 	status, err := s.provider.GetSessionStatus(ctx, sessionName)
 	if err != nil {
+		var providerErr *whatsapp.ProviderError
+		if errors.As(err, &providerErr) {
+			switch providerErr.Code {
+			case whatsapp.ErrCodeSessionNotFound:
+				// Session doesn't exist in WAHA — remove from watchdog tracking
+				s.logger.Info("Session no longer exists in WAHA, removing from watchdog",
+					zap.String("session", sessionName))
+				s.lastEventMu.Lock()
+				delete(s.lastEventTime, sessionName)
+				s.lastEventMu.Unlock()
+				s.resetRestartAttempts(sessionName)
+				return false, nil
+			case whatsapp.ErrCodeCircuitBreakerOpen:
+				// Circuit breaker open — can't check status, don't attempt restart
+				return false, err
+			}
+		}
+
 		s.logger.Warn("Failed to get session status",
 			zap.String("session", sessionName),
 			zap.Error(err))
 		// Can't determine health, assume unhealthy and try restart
+		return s.tryRestartSession(ctx, sessionName)
+	}
+
+	// Nil check: GetSessionStatus may return (nil, nil) for unexpected responses
+	if status == nil {
+		s.logger.Warn("GetSessionStatus returned nil for session",
+			zap.String("session", sessionName))
 		return s.tryRestartSession(ctx, sessionName)
 	}
 
@@ -736,6 +768,11 @@ func (s *Service) tryRestartSession(ctx context.Context, sessionName string) (bo
 			zap.String("session", sessionName),
 			zap.Error(err))
 		return false, err
+	}
+	if status == nil {
+		s.logger.Warn("Session status nil after restart",
+			zap.String("session", sessionName))
+		return false, nil
 	}
 
 	if status.Status == whatsapp.SessionStatusConnected {

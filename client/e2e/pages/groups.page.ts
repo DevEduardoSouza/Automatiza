@@ -502,4 +502,229 @@ export class GroupsPage {
       await selectAll.check();
     }
   }
+
+  // ============================================================
+  // Members Dialog Helpers
+  // ============================================================
+
+  /**
+   * Gets the members dialog container.
+   */
+  get membersDialog(): Locator {
+    return this.page.locator('[role="dialog"]').filter({
+      hasText: /membros|members|participantes|participants/i,
+    });
+  }
+
+  /**
+   * Gets the participant rows inside the members dialog.
+   */
+  get memberRows(): Locator {
+    return this.membersDialog.locator('.space-y-1 > div');
+  }
+
+  /**
+   * Gets the add member phone input inside the members dialog.
+   */
+  get addMemberInput(): Locator {
+    return this.membersDialog.locator('input').first();
+  }
+
+  /**
+   * Gets the add member button (UserPlus icon button).
+   */
+  get addMemberButton(): Locator {
+    return this.membersDialog
+      .locator('button')
+      .filter({ has: this.page.locator('svg.lucide-user-plus') });
+  }
+
+  /**
+   * Gets the leave group button inside the members dialog.
+   */
+  get leaveGroupButton(): Locator {
+    return this.membersDialog.locator('button').filter({ hasText: /sair do grupo|leave group/i });
+  }
+
+  /**
+   * Gets the member search input inside the members dialog.
+   */
+  get memberSearchInput(): Locator {
+    return this.membersDialog.locator('input').nth(1);
+  }
+
+  /**
+   * Gets the promote button (ChevronUp) for a participant row.
+   */
+  getPromoteButton(row: Locator): Locator {
+    return row.locator('button').filter({ has: this.page.locator('svg.lucide-chevron-up') });
+  }
+
+  /**
+   * Gets the demote button (ChevronDown) for a participant row.
+   */
+  getDemoteButton(row: Locator): Locator {
+    return row.locator('button').filter({ has: this.page.locator('svg.lucide-chevron-down') });
+  }
+
+  /**
+   * Gets the remove button (Trash2) for a participant row.
+   */
+  getRemoveButton(row: Locator): Locator {
+    return row.locator('button').filter({ has: this.page.locator('svg.lucide-trash-2') });
+  }
+
+  /**
+   * Opens the members dialog for a given group by clicking "Membros" in the table row.
+   */
+  async openMembersForGroup(groupName: string): Promise<void> {
+    const row = this.getGroupByName(groupName);
+    const membersBtn = row.getByRole('button', {
+      name: /membros|members|gerenciar/i,
+    });
+    await membersBtn.click();
+    await this.membersDialog.waitFor({ state: 'visible' });
+  }
+
+  // ============================================================
+  // Connection Status Helpers
+  // ============================================================
+
+  /**
+   * Gets the reconnect button inside the disconnected alert.
+   */
+  get reconnectButton(): Locator {
+    return this.page.getByRole('button', {
+      name: /reconectar|reconnect/i,
+    });
+  }
+
+  /**
+   * Gets the QR code dialog.
+   */
+  get qrCodeDialog(): Locator {
+    return this.page.locator('[role="dialog"]').filter({
+      hasText: /reconectar|reconnect|qr.*code/i,
+    });
+  }
+
+  /**
+   * Gets the connection status badge/alert.
+   */
+  get connectionStatusBadge(): Locator {
+    return this.page.locator('[role="alert"]').first();
+  }
+
+  /**
+   * Gets the connected status indicator.
+   */
+  get connectedAlert(): Locator {
+    return this.page.locator('[role="alert"]').filter({
+      has: this.page.locator('svg.lucide-wifi'),
+    });
+  }
+
+  /**
+   * Gets the disconnected status indicator.
+   */
+  get disconnectedAlert(): Locator {
+    return this.page.locator('[role="alert"]').filter({
+      has: this.page.locator('svg.lucide-wifi-off'),
+    });
+  }
+
+  // ============================================================
+  // Bulk Actions Helpers
+  // ============================================================
+
+  /**
+   * Gets the close groups button in bulk actions.
+   */
+  get closeGroupsButton(): Locator {
+    return this.page.getByRole('button', {
+      name: /fechar.*grupo|close.*group/i,
+    });
+  }
+
+  /**
+   * Gets the open groups button in bulk actions.
+   */
+  get openGroupsButton(): Locator {
+    return this.page.getByRole('button', {
+      name: /abrir.*grupo|open.*group/i,
+    });
+  }
+
+  /**
+   * Gets the change name button in bulk actions.
+   */
+  get changeNameButton(): Locator {
+    return this.page.getByRole('button', {
+      name: /alterar nome|nome|change name|rename/i,
+    });
+  }
+
+  /**
+   * Gets the change photo button in bulk actions.
+   */
+  get changePhotoButton(): Locator {
+    return this.page.getByRole('button', {
+      name: /alterar foto|foto|change photo|photo/i,
+    });
+  }
+
+  /**
+   * Gets the change description button in bulk actions.
+   */
+  get changeDescriptionButton(): Locator {
+    return this.page.getByRole('button', {
+      name: /alterar descri|descri|change desc/i,
+    });
+  }
+
+  /**
+   * Gets the group name input inside the rename dialog.
+   */
+  get renameInput(): Locator {
+    return this.dialog.locator('#groupName');
+  }
+
+  /**
+   * Gets the auto-number switch inside the rename dialog.
+   */
+  get autoNumberSwitch(): Locator {
+    return this.dialog.locator('#auto-number');
+  }
+
+  /**
+   * Gets the description textarea inside the description dialog.
+   */
+  get descriptionTextarea(): Locator {
+    return this.dialog.locator('#description');
+  }
+
+  /**
+   * Gets the confirmation dialog.
+   */
+  get confirmDialog(): Locator {
+    return this.page.locator('[role="alertdialog"]');
+  }
+
+  /**
+   * Gets the confirm button inside the confirmation dialog.
+   */
+  get confirmButton(): Locator {
+    return this.confirmDialog.getByRole('button', {
+      name: /confirmar|confirm|continuar|continue/i,
+    });
+  }
+
+  /**
+   * Gets the cancel button inside the confirmation dialog.
+   */
+  get cancelButton(): Locator {
+    return this.confirmDialog.getByRole('button', {
+      name: /cancelar|cancel/i,
+    });
+  }
 }

@@ -4388,6 +4388,7 @@ type AdminUserAutomation struct {
 	LastRunAt       *string                `protobuf:"bytes,11,opt,name=last_run_at,json=lastRunAt,proto3,oneof" json:"last_run_at,omitempty"`
 	NextRunAt       *string                `protobuf:"bytes,12,opt,name=next_run_at,json=nextRunAt,proto3,oneof" json:"next_run_at,omitempty"`
 	CreatedAt       *string                `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3,oneof" json:"created_at,omitempty"`
+	DelaySeconds    *int32                 `protobuf:"varint,14,opt,name=delay_seconds,json=delaySeconds,proto3,oneof" json:"delay_seconds,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -4511,6 +4512,13 @@ func (x *AdminUserAutomation) GetCreatedAt() string {
 		return *x.CreatedAt
 	}
 	return ""
+}
+
+func (x *AdminUserAutomation) GetDelaySeconds() int32 {
+	if x != nil && x.DelaySeconds != nil {
+		return *x.DelaySeconds
+	}
+	return 0
 }
 
 type GetUserInvestigationRequest struct {
@@ -6718,7 +6726,7 @@ const file_admin_v1_admin_proto_rawDesc = "" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\"\n" +
 	"\n" +
 	"updated_at\x18\x03 \x01(\tH\x00R\tupdatedAt\x88\x01\x01B\r\n" +
-	"\v_updated_at\"\x8e\x04\n" +
+	"\v_updated_at\"\xca\x04\n" +
 	"\x13AdminUserAutomation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -6738,14 +6746,16 @@ const file_admin_v1_admin_proto_rawDesc = "" +
 	"\vlast_run_at\x18\v \x01(\tH\x04R\tlastRunAt\x88\x01\x01\x12#\n" +
 	"\vnext_run_at\x18\f \x01(\tH\x05R\tnextRunAt\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"created_at\x18\r \x01(\tH\x06R\tcreatedAt\x88\x01\x01B\a\n" +
+	"created_at\x18\r \x01(\tH\x06R\tcreatedAt\x88\x01\x01\x12(\n" +
+	"\rdelay_seconds\x18\x0e \x01(\x05H\aR\fdelaySeconds\x88\x01\x01B\a\n" +
 	"\x05_modeB\x13\n" +
 	"\x11_interval_minutesB\r\n" +
 	"\v_start_timeB\v\n" +
 	"\t_end_timeB\x0e\n" +
 	"\f_last_run_atB\x0e\n" +
 	"\f_next_run_atB\r\n" +
-	"\v_created_at\"6\n" +
+	"\v_created_atB\x10\n" +
+	"\x0e_delay_seconds\"6\n" +
 	"\x1bGetUserInvestigationRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\"\xe4\x02\n" +
 	"\x1cGetUserInvestigationResponse\x12\"\n" +

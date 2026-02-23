@@ -52,7 +52,7 @@ services:
       - DB_MAX_CONNS=25
 
       # CORS & URLs
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:5173}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3003}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
       - BACKEND_PUBLIC_URL=${BACKEND_PUBLIC_URL:-http://localhost:3000}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
@@ -207,7 +207,11 @@ services:
       - WHATSAPP_RESTART_ALL_SESSIONS=true
 
       # Webhooks
-      - WHATSAPP_HOOK_URL=${BACKEND_PUBLIC_URL:-http://host.docker.internal:3000}/api/v1/webhooks/waha
+      # NOTE: Do NOT use BACKEND_PUBLIC_URL here — it resolves to localhost which
+      # loops back to the WAHA container itself. For local dev the Go backend runs
+      # on the host, so we must use host.docker.internal. For production (both in
+      # Docker), override WAHA_HOOK_BASE_URL to http://server:3000.
+      - WHATSAPP_HOOK_URL=${WAHA_HOOK_BASE_URL:-http://host.docker.internal:3000}/api/v1/webhooks/waha
       - WHATSAPP_HOOK_EVENTS=message,message.ack,session.status,group.join,group.leave
       - WHATSAPP_HOOK_HMAC_KEY=${WEBHOOK_SECRET}
 

@@ -1,6 +1,6 @@
 import { AccountSuspendedBanner } from '@/components/billing';
 import { ErrorFallback } from '@/components/error-boundary';
-import { AppSidebar } from '@/components/layout';
+import { AppSidebar, MobileHeader } from '@/components/layout';
 import { AdminRoute, ProtectedRoute } from '@/components/routing';
 import { PageLoader } from '@/components/ui/page-loader';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -92,8 +92,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => (
     <div className="flex min-h-screen w-full">
       <AppSidebar />
       <main className="flex-1 flex flex-col">
+        <MobileHeader />
         <AccountSuspendedBanner />
-        <div className="flex-1 p-4 md:p-8 lg:p-10 xl:p-12">{children}</div>
+        <div className="flex-1 p-4 nav:p-8 lg:p-10 xl:p-12">{children}</div>
       </main>
     </div>
   </SidebarProvider>

@@ -94,6 +94,10 @@ type SSEHub struct {
 
 	// done channel for graceful shutdown
 	done chan struct{}
+
+	// heartbeatInterval controls how often heartbeat events are sent.
+	// Defaults to 30s when zero.
+	heartbeatInterval time.Duration
 }
 
 // NewSSEHub creates a new SSE hub for managing client connections.
@@ -116,7 +120,11 @@ func NewSSEHub(logger *zap.Logger) *SSEHub {
 // run is the main loop that handles client registration and event broadcasting.
 func (h *SSEHub) run() {
 	// Heartbeat ticker to keep connections alive
-	heartbeatTicker := time.NewTicker(30 * time.Second)
+	interval := h.heartbeatInterval
+	if interval == 0 {
+		interval = 30 * time.Second
+	}
+	heartbeatTicker := time.NewTicker(interval)
 	defer heartbeatTicker.Stop()
 
 	for {

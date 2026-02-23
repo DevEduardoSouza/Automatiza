@@ -45,6 +45,13 @@ func (r *dispatchLogRepository) Create(ctx context.Context, log *models.Dispatch
 	).Scan(&id, &createdAt)
 
 	if err != nil {
+		// FK violation (automation deleted between check and insert) — non-critical
+		if strings.Contains(err.Error(), "violates foreign key constraint") {
+			r.logger.Warn("dispatch_log FK violation — automation likely deleted",
+				zap.String("userID", log.UserID),
+				zap.Error(err))
+			return nil, nil
+		}
 		r.logger.Error("Failed to create dispatch log",
 			zap.String("userID", log.UserID),
 			zap.Error(err))
@@ -89,7 +96,7 @@ func (r *dispatchLogRepository) GetRecentByCanonicalKey(ctx context.Context, use
 		FROM dispatch_logs
 		WHERE user_id = $1 AND group_id = $2 AND canonical_key = $3
 		  AND status IN ('sent', 'queued', 'pending')
-		  AND created_at > NOW() - ($4::text || ' hours')::INTERVAL
+		  AND created_at > NOW() - make_interval(hours => $4)
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
@@ -200,7 +207,7 @@ func (r *dispatchLogRepository) CheckDedup(ctx context.Context, userID, groupID,
 			SELECT 1 FROM dispatch_logs
 			WHERE user_id = $1 AND group_id = $2 AND canonical_key = $3
 			  AND status IN ('sent', 'queued', 'pending')
-			  AND created_at > NOW() - ($4::text || ' hours')::INTERVAL
+			  AND created_at > NOW() - make_interval(hours => $4)
 		)
 	`
 
@@ -380,7 +387,7 @@ func (r *dispatchLogRepository) ExistsByCanonicalKey(ctx context.Context, userID
 		SELECT EXISTS (
 			SELECT 1 FROM dispatch_logs
 			WHERE user_id = $1 AND group_id = $2 AND canonical_key = $3
-			  AND created_at > NOW() - ($4::text || ' hours')::INTERVAL
+			  AND created_at > NOW() - make_interval(hours => $4)
 		)
 	`
 
@@ -419,6 +426,7 @@ func (r *dispatchLogRepository) CreateIfNotExists(ctx context.Context, log *mode
 
 	// Use a single atomic query to check and insert if not exists
 	// This prevents race conditions in concurrent reconciliation
+	// Separate parameters for INSERT and WHERE to avoid pgx type inference conflicts
 	query := `
 		INSERT INTO dispatch_logs (
 			user_id, automation_id, automation_name, store, group_id,
@@ -427,8 +435,8 @@ func (r *dispatchLogRepository) CreateIfNotExists(ctx context.Context, log *mode
 		SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 		WHERE NOT EXISTS (
 			SELECT 1 FROM dispatch_logs
-			WHERE user_id = $1 AND group_id = $5 AND canonical_key = $8
-			  AND created_at > NOW() - ($12::text || ' hours')::INTERVAL
+			WHERE user_id = $12 AND group_id = $13 AND canonical_key = $14
+			  AND created_at > NOW() - make_interval(hours => $15)
 		)
 		RETURNING id, created_at
 	`
@@ -437,10 +445,15 @@ func (r *dispatchLogRepository) CreateIfNotExists(ctx context.Context, log *mode
 	var id int
 	var createdAt time.Time
 
+	canonicalKeyStr := ""
+	if log.CanonicalKey != nil {
+		canonicalKeyStr = *log.CanonicalKey
+	}
+
 	err := r.db.QueryRow(ctx, query,
 		log.UserID, log.AutomationID, log.AutomationName, log.Store, log.GroupID,
 		log.ProductURL, log.ProductPageURL, log.CanonicalKey, log.Status, log.Type, now,
-		dedupWindowHours,
+		log.UserID, groupID, canonicalKeyStr, dedupWindowHours,
 	).Scan(&id, &createdAt)
 
 	if err != nil {

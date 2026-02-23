@@ -1,6 +1,4 @@
 import { ROUTES } from '@/constants/routes';
-import { captureHookError, setSentryUser } from '@/lib/sentry';
-import * as Sentry from '@sentry/react';
 import {
   AuthService,
   ChangePasswordRequestSchema,
@@ -19,8 +17,10 @@ import {
   VerifyMagicLinkRequestSchema,
 } from '@/gen/auth/v1/auth_pb';
 import { clearCsrfToken, getCsrfToken, setCsrfToken, transport } from '@/lib/connect-transport';
+import { captureHookError, setSentryUser } from '@/lib/sentry';
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError, createClient } from '@connectrpc/connect';
+import * as Sentry from '@sentry/react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -235,7 +235,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const restoredUser = protoToAuthUser(response.user);
           setUser(restoredUser);
           setSession(protoToSessionInfo(response.session));
-          setSentryUser({ id: restoredUser.id, email: restoredUser.email, role: restoredUser.role });
+          setSentryUser({
+            id: restoredUser.id,
+            email: restoredUser.email,
+            role: restoredUser.role,
+          });
           // Restore CSRF token from cookie if not in memory
           // This handles page reloads where the in-memory token is lost
           if (!getCsrfToken()) {
@@ -329,7 +333,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await authClient.logout(
           create(LogoutRequestSchema, {
-            logoutAllDevices,
+            logoutAllDevices: Boolean(logoutAllDevices),
           })
         );
       } catch (error) {

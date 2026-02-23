@@ -1,6 +1,15 @@
 import type { Page } from '@playwright/test';
 
 /**
+ * Dispatch text type constants for filtering.
+ */
+export const TEXT_TYPES = {
+  ACTIVE: 'active',
+  INACTIVE: 'inactive',
+  ALL: 'all',
+} as const;
+
+/**
  * Mock dispatch texts matching the proto DispatchText message format.
  */
 export const MOCK_DISPATCH_TEXTS = [
@@ -139,31 +148,45 @@ export async function mockCreateDispatchTextApi(
  */
 export async function mockUpdateDispatchTextApi(
   page: Page,
-  scenario: 'success' | 'error' = 'success'
+  scenario: 'success' | 'not_found' | 'error' = 'success'
 ): Promise<void> {
   await page.route(`**/${SERVICE_PATH}/UpdateDispatchText`, async (route) => {
-    if (scenario === 'success') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        headers: { 'grpc-status': '0' },
-        body: JSON.stringify({
-          dispatchText: {
-            ...MOCK_DISPATCH_TEXTS[0],
-            updatedAt: new Date().toISOString(),
+    switch (scenario) {
+      case 'success':
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'grpc-status': '0' },
+          body: JSON.stringify({
+            dispatchText: {
+              ...MOCK_DISPATCH_TEXTS[0],
+              updatedAt: new Date().toISOString(),
+            },
+          }),
+        });
+        break;
+      case 'not_found':
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: {
+            'grpc-status': '5', // NOT_FOUND
+            'grpc-message': 'Dispatch text not found',
           },
-        }),
-      });
-    } else {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        headers: {
-          'grpc-status': '13', // INTERNAL
-          'grpc-message': 'Failed to update dispatch text',
-        },
-        body: '',
-      });
+          body: '',
+        });
+        break;
+      case 'error':
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: {
+            'grpc-status': '13', // INTERNAL
+            'grpc-message': 'Failed to update dispatch text',
+          },
+          body: '',
+        });
+        break;
     }
   });
 }
@@ -227,4 +250,139 @@ export async function setupDispatchTextsMocks(page: Page): Promise<void> {
 export async function setupEmptyDispatchTextsMocks(page: Page): Promise<void> {
   await mockDispatchTextsListApi(page, []);
   await mockCreateDispatchTextApi(page);
+}
+
+/**
+ * Mocks the toggle dispatch text status API.
+ */
+export async function mockToggleDispatchTextStatusApi(
+  page: Page,
+  scenario: 'success' | 'error' = 'success'
+): Promise<void> {
+  await page.route(`**/${SERVICE_PATH}/UpdateDispatchText`, async (route) => {
+    if (scenario === 'success') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'grpc-status': '0' },
+        body: JSON.stringify({
+          dispatchText: {
+            ...MOCK_DISPATCH_TEXTS[0],
+            isActive: !MOCK_DISPATCH_TEXTS[0].isActive,
+            updatedAt: new Date().toISOString(),
+          },
+        }),
+      });
+    } else {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: {
+          'grpc-status': '13',
+          'grpc-message': 'Failed to toggle status',
+        },
+        body: '',
+      });
+    }
+  });
+}
+
+/**
+ * Mocks the duplicate dispatch text API.
+ */
+export async function mockDuplicateDispatchTextApi(
+  page: Page,
+  scenario: 'success' | 'error' = 'success'
+): Promise<void> {
+  await page.route(`**/${SERVICE_PATH}/CreateDispatchText`, async (route) => {
+    if (scenario === 'success') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'grpc-status': '0' },
+        body: JSON.stringify({
+          dispatchText: {
+            ...MOCK_DISPATCH_TEXTS[0],
+            id: 'duplicated-text-id',
+            name: `${MOCK_DISPATCH_TEXTS[0].name} (copia)`,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        }),
+      });
+    } else {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: {
+          'grpc-status': '13',
+          'grpc-message': 'Failed to duplicate dispatch text',
+        },
+        body: '',
+      });
+    }
+  });
+}
+
+/**
+ * Sets up mocks for filtered dispatch texts.
+ */
+export async function setupFilteredDispatchTextsMocks(
+  page: Page,
+  filter: 'active' | 'inactive' = 'active'
+): Promise<void> {
+  const filtered = MOCK_DISPATCH_TEXTS.filter((t) =>
+    filter === 'active' ? t.isActive : !t.isActive
+  );
+  await mockDispatchTextsListApi(page, filtered);
+  await mockCreateDispatchTextApi(page);
+  await mockUpdateDispatchTextApi(page);
+  await mockDeleteDispatchTextApi(page);
+}
+
+/**
+ * Helper to simulate network delay for any route.
+ */
+export async function mockWithDelay(
+  page: Page,
+  urlPattern: string,
+  delayMs: number,
+  response: { status: number; body: string; headers?: Record<string, string> }
+): Promise<void> {
+  await page.route(urlPattern, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await route.fulfill({
+      status: response.status,
+      contentType: 'application/json',
+      headers: { 'grpc-status': '0', ...response.headers },
+      body: response.body,
+    });
+  });
+}
+
+/**
+ * Mocks the list API with a network error.
+ */
+export async function mockDispatchTextsListApiNetworkError(page: Page): Promise<void> {
+  await page.route(`**/${SERVICE_PATH}/ListDispatchTexts`, async (route) => {
+    await route.abort('connectionrefused');
+  });
+}
+
+/**
+ * Mocks the list API with a slow response.
+ */
+export async function mockDispatchTextsListApiSlow(
+  page: Page,
+  delayMs = 3000
+): Promise<void> {
+  await page.route(`**/${SERVICE_PATH}/ListDispatchTexts`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'grpc-status': '0' },
+      body: JSON.stringify({ dispatchTexts: MOCK_DISPATCH_TEXTS }),
+    });
+  });
 }

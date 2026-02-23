@@ -554,6 +554,71 @@ export async function mockAffiliateCredentialsApi(page: Page): Promise<void> {
 }
 
 /**
+ * Mocks the AI suggest offer text API.
+ */
+export async function mockAiSuggestTextsApi(
+  page: Page,
+  scenario: 'success' | 'empty' | 'error' = 'success'
+): Promise<void> {
+  await page.route('**/ai_tools.v1.AiToolsService/SuggestOfferText', async (route) => {
+    switch (scenario) {
+      case 'success':
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/grpc-web+proto',
+          headers: { 'grpc-status': '0' },
+          body: Buffer.from(
+            JSON.stringify({
+              texts: [
+                'Oferta imperdível! Confira agora!',
+                'Promoção relâmpago! Corra!',
+                'Desconto exclusivo para você!',
+              ],
+            })
+          ),
+        });
+        break;
+      case 'empty':
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/grpc-web+proto',
+          headers: { 'grpc-status': '0' },
+          body: Buffer.from(JSON.stringify({ texts: [] })),
+        });
+        break;
+      case 'error':
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'AI service unavailable' }),
+        });
+        break;
+    }
+  });
+}
+
+/**
+ * Mocks the coupons list API.
+ */
+export async function mockCouponsApi(page: Page): Promise<void> {
+  await page.route('**/coupons.v1.CouponsService/ListCoupons', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/grpc-web+proto',
+      headers: { 'grpc-status': '0' },
+      body: Buffer.from(
+        JSON.stringify({
+          coupons: [
+            { id: 'c1', code: 'SAVE10', title: 'Save 10%', store: 'shopee', isActive: true },
+            { id: 'c2', code: 'OFF20', title: 'Off 20', store: 'amazon', isActive: false },
+          ],
+        })
+      ),
+    });
+  });
+}
+
+/**
  * Sets up all common mocks for automation tests.
  */
 export async function setupAutomationMocks(page: Page): Promise<void> {
@@ -571,6 +636,8 @@ export async function setupAutomationMocks(page: Page): Promise<void> {
   await mockDispatchTextsApi(page);
   await mockAffiliateCredentialsApi(page);
   await mockShopeePreviewApi(page);
+  await mockAiSuggestTextsApi(page);
+  await mockCouponsApi(page);
 }
 
 /**

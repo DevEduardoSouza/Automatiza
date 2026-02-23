@@ -30,7 +30,6 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock useGroupsConnect
 const mockSendGroupAudio = vi.fn();
 
 vi.mock('@/hooks/use-groups-connect', () => ({
@@ -39,7 +38,6 @@ vi.mock('@/hooks/use-groups-connect', () => ({
   }),
 }));
 
-// Mock useInstancesConnect
 const mockLatestInstance = {
   id: 'instance-1',
   user_id: 'user-1',
@@ -53,6 +51,12 @@ vi.mock('@/hooks/use-instances-connect', () => ({
   useInstancesConnect: () => ({
     latestInstance: mockLatestInstance,
   }),
+}));
+
+const mockCaptureHookError = vi.fn();
+
+vi.mock('@/lib/sentry', () => ({
+  captureHookError: (...args: unknown[]) => mockCaptureHookError(...args),
 }));
 
 // ============================================================
@@ -88,6 +92,23 @@ function createMockChangeEvent(file: File | null): ChangeEvent<HTMLInputElement>
   } as unknown as ChangeEvent<HTMLInputElement>;
 }
 
+function stubFileReader(base64Result: string) {
+  class MockFileReader {
+    result: string | null = null;
+    onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
+    onerror: ((e: ProgressEvent<FileReader>) => void) | null = null;
+    readAsDataURL() {
+      setTimeout(() => {
+        this.result = base64Result;
+        if (this.onload) {
+          this.onload({} as ProgressEvent<FileReader>);
+        }
+      }, 0);
+    }
+  }
+  vi.stubGlobal('FileReader', MockFileReader);
+}
+
 // ============================================================
 // Test Setup
 // ============================================================
@@ -106,6 +127,17 @@ describe('useGroupsAudio', () => {
     }),
   ];
 
+  function renderAudio(overrides: Partial<Parameters<typeof useGroupsAudio>[0]> = {}) {
+    return renderHook(() =>
+      useGroupsAudio({
+        selectedGroups: [],
+        groups: mockGroups,
+        clearSelection: mockClearSelection,
+        ...overrides,
+      })
+    );
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockSendGroupAudio.mockResolvedValue({ message_id: 'msg-1', action_id: 'action-1' });
@@ -113,6 +145,7 @@ describe('useGroupsAudio', () => {
 
   afterEach(() => {
     vi.resetAllMocks();
+    vi.unstubAllGlobals();
   });
 
   // ============================================================
@@ -121,19 +154,24 @@ describe('useGroupsAudio', () => {
 
   describe('initial state', () => {
     it('should have correct initial values', () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: [],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio();
 
       expect(result.current.audioFile).toBeNull();
       expect(result.current.audioPtt).toBe(true);
       expect(result.current.audioCaption).toBe('');
       expect(result.current.sendingAudio).toBe(false);
       expect(result.current.sendAudioDialogOpen).toBe(false);
+    });
+
+    it('should expose all required functions', () => {
+      const { result } = renderAudio();
+
+      expect(typeof result.current.setAudioPtt).toBe('function');
+      expect(typeof result.current.setAudioCaption).toBe('function');
+      expect(typeof result.current.setSendAudioDialogOpen).toBe('function');
+      expect(typeof result.current.handleAudioUpload).toBe('function');
+      expect(typeof result.current.removeAudioFile).toBe('function');
+      expect(typeof result.current.handleSendAudio).toBe('function');
     });
   });
 
@@ -143,15 +181,9 @@ describe('useGroupsAudio', () => {
 
   describe('handleAudioUpload', () => {
     it('should accept valid audio file under 4MB', () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: [],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio();
 
-      const validFile = createMockFile('audio.ogg', 'audio/ogg', 1024 * 1024); // 1MB
+      const validFile = createMockFile('audio.ogg', 'audio/ogg', 1024 * 1024);
       const event = createMockChangeEvent(validFile);
 
       act(() => {
@@ -163,15 +195,9 @@ describe('useGroupsAudio', () => {
     });
 
     it('should reject audio file larger than 4MB', () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: [],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio();
 
-      const largeFile = createMockFile('large-audio.ogg', 'audio/ogg', 5 * 1024 * 1024); // 5MB
+      const largeFile = createMockFile('large-audio.ogg', 'audio/ogg', 5 * 1024 * 1024);
       const event = createMockChangeEvent(largeFile);
 
       act(() => {
@@ -187,15 +213,9 @@ describe('useGroupsAudio', () => {
     });
 
     it('should accept audio file exactly at 4MB limit', () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: [],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio();
 
-      const exactLimitFile = createMockFile('audio.ogg', 'audio/ogg', 4 * 1024 * 1024); // Exactly 4MB
+      const exactLimitFile = createMockFile('audio.ogg', 'audio/ogg', 4 * 1024 * 1024);
       const event = createMockChangeEvent(exactLimitFile);
 
       act(() => {
@@ -205,16 +225,23 @@ describe('useGroupsAudio', () => {
       expect(result.current.audioFile).toBe(exactLimitFile);
     });
 
-    it('should handle null file in event', () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: [],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+    it('should reject file at 4MB + 1 byte', () => {
+      const { result } = renderAudio();
 
-      // First set a file
+      const overLimitFile = createMockFile('audio.ogg', 'audio/ogg', 4 * 1024 * 1024 + 1);
+      const event = createMockChangeEvent(overLimitFile);
+
+      act(() => {
+        result.current.handleAudioUpload(event);
+      });
+
+      expect(result.current.audioFile).toBeNull();
+      expect(mockToast).toHaveBeenCalled();
+    });
+
+    it('should handle null file in event (early return)', () => {
+      const { result } = renderAudio();
+
       const validFile = createMockFile('audio.ogg', 'audio/ogg', 1024);
       act(() => {
         result.current.handleAudioUpload(createMockChangeEvent(validFile));
@@ -222,14 +249,31 @@ describe('useGroupsAudio', () => {
 
       expect(result.current.audioFile).not.toBeNull();
 
-      // Now clear it by passing null
       const event = createMockChangeEvent(null);
       act(() => {
         result.current.handleAudioUpload(event);
       });
 
-      // File should remain unchanged when no new file provided
+      // File should remain unchanged when no new file provided (early return)
       expect(result.current.audioFile).toBe(validFile);
+    });
+
+    it('should clear input value when file is too large', () => {
+      const { result } = renderAudio();
+
+      const event = {
+        target: {
+          files: [createMockFile('large.ogg', 'audio/ogg', 5 * 1024 * 1024)],
+          value: 'large.ogg',
+        },
+      } as unknown as ChangeEvent<HTMLInputElement>;
+
+      act(() => {
+        result.current.handleAudioUpload(event);
+      });
+
+      // The hook sets e.target.value = '' for rejected files
+      expect((event.target as HTMLInputElement).value).toBe('');
     });
   });
 
@@ -239,15 +283,8 @@ describe('useGroupsAudio', () => {
 
   describe('removeAudioFile', () => {
     it('should remove the selected audio file', () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: [],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio();
 
-      // First add a file
       const validFile = createMockFile('audio.ogg', 'audio/ogg', 1024);
       act(() => {
         result.current.handleAudioUpload(createMockChangeEvent(validFile));
@@ -255,7 +292,18 @@ describe('useGroupsAudio', () => {
 
       expect(result.current.audioFile).not.toBeNull();
 
-      // Remove it
+      act(() => {
+        result.current.removeAudioFile();
+      });
+
+      expect(result.current.audioFile).toBeNull();
+    });
+
+    it('should handle removing when no file is set', () => {
+      const { result } = renderAudio();
+
+      expect(result.current.audioFile).toBeNull();
+
       act(() => {
         result.current.removeAudioFile();
       });
@@ -270,13 +318,7 @@ describe('useGroupsAudio', () => {
 
   describe('state setters', () => {
     it('should update audioPtt state', () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: [],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio();
 
       expect(result.current.audioPtt).toBe(true);
 
@@ -288,13 +330,7 @@ describe('useGroupsAudio', () => {
     });
 
     it('should update audioCaption state', () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: [],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio();
 
       act(() => {
         result.current.setAudioCaption('Test caption');
@@ -304,13 +340,7 @@ describe('useGroupsAudio', () => {
     });
 
     it('should update sendAudioDialogOpen state', () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: [],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio();
 
       act(() => {
         result.current.setSendAudioDialogOpen(true);
@@ -326,13 +356,7 @@ describe('useGroupsAudio', () => {
 
   describe('handleSendAudio - validation', () => {
     it('should show error when no groups selected', async () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: [],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio({ selectedGroups: [] });
 
       await act(async () => {
         await result.current.handleSendAudio();
@@ -352,13 +376,10 @@ describe('useGroupsAudio', () => {
       );
       const selectedIds = manyGroups.map((g) => g.id);
 
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: selectedIds,
-          groups: manyGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio({
+        selectedGroups: selectedIds,
+        groups: manyGroups,
+      });
 
       await act(async () => {
         await result.current.handleSendAudio();
@@ -371,14 +392,32 @@ describe('useGroupsAudio', () => {
       });
     });
 
-    it('should show error when no audio file selected', async () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: ['group-1'],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
+    it('should allow exactly 10 groups', async () => {
+      const tenGroups = Array.from({ length: 10 }, (_, i) =>
+        createMockGroup({ id: `group-${i}`, wa_group_id: `${i}@g.us` })
+      );
+      const selectedIds = tenGroups.map((g) => g.id);
+
+      const { result } = renderAudio({
+        selectedGroups: selectedIds,
+        groups: tenGroups,
+      });
+
+      // Should pass the 10-group check but fail at the "no audio" check
+      await act(async () => {
+        await result.current.handleSendAudio();
+      });
+
+      // Should NOT have the groupLimit error
+      expect(mockToast).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'pages.groups.errors.groupLimit',
         })
       );
+    });
+
+    it('should show error when no audio file selected', async () => {
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
 
       await act(async () => {
         await result.current.handleSendAudio();
@@ -392,15 +431,8 @@ describe('useGroupsAudio', () => {
     });
 
     it('should require OGG format for PTT audio', async () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: ['group-1'],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
 
-      // Set PTT to true and use non-OGG file
       const mp3File = createMockFile('audio.mp3', 'audio/mpeg', 1024);
       act(() => {
         result.current.handleAudioUpload(createMockChangeEvent(mp3File));
@@ -419,13 +451,7 @@ describe('useGroupsAudio', () => {
     });
 
     it('should allow non-OGG format when PTT is disabled', async () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: ['group-1'],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
 
       const mp3File = createMockFile('audio.mp3', 'audio/mpeg', 1024);
       act(() => {
@@ -433,34 +459,56 @@ describe('useGroupsAudio', () => {
         result.current.setAudioPtt(false);
       });
 
-      // Mock FileReader class properly
-      class MockFileReader {
-        result: string | null = null;
-        onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        onerror: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        readAsDataURL() {
-          setTimeout(() => {
-            this.result = 'data:audio/mpeg;base64,test';
-            if (this.onload) {
-              this.onload({} as ProgressEvent<FileReader>);
-            }
-          }, 0);
-        }
-      }
-      vi.stubGlobal('FileReader', MockFileReader);
+      stubFileReader('data:audio/mpeg;base64,test');
 
       await act(async () => {
         await result.current.handleSendAudio();
       });
 
-      // Should not show format error
       expect(mockToast).not.toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'pages.groups.errors.invalidPttFormat',
         })
       );
+    });
 
-      vi.unstubAllGlobals();
+    it('should show toast when instance is not connected', async () => {
+      const originalStatus = mockLatestInstance.status;
+      Object.assign(mockLatestInstance, { status: 'disconnected' });
+
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
+
+      const oggFile = createMockFile('audio.ogg', 'audio/ogg', 1024);
+      act(() => {
+        result.current.handleAudioUpload(createMockChangeEvent(oggFile));
+      });
+
+      await act(async () => {
+        await result.current.handleSendAudio();
+      });
+
+      expect(mockToast).toHaveBeenCalledWith({
+        variant: 'destructive',
+        title: 'pages.groups.errors.noInstance',
+        description: 'pages.groups.errors.connectWhatsAppFirst',
+      });
+
+      Object.assign(mockLatestInstance, { status: originalStatus });
+    });
+
+    it('should validate in order: groups, limit, audio, ptt, instance', async () => {
+      const { result } = renderAudio({ selectedGroups: [] });
+
+      await act(async () => {
+        await result.current.handleSendAudio();
+      });
+
+      // First validation: no groups
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'pages.groups.errors.noGroupSelected',
+        })
+      );
     });
   });
 
@@ -470,13 +518,7 @@ describe('useGroupsAudio', () => {
 
   describe('handleSendAudio - success', () => {
     it('should send audio successfully and show success toast', async () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: ['group-1'],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
 
       const audioFile = createMockFile('audio.ogg', 'audio/ogg', 1024);
       act(() => {
@@ -485,27 +527,12 @@ describe('useGroupsAudio', () => {
         result.current.setSendAudioDialogOpen(true);
       });
 
-      // Mock FileReader class properly
-      class MockFileReader {
-        result: string | null = null;
-        onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        onerror: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        readAsDataURL() {
-          setTimeout(() => {
-            this.result = 'data:audio/ogg;base64,test';
-            if (this.onload) {
-              this.onload({} as ProgressEvent<FileReader>);
-            }
-          }, 0);
-        }
-      }
-      vi.stubGlobal('FileReader', MockFileReader);
+      stubFileReader('data:audio/ogg;base64,test');
 
       await act(async () => {
         await result.current.handleSendAudio();
       });
 
-      // Verify the audio was sent
       await waitFor(() => {
         expect(mockSendGroupAudio).toHaveBeenCalledWith({
           instance_name: 'test-instance',
@@ -522,34 +549,49 @@ describe('useGroupsAudio', () => {
       expect(result.current.audioCaption).toBe('');
       expect(result.current.sendAudioDialogOpen).toBe(false);
       expect(mockClearSelection).toHaveBeenCalled();
+    });
 
-      vi.unstubAllGlobals();
+    it('should not send caption when it is empty or whitespace', async () => {
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
+
+      const audioFile = createMockFile('audio.ogg', 'audio/ogg', 1024);
+      act(() => {
+        result.current.handleAudioUpload(createMockChangeEvent(audioFile));
+        result.current.setAudioCaption('   ');
+      });
+
+      stubFileReader('data:audio/ogg;base64,test');
+
+      await act(async () => {
+        await result.current.handleSendAudio();
+      });
+
+      await waitFor(() => {
+        expect(mockSendGroupAudio).toHaveBeenCalledWith(
+          expect.objectContaining({
+            caption: undefined,
+          })
+        );
+      });
     });
 
     it('should handle multiple groups with rate limiting', async () => {
       vi.useFakeTimers();
 
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: ['group-1', 'group-2'],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio({ selectedGroups: ['group-1', 'group-2'] });
 
       const audioFile = createMockFile('audio.ogg', 'audio/ogg', 1024);
       act(() => {
         result.current.handleAudioUpload(createMockChangeEvent(audioFile));
       });
 
-      // Mock FileReader class properly
+      // Use immediate FileReader for fake timers
       class MockFileReader {
         result: string | null = null;
         onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
         onerror: ((e: ProgressEvent<FileReader>) => void) | null = null;
         readAsDataURL() {
           this.result = 'data:audio/ogg;base64,test';
-          // Immediately call onload for fake timers
           Promise.resolve().then(() => {
             if (this.onload) {
               this.onload({} as ProgressEvent<FileReader>);
@@ -561,7 +603,6 @@ describe('useGroupsAudio', () => {
 
       const sendPromise = result.current.handleSendAudio();
 
-      // Advance timers to handle rate limiting delays
       await act(async () => {
         await vi.advanceTimersByTimeAsync(3000);
       });
@@ -570,11 +611,30 @@ describe('useGroupsAudio', () => {
         await sendPromise;
       });
 
-      // Should have been called for both groups
       expect(mockSendGroupAudio).toHaveBeenCalledTimes(2);
 
-      vi.unstubAllGlobals();
       vi.useRealTimers();
+    });
+
+    it('should return early when selectedGroupsData is empty', async () => {
+      // selectedGroups has IDs that don't match any group in the groups array
+      const { result } = renderAudio({
+        selectedGroups: ['nonexistent-id'],
+        groups: mockGroups,
+      });
+
+      const audioFile = createMockFile('audio.ogg', 'audio/ogg', 1024);
+      act(() => {
+        result.current.handleAudioUpload(createMockChangeEvent(audioFile));
+      });
+
+      stubFileReader('data:audio/ogg;base64,test');
+
+      await act(async () => {
+        await result.current.handleSendAudio();
+      });
+
+      expect(mockSendGroupAudio).not.toHaveBeenCalled();
     });
   });
 
@@ -586,40 +646,19 @@ describe('useGroupsAudio', () => {
     it('should handle send failure and count errors', async () => {
       mockSendGroupAudio.mockRejectedValue(new Error('Network error'));
 
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: ['group-1'],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
 
       const audioFile = createMockFile('audio.ogg', 'audio/ogg', 1024);
       act(() => {
         result.current.handleAudioUpload(createMockChangeEvent(audioFile));
       });
 
-      // Mock FileReader class properly
-      class MockFileReader {
-        result: string | null = null;
-        onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        onerror: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        readAsDataURL() {
-          setTimeout(() => {
-            this.result = 'data:audio/ogg;base64,test';
-            if (this.onload) {
-              this.onload({} as ProgressEvent<FileReader>);
-            }
-          }, 0);
-        }
-      }
-      vi.stubGlobal('FileReader', MockFileReader);
+      stubFileReader('data:audio/ogg;base64,test');
 
       await act(async () => {
         await result.current.handleSendAudio();
       });
 
-      // Should show success toast with error count
       await waitFor(() => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -628,47 +667,80 @@ describe('useGroupsAudio', () => {
         );
       });
 
-      vi.unstubAllGlobals();
+      expect(mockCaptureHookError).toHaveBeenCalledWith(
+        expect.any(Error),
+        'useGroupsAudio',
+        'sendAudioToGroup'
+      );
     });
 
-    it('should handle missing instance', async () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: ['group-1'],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+    it('should always reset sendingAudio via finally block', async () => {
+      mockSendGroupAudio.mockRejectedValue(new Error('Network error'));
+
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
 
       const audioFile = createMockFile('audio.ogg', 'audio/ogg', 1024);
       act(() => {
         result.current.handleAudioUpload(createMockChangeEvent(audioFile));
       });
 
-      // Mock FileReader class properly
-      class MockFileReader {
-        result: string | null = null;
-        onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        onerror: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        readAsDataURL() {
-          setTimeout(() => {
-            this.result = 'data:audio/ogg;base64,test';
-            if (this.onload) {
-              this.onload({} as ProgressEvent<FileReader>);
-            }
-          }, 0);
-        }
-      }
-      vi.stubGlobal('FileReader', MockFileReader);
+      stubFileReader('data:audio/ogg;base64,test');
 
       await act(async () => {
         await result.current.handleSendAudio();
       });
 
-      // Verify sendingAudio returns to false after completion
       expect(result.current.sendingAudio).toBe(false);
+    });
 
-      vi.unstubAllGlobals();
+    it('should handle partial failures across groups', async () => {
+      vi.useFakeTimers();
+
+      mockSendGroupAudio
+        .mockResolvedValueOnce({ message_id: 'msg-1' })
+        .mockRejectedValueOnce(new Error('fail'));
+
+      const { result } = renderAudio({ selectedGroups: ['group-1', 'group-2'] });
+
+      const audioFile = createMockFile('audio.ogg', 'audio/ogg', 1024);
+      act(() => {
+        result.current.handleAudioUpload(createMockChangeEvent(audioFile));
+      });
+
+      class MockFileReader {
+        result: string | null = null;
+        onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
+        onerror: ((e: ProgressEvent<FileReader>) => void) | null = null;
+        readAsDataURL() {
+          this.result = 'data:audio/ogg;base64,test';
+          Promise.resolve().then(() => {
+            if (this.onload) {
+              this.onload({} as ProgressEvent<FileReader>);
+            }
+          });
+        }
+      }
+      vi.stubGlobal('FileReader', MockFileReader);
+
+      const sendPromise = result.current.handleSendAudio();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      await act(async () => {
+        await sendPromise;
+      });
+
+      // Toast shows combined success and error counts
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'pages.groups.success.audioSent',
+          description: expect.stringContaining('1'),
+        })
+      );
+
+      vi.useRealTimers();
     });
   });
 
@@ -678,13 +750,7 @@ describe('useGroupsAudio', () => {
 
   describe('PTT format validation', () => {
     it('should accept .ogg extension for PTT', async () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: ['group-1'],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
 
       const oggFile = createMockFile('voice.ogg', 'audio/ogg', 1024);
       act(() => {
@@ -692,80 +758,81 @@ describe('useGroupsAudio', () => {
         result.current.setAudioPtt(true);
       });
 
-      // Mock FileReader class properly
-      class MockFileReader {
-        result: string | null = null;
-        onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        onerror: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        readAsDataURL() {
-          setTimeout(() => {
-            this.result = 'data:audio/ogg;base64,test';
-            if (this.onload) {
-              this.onload({} as ProgressEvent<FileReader>);
-            }
-          }, 0);
-        }
-      }
-      vi.stubGlobal('FileReader', MockFileReader);
+      stubFileReader('data:audio/ogg;base64,test');
 
       await act(async () => {
         await result.current.handleSendAudio();
       });
 
-      // Should not show format error
       expect(mockToast).not.toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'pages.groups.errors.invalidPttFormat',
         })
       );
-
-      vi.unstubAllGlobals();
     });
 
     it('should accept audio/ogg mime type for PTT even with different extension', async () => {
-      const { result } = renderHook(() =>
-        useGroupsAudio({
-          selectedGroups: ['group-1'],
-          groups: mockGroups,
-          clearSelection: mockClearSelection,
-        })
-      );
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
 
-      // File with different extension but correct mime type
       const oggFile = createMockFile('voice.opus', 'audio/ogg', 1024);
       act(() => {
         result.current.handleAudioUpload(createMockChangeEvent(oggFile));
         result.current.setAudioPtt(true);
       });
 
-      // Mock FileReader class properly
-      class MockFileReader {
-        result: string | null = null;
-        onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        onerror: ((e: ProgressEvent<FileReader>) => void) | null = null;
-        readAsDataURL() {
-          setTimeout(() => {
-            this.result = 'data:audio/ogg;base64,test';
-            if (this.onload) {
-              this.onload({} as ProgressEvent<FileReader>);
-            }
-          }, 0);
-        }
-      }
-      vi.stubGlobal('FileReader', MockFileReader);
+      stubFileReader('data:audio/ogg;base64,test');
 
       await act(async () => {
         await result.current.handleSendAudio();
       });
 
-      // Should not show format error
       expect(mockToast).not.toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'pages.groups.errors.invalidPttFormat',
         })
       );
+    });
 
-      vi.unstubAllGlobals();
+    it('should accept .OGG extension (case insensitive)', async () => {
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
+
+      const oggFile = createMockFile('voice.OGG', 'audio/ogg', 1024);
+      act(() => {
+        result.current.handleAudioUpload(createMockChangeEvent(oggFile));
+        result.current.setAudioPtt(true);
+      });
+
+      stubFileReader('data:audio/ogg;base64,test');
+
+      await act(async () => {
+        await result.current.handleSendAudio();
+      });
+
+      expect(mockToast).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'pages.groups.errors.invalidPttFormat',
+        })
+      );
+    });
+
+    it('should reject .wav for PTT', async () => {
+      const { result } = renderAudio({ selectedGroups: ['group-1'] });
+
+      const wavFile = createMockFile('voice.wav', 'audio/wav', 1024);
+      act(() => {
+        result.current.handleAudioUpload(createMockChangeEvent(wavFile));
+        result.current.setAudioPtt(true);
+      });
+
+      await act(async () => {
+        await result.current.handleSendAudio();
+      });
+
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'pages.groups.errors.invalidPttFormat',
+        })
+      );
     });
   });
 });

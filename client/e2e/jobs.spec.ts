@@ -1,14 +1,13 @@
 import { expect, test } from '@playwright/test';
 import {
-  JOB_STATUS,
   MOCK_JOBS,
-  TEST_JOB,
-  mockCancelJobApi,
-  mockCreateJobApi,
-  mockDeleteJobApi,
-  mockRunJobNowApi,
   setupEmptyJobsMocks,
   setupJobsMocks,
+  setupJobsMocksWithDelay,
+  setupJobsMocksWithPagination,
+  mockCreateJobApi,
+  mockDeleteJobApi,
+  mockUpdateJobApi,
 } from './fixtures/jobs.fixture';
 import { JobsPage } from './pages/jobs.page';
 
@@ -19,18 +18,44 @@ test.describe('Jobs Management', () => {
     jobsPage = new JobsPage(page);
   });
 
+  // ============================================================
+  // 1. Page Load
+  // ============================================================
+
   test.describe('Page Load', () => {
-    test('should display jobs page with list', async ({ page }) => {
+    test('should display page title and subtitle', async ({ page }) => {
       await setupJobsMocks(page);
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
-      // Verify page title is visible
-      await expect(page.locator('h1')).toBeVisible();
+      await expect(jobsPage.pageTitle).toBeVisible();
+      await expect(jobsPage.pageSubtitle).toBeVisible();
+    });
 
-      // Verify jobs are listed
-      const jobCount = await jobsPage.getJobCount();
-      expect(jobCount).toBeGreaterThanOrEqual(0);
+    test('should display warning alert', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await expect(jobsPage.warningAlert).toBeVisible();
+    });
+
+    test('should display how it works card', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await expect(jobsPage.howItWorksCard).toBeVisible();
+    });
+
+    test('should display table with correct job count', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await expect(jobsPage.jobsTable).toBeVisible();
+      const count = await jobsPage.getJobCount();
+      expect(count).toBe(MOCK_JOBS.length);
     });
 
     test('should display create button', async ({ page }) => {
@@ -38,336 +63,452 @@ test.describe('Jobs Management', () => {
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
-      await expect(jobsPage.createButton).toBeVisible();
-    });
-
-    test('should display status tabs', async ({ page }) => {
-      await setupJobsMocks(page);
-      await jobsPage.goto();
-      await jobsPage.waitForLoad();
-
-      // Look for status tabs
-      const allTab = page.getByRole('tab', { name: /todos|all/i });
-      const hasAllTab = await allTab.isVisible().catch(() => false);
-
-      expect(typeof hasAllTab).toBe('boolean');
+      await expect(jobsPage.newJobButton).toBeVisible();
     });
   });
+
+  // ============================================================
+  // 2. Empty State
+  // ============================================================
 
   test.describe('Empty State', () => {
-    test('should display empty state when no jobs', async ({ page }) => {
+    test('should display empty state message when no jobs', async ({ page }) => {
       await setupEmptyJobsMocks(page);
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
-      // Verify empty state or zero jobs
-      const isEmpty = await jobsPage.isEmpty();
-      const hasNoJobs = (await jobsPage.getJobCount()) === 0;
-
-      expect(isEmpty || hasNoJobs).toBeTruthy();
+      await expect(jobsPage.emptyState).toBeVisible();
     });
 
-    test('should show create first job prompt', async ({ page }) => {
+    test('should still display create button in empty state', async ({ page }) => {
       await setupEmptyJobsMocks(page);
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
-      // Create button should be visible
-      await expect(jobsPage.createButton).toBeVisible();
+      await expect(jobsPage.newJobButton).toBeVisible();
     });
   });
+
+  // ============================================================
+  // 3. Loading State
+  // ============================================================
+
+  test.describe('Loading State', () => {
+    test('should display loading spinner while fetching jobs', async ({ page }) => {
+      await setupJobsMocksWithDelay(page, 3000);
+      await jobsPage.goto();
+
+      // Spinner should be visible while the delayed response is in flight
+      await expect(jobsPage.loadingSpinner).toBeVisible({ timeout: 2000 });
+    });
+  });
+
+  // ============================================================
+  // 4. Create Job
+  // ============================================================
 
   test.describe('Create Job', () => {
-    test('should open create dialog', async ({ page }) => {
+    test('should create a send_message job successfully', async ({ page }) => {
       await setupJobsMocks(page);
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
       await jobsPage.openCreateDialog();
+      await expect(jobsPage.dialogContent).toBeVisible();
+
+      await jobsPage.selectActionType('mensagem');
+      await jobsPage.fillDateAndTime('2026-12-31', '14:00');
+      await jobsPage.selectGroups(['Promocoes Tech']);
+      await jobsPage.fillMessageForm('Bom dia! Confira as ofertas de hoje.');
+      await jobsPage.submitForm();
+
+      // Dialog should close or toast should appear on success
+      await expect(
+        jobsPage.successToast.or(jobsPage.dialogContent)
+      ).toBeVisible({ timeout: 5000 });
+      const dialogHidden = await jobsPage.dialogContent.isHidden();
+      const toastVisible = await jobsPage.successToast.isVisible();
+      expect(dialogHidden || toastVisible).toBe(true);
+    });
+
+    test('should create a send_poll job successfully', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await jobsPage.openCreateDialog();
+      await jobsPage.selectActionType('enquete');
+      await jobsPage.fillDateAndTime('2026-12-31', '15:00');
+      await jobsPage.selectGroups(['Ofertas Casa']);
+      await jobsPage.fillPollForm('Qual categoria?', ['Eletronicos', 'Casa', 'Moda']);
+      await jobsPage.submitForm();
+
+      const dialogHidden = await jobsPage.dialogContent.isHidden();
+      const toastVisible = await jobsPage.successToast.isVisible();
+      expect(dialogHidden || toastVisible).toBe(true);
+    });
+
+    test('should create a send_ml_offer job successfully', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await jobsPage.openCreateDialog();
+      await jobsPage.selectActionType('oferta');
+      await jobsPage.fillDateAndTime('2026-12-31', '16:00');
+      await jobsPage.selectGroups(['VIP Club']);
+      await jobsPage.fillMlOfferForm(
+        'https://www.mercadolivre.com.br/item/123',
+        'Oferta imperdivel!',
+        true
+      );
+      await jobsPage.submitForm();
+
+      const dialogHidden = await jobsPage.dialogContent.isHidden();
+      const toastVisible = await jobsPage.successToast.isVisible();
+      expect(dialogHidden || toastVisible).toBe(true);
+    });
+
+    test('should create a close_groups job successfully', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await jobsPage.openCreateDialog();
+      await jobsPage.selectActionType('fechar');
+      await jobsPage.fillDateAndTime('2026-12-31', '17:00');
+      await jobsPage.selectGroups(['Promocoes Tech', 'Ofertas Casa']);
+      await jobsPage.submitForm();
+
+      const dialogHidden = await jobsPage.dialogContent.isHidden();
+      const toastVisible = await jobsPage.successToast.isVisible();
+      expect(dialogHidden || toastVisible).toBe(true);
+    });
+  });
+
+  // ============================================================
+  // 5. Validation Errors
+  // ============================================================
+
+  test.describe('Validation Errors', () => {
+    test('should keep dialog open when submitting without action type', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await jobsPage.openCreateDialog();
+      await jobsPage.fillDateAndTime('2026-12-31', '14:00');
+      await jobsPage.submitForm();
 
       await expect(jobsPage.dialogContent).toBeVisible();
     });
 
-    test('should create a new job successfully', async ({ page }) => {
-      await setupJobsMocks(page);
-      await mockCreateJobApi(page, 'success');
-      await jobsPage.goto();
-      await jobsPage.waitForLoad();
-
-      // Open create dialog
-      await jobsPage.openCreateDialog();
-
-      // Fill form
-      await jobsPage.fillJobForm({
-        name: TEST_JOB.name,
-        message: 'Test message',
-      });
-
-      // Save
-      await jobsPage.save();
-
-      // Wait for response
-      await page.waitForTimeout(1000);
-
-      // Should show success toast or close dialog
-      const toast = page.locator('[data-sonner-toast]');
-      const dialogClosed = await jobsPage.dialogContent.isHidden().catch(() => false);
-
-      expect((await toast.isVisible()) || dialogClosed).toBeTruthy();
-    });
-
-    test('should show validation error when name is empty', async ({ page }) => {
+    test('should keep dialog open when submitting without groups', async ({ page }) => {
       await setupJobsMocks(page);
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
       await jobsPage.openCreateDialog();
+      await jobsPage.selectActionType('mensagem');
+      await jobsPage.fillDateAndTime('2026-12-31', '14:00');
+      await jobsPage.fillMessageForm('Test message without groups');
+      await jobsPage.submitForm();
 
-      // Try to save without name
-      await jobsPage.save();
-
-      // Dialog should still be open
       await expect(jobsPage.dialogContent).toBeVisible();
     });
 
-    test('should cancel creation and close dialog', async ({ page }) => {
+    test('should keep dialog open when submitting without date/time', async ({ page }) => {
       await setupJobsMocks(page);
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
       await jobsPage.openCreateDialog();
+      await jobsPage.selectActionType('mensagem');
+      await jobsPage.selectGroups(['Promocoes Tech']);
+      await jobsPage.fillMessageForm('Test message without date');
+      await jobsPage.submitForm();
 
-      // Fill some data
-      await jobsPage.nameInput.fill('Test Job');
+      await expect(jobsPage.dialogContent).toBeVisible();
+    });
 
-      // Cancel
-      await jobsPage.cancel();
+    test('should keep dialog open when send_message has no message', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
 
-      // Dialog should be closed
-      await expect(jobsPage.dialogContent).toBeHidden();
+      await jobsPage.openCreateDialog();
+      await jobsPage.selectActionType('mensagem');
+      await jobsPage.fillDateAndTime('2026-12-31', '14:00');
+      await jobsPage.selectGroups(['Promocoes Tech']);
+      // Do not fill message
+      await jobsPage.submitForm();
+
+      await expect(jobsPage.dialogContent).toBeVisible();
+    });
+
+    test('should keep dialog open when send_poll has fewer than 2 options', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await jobsPage.openCreateDialog();
+      await jobsPage.selectActionType('enquete');
+      await jobsPage.fillDateAndTime('2026-12-31', '14:00');
+      await jobsPage.selectGroups(['Promocoes Tech']);
+      await jobsPage.fillPollForm('Qual categoria?', ['Apenas uma opcao']);
+      await jobsPage.submitForm();
+
+      await expect(jobsPage.dialogContent).toBeVisible();
     });
   });
 
-  test.describe('Job Actions', () => {
-    test('should run job immediately', async ({ page }) => {
+  // ============================================================
+  // 6. Edit Job
+  // ============================================================
+
+  test.describe('Edit Job', () => {
+    test('should open edit dialog for a pending job', async ({ page }) => {
       await setupJobsMocks(page);
-      await mockRunJobNowApi(page, 'success');
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
-      // Find pending job
-      const pendingJob = MOCK_JOBS.find((j) => j.status === JOB_STATUS.PENDING);
-      if (pendingJob) {
-        const row = jobsPage.getJobByName(pendingJob.name);
+      // job-1 is PENDING (index 0)
+      await jobsPage.editJobByIndex(0);
 
-        if (await row.isVisible()) {
-          const runButton = jobsPage.getRunNowButton(row);
-
-          if (await runButton.isVisible()) {
-            await runButton.click();
-            await page.waitForTimeout(500);
-
-            // Should show success feedback
-            const toast = page.locator('[data-sonner-toast]');
-            const hasToast = await toast.isVisible().catch(() => false);
-
-            expect(typeof hasToast).toBe('boolean');
-          }
-        }
-      }
+      await expect(jobsPage.dialogContent).toBeVisible();
+      await expect(jobsPage.dialogTitle).toBeVisible();
     });
 
-    test('should cancel pending job', async ({ page }) => {
+    test('should save an edited job successfully', async ({ page }) => {
       await setupJobsMocks(page);
-      await mockCancelJobApi(page, 'success');
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
-      // Find pending job
-      const pendingJob = MOCK_JOBS.find((j) => j.status === JOB_STATUS.PENDING);
-      if (pendingJob) {
-        await jobsPage.cancelJob(pendingJob.name);
-        await page.waitForTimeout(500);
+      // Edit the first pending job (index 0)
+      await jobsPage.editJobByIndex(0);
+      await expect(jobsPage.dialogContent).toBeVisible();
 
-        // Should show success feedback
-        const toast = page.locator('[data-sonner-toast]');
-        const hasToast = await toast.isVisible().catch(() => false);
+      // Modify the message field
+      await jobsPage.fillMessageForm('Mensagem atualizada via teste E2E');
+      await jobsPage.submitForm();
 
-        expect(typeof hasToast).toBe('boolean');
-      }
-    });
-
-    test('should delete job', async ({ page }) => {
-      await setupJobsMocks(page);
-      await mockDeleteJobApi(page, 'success');
-      await jobsPage.goto();
-      await jobsPage.waitForLoad();
-
-      const firstJob = MOCK_JOBS[0];
-      await jobsPage.deleteJob(firstJob.name);
-      await page.waitForTimeout(500);
-
-      // Should show success feedback
-      const toast = page.locator('[data-sonner-toast]');
-      const hasToast = await toast.isVisible().catch(() => false);
-
-      expect(typeof hasToast).toBe('boolean');
+      const dialogHidden = await jobsPage.dialogContent.isHidden();
+      const toastVisible = await jobsPage.successToast.isVisible();
+      expect(dialogHidden || toastVisible).toBe(true);
     });
   });
 
-  test.describe('Filter by Status', () => {
-    test('should filter pending jobs', async ({ page }) => {
+  // ============================================================
+  // 7. Delete Job
+  // ============================================================
+
+  test.describe('Delete Job', () => {
+    test('should delete a pending job', async ({ page }) => {
       await setupJobsMocks(page);
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
-      const pendingTab = page.getByRole('tab', { name: /pendente|pending/i });
-      if (await pendingTab.isVisible()) {
-        await pendingTab.click();
-        await page.waitForTimeout(500);
+      // job-1 is PENDING (index 0) — delete button should be present
+      const row = jobsPage.getJobRow(0);
+      const deleteBtn = jobsPage.getDeleteButton(row);
+      await expect(deleteBtn).toBeVisible();
 
-        const count = await jobsPage.getJobCount();
-        expect(count).toBeGreaterThanOrEqual(0);
-      }
+      await jobsPage.deleteJobByIndex(0);
+
+      // Should show success toast after deletion
+      await expect(jobsPage.successToast).toBeVisible({ timeout: 5000 });
     });
 
-    test('should filter completed jobs', async ({ page }) => {
+    test('should NOT show delete button for done or running jobs', async ({ page }) => {
       await setupJobsMocks(page);
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
-      const completedTab = page.getByRole('tab', { name: /concluido|completed/i });
-      if (await completedTab.isVisible()) {
-        await completedTab.click();
-        await page.waitForTimeout(500);
+      // job-2 (index 1) is DONE, job-3 (index 2) is RUNNING
+      const doneRow = jobsPage.getJobRow(1);
+      const doneDeleteBtn = jobsPage.getDeleteButton(doneRow);
+      expect(await doneDeleteBtn.count()).toBe(0);
 
-        const count = await jobsPage.getJobCount();
-        expect(count).toBeGreaterThanOrEqual(0);
-      }
-    });
-
-    test('should filter failed jobs', async ({ page }) => {
-      await setupJobsMocks(page);
-      await jobsPage.goto();
-      await jobsPage.waitForLoad();
-
-      const failedTab = page.getByRole('tab', { name: /falha|failed/i });
-      if (await failedTab.isVisible()) {
-        await failedTab.click();
-        await page.waitForTimeout(500);
-
-        const count = await jobsPage.getJobCount();
-        expect(count).toBeGreaterThanOrEqual(0);
-      }
+      const runningRow = jobsPage.getJobRow(2);
+      const runningDeleteBtn = jobsPage.getDeleteButton(runningRow);
+      expect(await runningDeleteBtn.count()).toBe(0);
     });
   });
 
-  test.describe('Job Status Display', () => {
-    test('should display correct status badge for pending job', async ({ page }) => {
+  // ============================================================
+  // 8. API Errors
+  // ============================================================
+
+  test.describe('API Errors', () => {
+    test('should show error toast on CreateJob INTERNAL error', async ({ page }) => {
       await setupJobsMocks(page);
-      await jobsPage.goto();
-      await jobsPage.waitForLoad();
-
-      const pendingJob = MOCK_JOBS.find((j) => j.status === JOB_STATUS.PENDING);
-      if (pendingJob) {
-        const status = await jobsPage.getJobStatus(pendingJob.name);
-        expect(status?.toLowerCase()).toMatch(/pendente|pending|agendado|scheduled/i);
-      }
-    });
-
-    test('should display correct status badge for completed job', async ({ page }) => {
-      await setupJobsMocks(page);
-      await jobsPage.goto();
-      await jobsPage.waitForLoad();
-
-      const completedJob = MOCK_JOBS.find((j) => j.status === JOB_STATUS.COMPLETED);
-      if (completedJob) {
-        const status = await jobsPage.getJobStatus(completedJob.name);
-        expect(status?.toLowerCase()).toMatch(/concluido|completed|sucesso|success/i);
-      }
-    });
-
-    test('should display correct status badge for running job', async ({ page }) => {
-      await setupJobsMocks(page);
-      await jobsPage.goto();
-      await jobsPage.waitForLoad();
-
-      const runningJob = MOCK_JOBS.find((j) => j.status === JOB_STATUS.RUNNING);
-      if (runningJob) {
-        const status = await jobsPage.getJobStatus(runningJob.name);
-        expect(status?.toLowerCase()).toMatch(/executando|running|em.*andamento|in.*progress/i);
-      }
-    });
-  });
-
-  test.describe('Error Handling', () => {
-    test('should handle create job error', async ({ page }) => {
-      await setupJobsMocks(page);
+      // Override CreateJob with error scenario
       await mockCreateJobApi(page, 'error');
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
       await jobsPage.openCreateDialog();
-      await jobsPage.fillJobForm({ name: TEST_JOB.name, message: 'Test' });
-      await jobsPage.save();
+      await jobsPage.selectActionType('fechar');
+      await jobsPage.fillDateAndTime('2026-12-31', '14:00');
+      await jobsPage.selectGroups(['Promocoes Tech']);
+      await jobsPage.submitForm();
 
-      await page.waitForTimeout(1000);
-
-      // Should show error toast
-      const errorToast = page.locator('[data-sonner-toast]').filter({
-        hasText: /erro|error|falha|failed/i,
-      });
-      const hasError = await errorToast.isVisible().catch(() => false);
-
-      expect(typeof hasError).toBe('boolean');
+      await expect(jobsPage.successToast).toBeVisible({ timeout: 5000 });
+      const toastText = await jobsPage.successToast.textContent();
+      expect(toastText?.toLowerCase()).toMatch(/erro|error|falha|failed/i);
     });
 
-    test('should handle run job error', async ({ page }) => {
+    test('should show error toast on DeleteJob error', async ({ page }) => {
       await setupJobsMocks(page);
-      await mockRunJobNowApi(page, 'error');
+      // Override DeleteJob with error scenario
+      await mockDeleteJobApi(page, 'error');
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
-      const pendingJob = MOCK_JOBS.find((j) => j.status === JOB_STATUS.PENDING);
-      if (pendingJob) {
-        const row = jobsPage.getJobByName(pendingJob.name);
-        if (await row.isVisible()) {
-          const runButton = jobsPage.getRunNowButton(row);
-          if (await runButton.isVisible()) {
-            await runButton.click();
-            await page.waitForTimeout(1000);
+      // Delete the first pending job (index 0)
+      await jobsPage.deleteJobByIndex(0);
 
-            const errorToast = page.locator('[data-sonner-toast]').filter({
-              hasText: /erro|error|falha|failed/i,
-            });
-            const hasError = await errorToast.isVisible().catch(() => false);
+      await expect(jobsPage.successToast).toBeVisible({ timeout: 5000 });
+      const toastText = await jobsPage.successToast.textContent();
+      expect(toastText?.toLowerCase()).toMatch(/erro|error|falha|failed/i);
+    });
 
-            expect(typeof hasError).toBe('boolean');
-          }
-        }
-      }
+    test('should show error toast on UpdateJob error', async ({ page }) => {
+      await setupJobsMocks(page);
+      // Override UpdateJob with error scenario
+      await mockUpdateJobApi(page, 'error');
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await jobsPage.editJobByIndex(0);
+      await expect(jobsPage.dialogContent).toBeVisible();
+
+      await jobsPage.fillMessageForm('Trigger update error');
+      await jobsPage.submitForm();
+
+      await expect(jobsPage.successToast).toBeVisible({ timeout: 5000 });
+      const toastText = await jobsPage.successToast.textContent();
+      expect(toastText?.toLowerCase()).toMatch(/erro|error|falha|failed/i);
     });
   });
 
-  test.describe('Migration Validation', () => {
-    test('should load jobs via ConnectRPC', async ({ page }) => {
+  // ============================================================
+  // 9. Pagination
+  // ============================================================
+
+  test.describe('Pagination', () => {
+    test('should display load more button with pagination', async ({ page }) => {
+      await setupJobsMocksWithPagination(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await expect(jobsPage.loadMoreButton).toBeVisible();
+    });
+
+    test('should display showing count text', async ({ page }) => {
+      await setupJobsMocksWithPagination(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await expect(jobsPage.showingCountText).toBeVisible();
+    });
+
+    test('should hide load more button when no next page', async ({ page }) => {
+      await setupJobsMocksWithPagination(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      // Click load more to fetch second (final) page
+      await jobsPage.loadMore();
+
+      // After loading all pages, load more button should disappear
+      await expect(jobsPage.loadMoreButton).toBeHidden({ timeout: 5000 });
+    });
+  });
+
+  // ============================================================
+  // 10. Job Status Display
+  // ============================================================
+
+  test.describe('Job Status Display', () => {
+    test('should display status badges in table rows', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      // Check the first 3 rows have status badges
+      for (let i = 0; i < 3; i++) {
+        const row = jobsPage.getJobRow(i);
+        const badge = jobsPage.getStatusBadge(row);
+        await expect(badge).toBeVisible();
+      }
+    });
+
+    test('should display error message for failed job', async ({ page }) => {
+      await setupJobsMocks(page);
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      // job-4 (index 3) is FAILED with errorMessage: 'WhatsApp disconnected'
+      const failedRow = jobsPage.getJobRow(3);
+      await expect(failedRow).toBeVisible();
+      const failedBadge = jobsPage.getStatusBadge(failedRow);
+      await expect(failedBadge).toBeVisible();
+
+      // The row or its details should contain the error message text
+      await expect(failedRow).toContainText(/WhatsApp disconnected|falha|failed|erro/i);
+    });
+  });
+
+  // ============================================================
+  // 11. Mobile Responsive
+  // ============================================================
+
+  test.describe('Mobile Responsive', () => {
+    test('should display mobile cards on small viewport', async ({ page }) => {
+      await setupJobsMocks(page);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      const mobileCount = await jobsPage.getMobileJobCount();
+      expect(mobileCount).toBeGreaterThan(0);
+    });
+
+    test('should display table on desktop viewport', async ({ page }) => {
+      await setupJobsMocks(page);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await jobsPage.goto();
+      await jobsPage.waitForLoad();
+
+      await expect(jobsPage.jobsTable).toBeVisible();
+    });
+  });
+
+  // ============================================================
+  // 12. ConnectRPC Integration
+  // ============================================================
+
+  test.describe('ConnectRPC Integration', () => {
+    test('should make ListJobs and GetQueueStatus gRPC calls', async ({ page }) => {
       const grpcCalls: string[] = [];
 
-      await page.route('**/*', async (route) => {
-        const url = route.request().url();
-
+      page.on('request', (request) => {
+        const url = request.url();
         if (url.includes('jobs.v1.JobsService')) {
           grpcCalls.push(url);
         }
-
-        await route.continue();
       });
 
       await setupJobsMocks(page);
       await jobsPage.goto();
       await jobsPage.waitForLoad();
 
-      expect(grpcCalls.length).toBeGreaterThanOrEqual(0);
+      const hasListJobs = grpcCalls.some((url) => url.includes('ListJobs'));
+      const hasQueueStatus = grpcCalls.some((url) => url.includes('GetQueueStatus'));
+
+      expect(hasListJobs).toBe(true);
+      expect(hasQueueStatus).toBe(true);
     });
   });
 });

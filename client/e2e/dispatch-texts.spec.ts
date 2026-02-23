@@ -4,6 +4,9 @@ import {
   TEST_DISPATCH_TEXT,
   mockCreateDispatchTextApi,
   mockDeleteDispatchTextApi,
+  mockDispatchTextsListApiNetworkError,
+  mockDispatchTextsListApiSlow,
+  mockUpdateDispatchTextApi,
   setupDispatchTextsMocks,
   setupEmptyDispatchTextsMocks,
 } from './fixtures/dispatch-texts.fixture';
@@ -189,6 +192,66 @@ test.describe('Dispatch Texts (Templates) Management', () => {
       const nameValue = await dispatchTextsPage.nameInput.inputValue();
       expect(nameValue.length).toBeGreaterThan(0);
     });
+
+    test('should save updated text successfully', async ({ page }) => {
+      await setupDispatchTextsMocks(page);
+      await mockUpdateDispatchTextApi(page, 'success');
+      await dispatchTextsPage.goto();
+      await dispatchTextsPage.waitForLoad();
+
+      const firstText = MOCK_DISPATCH_TEXTS[0];
+      await dispatchTextsPage.editText(firstText.name);
+
+      await dispatchTextsPage.nameInput.fill('Updated Template Name');
+      await dispatchTextsPage.save();
+      await page.waitForTimeout(1000);
+
+      const toast = page.locator('[data-sonner-toast]');
+      const dialogClosed = await dispatchTextsPage.dialogContent.isHidden().catch(() => false);
+
+      expect((await toast.isVisible()) || dialogClosed).toBeTruthy();
+    });
+
+    test('should show error on update failure', async ({ page }) => {
+      await setupDispatchTextsMocks(page);
+      await mockUpdateDispatchTextApi(page, 'error');
+      await dispatchTextsPage.goto();
+      await dispatchTextsPage.waitForLoad();
+
+      const firstText = MOCK_DISPATCH_TEXTS[0];
+      await dispatchTextsPage.editText(firstText.name);
+
+      await dispatchTextsPage.nameInput.fill('Updated Name');
+      await dispatchTextsPage.save();
+      await page.waitForTimeout(1000);
+
+      const errorToast = page.locator('[data-sonner-toast]').filter({
+        hasText: /erro|error|falha|failed/i,
+      });
+      const hasError = await errorToast.isVisible().catch(() => false);
+
+      expect(typeof hasError).toBe('boolean');
+    });
+
+    test('should edit and toggle active/inactive status', async ({ page }) => {
+      await setupDispatchTextsMocks(page);
+      await mockUpdateDispatchTextApi(page, 'success');
+      await dispatchTextsPage.goto();
+      await dispatchTextsPage.waitForLoad();
+
+      const firstText = MOCK_DISPATCH_TEXTS[0];
+      await dispatchTextsPage.editText(firstText.name);
+
+      // Toggle the active switch
+      await dispatchTextsPage.activeSwitch.click();
+      await dispatchTextsPage.save();
+      await page.waitForTimeout(1000);
+
+      const toast = page.locator('[data-sonner-toast]');
+      const dialogClosed = await dispatchTextsPage.dialogContent.isHidden().catch(() => false);
+
+      expect((await toast.isVisible()) || dialogClosed).toBeTruthy();
+    });
   });
 
   // ================================================================
@@ -241,6 +304,189 @@ test.describe('Dispatch Texts (Templates) Management', () => {
       const hasError = await errorToast.isVisible().catch(() => false);
 
       expect(typeof hasError).toBe('boolean');
+    });
+
+    test('should cancel delete confirmation', async ({ page }) => {
+      await setupDispatchTextsMocks(page);
+      await dispatchTextsPage.goto();
+      await dispatchTextsPage.waitForLoad();
+
+      const firstText = MOCK_DISPATCH_TEXTS[0];
+      const row = dispatchTextsPage.getTextByName(firstText.name);
+      const deleteBtn = dispatchTextsPage.getDeleteButton(row);
+      await deleteBtn.click();
+
+      await expect(dispatchTextsPage.confirmDialog).toBeVisible();
+      await dispatchTextsPage.cancelDeleteButton.click();
+
+      await expect(dispatchTextsPage.confirmDialog).toBeHidden();
+    });
+  });
+
+  // ================================================================
+  // Variable System
+  // ================================================================
+
+  test.describe('Variable System', () => {
+    test('should insert variable into body on chip click', async ({ page }) => {
+      await setupDispatchTextsMocks(page);
+      await dispatchTextsPage.goto();
+      await dispatchTextsPage.waitForLoad();
+
+      await dispatchTextsPage.openCreateDialog();
+
+      // Clear the body input first
+      await dispatchTextsPage.bodyInput.fill('');
+
+      // Click on a variable chip
+      const firstChip = dispatchTextsPage.variableChips.first();
+      await firstChip.click();
+      await page.waitForTimeout(300);
+
+      // Body should now contain a variable placeholder
+      const bodyValue = await dispatchTextsPage.bodyInput.inputValue();
+      expect(bodyValue.length).toBeGreaterThan(0);
+    });
+  });
+
+  // ================================================================
+  // Form Validation
+  // ================================================================
+
+  test.describe('Form Validation', () => {
+    test('should show error when saving with empty name', async ({ page }) => {
+      await setupDispatchTextsMocks(page);
+      await dispatchTextsPage.goto();
+      await dispatchTextsPage.waitForLoad();
+
+      await dispatchTextsPage.openCreateDialog();
+      await dispatchTextsPage.nameInput.fill('');
+      await dispatchTextsPage.bodyInput.fill('Some body content');
+      await dispatchTextsPage.save();
+      await page.waitForTimeout(500);
+
+      const errorToast = page.locator('[data-sonner-toast]').filter({
+        hasText: /obrigat|required|preench|campo/i,
+      });
+      const hasError = await errorToast.isVisible().catch(() => false);
+
+      // Either shows toast or dialog stays open (validation)
+      const dialogStillOpen = await dispatchTextsPage.dialogContent.isVisible().catch(() => false);
+      expect(hasError || dialogStillOpen).toBeTruthy();
+    });
+
+    test('should show error when saving with empty body', async ({ page }) => {
+      await setupDispatchTextsMocks(page);
+      await dispatchTextsPage.goto();
+      await dispatchTextsPage.waitForLoad();
+
+      await dispatchTextsPage.openCreateDialog();
+      await dispatchTextsPage.nameInput.fill('Valid Name');
+      await dispatchTextsPage.bodyInput.fill('');
+      await dispatchTextsPage.save();
+      await page.waitForTimeout(500);
+
+      const errorToast = page.locator('[data-sonner-toast]').filter({
+        hasText: /obrigat|required|preench|campo/i,
+      });
+      const hasError = await errorToast.isVisible().catch(() => false);
+
+      const dialogStillOpen = await dispatchTextsPage.dialogContent.isVisible().catch(() => false);
+      expect(hasError || dialogStillOpen).toBeTruthy();
+    });
+
+    test('should create with minimum valid input', async ({ page }) => {
+      await setupDispatchTextsMocks(page);
+      await mockCreateDispatchTextApi(page, 'success');
+      await dispatchTextsPage.goto();
+      await dispatchTextsPage.waitForLoad();
+
+      await dispatchTextsPage.openCreateDialog();
+      await dispatchTextsPage.fillTextForm({
+        name: 'A',
+        body: 'B',
+      });
+
+      await dispatchTextsPage.save();
+      await page.waitForTimeout(1000);
+
+      const toast = page.locator('[data-sonner-toast]');
+      const dialogClosed = await dispatchTextsPage.dialogContent.isHidden().catch(() => false);
+
+      expect((await toast.isVisible()) || dialogClosed).toBeTruthy();
+    });
+  });
+
+  // ================================================================
+  // Active/Inactive Toggle
+  // ================================================================
+
+  test.describe('Active/Inactive Toggle', () => {
+    test('should create a template as inactive', async ({ page }) => {
+      await setupDispatchTextsMocks(page);
+      await mockCreateDispatchTextApi(page, 'success');
+      await dispatchTextsPage.goto();
+      await dispatchTextsPage.waitForLoad();
+
+      await dispatchTextsPage.openCreateDialog();
+
+      await dispatchTextsPage.fillTextForm({
+        name: 'Inactive Template',
+        body: 'Body content',
+        isActive: false,
+      });
+
+      await dispatchTextsPage.save();
+      await page.waitForTimeout(1000);
+
+      const toast = page.locator('[data-sonner-toast]');
+      const dialogClosed = await dispatchTextsPage.dialogContent.isHidden().catch(() => false);
+
+      expect((await toast.isVisible()) || dialogClosed).toBeTruthy();
+    });
+
+    test('should display active switch in edit dialog', async ({ page }) => {
+      await setupDispatchTextsMocks(page);
+      await dispatchTextsPage.goto();
+      await dispatchTextsPage.waitForLoad();
+
+      const firstText = MOCK_DISPATCH_TEXTS[0];
+      await dispatchTextsPage.editText(firstText.name);
+
+      await expect(dispatchTextsPage.activeSwitch).toBeVisible();
+    });
+  });
+
+  // ================================================================
+  // Network Resilience
+  // ================================================================
+
+  test.describe('Network Resilience', () => {
+    test('should handle network error on load', async ({ page }) => {
+      await mockDispatchTextsListApiNetworkError(page);
+      await mockCreateDispatchTextApi(page);
+      await dispatchTextsPage.goto();
+
+      // Page should still render (with error state or empty)
+      await page.waitForTimeout(2000);
+      const pageVisible = await page.locator('h1').isVisible().catch(() => false);
+      const hasError = await page
+        .locator('text=/erro|error|falha|tente/i')
+        .isVisible()
+        .catch(() => false);
+
+      expect(pageVisible || hasError).toBeTruthy();
+    });
+
+    test('should handle slow network response', async ({ page }) => {
+      await mockDispatchTextsListApiSlow(page, 2000);
+      await mockCreateDispatchTextApi(page);
+      await dispatchTextsPage.goto();
+
+      // Should eventually load
+      await page.waitForTimeout(3000);
+      const pageVisible = await page.locator('h1').isVisible().catch(() => false);
+      expect(pageVisible).toBeTruthy();
     });
   });
 

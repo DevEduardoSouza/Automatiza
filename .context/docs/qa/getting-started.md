@@ -66,7 +66,7 @@ make waha-up
 
 | Service | Port | URL |
 |---------|------|-----|
-| Frontend (Vite) | 5173 | `http://localhost:5173` |
+| Frontend (Vite) | 3003 | `http://localhost:3003` |
 | Backend (Go/Gin) | 3000 | `http://localhost:3000` |
 | PostgreSQL | 5432 | `localhost:5432` |
 | Redis | 6379 | `localhost:6379` |

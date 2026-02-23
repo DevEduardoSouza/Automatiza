@@ -315,6 +315,14 @@ type GroupInfo struct {
 
 	// Participants contains group member details (may be empty if not requested).
 	Participants []ParticipantInfo
+
+	// IsAdmin indicates if the authenticated session user is an admin of this group.
+	// Populated by GOWS engine at the group level.
+	IsAdmin bool
+
+	// IsSuperAdmin indicates if the authenticated session user is a super admin.
+	// Populated by GOWS engine at the group level.
+	IsSuperAdmin bool
 }
 
 // ParticipantInfo represents a group participant.
@@ -723,6 +731,9 @@ const (
 
 	// ErrCodeRateLimited indicates the request was rate limited.
 	ErrCodeRateLimited ErrorCode = "RATE_LIMITED"
+
+	// ErrCodeCircuitBreakerOpen indicates the circuit breaker is open and blocking requests.
+	ErrCodeCircuitBreakerOpen ErrorCode = "CIRCUIT_BREAKER_OPEN"
 
 	// ErrCodeProviderError indicates a provider-specific error.
 	ErrCodeProviderError ErrorCode = "PROVIDER_ERROR"

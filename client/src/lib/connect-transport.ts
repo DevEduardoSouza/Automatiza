@@ -1,4 +1,4 @@
-import { Code, ConnectError, type Interceptor } from '@connectrpc/connect';
+import { Code, ConnectError, type Interceptor, createClient } from '@connectrpc/connect';
 import { createConnectTransport } from '@connectrpc/connect-web';
 import * as Sentry from '@sentry/react';
 import { sentryInterceptor } from './sentry-connect-interceptor';
@@ -466,14 +466,92 @@ const errorNormalizationInterceptor: Interceptor = (next) => async (req) => {
 };
 
 /**
+ * Auth refresh interceptor: Automatically refreshes expired sessions.
+ * On Unauthenticated error, attempts to call RefreshSession RPC once.
+ * If refresh succeeds, retries the original request. If it fails, redirects to /auth.
+ * Deduplicates concurrent refresh attempts to avoid race conditions.
+ */
+function createAuthRefreshInterceptor(): Interceptor {
+  let refreshPromise: Promise<boolean> | null = null;
+
+  // Bare transport for refresh calls only (no retry/refresh interceptors to avoid loops)
+  const refreshTransport = createConnectTransport({
+    baseUrl: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/connect` : '/connect',
+    credentials: import.meta.env.VITE_API_URL ? 'include' : 'same-origin',
+    interceptors: [csrfInterceptor],
+  });
+
+  return (next) => async (req) => {
+    // Skip refresh logic for auth-related methods (avoid infinite loops)
+    const skipMethods = [
+      'RefreshSession',
+      'Login',
+      'Register',
+      'Logout',
+      'VerifyMagicLink',
+      'GetCurrentUser',
+      'ForgotPassword',
+      'SendMagicLink',
+      'VerifyEmail',
+      'ResendVerificationEmail',
+    ];
+    if (skipMethods.includes(req.method.name)) {
+      return next(req);
+    }
+
+    try {
+      return await next(req);
+    } catch (error) {
+      if (!(error instanceof ConnectError) || error.code !== Code.Unauthenticated) {
+        throw error;
+      }
+
+      // Deduplicate concurrent refresh attempts
+      if (!refreshPromise) {
+        refreshPromise = (async () => {
+          try {
+            // Dynamic import to avoid circular dependency
+            const { AuthService } = await import('@/gen/auth/v1/auth_pb');
+            const refreshClient = createClient(AuthService, refreshTransport);
+            const response = await refreshClient.refreshSession({});
+
+            // Update CSRF token if returned
+            if (response.csrfToken) {
+              setCsrfToken(response.csrfToken);
+            }
+            return true;
+          } catch {
+            return false;
+          } finally {
+            setTimeout(() => {
+              refreshPromise = null;
+            }, 1000);
+          }
+        })();
+      }
+
+      const refreshed = await refreshPromise;
+      if (refreshed) {
+        return await next(req);
+      }
+
+      // Refresh failed — redirect to login
+      window.location.href = '/auth';
+      throw error;
+    }
+  };
+}
+
+/**
  * ConnectRPC transport configuration with production-ready interceptors.
  *
  * Interceptor order (executed in sequence):
  * 1. CSRF: Adds CSRF token to requests
  * 2. Tracing: Adds traceparent header
  * 3. Retry: Handles transient failures with backoff
- * 4. Error normalization: Logs and enriches errors
- * 5. Sentry: Captures errors with gRPC context (must be LAST)
+ * 4. Auth refresh: Handles expired sessions with automatic refresh
+ * 5. Error normalization: Logs and enriches errors
+ * 6. Sentry: Captures errors with gRPC context (must be LAST)
  *
  * IMPORTANT: Uses `credentials: 'include'` to automatically send
  * HTTP-only session cookies with every request.
@@ -499,6 +577,7 @@ export const transport = createConnectTransport({
     csrfInterceptor,
     tracingInterceptor,
     createRetryInterceptor(3),
+    createAuthRefreshInterceptor(),
     errorNormalizationInterceptor,
     sentryInterceptor,
   ],
@@ -526,6 +605,7 @@ export function createCustomTransport(options?: {
       csrfInterceptor,
       tracingInterceptor,
       createRetryInterceptor(maxRetries),
+      createAuthRefreshInterceptor(),
       errorNormalizationInterceptor,
       sentryInterceptor,
     ],

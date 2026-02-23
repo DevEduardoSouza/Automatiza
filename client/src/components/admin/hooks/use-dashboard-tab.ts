@@ -1,5 +1,4 @@
 import { useAdminConnect } from '@/hooks/use-admin-connect';
-import { useLoadBalancerConnect } from '@/hooks/use-loadbalancer-connect';
 import { useSettingsConnect } from '@/hooks/use-settings-connect';
 import { useWebhooksConnect } from '@/hooks/use-webhooks-connect';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -8,7 +7,6 @@ import { toast } from 'sonner';
 import type {
   DashboardStats,
   DashboardTabProps,
-  LoadBalancerStats,
   ObservabilityData,
   ShopeeAuditData,
   UseDashboardTabReturn,
@@ -17,7 +15,7 @@ import type {
 
 /**
  * Hook que gerencia a logica do dashboard administrativo.
- * Busca estatisticas, dados de load balancer, observabilidade e audit.
+ * Busca estatisticas, observabilidade e audit.
  * Usa ConnectRPC para todas as operacoes de dados.
  */
 export function useDashboardTab(props?: DashboardTabProps): UseDashboardTabReturn {
@@ -30,16 +28,9 @@ export function useDashboardTab(props?: DashboardTabProps): UseDashboardTabRetur
     obsLoading: connectObsLoading,
     refetchObservability,
     fetchShopeeAudit,
-    ensureWebhooks,
-    isPending: adminPending,
     listWebhookLogs,
     fetchAdminProfileStats,
   } = useAdminConnect();
-  const {
-    stats: lbConnectStats,
-    loading: lbConnectLoading,
-    refetch: refetchLbStats,
-  } = useLoadBalancerConnect();
   const { simulateKiwifyWebhook } = useWebhooksConnect();
   const { getSetting } = useSettingsConnect(['kiwify_webhook_token']);
 
@@ -54,46 +45,12 @@ export function useDashboardTab(props?: DashboardTabProps): UseDashboardTabRetur
   const [audit, setAudit] = useState<ShopeeAuditData | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditDays, setAuditDays] = useState<number>(7);
-  const [ensureWebhookLoading, setEnsureWebhookLoading] = useState(false);
-
-  // Map ConnectRPC stats to local format
-  const lbStats: LoadBalancerStats | null = lbConnectStats
-    ? {
-        servers: lbConnectStats.servers.map((s) => ({
-          server_id: s.serverId,
-          name: s.serverName,
-          url: s.url,
-          capacity: s.maxUsers,
-          mapped_users: s.currentUsers,
-          available: s.availableSlots,
-          usage_percent: s.usagePercent,
-          status: s.status,
-          waha_instances_total: s.wahaInstancesTotal,
-          waha_instances_open: s.wahaInstancesOpen,
-          waha_instances_connecting: s.wahaInstancesConnecting,
-          waha_instances_close: s.wahaInstancesClose,
-        })),
-        summary: {
-          total_servers: lbConnectStats.summary.totalServers,
-          total_capacity: lbConnectStats.summary.totalCapacity,
-          total_mapped: lbConnectStats.summary.totalUsed,
-          total_available: lbConnectStats.summary.totalAvailable,
-          usage_percent: lbConnectStats.summary.usagePercent,
-          waha_instances_total: lbConnectStats.summary.wahaInstancesTotal,
-          waha_instances_open: lbConnectStats.summary.wahaInstancesOpen,
-          waha_instances_connecting: lbConnectStats.summary.wahaInstancesConnecting,
-          waha_instances_close: lbConnectStats.summary.wahaInstancesClose,
-        },
-      }
-    : null;
-  const lbLoading = lbConnectLoading;
 
   // Map ConnectRPC observability to local format
   const obs: ObservabilityData | null = observability
     ? {
         generatedAt: observability.generatedAt,
         queue: observability.queue,
-        loadBalancer: observability.loadBalancer,
         dispatchLogs: {
           windowMinutes: observability.dispatchLogs.windowMinutes,
           total: observability.dispatchLogs.total,
@@ -106,34 +63,6 @@ export function useDashboardTab(props?: DashboardTabProps): UseDashboardTabRetur
       }
     : null;
   const obsLoading = connectObsLoading;
-
-  const fetchLoadBalancerStats = useCallback(async () => {
-    refetchLbStats();
-  }, [refetchLbStats]);
-
-  const forceWebhooksServer2 = async () => {
-    setEnsureWebhookLoading(true);
-    try {
-      const result = await ensureWebhooks({
-        serverId: 2,
-        limit: 500,
-        concurrency: 5,
-      });
-      toast.success(
-        t('admin.dashboard.loadBalancer.forceWebhooksSuccess', {
-          ok: result.ok,
-          total: result.total,
-          fail: result.fail,
-        })
-      );
-    } catch (e: unknown) {
-      const msg =
-        e instanceof Error ? e.message : t('admin.dashboard.loadBalancer.forceWebhooksError');
-      toast.error(msg);
-    } finally {
-      setEnsureWebhookLoading(false);
-    }
-  };
 
   const fetchObservability = useCallback(async () => {
     refetchObservability();
@@ -232,17 +161,12 @@ export function useDashboardTab(props?: DashboardTabProps): UseDashboardTabRetur
   return {
     stats,
     webhookLogs,
-    lbStats,
-    lbLoading,
     obs,
     obsLoading,
     audit,
     auditLoading,
     auditDays,
     setAuditDays,
-    ensureWebhookLoading: ensureWebhookLoading || adminPending,
-    fetchLoadBalancerStats,
-    forceWebhooksServer2,
     fetchObservability,
     fetchShopeeAffiliateAudit: handleFetchShopeeAudit,
     handleSimulateWebhook,

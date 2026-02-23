@@ -138,10 +138,19 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 		return validationErr
 	}
 
-	// 4. Get participants for each group to determine admin status
+	// 4. Determine admin status for each group using tiered detection.
+	// Tier 1: GOWS group-level flag (IsAdmin/IsSuperAdmin on GroupInfo) — zero API calls.
+	// Tier 2: Embedded participants already in memory — zero API calls.
+	// Tier 3: Separate GetGroupParticipants API call (N+1 fallback for non-GOWS engines).
+	// Tier 4: Owner field fallback — zero API calls.
 	groups := make([]models.Group, 0, len(groupInfos))
 	adminCount := 0
+	tier1Count := 0
+	tier2Count := 0
+	tier3Count := 0
+	tier4Count := 0
 	lidOnlyCount := 0
+
 	for i, gi := range groupInfos {
 		// W22: Check for context cancellation at the beginning of each iteration
 		select {
@@ -165,141 +174,129 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 			MembersCount: gi.Size,
 		}
 
-		// W21: Add Sentry breadcrumb before participant fetch
-		sentry.AddBreadcrumb(&sentry.Breadcrumb{
-			Category: "groups_sync",
-			Message:  fmt.Sprintf("Fetching participants for group %s (%s)", gi.Subject, gi.ID),
-			Level:    sentry.LevelInfo,
-			Data: map[string]interface{}{
-				"groupID":      gi.ID,
-				"groupName":    gi.Subject,
-				"instanceName": data.InstanceName,
-				"index":        i,
-				"total":        totalGroups,
-			},
-		})
-
-		// Check if user is admin in this group
-		participants, err := w.whatsappProvider.GetGroupParticipants(ctx, data.InstanceName, gi.ID)
-		if err != nil {
-			w.logger.Warn("Failed to get participants",
-				zap.String("groupID", gi.ID), zap.String("groupName", gi.Subject), zap.Error(err))
-		} else {
-			w.logger.Info("Got participants for group",
-				zap.String("groupID", gi.ID), zap.String("groupName", gi.Subject),
-				zap.Int("count", len(participants)))
-			for j, p := range participants {
-				if j >= 3 {
-					break
-				}
-				w.logger.Debug("Participant sample",
-					zap.String("groupName", gi.Subject),
-					zap.String("pID", p.ID),
-					zap.String("pPhone", p.PhoneNumber),
-					zap.Bool("isAdmin", p.IsAdmin),
-					zap.Bool("isSuperAdmin", p.IsSuperAdmin))
-			}
+		// Tier 1: GOWS group-level flag (no API call needed).
+		// The GOWS engine populates IsAdmin/IsSuperAdmin at the group level,
+		// indicating if the authenticated session user is an admin.
+		if gi.IsAdmin || gi.IsSuperAdmin {
+			group.IsAdmin = true
+			adminCount++
+			tier1Count++
+			w.logger.Debug("Admin detected via tier 1 (group-level flag)",
+				zap.String("groupName", gi.Subject),
+				zap.Bool("isAdmin", gi.IsAdmin),
+				zap.Bool("isSuperAdmin", gi.IsSuperAdmin))
+			groups = append(groups, group)
+			w.emitProgress(data.UserID, taskID, gi, group, i, totalGroups)
+			continue
 		}
-		if err == nil && sessionInfo.AuthenticatedUser != nil {
-			// WAHA GOWS returns participant IDs in @lid format (e.g. "56243167223861@lid")
-			// while Me.ID uses @c.us format (e.g. "5511999999999@c.us").
-			// The /participants/v2 endpoint resolves LIDs to phone numbers in the PhoneNumber field,
-			// so we compare using PhoneNumber (which has the actual phone) instead of ID.
+
+		// Tier 2: Check embedded participants (already in memory, no API call).
+		if len(gi.Participants) > 0 && sessionInfo.AuthenticatedUser != nil {
 			sessionPhone := whatsapp.ExtractPhoneFromID(sessionInfo.AuthenticatedUser.ID)
-			matched := false
-			groupHasLIDOnly := true
-			for _, p := range participants {
-				participantPhone := p.PhoneNumber
-				if participantPhone == "" {
-					// PhoneNumber not resolved (LID mapping failed) — try extracting from ID
-					participantPhone = whatsapp.ExtractPhoneFromID(p.ID)
-				} else {
-					groupHasLIDOnly = false
+			foundInEmbedded := false
+			for _, p := range gi.Participants {
+				phone := p.PhoneNumber
+				if phone == "" {
+					phone = whatsapp.ExtractPhoneFromID(p.ID)
 				}
-				if participantPhone == sessionPhone {
-					matched = true
-					w.logger.Info("Found session user in group",
-						zap.String("groupName", gi.Subject),
-						zap.String("participantID", p.ID),
-						zap.String("participantPhone", participantPhone),
-						zap.Bool("isAdmin", p.IsAdmin),
-						zap.Bool("isSuperAdmin", p.IsSuperAdmin))
+				if phone == sessionPhone {
+					foundInEmbedded = true
 					if p.IsAdmin || p.IsSuperAdmin {
 						group.IsAdmin = true
 					}
 					break
 				}
 			}
+			if foundInEmbedded {
+				if group.IsAdmin {
+					adminCount++
+					tier2Count++
+					w.logger.Debug("Admin detected via tier 2 (embedded participants)",
+						zap.String("groupName", gi.Subject))
+				}
+				groups = append(groups, group)
+				w.emitProgress(data.UserID, taskID, gi, group, i, totalGroups)
+				continue
+			}
+		}
 
-			// Fallback: if no participant matched by phone, check if the session user
-			// is the group owner (Owner field from WAHA GroupInfo).
-			if !matched && gi.Owner != "" {
-				ownerPhone := whatsapp.ExtractPhoneFromID(gi.Owner)
-				if ownerPhone == sessionPhone {
-					w.logger.Info("Session user is group owner (fallback)",
-						zap.String("groupName", gi.Subject),
-						zap.String("owner", gi.Owner))
-					group.IsAdmin = true
-					matched = true
+		// Tier 3: Separate API call (N+1 fallback for non-GOWS engines).
+		if sessionInfo.AuthenticatedUser != nil {
+			// W21: Add Sentry breadcrumb before participant fetch
+			sentry.AddBreadcrumb(&sentry.Breadcrumb{
+				Category: "groups_sync",
+				Message:  fmt.Sprintf("Fetching participants for group %s (%s)", gi.Subject, gi.ID),
+				Level:    sentry.LevelInfo,
+				Data: map[string]interface{}{
+					"groupID":      gi.ID,
+					"groupName":    gi.Subject,
+					"instanceName": data.InstanceName,
+					"index":        i,
+					"total":        totalGroups,
+				},
+			})
+
+			participants, participantsErr := w.whatsappProvider.GetGroupParticipants(ctx, data.InstanceName, gi.ID)
+			if participantsErr != nil {
+				w.logger.Warn("Failed to get participants",
+					zap.String("groupID", gi.ID), zap.String("groupName", gi.Subject), zap.Error(participantsErr))
+			} else {
+				sessionPhone := whatsapp.ExtractPhoneFromID(sessionInfo.AuthenticatedUser.ID)
+				matched := false
+				groupHasLIDOnly := true
+				for _, p := range participants {
+					participantPhone := p.PhoneNumber
+					if participantPhone == "" {
+						participantPhone = whatsapp.ExtractPhoneFromID(p.ID)
+					} else {
+						groupHasLIDOnly = false
+					}
+					if participantPhone == sessionPhone {
+						matched = true
+						if p.IsAdmin || p.IsSuperAdmin {
+							group.IsAdmin = true
+							adminCount++
+							tier3Count++
+							w.logger.Debug("Admin detected via tier 3 (API call)",
+								zap.String("groupName", gi.Subject))
+						}
+						break
+					}
+				}
+				if groupHasLIDOnly && len(participants) > 0 {
+					lidOnlyCount++
+				}
+
+				// Tier 4: Owner fallback — if no participant matched, check group owner.
+				if !matched && gi.Owner != "" {
+					ownerPhone := whatsapp.ExtractPhoneFromID(gi.Owner)
+					if ownerPhone == sessionPhone {
+						w.logger.Debug("Admin detected via tier 4 (owner fallback)",
+							zap.String("groupName", gi.Subject),
+							zap.String("owner", gi.Owner))
+						group.IsAdmin = true
+						adminCount++
+						tier4Count++
+					}
 				}
 			}
-
-			if !matched {
-				w.logger.Warn("Session user not found in group participants",
-					zap.String("groupName", gi.Subject),
-					zap.String("sessionPhone", sessionPhone),
-					zap.Int("participantCount", len(participants)))
-			}
-			if groupHasLIDOnly && len(participants) > 0 {
-				lidOnlyCount++
-			}
-		} else if err == nil {
-			// AuthenticatedUser is nil — cannot determine admin status without session user context.
+		} else {
 			w.logger.Warn("AuthenticatedUser is nil, skipping admin detection",
 				zap.String("groupName", gi.Subject))
-		} else {
-			w.logger.Warn("Failed to get group participants, skipping admin check",
-				zap.String("groupID", gi.ID),
-				zap.Error(err))
 		}
-
-		if group.IsAdmin {
-			adminCount++
-		}
-
-		w.logger.Info("Admin detection result",
-			zap.String("groupName", gi.Subject),
-			zap.Bool("isAdmin", group.IsAdmin))
 
 		groups = append(groups, group)
-
-		// Emit SSE progress event for each group processed
-		if w.progressPub != nil && totalGroups > 0 {
-			progress := int((float64(i+1) / float64(totalGroups)) * 100)
-			w.logger.Info("[groups_sync_worker] Publishing intermediate progress",
-				zap.String("jobId", taskID),
-				zap.Int("progress", progress),
-				zap.Int("current", i+1),
-				zap.Int("total", totalGroups))
-			w.progressPub.PublishJobProgress(data.UserID, map[string]any{
-				"jobType": "groups_sync",
-				"jobId":   taskID,
-				"group": map[string]any{
-					"id":      gi.ID,
-					"name":    gi.Subject,
-					"isAdmin": group.IsAdmin,
-				},
-				"progress": progress,
-				"current":  i + 1,
-				"total":    totalGroups,
-			})
-		}
+		w.emitProgress(data.UserID, taskID, gi, group, i, totalGroups)
 	}
 
-	// Log admin detection summary
+	// Log admin detection summary with tier breakdown
 	w.logger.Info("Admin detection summary",
 		zap.Int("totalGroups", totalGroups),
 		zap.Int("adminGroups", adminCount),
+		zap.Int("tier1GroupLevel", tier1Count),
+		zap.Int("tier2Embedded", tier2Count),
+		zap.Int("tier3ApiCall", tier3Count),
+		zap.Int("tier4Owner", tier4Count),
 		zap.Int("lidOnlyGroups", lidOnlyCount))
 
 	if totalGroups > 0 && adminCount == 0 {
@@ -346,6 +343,26 @@ func (w *GroupsSyncWorker) ProcessTask(ctx context.Context, task *asynq.Task) er
 		zap.Int("updated", syncResult.Updated))
 
 	return nil
+}
+
+// emitProgress publishes an SSE progress event for a single group processed.
+func (w *GroupsSyncWorker) emitProgress(userID, taskID string, gi whatsapp.GroupInfo, group models.Group, index, total int) {
+	if w.progressPub == nil || total <= 0 {
+		return
+	}
+	progress := int((float64(index+1) / float64(total)) * 100)
+	w.progressPub.PublishJobProgress(userID, map[string]any{
+		"jobType": "groups_sync",
+		"jobId":   taskID,
+		"group": map[string]any{
+			"id":      gi.ID,
+			"name":    gi.Subject,
+			"isAdmin": group.IsAdmin,
+		},
+		"progress": progress,
+		"current":  index + 1,
+		"total":    total,
+	})
 }
 
 // Ensure GroupsSyncWorker implements asynq.Handler interface

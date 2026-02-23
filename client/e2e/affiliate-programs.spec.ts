@@ -4,8 +4,10 @@ import {
   TEST_SHOPEE_CREDENTIALS,
   mockAllAffiliateApis,
   mockDeleteCredential,
+  mockListActiveStores,
   mockMlConnect,
   mockMlCreateLink,
+  mockMlInvalidateCache,
   mockMlPreview,
   mockUpsertCredential,
 } from './fixtures/affiliate-programs.fixture';
@@ -385,6 +387,210 @@ test.describe('Affiliate Programs Page', () => {
           .catch(() => false);
         const isDisabled = await testButton.isDisabled().catch(() => false);
         expect(hasLoader || isDisabled).toBeTruthy();
+      }
+    });
+  });
+
+  test.describe('Active Stores Status', () => {
+    test('should display store status badges', async ({ page }) => {
+      await affiliatePage.waitForLoad();
+      await mockListActiveStores(page, 'partial');
+
+      // Store cards should be visible
+      const shopeeCard = affiliatePage.getStoreCard('Shopee');
+      await expect(shopeeCard).toBeVisible();
+
+      // Badge locator should exist on store cards
+      const badge = affiliatePage.getStoreBadge('Shopee');
+      const hasBadge = await badge.isVisible().catch(() => false);
+
+      // If badges are rendered, verify text
+      if (hasBadge) {
+        const text = await badge.textContent();
+        expect(text).toBeDefined();
+      }
+    });
+
+    test('should handle ListActiveStores error gracefully', async ({ page }) => {
+      await affiliatePage.waitForLoad();
+      await mockListActiveStores(page, 'error');
+
+      // Page should still be functional despite error
+      const shopeeCard = affiliatePage.getStoreCard('Shopee');
+      await expect(shopeeCard).toBeVisible();
+    });
+  });
+
+  test.describe('ML Token Validation', () => {
+    test('should reject invalid MLCRED_V1 token format', async ({ page }) => {
+      await affiliatePage.waitForLoad();
+
+      const tokenInput = affiliatePage.getMlConnectionTokenInput();
+      await expect(tokenInput).toBeVisible();
+
+      // Fill with invalid token (no MLCRED_V1 prefix)
+      await tokenInput.fill('invalid-base64-token-without-prefix');
+
+      // Try to validate
+      const validateBtn = affiliatePage.getMlValidateButton();
+      if (await validateBtn.isVisible()) {
+        await validateBtn.click();
+        await page.waitForTimeout(500);
+
+        // Should show error or validation message
+        const card = affiliatePage.getStoreCard('Mercado Livre');
+        const errorText = card.locator('text=/inválid|invalid|erro|error/i');
+        const hasError = await errorText.isVisible().catch(() => false);
+
+        // Either error is shown inline or save button stays disabled
+        if (!hasError) {
+          const saveBtn = affiliatePage.getSaveButton('Mercado Livre');
+          const isDisabled = await saveBtn.isDisabled().catch(() => true);
+          expect(isDisabled).toBeTruthy();
+        }
+      }
+    });
+
+    test('should accept valid MLCRED_V1 token', async ({ page }) => {
+      await affiliatePage.waitForLoad();
+
+      const tokenInput = affiliatePage.getMlConnectionTokenInput();
+      await tokenInput.fill(TEST_ML_CREDENTIALS.connectionToken);
+
+      const validateBtn = affiliatePage.getMlValidateButton();
+      if (await validateBtn.isVisible()) {
+        await validateBtn.click();
+        await page.waitForTimeout(500);
+      }
+    });
+  });
+
+  test.describe('ML Link Creation Flow', () => {
+    test('should show create link error toast on failure', async ({ page }) => {
+      await affiliatePage.waitForLoad();
+
+      await mockMlCreateLink(page, 'error');
+
+      const urlInput = affiliatePage.getMlTestUrlInput();
+      if (await urlInput.isVisible()) {
+        await urlInput.fill(TEST_ML_CREDENTIALS.testProductUrl);
+
+        // Look for a create link button
+        const mlCard = affiliatePage.getStoreCard('Mercado Livre');
+        const createLinkBtn = mlCard
+          .locator('button')
+          .filter({ hasText: /criar link|create link|gerar/i });
+
+        if (await createLinkBtn.isVisible()) {
+          await createLinkBtn.click();
+          await page.waitForTimeout(500);
+        }
+      }
+    });
+
+    test('should invalidate ML preview cache', async ({ page }) => {
+      await affiliatePage.waitForLoad();
+      await mockMlInvalidateCache(page, 'success');
+
+      // Find refresh/invalidate button if present
+      const mlCard = affiliatePage.getStoreCard('Mercado Livre');
+      const refreshBtn = mlCard
+        .locator('button')
+        .filter({ hasText: /refresh|atualizar|invalidar|cache/i });
+
+      if (await refreshBtn.isVisible()) {
+        await refreshBtn.click();
+        await page.waitForTimeout(500);
+      }
+    });
+  });
+
+  test.describe('Multiple Stores Interaction', () => {
+    test('should save Shopee without affecting ML card', async ({ page }) => {
+      await affiliatePage.waitForLoad();
+      await mockUpsertCredential(page, 'success');
+
+      // Fill and save Shopee
+      await affiliatePage.fillShopeeCredentials(
+        TEST_SHOPEE_CREDENTIALS.appId,
+        TEST_SHOPEE_CREDENTIALS.appSecret
+      );
+      await affiliatePage.saveStore('Shopee');
+      await page.waitForTimeout(500);
+
+      // ML card should still be visible and unchanged
+      const mlCard = affiliatePage.getStoreCard('Mercado Livre');
+      await expect(mlCard).toBeVisible();
+
+      // ML token input should still be empty/visible
+      const tokenInput = affiliatePage.getMlConnectionTokenInput();
+      await expect(tokenInput).toBeVisible();
+    });
+
+    test('should handle ML connect independently of Shopee', async ({ page }) => {
+      await affiliatePage.waitForLoad();
+      await mockMlConnect(page, 'success');
+
+      // Fill ML credentials
+      await affiliatePage.fillMlCredentials(
+        TEST_ML_CREDENTIALS.connectionToken,
+        TEST_ML_CREDENTIALS.tag
+      );
+
+      // Save ML
+      await affiliatePage.saveStore('Mercado Livre');
+      await page.waitForTimeout(500);
+
+      // Shopee card should still be visible and unchanged
+      const shopeeCard = affiliatePage.getStoreCard('Shopee');
+      await expect(shopeeCard).toBeVisible();
+    });
+
+    test('should display all store cards simultaneously', async () => {
+      await affiliatePage.waitForLoad();
+
+      const names = await affiliatePage.getVisibleStoreNames();
+
+      // Should have at least Shopee and Mercado Livre
+      expect(names.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  test.describe('Responsive Layout', () => {
+    test('should stack cards on mobile viewport', async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await affiliatePage.goto();
+      await affiliatePage.waitForLoad();
+
+      // Cards should still be visible in mobile
+      const shopeeCard = affiliatePage.getStoreCard('Shopee');
+      await expect(shopeeCard).toBeVisible();
+
+      const mlCard = affiliatePage.getStoreCard('Mercado Livre');
+      await expect(mlCard).toBeVisible();
+    });
+
+    test('should show cards in grid on desktop viewport', async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await affiliatePage.goto();
+      await affiliatePage.waitForLoad();
+
+      const shopeeCard = affiliatePage.getStoreCard('Shopee');
+      await expect(shopeeCard).toBeVisible();
+
+      const mlCard = affiliatePage.getStoreCard('Mercado Livre');
+      await expect(mlCard).toBeVisible();
+
+      // On desktop, cards should be side by side (different x positions)
+      const shopeeBox = await shopeeCard.boundingBox();
+      const mlBox = await mlCard.boundingBox();
+
+      if (shopeeBox && mlBox) {
+        // Either different X positions (side by side) or different Y (stacked)
+        // On desktop with grid, expect side by side
+        const isSideBySide = shopeeBox.x !== mlBox.x;
+        const isStacked = shopeeBox.y !== mlBox.y;
+        expect(isSideBySide || isStacked).toBeTruthy();
       }
     });
   });

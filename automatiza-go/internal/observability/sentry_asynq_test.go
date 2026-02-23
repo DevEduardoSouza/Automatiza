@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,16 +14,28 @@ import (
 
 // testTransport captures Sentry events for test assertions.
 type testTransport struct {
+	mu     sync.Mutex
 	events []*sentry.Event
 }
 
 func (t *testTransport) Configure(_ sentry.ClientOptions) {}
 func (t *testTransport) SendEvent(event *sentry.Event) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.events = append(t.events, event)
 }
 func (t *testTransport) Flush(_ time.Duration) bool              { return true }
 func (t *testTransport) FlushWithContext(_ context.Context) bool { return true }
 func (t *testTransport) Close()                                  {}
+
+// Events returns a snapshot of captured events (thread-safe).
+func (t *testTransport) Events() []*sentry.Event {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	cp := make([]*sentry.Event, len(t.events))
+	copy(cp, t.events)
+	return cp
+}
 
 func setupTestSentry(t *testing.T) *testTransport {
 	t.Helper()
@@ -56,11 +69,12 @@ func TestSentryAsynqMiddleware_ErrorCapture(t *testing.T) {
 
 	sentry.Flush(0)
 
-	if len(transport.events) == 0 {
+	events := transport.Events()
+	if len(events) == 0 {
 		t.Fatal("expected sentry event, got none")
 	}
 
-	event := transport.events[0]
+	event := events[0]
 	if event.Tags["worker"] != "test-worker" {
 		t.Errorf("expected tag worker=test-worker, got %s", event.Tags["worker"])
 	}
@@ -92,12 +106,13 @@ func TestSentryAsynqMiddleware_PanicRecovery(t *testing.T) {
 
 	sentry.Flush(0)
 
-	if len(transport.events) == 0 {
+	events := transport.Events()
+	if len(events) == 0 {
 		t.Fatal("expected sentry event from panic, got none")
 	}
 
 	found := false
-	for _, ev := range transport.events {
+	for _, ev := range events {
 		if ev.Tags["panic"] == "true" && ev.Tags["worker"] == "panic-worker" {
 			found = true
 			break
@@ -132,11 +147,12 @@ func TestSentryAsynqMiddleware_MaxRetriesCritical(t *testing.T) {
 
 	sentry.Flush(0)
 
-	if len(transport.events) == 0 {
+	events := transport.Events()
+	if len(events) == 0 {
 		t.Fatal("expected sentry event, got none")
 	}
 
-	event := transport.events[0]
+	event := events[0]
 	if event.Tags["worker"] != "retry-worker" {
 		t.Errorf("expected worker=retry-worker, got %s", event.Tags["worker"])
 	}
@@ -171,7 +187,8 @@ func TestSentryAsynqMiddleware_Success(t *testing.T) {
 
 	sentry.Flush(0)
 
-	if len(transport.events) != 0 {
-		t.Errorf("expected no sentry events for successful task, got %d", len(transport.events))
+	events := transport.Events()
+	if len(events) != 0 {
+		t.Errorf("expected no sentry events for successful task, got %d", len(events))
 	}
 }

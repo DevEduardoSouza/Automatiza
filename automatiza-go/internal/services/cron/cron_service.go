@@ -308,24 +308,4 @@ func (s *cronService) registerDefaultTasks() {
 		return s.automationScheduler.ProcessActiveAutomations(ctx)
 	})
 
-	// Health check every 5 minutes
-	s.RegisterTask("health_check", 5*time.Minute, func(ctx context.Context) error {
-		s.logger.Debug("Running health check")
-		// TODO: Implement actual health check
-		return nil
-	})
-
-	// Clean old dispatch logs every hour
-	s.RegisterTask("cleanup_old_logs", 1*time.Hour, func(ctx context.Context) error {
-		s.logger.Debug("Cleaning old logs")
-		// TODO: Implement log cleanup
-		return nil
-	})
-
-	// Refresh server health every minute
-	s.RegisterTask("refresh_server_health", 1*time.Minute, func(ctx context.Context) error {
-		s.logger.Debug("Refreshing server health")
-		// TODO: Implement server health refresh
-		return nil
-	})
 }

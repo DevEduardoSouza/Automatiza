@@ -613,25 +613,25 @@ export default function Dashboard() {
 
           {/* Welcome Panel */}
           <div
-            className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8 transition-all"
+            className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-3 xs:p-5 sm:p-6 lg:p-8 transition-all"
             style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
           >
-            <div className="flex items-center gap-2 xs:gap-3 mb-4 xs:mb-5 sm:mb-6 lg:mb-8">
+            <div className="flex items-start xs:items-center gap-2 xs:gap-3 mb-3 xs:mb-5 sm:mb-6 lg:mb-8">
               <div
-                className="p-1.5 xs:p-2 rounded-lg border"
+                className="p-1.5 xs:p-2 rounded-lg border shrink-0 mt-0.5 xs:mt-0"
                 style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
               >
                 <WelcomeIcon className="w-4 h-4 xs:w-5 xs:h-5" style={{ color: colors.wine }} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div
-                  className="text-base xs:text-lg font-semibold tracking-tight"
+                  className="text-sm xs:text-base sm:text-lg font-semibold tracking-tight"
                   style={{ color: '#18181b' }}
                 >
                   {t('pages.dashboard.welcome.title')}
                 </div>
                 <div
-                  className="text-xs xs:text-sm tracking-tight"
+                  className="text-[11px] xs:text-xs sm:text-sm tracking-tight leading-snug"
                   style={{ color: colors.wineTextMuted }}
                 >
                   {t('pages.dashboard.welcome.description')}
@@ -640,11 +640,11 @@ export default function Dashboard() {
             </div>
 
             <div
-              className="h-px mb-4 xs:mb-5 sm:mb-6 lg:mb-8"
+              className="h-px mb-3 xs:mb-5 sm:mb-6 lg:mb-8"
               style={{ backgroundColor: colors.wineBorder }}
             />
 
-            <div className="grid gap-3 xs:gap-4 lg:gap-6 grid-cols-1 xs:grid-cols-2 md:grid-cols-3">
+            <div className="grid gap-3 xs:gap-4 lg:gap-6 grid-cols-1 md:grid-cols-3">
               <div
                 className="p-3 xs:p-4 lg:p-6 rounded-lg xs:rounded-xl lg:rounded-2xl border transition-all hover:opacity-90"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
@@ -687,7 +687,7 @@ export default function Dashboard() {
                 </p>
               </div>
               <div
-                className="p-3 xs:p-4 lg:p-6 rounded-lg xs:rounded-xl lg:rounded-2xl border transition-all hover:opacity-90 xs:col-span-2 md:col-span-1"
+                className="p-3 xs:p-4 lg:p-6 rounded-lg xs:rounded-xl lg:rounded-2xl border transition-all hover:opacity-90"
                 style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
               >
                 <div className="flex items-start justify-between mb-1.5 xs:mb-2">

@@ -17,9 +17,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { safeClipboard } from '@/lib/sentry';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { safeClipboard } from '@/lib/sentry';
 import { CheckCircle2, Copy, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';

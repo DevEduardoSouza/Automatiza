@@ -66,19 +66,6 @@ interface LocalObservabilityData {
     workerConcurrency: number | null;
     estimatedMinutes: number | null;
   };
-  loadBalancer: {
-    summary: {
-      totalServers: number;
-      totalCapacity: number;
-      totalMapped: number;
-      totalAvailable: number;
-      usagePercent: number;
-      wahaInstancesTotal: number;
-      wahaInstancesOpen: number;
-      wahaInstancesConnecting: number;
-      wahaInstancesClose: number;
-    };
-  };
   dispatchLogs: {
     windowMinutes: number;
     total: number;
@@ -258,19 +245,6 @@ function fromProtoObservability(data: ProtoObsData | undefined): LocalObservabil
       workerConcurrency: data.queue?.workerConcurrency ?? null,
       estimatedMinutes: data.queue?.estimatedMinutes ?? null,
     },
-    loadBalancer: {
-      summary: {
-        totalServers: data.loadBalancer?.summary?.totalServers ?? 0,
-        totalCapacity: data.loadBalancer?.summary?.totalCapacity ?? 0,
-        totalMapped: data.loadBalancer?.summary?.totalMapped ?? 0,
-        totalAvailable: data.loadBalancer?.summary?.totalAvailable ?? 0,
-        usagePercent: data.loadBalancer?.summary?.usagePercent ?? 0,
-        wahaInstancesTotal: data.loadBalancer?.summary?.wahaInstancesTotal ?? 0,
-        wahaInstancesOpen: data.loadBalancer?.summary?.wahaInstancesOpen ?? 0,
-        wahaInstancesConnecting: data.loadBalancer?.summary?.wahaInstancesConnecting ?? 0,
-        wahaInstancesClose: data.loadBalancer?.summary?.wahaInstancesClose ?? 0,
-      },
-    },
     dispatchLogs: {
       windowMinutes: data.dispatchLogs?.windowMinutes ?? 0,
       total: data.dispatchLogs?.total ?? 0,
@@ -413,18 +387,14 @@ export function useAdminConnect(): UseAdminConnectReturn {
     },
     onSuccess: (result) => {
       toast({
-        title: t('admin.dashboard.loadBalancer.forceWebhooksSuccess', {
-          ok: result.ok,
-          total: result.total,
-          fail: result.fail,
-        }),
+        title: `Webhooks: ok ${result.ok}/${result.total} • fail ${result.fail}`,
       });
     },
     onError: (error: unknown) => {
       const errorInfo = getErrorInfo(error);
       toast({
         variant: 'destructive',
-        title: t('admin.dashboard.loadBalancer.forceWebhooksError'),
+        title: t('common.error'),
         description: errorInfo.userMessage,
       });
     },

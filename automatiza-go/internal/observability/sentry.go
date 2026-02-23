@@ -112,6 +112,10 @@ func InitSentry(cfg SentryConfig) error {
 		SampleRate:       sampleRate,
 		AttachStacktrace: true,
 		BeforeSend: func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
+			// Drop events from development environments to avoid polluting production Sentry
+			if cfg.Environment == "development" || cfg.Environment == "dev" {
+				return nil
+			}
 			return redactPII(event)
 		},
 	})
@@ -261,7 +265,7 @@ func LogAndCapture(logger *zap.Logger, level sentry.Level, msg string, err error
 	}
 	rateLimitKey := fmt.Sprintf("%s:%d:%s", file, line, errMsg)
 
-	shouldSend, suppressed := globalRateLimiter.shouldSend(rateLimitKey)
+	shouldSend, _ := globalRateLimiter.shouldSend(rateLimitKey)
 	if !shouldSend {
 		return
 	}
@@ -271,9 +275,6 @@ func LogAndCapture(logger *zap.Logger, level sentry.Level, msg string, err error
 		scope.SetLevel(level)
 		for k, v := range tags {
 			scope.SetTag(k, v)
-		}
-		if suppressed > 0 {
-			scope.SetExtra("suppressed_count", suppressed)
 		}
 	})
 

@@ -22,7 +22,6 @@ export interface SettingsState {
   ai_api_key: string;
   ai_api_url: string;
   ai_model: string;
-  ai_image_model: string;
   support_whatsapp: string;
   tutorial_link: string;
   dashboard_announcement_enabled: string;
@@ -36,9 +35,6 @@ export interface SettingsState {
   link_safety_max_redirects: string;
   link_safety_redirect_timeout_ms: string;
   link_safety_redirect_cache_seconds: string;
-  load_balancer_server_1_max_users: string;
-  load_balancer_server_2_max_users: string;
-  load_balancer_server_3_max_users: string;
 }
 
 export const INITIAL_SETTINGS: SettingsState = {
@@ -54,7 +50,6 @@ export const INITIAL_SETTINGS: SettingsState = {
   ai_api_key: '',
   ai_api_url: '',
   ai_model: '',
-  ai_image_model: '',
   support_whatsapp: '',
   tutorial_link: '',
   dashboard_announcement_enabled: '1',
@@ -68,9 +63,6 @@ export const INITIAL_SETTINGS: SettingsState = {
   link_safety_max_redirects: '6',
   link_safety_redirect_timeout_ms: '3500',
   link_safety_redirect_cache_seconds: '21600',
-  load_balancer_server_1_max_users: '100',
-  load_balancer_server_2_max_users: '100',
-  load_balancer_server_3_max_users: '100',
 };
 
 export const SETTINGS_KEYS = [
@@ -86,7 +78,6 @@ export const SETTINGS_KEYS = [
   'ai_api_key',
   'ai_api_url',
   'ai_model',
-  'ai_image_model',
   'support_whatsapp',
   'tutorial_link',
   'dashboard_announcement_enabled',
@@ -100,9 +91,6 @@ export const SETTINGS_KEYS = [
   'link_safety_max_redirects',
   'link_safety_redirect_timeout_ms',
   'link_safety_redirect_cache_seconds',
-  'load_balancer_server_1_max_users',
-  'load_balancer_server_2_max_users',
-  'load_balancer_server_3_max_users',
 ] as const;
 
 export interface UseSettingsTabReturn {

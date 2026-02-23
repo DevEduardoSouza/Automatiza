@@ -124,7 +124,7 @@ export interface UseDispatchLogsPaginatedReturn
 /**
  * Converts a proto Timestamp to a JavaScript Date.
  */
-function fromProtoTimestamp(timestamp: Timestamp | undefined): Date {
+export function fromProtoTimestamp(timestamp: Timestamp | undefined): Date {
   if (!timestamp) {
     return new Date();
   }
@@ -137,7 +137,7 @@ function fromProtoTimestamp(timestamp: Timestamp | undefined): Date {
  * Converts a proto dispatch log status to local status.
  * Handles various status strings from the backend.
  */
-function fromProtoStatus(status: string): DispatchLogStatus {
+export function fromProtoStatus(status: string): DispatchLogStatus {
   const normalized = status.toLowerCase();
   switch (normalized) {
     case 'sent':
@@ -161,7 +161,7 @@ function fromProtoStatus(status: string): DispatchLogStatus {
  * Converts a proto DispatchLog to a local DispatchLog.
  * Maps all fields including the new store, coupon, and URL fields.
  */
-function fromProtoDispatchLog(log: ProtoDispatchLog): LocalDispatchLog {
+export function fromProtoDispatchLog(log: ProtoDispatchLog): LocalDispatchLog {
   return {
     id: log.id,
     automationId: log.automationId,
