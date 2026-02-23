@@ -103,7 +103,7 @@ func TestAutomation_GetDedupeHours(t *testing.T) {
 		dedupeHours *int
 		want        int
 	}{
-		{"nil returns default 168", nil, 168},
+		{"nil returns default 720", nil, 720},
 		{"explicit value", ptr(24), 24},
 		{"zero value", ptr(0), 0},
 	}

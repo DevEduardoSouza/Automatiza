@@ -65,6 +65,7 @@ MIGRATION_FILES=(
     "031_fix_plans_kiwify_and_user_roles.up.sql"
     "032_magic_link_tokens.up.sql"
     "033_reset_placeholder_failed_attempts.up.sql"
+    "034_dispatch_logs_dedup_index.up.sql"
 )
 
 for migration in "${MIGRATION_FILES[@]}"; do
