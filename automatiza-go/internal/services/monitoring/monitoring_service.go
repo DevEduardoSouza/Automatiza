@@ -286,6 +286,8 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 
 	// 10. Get deduplication settings
 	dedupeHours := automation.GetDedupeHours()
+	canonicalKey := s.extractCanonicalKey(links)
+	store := s.detectStore(links)
 
 	// 11. Send to destination groups
 	for _, groupID := range destinationGroups {
@@ -294,15 +296,14 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			continue
 		}
 
-		// Product dedup check
-		canonicalKey := s.extractCanonicalKey(links)
-		if s.isProductDuplicate(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
+		// Atomic dedup claim: SetNX + DB fallback (prevents race conditions)
+		if !s.claimProductSlot(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
 			s.logger.Info("Product already sent (dedup), skipping",
 				zap.String("automationID", automation.ID),
 				zap.String("toGroup", groupID),
 				zap.String("canonicalKey", canonicalKey),
 				zap.Int("dedupeHours", dedupeHours))
-			s.logDispatch(ctx, automation, groupID, links[0], "skipped", "dedupe")
+			s.logDispatch(ctx, automation, groupID, links[0], "skipped", "dedupe", canonicalKey, store)
 			continue
 		}
 
@@ -334,21 +335,20 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		sendCancel()
 
 		if err != nil {
-			s.logDispatch(ctx, automation, groupID, links[0], "failed", err.Error())
+			s.logDispatch(ctx, automation, groupID, links[0], "failed", err.Error(), canonicalKey, store)
 			s.logger.Error("Failed to send message",
 				zap.String("groupID", groupID),
 				zap.Error(err))
 			continue
 		}
 
-		// Mark as sent for dedup
-		s.markProductSent(ctx, automation.UserID, groupID, canonicalKey, dedupeHours)
-		s.logDispatch(ctx, automation, groupID, links[0], "sent", "")
+		s.logDispatch(ctx, automation, groupID, links[0], "sent", "", canonicalKey, store)
 
 		s.logger.Info("Message forwarded successfully",
 			zap.String("fromGroup", msg.RemoteJID),
 			zap.String("toGroup", groupID),
-			zap.String("automationID", automation.ID))
+			zap.String("automationID", automation.ID),
+			zap.String("canonicalKey", canonicalKey))
 	}
 
 	return nil
@@ -459,30 +459,78 @@ func (s *monitoringService) extractCanonicalKey(links []string) string {
 	return ""
 }
 
-func (s *monitoringService) isProductDuplicate(ctx context.Context, userID, groupID, canonicalKey string, hours int) bool {
-	if s.cache == nil || canonicalKey == "" {
-		return false
+// claimProductSlot atomically checks and claims a dedup slot using Redis SetNX + DB fallback.
+// Returns true if the slot was claimed (product not yet sent), false if duplicate.
+func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupID, canonicalKey string, hours int) bool {
+	if canonicalKey == "" {
+		return true
 	}
 
 	cacheKey := fmt.Sprintf("prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
-	val, err := s.cache.Get(ctx, cacheKey)
-	return err == nil && val != ""
-}
+	ttl := time.Duration(hours) * time.Hour
 
-func (s *monitoringService) markProductSent(ctx context.Context, userID, groupID, canonicalKey string, hours int) {
-	if s.cache == nil || canonicalKey == "" {
-		return
+	// Fast path: atomic Redis SetNX (check + set in one operation)
+	if s.cache != nil {
+		wasSet, err := s.cache.SetNX(ctx, cacheKey, "1", ttl)
+		if err == nil {
+			if !wasSet {
+				return false // Already claimed by another goroutine or previous send
+			}
+			// We claimed the slot in Redis. Still check DB for stale records
+			// (Redis may have lost the key due to restart/eviction).
+		} else {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Monitoring dedup SetNX failed", err, map[string]string{
+				"module": "monitoring", "operation": "product_dedup_setnx", "cache_policy": "fall-through-db",
+			})
+		}
 	}
 
-	cacheKey := fmt.Sprintf("prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
-	if cacheErr := s.cache.Set(ctx, cacheKey, "1", time.Duration(hours)*time.Hour); cacheErr != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to set product dedup cache key", cacheErr, map[string]string{
-			"module": "monitoring", "operation": "product_dedup_set", "cache_policy": "fail-open",
-		})
+	// Slow path: check database for historical dispatches
+	if s.dispatchLogRepo != nil {
+		log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, hours)
+		if err != nil {
+			s.logger.Warn("Monitoring dedup DB check failed",
+				zap.String("userID", userID),
+				zap.String("groupID", groupID),
+				zap.String("canonicalKey", canonicalKey),
+				zap.Error(err))
+		} else if log != nil {
+			// DB has a recent dispatch — this is a duplicate. Ensure Redis is populated.
+			if s.cache != nil {
+				if cacheErr := s.cache.Set(ctx, cacheKey, "1", ttl); cacheErr != nil {
+					s.logger.Debug("Monitoring dedup cache backfill failed", zap.Error(cacheErr))
+				}
+			}
+			return false
+		}
 	}
+
+	// Ensure Redis has the claim (in case SetNX failed due to error above)
+	if s.cache != nil {
+		if cacheErr := s.cache.Set(ctx, cacheKey, "1", ttl); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to ensure product dedup cache key", cacheErr, map[string]string{
+				"module": "monitoring", "operation": "product_dedup_ensure", "cache_policy": "fail-open",
+			})
+		}
+	}
+
+	return true
 }
 
-func (s *monitoringService) logDispatch(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg string) {
+// detectStore returns the store name based on the links found in the message.
+func (s *monitoringService) detectStore(links []string) string {
+	for _, link := range links {
+		if shopeeURLRegex.MatchString(link) {
+			return "shopee"
+		}
+		if mlURLRegex.MatchString(link) {
+			return "mercadolivre"
+		}
+	}
+	return ""
+}
+
+func (s *monitoringService) logDispatch(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg, canonicalKey, store string) {
 	if s.dispatchLogRepo == nil {
 		return
 	}
@@ -507,6 +555,13 @@ func (s *monitoringService) logDispatch(ctx context.Context, automation *models.
 		Status:         status,
 		Type:           &automationType,
 		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if canonicalKey != "" {
+		dispatchLog.CanonicalKey = &canonicalKey
+	}
+	if store != "" {
+		dispatchLog.Store = &store
 	}
 
 	if errorMsg != "" {

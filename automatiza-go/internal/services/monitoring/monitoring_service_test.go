@@ -884,33 +884,69 @@ func TestExtractCanonicalKey(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// isProductDuplicate
+// claimProductSlot (replaces isProductDuplicate + markProductSent)
 // ---------------------------------------------------------------------------
 
-func TestIsProductDuplicate(t *testing.T) {
-	t.Run("nil cache returns false", func(t *testing.T) {
+func TestClaimProductSlot(t *testing.T) {
+	t.Run("nil cache allows claim", func(t *testing.T) {
 		svc := newTestService(t, func(s *monitoringService) {
 			s.cache = nil
 		})
-		result := svc.isProductDuplicate(context.Background(), "user1", "group1", "key1", 24)
-		if result {
-			t.Error("expected false for nil cache")
+		result := svc.claimProductSlot(context.Background(), "user1", "group1", "key1", 24)
+		if !result {
+			t.Error("expected claim to succeed with nil cache")
 		}
 	})
 
-	t.Run("empty canonicalKey returns false", func(t *testing.T) {
+	t.Run("empty canonicalKey allows claim", func(t *testing.T) {
 		svc := newTestService(t)
-		result := svc.isProductDuplicate(context.Background(), "user1", "group1", "", 24)
-		if result {
-			t.Error("expected false for empty canonical key")
+		result := svc.claimProductSlot(context.Background(), "user1", "group1", "", 24)
+		if !result {
+			t.Error("expected claim to succeed with empty canonical key")
 		}
 	})
 
-	t.Run("disabled cache returns false", func(t *testing.T) {
+	t.Run("disabled cache allows claim", func(t *testing.T) {
 		svc := newTestService(t) // uses disabledCache
-		result := svc.isProductDuplicate(context.Background(), "user1", "group1", "key1", 24)
-		if result {
-			t.Error("expected false for disabled cache")
+		result := svc.claimProductSlot(context.Background(), "user1", "group1", "key1", 24)
+		if !result {
+			t.Error("expected claim to succeed with disabled cache")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// detectStore
+// ---------------------------------------------------------------------------
+
+func TestDetectStore(t *testing.T) {
+	svc := newTestService(t)
+
+	t.Run("shopee link", func(t *testing.T) {
+		store := svc.detectStore([]string{"https://s.shopee.com.br/abc123"})
+		if store != "shopee" {
+			t.Errorf("expected 'shopee', got %q", store)
+		}
+	})
+
+	t.Run("mercadolivre link", func(t *testing.T) {
+		store := svc.detectStore([]string{"https://mercadolivre.com.br/sec/abc"})
+		if store != "mercadolivre" {
+			t.Errorf("expected 'mercadolivre', got %q", store)
+		}
+	})
+
+	t.Run("unknown link", func(t *testing.T) {
+		store := svc.detectStore([]string{"https://example.com/product"})
+		if store != "" {
+			t.Errorf("expected empty string, got %q", store)
+		}
+	})
+
+	t.Run("empty links", func(t *testing.T) {
+		store := svc.detectStore(nil)
+		if store != "" {
+			t.Errorf("expected empty string, got %q", store)
 		}
 	})
 }
@@ -1040,7 +1076,7 @@ func TestLogDispatch(t *testing.T) {
 		})
 
 		// Should not panic
-		svc.logDispatch(context.Background(), &models.Automation{ID: "a1", UserID: "u1", Name: "test"}, "g1", "url", "sent", "")
+		svc.logDispatch(context.Background(), &models.Automation{ID: "a1", UserID: "u1", Name: "test"}, "g1", "url", "sent", "", "key1", "shopee")
 	})
 }
 
@@ -1066,7 +1102,7 @@ func TestNewMonitoringService(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// markContentProcessed / markProductSent with nil cache (no panic)
+// markContentProcessed with nil/disabled cache (no panic)
 // ---------------------------------------------------------------------------
 
 func TestMarkContentProcessed_NilCache(t *testing.T) {
@@ -1081,26 +1117,6 @@ func TestMarkContentProcessed_DisabledCache(t *testing.T) {
 	svc := newTestService(t)
 	// Should not panic with disabled cache
 	svc.markContentProcessed(context.Background(), "some-key")
-}
-
-func TestMarkProductSent_NilCache(t *testing.T) {
-	svc := newTestService(t, func(s *monitoringService) {
-		s.cache = nil
-	})
-	// Should not panic with nil cache
-	svc.markProductSent(context.Background(), "user1", "group1", "key1", 24)
-}
-
-func TestMarkProductSent_DisabledCache(t *testing.T) {
-	svc := newTestService(t)
-	// Should not panic with disabled cache
-	svc.markProductSent(context.Background(), "user1", "group1", "key1", 24)
-}
-
-func TestMarkProductSent_EmptyCanonicalKey(t *testing.T) {
-	svc := newTestService(t)
-	// Should return early without error
-	svc.markProductSent(context.Background(), "user1", "group1", "", 24)
 }
 
 // ---------------------------------------------------------------------------
