@@ -512,62 +512,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		keywords = []string{""} // empty keyword = broad search
 	}
 
-	// Search for products
-	var allOffers []models.ShopeeOffer
-	for _, store := range stores {
-		switch store {
-		case "shopee":
-			if s.shopeeService != nil {
-				limitPerKeyword := 20
-				for _, kw := range keywords {
-					kwCopy := kw
-					var kwPtr *string
-					if kwCopy != "" {
-						kwPtr = &kwCopy
-					}
-					params := models.ShopeeSearchParams{
-						Keyword:     kwPtr,
-						Categories:  automation.Categories,
-						MinPrice:    automation.MinPrice,
-						MaxPrice:    automation.MaxPrice,
-						MinDiscount: automation.MinDiscount,
-						Limit:       limitPerKeyword,
-					}
-					result, err := s.shopeeService.SearchOffers(ctx, automation.UserID, params)
-					if err != nil {
-						s.logger.Warn("Shopee search failed",
-							zap.String("automationID", automation.ID),
-							zap.String("keyword", kwCopy),
-							zap.Error(err))
-					} else if result != nil {
-						s.logger.Info("Shopee search completed",
-							zap.String("automationID", automation.ID),
-							zap.String("keyword", kwCopy),
-							zap.Int("offersReturned", len(result.Offers)))
-						allOffers = append(allOffers, result.Offers...)
-					}
-				}
-			}
-		case "mercadolivre":
-			// ML search would go here
-			// For now, ML is mainly used for affiliate link generation
-		}
-	}
-
-	if len(allOffers) == 0 {
-		return &models.RunAutomationResult{
-			Success:     true,
-			Message:     "Nenhuma oferta encontrada com os filtros configurados",
-			OffersFound: 0,
-		}, nil
-	}
-
-	// Shuffle offers to ensure variety even if dedup has gaps
-	rand.Shuffle(len(allOffers), func(i, j int) {
-		allOffers[i], allOffers[j] = allOffers[j], allOffers[i]
-	})
-
-	// Get dispatch text template (only if active)
+	// Get dispatch text template (only if active) — resolve once before search loop
 	var dispatchTemplate string
 	if automation.DispatchTextID != nil {
 		dt, _ := s.settingsRepo.GetActiveDispatchTextByID(ctx, *automation.DispatchTextID, automation.UserID)
@@ -600,195 +545,281 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 	skippedCount := 0
 	dedupeHours := automation.GetDedupeHours()
 
-	// Iterate through offers and send the FIRST non-duplicate to all groups.
-	// We fetch ~20 offers but only send 1 per run; dedup ensures variety across runs.
-	for i, offer := range allOffers {
-		canonicalKey := models.CanonicalKeyFromShopeeOffer(&offer)
-		store := "shopee"
+	// Pagination: when all offers from page N are deduped, try page N+1.
+	// This prevents niche categories with limited product variety from getting stuck.
+	const maxSearchPages = 3
+	const limitPerKeyword = 20
+	var totalOffersFound int
 
-		// Pre-check: if this offer is already a duplicate for ALL target groups, skip entirely
-		allGroupsDuped := true
-		for _, groupID := range targetGroups {
-			if !s.isDuplicate(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
-				allGroupsDuped = false
-				break
+	for pageAttempt := 0; pageAttempt < maxSearchPages; pageAttempt++ {
+		searchOffset := pageAttempt * limitPerKeyword
+
+		// Search for products
+		var allOffers []models.ShopeeOffer
+		for _, store := range stores {
+			switch store {
+			case "shopee":
+				if s.shopeeService != nil {
+					for _, kw := range keywords {
+						kwCopy := kw
+						var kwPtr *string
+						if kwCopy != "" {
+							kwPtr = &kwCopy
+						}
+						params := models.ShopeeSearchParams{
+							Keyword:     kwPtr,
+							Categories:  automation.Categories,
+							MinPrice:    automation.MinPrice,
+							MaxPrice:    automation.MaxPrice,
+							MinDiscount: automation.MinDiscount,
+							Limit:       limitPerKeyword,
+							Offset:      searchOffset,
+						}
+						result, err := s.shopeeService.SearchOffers(ctx, automation.UserID, params)
+						if err != nil {
+							s.logger.Warn("Shopee search failed",
+								zap.String("automationID", automation.ID),
+								zap.String("keyword", kwCopy),
+								zap.Int("page", pageAttempt+1),
+								zap.Error(err))
+						} else if result != nil {
+							s.logger.Info("Shopee search completed",
+								zap.String("automationID", automation.ID),
+								zap.String("keyword", kwCopy),
+								zap.Int("page", pageAttempt+1),
+								zap.Int("offersReturned", len(result.Offers)))
+							allOffers = append(allOffers, result.Offers...)
+						}
+					}
+				}
+			case "mercadolivre":
+				// ML search would go here
+				// For now, ML is mainly used for affiliate link generation
 			}
 		}
-		if allGroupsDuped {
-			s.logger.Info("Offer skipped: dedup (all groups)",
-				zap.String("automationID", automation.ID),
-				zap.String("canonicalKey", canonicalKey),
-				zap.Int("offerIndex", i))
+
+		if len(allOffers) == 0 {
+			if totalOffersFound == 0 {
+				return &models.RunAutomationResult{
+					Success:     true,
+					Message:     "Nenhuma oferta encontrada com os filtros configurados",
+					OffersFound: 0,
+				}, nil
+			}
+			// No more pages available
+			break
+		}
+
+		totalOffersFound += len(allOffers)
+
+		// Shuffle offers to ensure variety even if dedup has gaps
+		rand.Shuffle(len(allOffers), func(i, j int) {
+			allOffers[i], allOffers[j] = allOffers[j], allOffers[i]
+		})
+
+		// Iterate through offers and send the FIRST non-duplicate to all groups.
+		// We fetch ~20 offers but only send 1 per run; dedup ensures variety across runs.
+		for i, offer := range allOffers {
+			canonicalKey := models.CanonicalKeyFromShopeeOffer(&offer)
+			store := "shopee"
+
+			// Pre-check: if this offer is already a duplicate for ALL target groups, skip entirely
+			allGroupsDuped := true
 			for _, groupID := range targetGroups {
-				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "dedupe", withCanonicalKey(canonicalKey, store))
-			}
-			skippedCount += len(targetGroups)
-			continue
-		}
-
-		// This offer is new for at least one group — refetch price and send to all groups
-		if s.shopeeService != nil && offer.ItemID > 0 && offer.ShopID > 0 {
-			refreshed, err := s.shopeeService.GetProduct(ctx, offer.ItemID, offer.ShopID, automation.UserID)
-			if err != nil {
-				s.logger.Warn("Failed to refetch product price, using search data",
-					zap.Int64("itemID", offer.ItemID),
-					zap.Int64("shopID", offer.ShopID),
-					zap.Error(err))
-			} else if refreshed != nil {
-				if refreshed.Price > 0 {
-					allOffers[i].Price = refreshed.Price
+				if !s.isDuplicate(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
+					allGroupsDuped = false
+					break
 				}
-				if refreshed.OriginalPrice > 0 {
-					allOffers[i].OriginalPrice = refreshed.OriginalPrice
-				}
-				if allOffers[i].Price > 0 && allOffers[i].OriginalPrice > allOffers[i].Price {
-					allOffers[i].Discount = ((allOffers[i].OriginalPrice - allOffers[i].Price) / allOffers[i].OriginalPrice) * 100
-				}
-				s.logger.Debug("Refetched product price",
-					zap.Int64("itemID", offer.ItemID),
-					zap.Float64("searchPrice", offer.Price),
-					zap.Float64("refreshedPrice", refreshed.Price),
-					zap.Float64("refreshedOriginal", refreshed.OriginalPrice),
-					zap.Float64("finalPrice", allOffers[i].Price),
-					zap.Float64("finalOriginal", allOffers[i].OriginalPrice))
-				offer = allOffers[i]
 			}
-		}
-
-		// Skip offers with no real discount (price >= original price)
-		if !offer.HasRealDiscount() {
-			s.logger.Info("Offer skipped: no discount (price >= original)",
-				zap.String("automationID", automation.ID),
-				zap.Float64("price", offer.Price),
-				zap.Float64("originalPrice", offer.OriginalPrice),
-				zap.Int64("itemID", offer.ItemID),
-				zap.Int("offerIndex", i))
-			for _, groupID := range targetGroups {
-				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "no_discount", withCanonicalKey(canonicalKey, store))
-			}
-			skippedCount += len(targetGroups)
-			continue
-		}
-
-		// Generate proper affiliate link via generateShortLink mutation
-		if s.shopeeService != nil && offer.ProductURL != "" {
-			affLink, affErr := s.shopeeService.GenerateAffiliateLink(ctx, offer.ProductURL, automation.UserID)
-			if affErr != nil {
-				s.logger.Warn("Failed to generate affiliate link, using API offerLink",
-					zap.String("automationID", automation.ID),
-					zap.String("productURL", offer.ProductURL),
-					zap.Error(affErr))
-			} else if affLink != nil && affLink.AffiliateLink != "" {
-				allOffers[i].AffiliateLink = affLink.AffiliateLink
-				offer = allOffers[i]
-				s.logger.Info("Affiliate link generated",
-					zap.String("automationID", automation.ID),
-					zap.String("affiliateLink", affLink.AffiliateLink))
-			}
-		}
-
-		for _, groupID := range targetGroups {
-			// Per-group dedup check (an offer may be new for some groups but not others)
-			if s.isDuplicate(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
-				s.logger.Info("Offer skipped: dedup",
+			if allGroupsDuped {
+				s.logger.Info("Offer skipped: dedup (all groups)",
 					zap.String("automationID", automation.ID),
 					zap.String("canonicalKey", canonicalKey),
-					zap.String("groupID", groupID))
-				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "dedupe", withCanonicalKey(canonicalKey, store))
-				skippedCount++
+					zap.Int("offerIndex", i),
+					zap.Int("page", pageAttempt+1))
+				for _, groupID := range targetGroups {
+					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "dedupe", withCanonicalKey(canonicalKey, store))
+				}
+				skippedCount += len(targetGroups)
 				continue
 			}
 
-			// Build message from template
-			message := s.buildOfferMessage(dispatchTemplate, &offer, automation)
-
-			s.logger.Debug("Message built for offer",
-				zap.String("automationID", automation.ID),
-				zap.Int("offerIndex", i),
-				zap.String("productName", offer.Name),
-				zap.Int("messageLen", len(message)))
-
-			// Apply URL safety check
-			if s.urlSafetyService != nil {
-				decision, _ := s.urlSafetyService.Evaluate(ctx, message)
-				if decision != nil && decision.Action == "block" {
-					s.logger.Info("Offer skipped: URL safety",
-						zap.String("automationID", automation.ID),
-						zap.String("groupID", groupID),
-						zap.String("reason", decision.Reason))
-					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "blocked", decision.Reason, withCanonicalKey(canonicalKey, store))
-					skippedCount++
-					continue
-				}
-			}
-
-			// Check backpressure
-			if s.backpressure != nil {
-				can, _, bpErr := s.backpressure.CanEnqueue(ctx, automation.UserID)
-				if bpErr != nil {
-					observability.LogAndCapture(s.logger, sentry.LevelWarning, "backpressure check failed, allowing enqueue", bpErr, map[string]string{
-						"module": "automation", "operation": "backpressure_check", "user_id": automation.UserID,
-					})
-				}
-				if !can {
-					s.logger.Info("Offer skipped: backpressure",
-						zap.String("automationID", automation.ID),
-						zap.String("groupID", groupID))
-					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "backpressure", withCanonicalKey(canonicalKey, store))
-					skippedCount++
-					continue
-				}
-			}
-
-			var imageURL *string
-			if offer.Image != "" {
-				imageURL = &offer.Image
-			}
-
-			jobData := &workers.MessageJobData{
-				InstanceName: connectedInstance.InstanceID,
-				GroupID:      groupID,
-				Message:      message,
-				ImageURL:     imageURL,
-				HistoryID:    &historyID,
-				AutomationID: automation.ID,
-			}
-
-			if s.queueClient != nil {
-				delay := time.Duration(sentCount) * time.Duration(automation.GetDelaySeconds()) * time.Second
-				_, err := s.queueClient.EnqueueMessage(ctx, jobData, delay)
+			// This offer is new for at least one group — refetch price and send to all groups
+			if s.shopeeService != nil && offer.ItemID > 0 && offer.ShopID > 0 {
+				refreshed, err := s.shopeeService.GetProduct(ctx, offer.ItemID, offer.ShopID, automation.UserID)
 				if err != nil {
-					s.logger.Error("Failed to enqueue message",
-						zap.String("automationID", automation.ID),
-						zap.String("groupID", groupID),
+					s.logger.Warn("Failed to refetch product price, using search data",
+						zap.Int64("itemID", offer.ItemID),
+						zap.Int64("shopID", offer.ShopID),
 						zap.Error(err))
-					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "failed", err.Error(), withCanonicalKey(canonicalKey, store))
+				} else if refreshed != nil {
+					if refreshed.Price > 0 {
+						allOffers[i].Price = refreshed.Price
+					}
+					if refreshed.OriginalPrice > 0 {
+						allOffers[i].OriginalPrice = refreshed.OriginalPrice
+					}
+					if allOffers[i].Price > 0 && allOffers[i].OriginalPrice > allOffers[i].Price {
+						allOffers[i].Discount = ((allOffers[i].OriginalPrice - allOffers[i].Price) / allOffers[i].OriginalPrice) * 100
+					}
+					s.logger.Debug("Refetched product price",
+						zap.Int64("itemID", offer.ItemID),
+						zap.Float64("searchPrice", offer.Price),
+						zap.Float64("refreshedPrice", refreshed.Price),
+						zap.Float64("refreshedOriginal", refreshed.OriginalPrice),
+						zap.Float64("finalPrice", allOffers[i].Price),
+						zap.Float64("finalOriginal", allOffers[i].OriginalPrice))
+					offer = allOffers[i]
+				}
+			}
+
+			// Skip offers with no real discount (price >= original price)
+			if !offer.HasRealDiscount() {
+				s.logger.Info("Offer skipped: no discount (price >= original)",
+					zap.String("automationID", automation.ID),
+					zap.Float64("price", offer.Price),
+					zap.Float64("originalPrice", offer.OriginalPrice),
+					zap.Int64("itemID", offer.ItemID),
+					zap.Int("offerIndex", i))
+				for _, groupID := range targetGroups {
+					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "no_discount", withCanonicalKey(canonicalKey, store))
+				}
+				skippedCount += len(targetGroups)
+				continue
+			}
+
+			// Generate proper affiliate link via generateShortLink mutation
+			if s.shopeeService != nil && offer.ProductURL != "" {
+				affLink, affErr := s.shopeeService.GenerateAffiliateLink(ctx, offer.ProductURL, automation.UserID)
+				if affErr != nil {
+					s.logger.Warn("Failed to generate affiliate link, using API offerLink",
+						zap.String("automationID", automation.ID),
+						zap.String("productURL", offer.ProductURL),
+						zap.Error(affErr))
+				} else if affLink != nil && affLink.AffiliateLink != "" {
+					allOffers[i].AffiliateLink = affLink.AffiliateLink
+					offer = allOffers[i]
+					s.logger.Info("Affiliate link generated",
+						zap.String("automationID", automation.ID),
+						zap.String("affiliateLink", affLink.AffiliateLink))
+				}
+			}
+
+			for _, groupID := range targetGroups {
+				// Per-group dedup check (an offer may be new for some groups but not others)
+				if s.isDuplicate(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
+					s.logger.Info("Offer skipped: dedup",
+						zap.String("automationID", automation.ID),
+						zap.String("canonicalKey", canonicalKey),
+						zap.String("groupID", groupID))
+					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "dedupe", withCanonicalKey(canonicalKey, store))
+					skippedCount++
 					continue
 				}
-			}
 
-			// Mark as sent for deduplication
-			s.markAsSent(ctx, automation.UserID, groupID, canonicalKey, dedupeHours)
-			s.logDispatch(ctx, automation, groupID, offer.ProductURL, "sent", "", withCanonicalKey(canonicalKey, store))
-			sentCount++
+				// Build message from template
+				message := s.buildOfferMessage(dispatchTemplate, &offer, automation)
 
-			// Record backpressure
-			if s.backpressure != nil {
-				if bpErr := s.backpressure.RecordEnqueue(ctx, automation.UserID); bpErr != nil {
-					observability.LogAndCapture(s.logger, sentry.LevelWarning, "backpressure record failed", bpErr, map[string]string{
-						"module": "automation", "operation": "backpressure_record", "user_id": automation.UserID,
-					})
+				s.logger.Debug("Message built for offer",
+					zap.String("automationID", automation.ID),
+					zap.Int("offerIndex", i),
+					zap.String("productName", offer.Name),
+					zap.Int("messageLen", len(message)))
+
+				// Apply URL safety check
+				if s.urlSafetyService != nil {
+					decision, _ := s.urlSafetyService.Evaluate(ctx, message)
+					if decision != nil && decision.Action == "block" {
+						s.logger.Info("Offer skipped: URL safety",
+							zap.String("automationID", automation.ID),
+							zap.String("groupID", groupID),
+							zap.String("reason", decision.Reason))
+						s.logDispatch(ctx, automation, groupID, offer.ProductURL, "blocked", decision.Reason, withCanonicalKey(canonicalKey, store))
+						skippedCount++
+						continue
+					}
+				}
+
+				// Check backpressure
+				if s.backpressure != nil {
+					can, _, bpErr := s.backpressure.CanEnqueue(ctx, automation.UserID)
+					if bpErr != nil {
+						observability.LogAndCapture(s.logger, sentry.LevelWarning, "backpressure check failed, allowing enqueue", bpErr, map[string]string{
+							"module": "automation", "operation": "backpressure_check", "user_id": automation.UserID,
+						})
+					}
+					if !can {
+						s.logger.Info("Offer skipped: backpressure",
+							zap.String("automationID", automation.ID),
+							zap.String("groupID", groupID))
+						s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "backpressure", withCanonicalKey(canonicalKey, store))
+						skippedCount++
+						continue
+					}
+				}
+
+				var imageURL *string
+				if offer.Image != "" {
+					imageURL = &offer.Image
+				}
+
+				jobData := &workers.MessageJobData{
+					InstanceName: connectedInstance.InstanceID,
+					GroupID:      groupID,
+					Message:      message,
+					ImageURL:     imageURL,
+					HistoryID:    &historyID,
+					AutomationID: automation.ID,
+				}
+
+				if s.queueClient != nil {
+					delay := time.Duration(sentCount) * time.Duration(automation.GetDelaySeconds()) * time.Second
+					_, err := s.queueClient.EnqueueMessage(ctx, jobData, delay)
+					if err != nil {
+						s.logger.Error("Failed to enqueue message",
+							zap.String("automationID", automation.ID),
+							zap.String("groupID", groupID),
+							zap.Error(err))
+						s.logDispatch(ctx, automation, groupID, offer.ProductURL, "failed", err.Error(), withCanonicalKey(canonicalKey, store))
+						continue
+					}
+				}
+
+				// Mark as sent for deduplication
+				s.markAsSent(ctx, automation.UserID, groupID, canonicalKey, dedupeHours)
+				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "sent", "", withCanonicalKey(canonicalKey, store))
+				sentCount++
+
+				// Record backpressure
+				if s.backpressure != nil {
+					if bpErr := s.backpressure.RecordEnqueue(ctx, automation.UserID); bpErr != nil {
+						observability.LogAndCapture(s.logger, sentry.LevelWarning, "backpressure record failed", bpErr, map[string]string{
+							"module": "automation", "operation": "backpressure_record", "user_id": automation.UserID,
+						})
+					}
 				}
 			}
+
+			// 1 offer per run: stop after processing the first non-duplicate offer
+			break
 		}
 
-		// 1 offer per run: stop after processing the first non-duplicate offer
-		break
-	}
+		// If we sent at least one message, no need to try more pages
+		if sentCount > 0 {
+			break
+		}
+
+		// All offers on this page were deduped — try next page for fresh products
+		s.logger.Info("All offers deduped on current page, trying next page",
+			zap.String("automationID", automation.ID),
+			zap.Int("page", pageAttempt+1),
+			zap.Int("offersChecked", len(allOffers)),
+			zap.Int("skippedSoFar", skippedCount))
+	} // end pageAttempt loop
 
 	s.logger.Info("Search automation completed",
 		zap.String("automationID", automation.ID),
-		zap.Int("offersFound", len(allOffers)),
+		zap.Int("offersFound", totalOffersFound),
 		zap.Int("messagesSent", sentCount),
 		zap.Int("skipped", skippedCount),
 		zap.Int("targetGroups", len(targetGroups)))
@@ -797,7 +828,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		Success:      true,
 		Message:      fmt.Sprintf("Automacao executada: %d mensagens enviadas, %d ignoradas", sentCount, skippedCount),
 		MessagesSent: sentCount,
-		OffersFound:  len(allOffers),
+		OffersFound:  totalOffersFound,
 	}, nil
 }
 
