@@ -832,7 +832,6 @@ func TestDefaultShopeeTemplate(t *testing.T) {
 		"{preco_formatado}",
 		"{preco_original_formatado}",
 		"{link_afiliado}",
-		"{aviso_preco}",
 	}
 	for _, v := range requiredVars {
 		if !strings.Contains(tmpl, v) {
@@ -854,7 +853,6 @@ func TestDefaultMLTemplate(t *testing.T) {
 		"{preco_formatado}",
 		"{preco_original_formatado}",
 		"{link_afiliado}",
-		"{aviso_preco}",
 	}
 	for _, v := range requiredVars {
 		if !strings.Contains(tmpl, v) {

@@ -313,29 +313,26 @@ func formatReviewCount(count int) string {
 
 // DefaultShopeeTemplate returns the default template for Shopee offers
 func DefaultShopeeTemplate() string {
-	return `🛒 *{nome_produto}*
+	return `🛍️ {nome_produto}
 
-💰 De: ~{preco_original_formatado}~
-🔥 Por: *{preco_formatado}*
-📉 {discount}
+De {preco_original_formatado}
+💸 Por {preco_formatado}
 
-{cupom_bloco}
+🛒Compre aqui: {link_afiliado}
 
-{cta} {link_afiliado}
-
-{aviso_preco}`
+⚠ Promoção sujeita a alteração a qualquer momento.`
 }
 
 // DefaultMLTemplate returns the default template for Mercado Livre offers
 func DefaultMLTemplate() string {
-	return `🛒 *{nome_produto}*
+	return `🛍️ {nome_produto}
 
-💰 De: ~{preco_original_formatado}~
-🔥 Por: *{preco_formatado}*
+De {preco_original_formatado}
+💸 Por {preco_formatado}
 
-{cta} {link_afiliado}
+🛒Compre aqui: {link_afiliado}
 
-{aviso_preco}`
+⚠ Promoção sujeita a alteração a qualquer momento.`
 }
 
 // ExtractTemplateVariables extracts variable names from a template

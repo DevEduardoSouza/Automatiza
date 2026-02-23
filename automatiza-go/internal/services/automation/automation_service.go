@@ -579,7 +579,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		dispatchTemplate = automation.GetCustomMessage()
 	}
 	if dispatchTemplate == "" {
-		dispatchTemplate = "{{PRODUTO_NOME}}\n\nDe: {{PRODUTO_PRECO_ORIGINAL}}\nPor: {{PRODUTO_PRECO}}\n\n{{LINK_AFILIADO}}"
+		dispatchTemplate = "🛍️ {{PRODUTO_NOME}}\n\nDe {{PRODUTO_PRECO_ORIGINAL}}\n💸 Por {{PRODUTO_PRECO}}\n\n🛒Compre aqui: {{LINK_AFILIADO}}\n\n⚠ Promoção sujeita a alteração a qualquer momento."
 	}
 
 	// Detect templates without variables — all messages will be identical, risking WhatsApp anti-spam suppression
