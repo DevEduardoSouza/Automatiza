@@ -325,7 +325,7 @@ export class CouponsPage {
   /**
    * Filters coupons by store using Select component.
    */
-  async filterByStore(storeName: RegExp | string): Promise<void> {
+  async selectStoreFilter(storeName: RegExp | string): Promise<void> {
     const storeTrigger = this.page.locator('[role="combobox"]').first();
     await storeTrigger.click();
 

@@ -494,6 +494,14 @@ func (m *mockProfileRepo) SearchProfiles(ctx context.Context, query, cursor stri
 	return nil, "", nil
 }
 
+func (m *mockProfileRepo) CreateUserCredentials(ctx context.Context, userID, passwordHash string) error {
+	return nil
+}
+
+func (m *mockProfileRepo) GetProfileStats(ctx context.Context) (*repository.ProfileStats, error) {
+	return &repository.ProfileStats{}, nil
+}
+
 func (m *mockProfileRepo) AddProfile(profile *models.Profile) {
 	m.profiles[profile.ID] = profile
 	m.profileByEmail[profile.Email] = profile
@@ -687,6 +695,14 @@ func (m *mockGroupRepo) BulkUpdateGroups(ctx context.Context, userID string, gro
 	return 0, nil
 }
 
+func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
+	return &repository.GroupPaginatedResult{}, nil
+}
+
+func (m *mockGroupRepo) CountAll(ctx context.Context) (int64, error) {
+	return 0, nil
+}
+
 func (m *mockGroupRepo) AddGroup(group *models.Group) {
 	m.groups[group.ID] = group
 	m.byUserID[group.UserID] = append(m.byUserID[group.UserID], *group)
@@ -786,6 +802,14 @@ func (m *mockAutomationRepo) UpdateLastRunAt(ctx context.Context, automationID s
 }
 
 func (m *mockAutomationRepo) UpdateNextRunAt(ctx context.Context, automationID string, nextRun time.Time) error {
+	return nil
+}
+
+func (m *mockAutomationRepo) BulkUpdateStatusByUserID(ctx context.Context, userID, targetStatus string, sourceStatus *string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockAutomationRepo) BulkUpdateNextRunAts(ctx context.Context, automationIDs []string, nextRunAts []time.Time) error {
 	return nil
 }
 

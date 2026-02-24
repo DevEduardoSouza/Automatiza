@@ -1,8 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { setupAuthMocks } from './fixtures/auth.fixture';
 import {
-  MOCK_PROFILES,
-  MOCK_USER_INVESTIGATION,
   mockCurrentUserAsAdmin,
   mockListProfiles,
   mockSearchProfiles,

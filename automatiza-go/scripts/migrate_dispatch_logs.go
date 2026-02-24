@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package main provides a migration script for transferring dispatch_logs data
 // from Supabase (PostgreSQL) to local PostgreSQL.
 //

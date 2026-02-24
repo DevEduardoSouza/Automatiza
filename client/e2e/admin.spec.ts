@@ -2,14 +2,6 @@ import { expect, test } from '@playwright/test';
 import { setupAuthMocks } from './fixtures/auth.fixture';
 import {
   mockAdminAccessDenied,
-  mockCurrentUserAsAdmin,
-  setupAdminDashboardMocks,
-  setupAdminUsersMocks,
-  setupAdminPlansMocks,
-  setupAdminCategoriesMocks,
-  setupAdminTeamMocks,
-  setupAdminEmailTemplatesMocks,
-  setupAdminSettingsMocks,
   setupFullAdminMocks,
 } from './fixtures/admin.fixture';
 import { AdminPage } from './pages/admin.page';

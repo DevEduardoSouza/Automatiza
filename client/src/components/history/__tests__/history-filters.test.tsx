@@ -43,8 +43,8 @@ vi.mock('@/components/ui/select', () => ({
 }));
 
 vi.mock('@/components/ui/label', () => ({
-  Label: ({ children }: { children: React.ReactNode }) => (
-    <label>{children}</label>
+  Label: ({ children, ...props }: { children: React.ReactNode; htmlFor?: string }) => (
+    <label htmlFor={props.htmlFor}>{children}</label>
   ),
 }));
 
