@@ -72,6 +72,13 @@ jobs:
         working-directory: client
         run: npm ci
 
+      - name: Setup buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Generate proto stubs
+        working-directory: client
+        run: npx buf generate
+
       - name: Run tests
         working-directory: client
         run: npm run test -- --coverage

@@ -528,7 +528,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		}
 	}
 	if len(dispatchCopies) == 0 {
-		dispatchCopies = []string{"🛍️ {{PRODUTO_NOME}}\n\nDe {{PRODUTO_PRECO_ORIGINAL}}\n💸 Por {{PRODUTO_PRECO}}\n\n🛒Compre aqui: {{LINK_AFILIADO}}\n\n⚠ Promoção sujeita a alteração a qualquer momento."}
+		dispatchCopies = []string{"🛍️ {{PRODUTO_NOME}}\n\nDe {{PRODUTO_PRECO_ORIGINAL}}\n💸 Por {{PRODUTO_PRECO}}\n\n🛒Compre aqui: {{LINK_AFILIADO}}\n\n⚠ Promoção sujeita a alteração a qualquer momento."} //nolint:misspell // "momento" is Portuguese, not a misspelling of "memento"
 	}
 
 	// Detect templates without variables on the first copy — log once
@@ -724,7 +724,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				// Select random copy variation per message
 				copyIndex := 0
 				if len(dispatchCopies) > 1 {
-					copyIndex = rand.IntN(len(dispatchCopies))
+					copyIndex = rand.IntN(len(dispatchCopies)) //nolint:gosec // G404: non-security random for copy variation selection
 				}
 				selectedCopy := dispatchCopies[copyIndex]
 
