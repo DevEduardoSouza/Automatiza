@@ -121,7 +121,7 @@ func (a *Automation) GetDedupeHours() int {
 	if a.DedupeHours != nil {
 		return *a.DedupeHours
 	}
-	return 720 // 30 days default
+	return 168 // 7 days default
 }
 
 // GetDelaySeconds returns the delay seconds with a default value

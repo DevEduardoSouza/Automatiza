@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap/zaptest"
@@ -546,8 +547,9 @@ func TestSearchOffers(t *testing.T) {
 
 	t.Run("success with offers", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// No categories → routes to shopeeOfferV2
 			resp := map[string]interface{}{
-				"productOfferV2": map[string]interface{}{
+				"shopeeOfferV2": map[string]interface{}{
 					"nodes": []map[string]interface{}{
 						{
 							"productName":       "Test Product",
@@ -602,8 +604,9 @@ func TestSearchOffers(t *testing.T) {
 
 	t.Run("empty results", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// No categories → routes to shopeeOfferV2
 			resp := map[string]interface{}{
-				"productOfferV2": map[string]interface{}{
+				"shopeeOfferV2": map[string]interface{}{
 					"nodes": []map[string]interface{}{},
 				},
 			}
@@ -706,10 +709,17 @@ func TestSearchOffers(t *testing.T) {
 		}
 	})
 
-	t.Run("ofertas gerais returns all offers (no category filter)", func(t *testing.T) {
+	t.Run("ofertas gerais uses shopeeOfferV2", func(t *testing.T) {
+		var capturedQuery string
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+				if q, ok := body["query"].(string); ok {
+					capturedQuery = q
+				}
+			}
 			resp := map[string]interface{}{
-				"productOfferV2": map[string]interface{}{
+				"shopeeOfferV2": map[string]interface{}{
 					"nodes": []map[string]interface{}{
 						{
 							"productName":       "General Offer",
@@ -725,7 +735,7 @@ func TestSearchOffers(t *testing.T) {
 							"commissionRate":    "5",
 							"sales":             50,
 							"ratingStar":        "4.0",
-							"priceDiscountRate": 0,
+							"priceDiscountRate": 25,
 							"shopName":          "Shop",
 						},
 					},
@@ -753,12 +763,23 @@ func TestSearchOffers(t *testing.T) {
 		if len(result.Offers) != 1 {
 			t.Errorf("expected 1 offer, got %d", len(result.Offers))
 		}
+		// Verify that shopeeOfferV2 endpoint was used (not productOfferV2)
+		if capturedQuery == "" {
+			t.Fatal("expected query to be captured")
+		}
+		if !strings.Contains(capturedQuery, "shopeeOfferV2") {
+			t.Errorf("expected shopeeOfferV2 in query, got: %s", capturedQuery)
+		}
+		if strings.Contains(capturedQuery, "productOfferV2") {
+			t.Errorf("unexpected productOfferV2 in query for ofertas gerais")
+		}
 	})
 
 	t.Run("price and discount filters applied", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// No categories → routes to shopeeOfferV2
 			resp := map[string]interface{}{
-				"productOfferV2": map[string]interface{}{
+				"shopeeOfferV2": map[string]interface{}{
 					"nodes": []map[string]interface{}{
 						{
 							"productName":       "Cheap",
@@ -850,8 +871,9 @@ func TestSearchOffers(t *testing.T) {
 
 	t.Run("sort by options", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// No categories → routes to shopeeOfferV2
 			resp := map[string]interface{}{
-				"productOfferV2": map[string]interface{}{
+				"shopeeOfferV2": map[string]interface{}{
 					"nodes": []map[string]interface{}{},
 				},
 			}
@@ -1352,8 +1374,9 @@ func TestSearchOffers_DefaultLimit(t *testing.T) {
 	var capturedPayload map[string]interface{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&capturedPayload)
+		// No categories → routes to shopeeOfferV2
 		resp := map[string]interface{}{
-			"productOfferV2": map[string]interface{}{
+			"shopeeOfferV2": map[string]interface{}{
 				"nodes": []map[string]interface{}{},
 			},
 		}
@@ -1392,8 +1415,9 @@ func TestSearchOffers_OriginalPriceCalculation(t *testing.T) {
 	ctx := context.Background()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// No categories → routes to shopeeOfferV2
 		resp := map[string]interface{}{
-			"productOfferV2": map[string]interface{}{
+			"shopeeOfferV2": map[string]interface{}{
 				"nodes": []map[string]interface{}{
 					{
 						"productName":       "Discounted",
@@ -1465,5 +1489,253 @@ func TestShopeeGraphQL_InvalidJSONResponse(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON response")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests: searchShopeeOffers (shopeeOfferV2)
+// ---------------------------------------------------------------------------
+
+func TestSearchShopeeOffers(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success maps offers correctly", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := map[string]interface{}{
+				"shopeeOfferV2": map[string]interface{}{
+					"nodes": []map[string]interface{}{
+						{
+							"productName":       "Fresh Offer",
+							"itemId":            100,
+							"shopId":            200,
+							"productLink":       "https://shopee.com.br/product/200/100",
+							"offerLink":         "https://s.shopee.com.br/fresh",
+							"imageUrl":          "https://img.shopee.com.br/fresh.jpg",
+							"priceMin":          "30.00",
+							"priceMax":          "60.00",
+							"price":             "45.00",
+							"commission":        "4.50",
+							"commissionRate":    "10.0",
+							"sales":             250,
+							"ratingStar":        "4.8",
+							"priceDiscountRate": 20,
+							"shopName":          "FreshShop",
+						},
+					},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, graphqlResponse(resp))
+		}))
+		defer server.Close()
+
+		svc := newTestService(t, server.URL, &mockAffiliateRepo{}, &mockSettingsRepo{})
+
+		result, err := svc.searchShopeeOffers(ctx, "app-id", "secret", 1, 20, models.ShopeeSearchParams{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(result.Offers) != 1 {
+			t.Fatalf("expected 1 offer, got %d", len(result.Offers))
+		}
+		offer := result.Offers[0]
+		if offer.Name != "Fresh Offer" {
+			t.Errorf("name = %q, want %q", offer.Name, "Fresh Offer")
+		}
+		if offer.ItemID != 100 {
+			t.Errorf("itemID = %d, want 100", offer.ItemID)
+		}
+		if offer.Price != 45.0 {
+			t.Errorf("price = %f, want 45.0", offer.Price)
+		}
+		if offer.Discount != 20.0 {
+			t.Errorf("discount = %f, want 20.0", offer.Discount)
+		}
+		if offer.ShopName != "FreshShop" {
+			t.Errorf("shopName = %q, want %q", offer.ShopName, "FreshShop")
+		}
+		// original price = 45 / (1 - 0.20) = 56.25
+		if offer.OriginalPrice != 56.25 {
+			t.Errorf("originalPrice = %f, want 56.25", offer.OriginalPrice)
+		}
+	})
+
+	t.Run("empty results", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := map[string]interface{}{
+				"shopeeOfferV2": map[string]interface{}{
+					"nodes": []map[string]interface{}{},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, graphqlResponse(resp))
+		}))
+		defer server.Close()
+
+		svc := newTestService(t, server.URL, &mockAffiliateRepo{}, &mockSettingsRepo{})
+
+		result, err := svc.searchShopeeOffers(ctx, "app-id", "secret", 1, 10, models.ShopeeSearchParams{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(result.Offers) != 0 {
+			t.Errorf("expected 0 offers, got %d", len(result.Offers))
+		}
+		if result.HasMore {
+			t.Error("expected HasMore=false for empty results")
+		}
+	})
+
+	t.Run("filters applied (price and discount)", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := map[string]interface{}{
+				"shopeeOfferV2": map[string]interface{}{
+					"nodes": []map[string]interface{}{
+						{
+							"productName":       "Cheap",
+							"itemId":            1,
+							"shopId":            2,
+							"productLink":       "link1",
+							"offerLink":         "offer1",
+							"imageUrl":          "img1",
+							"priceMin":          "5",
+							"priceMax":          "10",
+							"price":             "5",
+							"commission":        "0.5",
+							"commissionRate":    "10",
+							"sales":             10,
+							"ratingStar":        "3.0",
+							"priceDiscountRate": 5,
+							"shopName":          "Shop1",
+						},
+						{
+							"productName":       "Good",
+							"itemId":            3,
+							"shopId":            4,
+							"productLink":       "link2",
+							"offerLink":         "offer2",
+							"imageUrl":          "img2",
+							"priceMin":          "50",
+							"priceMax":          "80",
+							"price":             "50",
+							"commission":        "5",
+							"commissionRate":    "10",
+							"sales":             50,
+							"ratingStar":        "4.0",
+							"priceDiscountRate": 30,
+							"shopName":          "Shop2",
+						},
+					},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, graphqlResponse(resp))
+		}))
+		defer server.Close()
+
+		svc := newTestService(t, server.URL, &mockAffiliateRepo{}, &mockSettingsRepo{})
+
+		minPrice := 10.0
+		minDiscount := 20.0
+		result, err := svc.searchShopeeOffers(ctx, "app-id", "secret", 1, 10, models.ShopeeSearchParams{
+			MinPrice:    &minPrice,
+			MinDiscount: &minDiscount,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// Only "Good" passes (price=50 > minPrice=10, discount=30 > minDiscount=20)
+		if len(result.Offers) != 1 {
+			t.Fatalf("expected 1 offer after filters, got %d", len(result.Offers))
+		}
+		if result.Offers[0].Name != "Good" {
+			t.Errorf("expected 'Good', got %q", result.Offers[0].Name)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Tests: SearchOffers routing (shopeeOfferV2 vs productOfferV2)
+// ---------------------------------------------------------------------------
+
+func TestSearchOffers_RoutingByCategory(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("specific category uses productOfferV2", func(t *testing.T) {
+		var capturedQuery string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+				if q, ok := body["query"].(string); ok {
+					capturedQuery = q
+				}
+			}
+			resp := map[string]interface{}{
+				"productOfferV2": map[string]interface{}{
+					"nodes": []map[string]interface{}{},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, graphqlResponse(resp))
+		}))
+		defer server.Close()
+
+		repo := &mockAffiliateRepo{
+			GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
+				return validCreds(), nil
+			},
+		}
+		svc := newTestService(t, server.URL, repo, &mockSettingsRepo{})
+
+		_, err := svc.SearchOffers(ctx, "user1", models.ShopeeSearchParams{
+			Categories: []string{"Eletrônicos"},
+			Limit:      5,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(capturedQuery, "productOfferV2") {
+			t.Errorf("expected productOfferV2 in query for specific category, got: %s", capturedQuery)
+		}
+		if strings.Contains(capturedQuery, "shopeeOfferV2") {
+			t.Errorf("unexpected shopeeOfferV2 in query for specific category")
+		}
+	})
+
+	t.Run("no categories uses shopeeOfferV2", func(t *testing.T) {
+		var capturedQuery string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+				if q, ok := body["query"].(string); ok {
+					capturedQuery = q
+				}
+			}
+			resp := map[string]interface{}{
+				"shopeeOfferV2": map[string]interface{}{
+					"nodes": []map[string]interface{}{},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, graphqlResponse(resp))
+		}))
+		defer server.Close()
+
+		repo := &mockAffiliateRepo{
+			GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
+				return validCreds(), nil
+			},
+		}
+		svc := newTestService(t, server.URL, repo, &mockSettingsRepo{})
+
+		_, err := svc.SearchOffers(ctx, "user1", models.ShopeeSearchParams{
+			Limit: 10,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(capturedQuery, "shopeeOfferV2") {
+			t.Errorf("expected shopeeOfferV2 in query for no categories, got: %s", capturedQuery)
+		}
+	})
 }
 
