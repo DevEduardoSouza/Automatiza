@@ -798,7 +798,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 
 				// Mark as sent for deduplication
 				s.markAsSent(ctx, automation.UserID, groupID, canonicalKey, dedupeHours)
-				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "sent", "", withCanonicalKey(canonicalKey, store), withCopyIndex(copyIndex))
+				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "sent", "", withCanonicalKey(canonicalKey, store), withCopyIndex(copyIndex), withAffiliateLink(offer.AffiliateLink))
 				sentCount++
 
 				// Record backpressure
@@ -961,6 +961,14 @@ func withCanonicalKey(canonicalKey, store string) logDispatchOpt {
 func withCopyIndex(idx int) logDispatchOpt {
 	return func(log *models.DispatchLog) {
 		log.CopyIndex = &idx
+	}
+}
+
+func withAffiliateLink(link string) logDispatchOpt {
+	return func(log *models.DispatchLog) {
+		if link != "" {
+			log.AffiliateLink = &link
+		}
 	}
 }
 
