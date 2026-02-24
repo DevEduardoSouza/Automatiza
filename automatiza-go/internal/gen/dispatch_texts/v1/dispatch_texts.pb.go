@@ -32,14 +32,18 @@ type DispatchText struct {
 	UserId string `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	// Template name
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	// Template body with variables
+	// [deprecated] Use copies instead. Returns copies[0] for backward compatibility.
+	//
+	// Deprecated: Marked as deprecated in dispatch_texts/v1/dispatch_texts.proto.
 	Body string `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 	// Whether the template is active
 	IsActive bool `protobuf:"varint,5,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
 	// Creation timestamp (ISO 8601)
 	CreatedAt string `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// Last update timestamp (ISO 8601)
-	UpdatedAt     string `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	UpdatedAt string `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// Copy variations — system randomly selects one per message
+	Copies        []string `protobuf:"bytes,8,rep,name=copies,proto3" json:"copies,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -95,6 +99,7 @@ func (x *DispatchText) GetName() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in dispatch_texts/v1/dispatch_texts.proto.
 func (x *DispatchText) GetBody() string {
 	if x != nil {
 		return x.Body
@@ -121,6 +126,13 @@ func (x *DispatchText) GetUpdatedAt() string {
 		return x.UpdatedAt
 	}
 	return ""
+}
+
+func (x *DispatchText) GetCopies() []string {
+	if x != nil {
+		return x.Copies
+	}
+	return nil
 }
 
 type ListDispatchTextsRequest struct {
@@ -292,10 +304,15 @@ func (x *GetDispatchTextResponse) GetDispatchText() *DispatchText {
 }
 
 type CreateDispatchTextRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Body          string                 `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
-	IsActive      *bool                  `protobuf:"varint,3,opt,name=is_active,json=isActive,proto3,oneof" json:"is_active,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// [deprecated] Use copies instead.
+	//
+	// Deprecated: Marked as deprecated in dispatch_texts/v1/dispatch_texts.proto.
+	Body     string `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
+	IsActive *bool  `protobuf:"varint,3,opt,name=is_active,json=isActive,proto3,oneof" json:"is_active,omitempty"`
+	// Copy variations (1-10 items, each max 4000 chars)
+	Copies        []string `protobuf:"bytes,4,rep,name=copies,proto3" json:"copies,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -337,6 +354,7 @@ func (x *CreateDispatchTextRequest) GetName() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in dispatch_texts/v1/dispatch_texts.proto.
 func (x *CreateDispatchTextRequest) GetBody() string {
 	if x != nil {
 		return x.Body
@@ -349,6 +367,13 @@ func (x *CreateDispatchTextRequest) GetIsActive() bool {
 		return *x.IsActive
 	}
 	return false
+}
+
+func (x *CreateDispatchTextRequest) GetCopies() []string {
+	if x != nil {
+		return x.Copies
+	}
+	return nil
 }
 
 type CreateDispatchTextResponse struct {
@@ -396,11 +421,16 @@ func (x *CreateDispatchTextResponse) GetDispatchText() *DispatchText {
 }
 
 type UpdateDispatchTextRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          *string                `protobuf:"bytes,2,opt,name=name,proto3,oneof" json:"name,omitempty"`
-	Body          *string                `protobuf:"bytes,3,opt,name=body,proto3,oneof" json:"body,omitempty"`
-	IsActive      *bool                  `protobuf:"varint,4,opt,name=is_active,json=isActive,proto3,oneof" json:"is_active,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name  *string                `protobuf:"bytes,2,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	// [deprecated] Use copies instead.
+	//
+	// Deprecated: Marked as deprecated in dispatch_texts/v1/dispatch_texts.proto.
+	Body     *string `protobuf:"bytes,3,opt,name=body,proto3,oneof" json:"body,omitempty"`
+	IsActive *bool   `protobuf:"varint,4,opt,name=is_active,json=isActive,proto3,oneof" json:"is_active,omitempty"`
+	// Copy variations (1-10 items, each max 4000 chars)
+	Copies        []string `protobuf:"bytes,5,rep,name=copies,proto3" json:"copies,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -449,6 +479,7 @@ func (x *UpdateDispatchTextRequest) GetName() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in dispatch_texts/v1/dispatch_texts.proto.
 func (x *UpdateDispatchTextRequest) GetBody() string {
 	if x != nil && x.Body != nil {
 		return *x.Body
@@ -461,6 +492,13 @@ func (x *UpdateDispatchTextRequest) GetIsActive() bool {
 		return *x.IsActive
 	}
 	return false
+}
+
+func (x *UpdateDispatchTextRequest) GetCopies() []string {
+	if x != nil {
+		return x.Copies
+	}
+	return nil
 }
 
 type UpdateDispatchTextResponse struct {
@@ -591,39 +629,41 @@ var File_dispatch_texts_v1_dispatch_texts_proto protoreflect.FileDescriptor
 
 const file_dispatch_texts_v1_dispatch_texts_proto_rawDesc = "" +
 	"\n" +
-	"&dispatch_texts/v1/dispatch_texts.proto\x12\x11dispatch_texts.v1\x1a\x1bbuf/validate/validate.proto\"\xba\x01\n" +
+	"&dispatch_texts/v1/dispatch_texts.proto\x12\x11dispatch_texts.v1\x1a\x1bbuf/validate/validate.proto\"\xd6\x01\n" +
 	"\fDispatchText\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12\x12\n" +
-	"\x04body\x18\x04 \x01(\tR\x04body\x12\x1b\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x16\n" +
+	"\x04body\x18\x04 \x01(\tB\x02\x18\x01R\x04body\x12\x1b\n" +
 	"\tis_active\x18\x05 \x01(\bR\bisActive\x12\x1d\n" +
 	"\n" +
 	"created_at\x18\x06 \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\tR\tupdatedAt\"\x1a\n" +
+	"updated_at\x18\a \x01(\tR\tupdatedAt\x12\x16\n" +
+	"\x06copies\x18\b \x03(\tR\x06copies\"\x1a\n" +
 	"\x18ListDispatchTextsRequest\"c\n" +
 	"\x19ListDispatchTextsResponse\x12F\n" +
 	"\x0edispatch_texts\x18\x01 \x03(\v2\x1f.dispatch_texts.v1.DispatchTextR\rdispatchTexts\"1\n" +
 	"\x16GetDispatchTextRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\"_\n" +
 	"\x17GetDispatchTextResponse\x12D\n" +
-	"\rdispatch_text\x18\x01 \x01(\v2\x1f.dispatch_texts.v1.DispatchTextR\fdispatchText\"\x8b\x01\n" +
+	"\rdispatch_text\x18\x01 \x01(\v2\x1f.dispatch_texts.v1.DispatchTextR\fdispatchText\"\x9b\x01\n" +
 	"\x19CreateDispatchTextRequest\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
-	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x04name\x12\x1e\n" +
-	"\x04body\x18\x02 \x01(\tB\n" +
-	"\xbaH\ar\x05\x10\x01\x18\xa0\x1fR\x04body\x12 \n" +
-	"\tis_active\x18\x03 \x01(\bH\x00R\bisActive\x88\x01\x01B\f\n" +
+	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x04name\x12\x16\n" +
+	"\x04body\x18\x02 \x01(\tB\x02\x18\x01R\x04body\x12 \n" +
+	"\tis_active\x18\x03 \x01(\bH\x00R\bisActive\x88\x01\x01\x12\x16\n" +
+	"\x06copies\x18\x04 \x03(\tR\x06copiesB\f\n" +
 	"\n" +
 	"_is_active\"b\n" +
 	"\x1aCreateDispatchTextResponse\x12D\n" +
-	"\rdispatch_text\x18\x01 \x01(\v2\x1f.dispatch_texts.v1.DispatchTextR\fdispatchText\"\xbc\x01\n" +
+	"\rdispatch_text\x18\x01 \x01(\v2\x1f.dispatch_texts.v1.DispatchTextR\fdispatchText\"\xce\x01\n" +
 	"\x19UpdateDispatchTextRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
-	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x12!\n" +
-	"\x04body\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\xa0\x1fH\x01R\x04body\x88\x01\x01\x12 \n" +
-	"\tis_active\x18\x04 \x01(\bH\x02R\bisActive\x88\x01\x01B\a\n" +
+	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x12\x1b\n" +
+	"\x04body\x18\x03 \x01(\tB\x02\x18\x01H\x01R\x04body\x88\x01\x01\x12 \n" +
+	"\tis_active\x18\x04 \x01(\bH\x02R\bisActive\x88\x01\x01\x12\x16\n" +
+	"\x06copies\x18\x05 \x03(\tR\x06copiesB\a\n" +
 	"\x05_nameB\a\n" +
 	"\x05_bodyB\f\n" +
 	"\n" +

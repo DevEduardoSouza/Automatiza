@@ -22,7 +22,16 @@ export function TextsVirtualTable({ items, onEdit, onRemove }: TextsVirtualTable
       key: 'name',
       header: t('pages.dispatchTexts.table.name'),
       width: '200px',
-      render: (item: DispatchText) => <span className="font-medium">{item.name}</span>,
+      render: (item: DispatchText) => (
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{item.name}</span>
+          {item.copies?.length > 1 && (
+            <span className="inline-flex items-center rounded-full bg-[#8D2D53]/10 px-2 py-0.5 text-[10px] font-medium text-[#8D2D53]">
+              {t('pages.dispatchTexts.copies.count', { count: item.copies.length })}
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       key: 'status',

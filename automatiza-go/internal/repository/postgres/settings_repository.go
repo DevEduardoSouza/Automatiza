@@ -96,7 +96,7 @@ func (r *settingsRepository) Update(ctx context.Context, key string, value inter
 
 func (r *settingsRepository) GetDispatchText(ctx context.Context, dispatchTextID string) (*models.DispatchText, error) {
 	query := `
-		SELECT id, user_id, name, body, is_active, created_at, updated_at
+		SELECT id, user_id, name, body, is_active, created_at, updated_at, copies
 		FROM dispatch_texts
 		WHERE id = $1
 	`
@@ -105,7 +105,7 @@ func (r *settingsRepository) GetDispatchText(ctx context.Context, dispatchTextID
 	var createdAt, updatedAt time.Time
 
 	err := r.db.QueryRow(ctx, query, dispatchTextID).Scan(
-		&dt.ID, &dt.UserID, &dt.Name, &dt.Body, &dt.IsActive, &createdAt, &updatedAt,
+		&dt.ID, &dt.UserID, &dt.Name, &dt.Body, &dt.IsActive, &createdAt, &updatedAt, &dt.Copies,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -138,7 +138,7 @@ func (r *settingsRepository) Delete(ctx context.Context, key string) error {
 // GetDispatchTextsByUser retrieves all dispatch texts for a user
 func (r *settingsRepository) GetDispatchTextsByUser(ctx context.Context, userID string) ([]models.DispatchText, error) {
 	query := `
-		SELECT id, user_id, name, body, is_active, created_at, updated_at
+		SELECT id, user_id, name, body, is_active, created_at, updated_at, copies
 		FROM dispatch_texts
 		WHERE user_id = $1
 		ORDER BY name
@@ -155,7 +155,7 @@ func (r *settingsRepository) GetDispatchTextsByUser(ctx context.Context, userID 
 		var dt models.DispatchText
 		var createdAt, updatedAt time.Time
 
-		err := rows.Scan(&dt.ID, &dt.UserID, &dt.Name, &dt.Body, &dt.IsActive, &createdAt, &updatedAt)
+		err := rows.Scan(&dt.ID, &dt.UserID, &dt.Name, &dt.Body, &dt.IsActive, &createdAt, &updatedAt, &dt.Copies)
 		if err != nil {
 			return nil, err
 		}
@@ -172,16 +172,22 @@ func (r *settingsRepository) GetDispatchTextsByUser(ctx context.Context, userID 
 func (r *settingsRepository) CreateDispatchText(ctx context.Context, userID string, dt *models.DispatchText) (*models.DispatchText, error) {
 	now := time.Now().UTC()
 
+	// Ensure body stays in sync with copies[0]
+	body := dt.Body
+	if len(dt.Copies) > 0 {
+		body = dt.Copies[0]
+	}
+
 	query := `
-		INSERT INTO dispatch_texts (user_id, name, body, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO dispatch_texts (user_id, name, body, is_active, copies, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, created_at, updated_at
 	`
 
 	var id string
 	var createdAt, updatedAt time.Time
 
-	err := r.db.QueryRow(ctx, query, userID, dt.Name, dt.Body, dt.IsActive, now, now).Scan(&id, &createdAt, &updatedAt)
+	err := r.db.QueryRow(ctx, query, userID, dt.Name, body, dt.IsActive, dt.Copies, now, now).Scan(&id, &createdAt, &updatedAt)
 	if err != nil {
 		r.logger.Error("Failed to create dispatch text",
 			zap.String("userID", userID),
@@ -191,6 +197,7 @@ func (r *settingsRepository) CreateDispatchText(ctx context.Context, userID stri
 
 	dt.ID = id
 	dt.UserID = userID
+	dt.Body = body
 	dt.CreatedAt = createdAt.Format(time.RFC3339)
 	dt.UpdatedAt = updatedAt.Format(time.RFC3339)
 
@@ -201,8 +208,9 @@ func (r *settingsRepository) CreateDispatchText(ctx context.Context, userID stri
 func (r *settingsRepository) UpdateDispatchText(ctx context.Context, dispatchTextID string, updates map[string]interface{}) error {
 	query := `
 		UPDATE dispatch_texts
-		SET name = COALESCE($1, name), body = COALESCE($2, body), is_active = COALESCE($3, is_active), updated_at = $4
-		WHERE id = $5
+		SET name = COALESCE($1, name), body = COALESCE($2, body), is_active = COALESCE($3, is_active),
+		    copies = COALESCE($4, copies), updated_at = $5
+		WHERE id = $6
 	`
 
 	name, nameOk := updates["name"].(string)
@@ -214,14 +222,17 @@ func (r *settingsRepository) UpdateDispatchText(ctx context.Context, dispatchTex
 				"dispatch_text_id": dispatchTextID,
 			})
 	}
-	body, bodyOk := updates["body"].(string)
-	if !bodyOk && updates["body"] != nil {
-		observability.CaptureMessage(sentry.LevelWarning,
-			"Unexpected type for dispatch text 'body' field in update",
-			map[string]string{
-				"module": "settings", "operation": "update_dispatch_text",
-				"dispatch_text_id": dispatchTextID,
-			})
+
+	// Handle copies array — when provided, body is set to copies[0]
+	var copies []string
+	var body string
+	if c, ok := updates["copies"].([]string); ok && len(c) > 0 {
+		copies = c
+		body = c[0]
+	} else {
+		if b, ok := updates["body"].(string); ok {
+			body = b
+		}
 	}
 
 	// Handle is_active - need to use pointer to allow COALESCE
@@ -232,7 +243,12 @@ func (r *settingsRepository) UpdateDispatchText(ctx context.Context, dispatchTex
 		}
 	}
 
-	_, err := r.db.pool.Exec(ctx, query, nilIfEmpty(name), nilIfEmpty(body), isActive, time.Now().UTC(), dispatchTextID)
+	var copiesParam interface{}
+	if copies != nil {
+		copiesParam = copies
+	}
+
+	_, err := r.db.pool.Exec(ctx, query, nilIfEmpty(name), nilIfEmpty(body), isActive, copiesParam, time.Now().UTC(), dispatchTextID)
 	return err
 }
 
@@ -247,7 +263,7 @@ func (r *settingsRepository) DeleteDispatchText(ctx context.Context, dispatchTex
 // GetActiveDispatchTextByID retrieves an active dispatch text by ID and user
 func (r *settingsRepository) GetActiveDispatchTextByID(ctx context.Context, dispatchTextID, userID string) (*models.DispatchText, error) {
 	query := `
-		SELECT id, user_id, name, body, is_active, created_at, updated_at
+		SELECT id, user_id, name, body, is_active, created_at, updated_at, copies
 		FROM dispatch_texts
 		WHERE id = $1 AND user_id = $2 AND is_active = true
 	`
@@ -256,7 +272,7 @@ func (r *settingsRepository) GetActiveDispatchTextByID(ctx context.Context, disp
 	var createdAt, updatedAt time.Time
 
 	err := r.db.QueryRow(ctx, query, dispatchTextID, userID).Scan(
-		&dt.ID, &dt.UserID, &dt.Name, &dt.Body, &dt.IsActive, &createdAt, &updatedAt,
+		&dt.ID, &dt.UserID, &dt.Name, &dt.Body, &dt.IsActive, &createdAt, &updatedAt, &dt.Copies,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -274,7 +290,7 @@ func (r *settingsRepository) GetActiveDispatchTextByID(ctx context.Context, disp
 // GetActiveDispatchTextsByUser retrieves all active dispatch texts for a user
 func (r *settingsRepository) GetActiveDispatchTextsByUser(ctx context.Context, userID string) ([]models.DispatchText, error) {
 	query := `
-		SELECT id, user_id, name, body, is_active, created_at, updated_at
+		SELECT id, user_id, name, body, is_active, created_at, updated_at, copies
 		FROM dispatch_texts
 		WHERE user_id = $1 AND is_active = true
 		ORDER BY name
@@ -291,7 +307,7 @@ func (r *settingsRepository) GetActiveDispatchTextsByUser(ctx context.Context, u
 		var dt models.DispatchText
 		var createdAt, updatedAt time.Time
 
-		err := rows.Scan(&dt.ID, &dt.UserID, &dt.Name, &dt.Body, &dt.IsActive, &createdAt, &updatedAt)
+		err := rows.Scan(&dt.ID, &dt.UserID, &dt.Name, &dt.Body, &dt.IsActive, &createdAt, &updatedAt, &dt.Copies)
 		if err != nil {
 			return nil, err
 		}

@@ -3,6 +3,7 @@ package connectrpc
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	dispatchtextsv1 "automatiza-go/internal/gen/dispatch_texts/v1"
 	"automatiza-go/internal/models"
@@ -86,6 +87,17 @@ func (h *DispatchTextsHandler) CreateDispatchText(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
+	// Resolve copies: prefer copies field, fall back to deprecated body
+	copies := req.Msg.GetCopies()
+	if len(copies) == 0 && req.Msg.GetBody() != "" {
+		copies = []string{req.Msg.GetBody()}
+	}
+
+	// Validate copies
+	if err := validateCopies(copies); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
 	// Default is_active to true if not provided
 	isActive := true
 	if req.Msg.IsActive != nil {
@@ -94,8 +106,9 @@ func (h *DispatchTextsHandler) CreateDispatchText(
 
 	dt := &models.DispatchText{
 		Name:     req.Msg.GetName(),
-		Body:     req.Msg.GetBody(),
+		Body:     copies[0],
 		IsActive: isActive,
+		Copies:   copies,
 	}
 
 	created, err := h.settingsRepo.CreateDispatchText(ctx, user.ID, dt)
@@ -131,7 +144,13 @@ func (h *DispatchTextsHandler) UpdateDispatchText(
 	if req.Msg.Name != nil {
 		updates["name"] = req.Msg.GetName()
 	}
-	if req.Msg.Body != nil {
+	// Prefer copies over deprecated body
+	if len(req.Msg.GetCopies()) > 0 {
+		if err := validateCopies(req.Msg.GetCopies()); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		updates["copies"] = req.Msg.GetCopies()
+	} else if req.Msg.Body != nil {
 		updates["body"] = req.Msg.GetBody()
 	}
 	if req.Msg.IsActive != nil {
@@ -183,9 +202,37 @@ func dispatchTextToProto(dt *models.DispatchText) *dispatchtextsv1.DispatchText 
 		Id:        dt.ID,
 		UserId:    dt.UserID,
 		Name:      dt.Name,
-		Body:      dt.Body,
+		Body:      dt.GetBody(),
 		IsActive:  dt.IsActive,
 		CreatedAt: dt.CreatedAt,
 		UpdatedAt: dt.UpdatedAt,
+		Copies:    dt.Copies,
 	}
+}
+
+// validateCopies validates the copies array constraints.
+func validateCopies(copies []string) error {
+	if len(copies) == 0 {
+		return fmt.Errorf("at least 1 copy variation is required")
+	}
+	if len(copies) > 10 {
+		return fmt.Errorf("maximum 10 copy variations allowed, got %d", len(copies))
+	}
+	for i, c := range copies {
+		if len(c) == 0 {
+			return fmt.Errorf("copy variation %d is empty", i+1)
+		}
+		if len(c) > 4000 {
+			return fmt.Errorf("copy variation %d exceeds 4000 character limit (%d chars)", i+1, len(c))
+		}
+		if !containsLinkVariable(c) {
+			return fmt.Errorf("copy variation %d must contain {link_afiliado} or {{LINK_AFILIADO}}", i+1)
+		}
+	}
+	return nil
+}
+
+// containsLinkVariable checks if the text contains the affiliate link variable.
+func containsLinkVariable(text string) bool {
+	return strings.Contains(text, "{link_afiliado}") || strings.Contains(text, "{{LINK_AFILIADO}}")
 }

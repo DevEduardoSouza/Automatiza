@@ -6,10 +6,12 @@ export interface DispatchText {
   id: string;
   user_id: string;
   name: string;
+  /** @deprecated Use copies instead. Returns copies[0] for backward compatibility. */
   body: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  copies: string[];
 }
 
 /**
@@ -17,7 +19,7 @@ export interface DispatchText {
  */
 export interface DispatchTextFormState {
   name: string;
-  body: string;
+  copies: string[];
   is_active: boolean;
 }
 

@@ -68,13 +68,22 @@ type UpdateSettingRequest struct {
 
 // DispatchText represents a dispatch text template in the database
 type DispatchText struct {
-	ID        string `json:"id" db:"id"`
-	UserID    string `json:"user_id" db:"user_id"`
-	Name      string `json:"name" db:"name"`
-	Body      string `json:"body" db:"body"`
-	IsActive  bool   `json:"is_active" db:"is_active"`
-	CreatedAt string `json:"created_at" db:"created_at"`
-	UpdatedAt string `json:"updated_at" db:"updated_at"`
+	ID        string   `json:"id" db:"id"`
+	UserID    string   `json:"user_id" db:"user_id"`
+	Name      string   `json:"name" db:"name"`
+	Body      string   `json:"body" db:"body"`
+	IsActive  bool     `json:"is_active" db:"is_active"`
+	CreatedAt string   `json:"created_at" db:"created_at"`
+	UpdatedAt string   `json:"updated_at" db:"updated_at"`
+	Copies    []string `json:"copies" db:"copies"`
+}
+
+// GetBody returns copies[0] if available, otherwise falls back to Body.
+func (dt *DispatchText) GetBody() string {
+	if len(dt.Copies) > 0 {
+		return dt.Copies[0]
+	}
+	return dt.Body
 }
 
 // SystemEvent represents a system event log entry

@@ -45,6 +45,8 @@ export function DispatchTextSelector({
           {dispatchTexts.map((dt) => (
             <SelectItem key={dt.id} value={dt.id} className="cursor-pointer">
               {dt.name}
+              {dt.copies?.length > 1 &&
+                ` (${dt.copies.length} ${t('pages.dispatchTexts.copies.variations')})`}
             </SelectItem>
           ))}
         </SelectContent>

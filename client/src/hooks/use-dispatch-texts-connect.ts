@@ -33,18 +33,19 @@ export interface LocalDispatchText {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  copies: string[];
 }
 
 export interface CreateDispatchTextParams {
   name: string;
-  body: string;
+  copies: string[];
   is_active?: boolean;
 }
 
 export interface UpdateDispatchTextParams {
   id: string;
   name?: string;
-  body?: string;
+  copies?: string[];
   is_active?: boolean;
 }
 
@@ -83,6 +84,12 @@ function fromProtoDispatchText(dispatchText: DispatchText): LocalDispatchText {
     is_active: dispatchText.isActive,
     created_at: dispatchText.createdAt,
     updated_at: dispatchText.updatedAt,
+    copies:
+      dispatchText.copies.length > 0
+        ? [...dispatchText.copies]
+        : dispatchText.body
+          ? [dispatchText.body]
+          : [],
   };
 }
 
@@ -201,7 +208,7 @@ export function useDispatchTextsConnect(): UseDispatchTextsConnectReturn {
       const response: CreateDispatchTextResponse = await client.createDispatchText(
         create(CreateDispatchTextRequestSchema, {
           name: params.name,
-          body: params.body,
+          copies: params.copies,
           isActive: params.is_active,
         })
       );
@@ -243,7 +250,7 @@ export function useDispatchTextsConnect(): UseDispatchTextsConnectReturn {
         create(UpdateDispatchTextRequestSchema, {
           id: params.id,
           name: params.name,
-          body: params.body,
+          copies: params.copies,
           isActive: params.is_active,
         })
       );

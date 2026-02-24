@@ -25,6 +25,7 @@ type DispatchLog struct {
 	CouponCode       *string  `json:"coupon_code,omitempty" db:"coupon_code"`
 	CouponApplied    *bool    `json:"coupon_applied,omitempty" db:"coupon_applied"`
 	CouponSkipReason *string  `json:"coupon_skip_reason,omitempty" db:"coupon_skip_reason"`
+	CopyIndex        *int     `json:"copy_index,omitempty" db:"copy_index"`
 }
 
 // DispatchLogStatus constants

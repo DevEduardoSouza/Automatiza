@@ -512,32 +512,36 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		keywords = []string{""} // empty keyword = broad search
 	}
 
-	// Get dispatch text template (only if active) — resolve once before search loop
-	var dispatchTemplate string
+	// Load dispatch text copies (resolve once, select randomly per message)
+	var dispatchCopies []string
 	if automation.DispatchTextID != nil {
 		dt, _ := s.settingsRepo.GetActiveDispatchTextByID(ctx, *automation.DispatchTextID, automation.UserID)
-		if dt != nil {
-			dispatchTemplate = dt.Body
+		if dt != nil && len(dt.Copies) > 0 {
+			dispatchCopies = dt.Copies
+		} else if dt != nil && dt.Body != "" {
+			dispatchCopies = []string{dt.Body}
 		}
 	}
-	if dispatchTemplate == "" {
-		dispatchTemplate = automation.GetCustomMessage()
+	if len(dispatchCopies) == 0 {
+		if msg := automation.GetCustomMessage(); msg != "" {
+			dispatchCopies = []string{msg}
+		}
 	}
-	if dispatchTemplate == "" {
-		dispatchTemplate = "🛍️ {{PRODUTO_NOME}}\n\nDe {{PRODUTO_PRECO_ORIGINAL}}\n💸 Por {{PRODUTO_PRECO}}\n\n🛒Compre aqui: {{LINK_AFILIADO}}\n\n⚠ Promoção sujeita a alteração a qualquer momento."
+	if len(dispatchCopies) == 0 {
+		dispatchCopies = []string{"🛍️ {{PRODUTO_NOME}}\n\nDe {{PRODUTO_PRECO_ORIGINAL}}\n💸 Por {{PRODUTO_PRECO}}\n\n🛒Compre aqui: {{LINK_AFILIADO}}\n\n⚠ Promoção sujeita a alteração a qualquer momento."}
 	}
 
-	// Detect templates without variables — all messages will be identical, risking WhatsApp anti-spam suppression
-	templateVars := text.ExtractTemplateVariables(dispatchTemplate)
+	// Detect templates without variables on the first copy — log once
+	templateVars := text.ExtractTemplateVariables(dispatchCopies[0])
 	if len(templateVars) == 0 {
 		s.logger.Warn("Dispatch template has no variables — all messages will be identical",
 			zap.String("automationID", automation.ID),
-			zap.Int("templateLen", len(dispatchTemplate)))
+			zap.Int("templateLen", len(dispatchCopies[0])))
 	}
 
 	s.logger.Info("Dispatch template resolved",
 		zap.String("automationID", automation.ID),
-		zap.Int("templateLen", len(dispatchTemplate)),
+		zap.Int("copyVariations", len(dispatchCopies)),
 		zap.Int("variableCount", len(templateVars)))
 
 	// Send offers to groups
@@ -717,8 +721,15 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					continue
 				}
 
-				// Build message from template
-				message := s.buildOfferMessage(dispatchTemplate, &offer, automation)
+				// Select random copy variation per message
+				copyIndex := 0
+				if len(dispatchCopies) > 1 {
+					copyIndex = rand.IntN(len(dispatchCopies))
+				}
+				selectedCopy := dispatchCopies[copyIndex]
+
+				// Build message from selected copy
+				message := s.buildOfferMessage(selectedCopy, &offer, automation)
 
 				s.logger.Debug("Message built for offer",
 					zap.String("automationID", automation.ID),
@@ -787,7 +798,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 
 				// Mark as sent for deduplication
 				s.markAsSent(ctx, automation.UserID, groupID, canonicalKey, dedupeHours)
-				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "sent", "", withCanonicalKey(canonicalKey, store))
+				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "sent", "", withCanonicalKey(canonicalKey, store), withCopyIndex(copyIndex))
 				sentCount++
 
 				// Record backpressure
@@ -944,6 +955,12 @@ func withCanonicalKey(canonicalKey, store string) logDispatchOpt {
 	return func(log *models.DispatchLog) {
 		log.CanonicalKey = &canonicalKey
 		log.Store = &store
+	}
+}
+
+func withCopyIndex(idx int) logDispatchOpt {
+	return func(log *models.DispatchLog) {
+		log.CopyIndex = &idx
 	}
 }
 

@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS dispatch_logs (
     coupon_code VARCHAR(100),
     coupon_applied BOOLEAN,
     coupon_skip_reason TEXT,
+    copy_index SMALLINT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
