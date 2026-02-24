@@ -747,6 +747,7 @@ func (s *shopeeService) ExpandURL(ctx context.Context, shortURL string) (string,
 var (
 	shopeeURLRegex  = regexp.MustCompile(`shopee\.com\.br/.*?\.(\d+)\.(\d+)`)
 	shopeeURLRegex2 = regexp.MustCompile(`shopee\.com\.br/product/(\d+)/(\d+)`)
+	shopeeURLRegex3 = regexp.MustCompile(`shopee\.com\.br/[^/]+/(\d+)/(\d+)`)
 )
 
 func (s *shopeeService) ExtractProductIDs(productURL string) (shopID, itemID int64, err error) {
@@ -760,6 +761,14 @@ func (s *shopeeService) ExtractProductIDs(productURL string) (shopID, itemID int
 
 	// Try pattern 2: shopee.com.br/product/shopid/itemid
 	matches = shopeeURLRegex2.FindStringSubmatch(productURL)
+	if len(matches) == 3 {
+		shopID, _ = strconv.ParseInt(matches[1], 10, 64)
+		itemID, _ = strconv.ParseInt(matches[2], 10, 64)
+		return shopID, itemID, nil
+	}
+
+	// Try pattern 3: shopee.com.br/slug/shopid/itemid (expanded short URLs)
+	matches = shopeeURLRegex3.FindStringSubmatch(productURL)
 	if len(matches) == 3 {
 		shopID, _ = strconv.ParseInt(matches[1], 10, 64)
 		itemID, _ = strconv.ParseInt(matches[2], 10, 64)

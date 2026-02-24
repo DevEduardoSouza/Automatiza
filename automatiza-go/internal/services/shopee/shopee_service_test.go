@@ -339,6 +339,18 @@ func TestExtractProductIDs(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:       "pattern 3: /slug/shopID/itemID (expanded short URL)",
+			url:        "https://shopee.com.br/opaanlp/789131072/21033994886?__mobile__=1&utm_source=foo",
+			wantShopID: 789131072,
+			wantItemID: 21033994886,
+		},
+		{
+			name:       "pattern 3: slug with dashes",
+			url:        "https://shopee.com.br/some-product-name/111/222",
+			wantShopID: 111,
+			wantItemID: 222,
+		},
+		{
 			name:    "empty URL returns error",
 			url:     "",
 			wantErr: true,
