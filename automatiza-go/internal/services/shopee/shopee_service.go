@@ -231,9 +231,9 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 		}
 	}
 
-	// If no categories resolved (or "Ofertas gerais"), use shopeeOfferV2 for fresh results
+	// If no categories resolved (or "Ofertas gerais"), search without category filter
 	if len(categoryIDs) == 0 {
-		return s.searchShopeeOffers(ctx, appID, secret, 1, limit, params) // sortType=1 = most recent
+		return s.searchShopee(ctx, appID, secret, params.Keyword, nil, sortType, limit, params)
 	}
 
 	// Search per category and aggregate results
@@ -439,135 +439,6 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 		Offers:  offers,
 		Total:   len(offers),
 		HasMore: len(result.ProductOfferV2.Nodes) >= limit,
-	}, nil
-}
-
-// searchShopeeOffers queries the shopeeOfferV2 endpoint which returns general platform offers
-// sorted by the given sortType. Unlike productOfferV2, this endpoint does not accept keyword
-// or category filters, making it ideal for "Ofertas gerais" where we want fresh, varied results.
-func (s *shopeeService) searchShopeeOffers(ctx context.Context, appID, secret string, sortType, limit int, params models.ShopeeSearchParams) (*models.ShopeeSearchResult, error) {
-	gqlQuery := `query($sortType: Int!, $limit: Int!) { shopeeOfferV2(sortType: $sortType, limit: $limit) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName productCatIds } } }`
-
-	variables := map[string]interface{}{
-		"sortType": sortType,
-		"limit":    limit,
-	}
-
-	payload, marshalErr := json.Marshal(map[string]interface{}{
-		"query":     gqlQuery,
-		"variables": variables,
-	})
-	if marshalErr != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee shopeeOfferV2 payload", marshalErr, map[string]string{
-			"external_service": "shopee",
-			"endpoint":        "shopeeOfferV2",
-		})
-		return nil, fmt.Errorf("failed to marshal shopeeOfferV2 payload: %w", marshalErr)
-	}
-
-	data, err := s.shopeeGraphQL(ctx, appID, secret, string(payload))
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		ShopeeOfferV2 struct {
-			Nodes []struct {
-				ProductName       string `json:"productName"`
-				ItemID            int64  `json:"itemId"`
-				ShopID            int64  `json:"shopId"`
-				ProductLink       string `json:"productLink"`
-				OfferLink         string `json:"offerLink"`
-				ImageURL          string `json:"imageUrl"`
-				PriceMin          string `json:"priceMin"`
-				PriceMax          string `json:"priceMax"`
-				Price             string `json:"price"`
-				Commission        string `json:"commission"`
-				CommissionRate    string `json:"commissionRate"`
-				Sales             int64  `json:"sales"`
-				RatingStar        string `json:"ratingStar"`
-				PriceDiscountRate int    `json:"priceDiscountRate"`
-				ShopName          string `json:"shopName"`
-			} `json:"nodes"`
-		} `json:"shopeeOfferV2"`
-	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal Shopee shopeeOfferV2 results", err, map[string]string{
-			"external_service": "shopee",
-			"endpoint":        "shopeeOfferV2",
-		})
-		return nil, fmt.Errorf("failed to parse shopeeOfferV2 results: %w", err)
-	}
-
-	s.logger.Debug("Shopee shopeeOfferV2 response",
-		zap.Int("rawNodes", len(result.ShopeeOfferV2.Nodes)))
-
-	offers := make([]models.ShopeeOffer, 0, len(result.ShopeeOfferV2.Nodes))
-	for _, node := range result.ShopeeOfferV2.Nodes {
-		discount := float64(node.PriceDiscountRate)
-
-		if params.MinDiscount != nil && discount < *params.MinDiscount {
-			continue
-		}
-
-		priceMin, _ := strconv.ParseFloat(node.PriceMin, 64)
-		priceMax, _ := strconv.ParseFloat(node.PriceMax, 64)
-		price, _ := strconv.ParseFloat(node.Price, 64)
-		commissionRate, _ := strconv.ParseFloat(node.CommissionRate, 64)
-		ratingStar, _ := strconv.ParseFloat(node.RatingStar, 64)
-
-		effectivePrice := price
-		if effectivePrice == 0 {
-			effectivePrice = priceMin
-		}
-		if params.MinPrice != nil && effectivePrice < *params.MinPrice {
-			continue
-		}
-		if params.MaxPrice != nil && effectivePrice > *params.MaxPrice {
-			continue
-		}
-
-		var originalPrice float64
-		if discount > 0 && effectivePrice > 0 {
-			originalPrice = effectivePrice / (1 - discount/100)
-		}
-		if originalPrice == 0 && effectivePrice > 0 {
-			if priceMax > effectivePrice {
-				originalPrice = priceMax
-			} else {
-				originalPrice = effectivePrice
-			}
-		}
-
-		if effectivePrice > 0 && originalPrice > 0 && effectivePrice >= originalPrice {
-			continue
-		}
-
-		offer := models.ShopeeOffer{
-			ItemID:         node.ItemID,
-			ShopID:         node.ShopID,
-			Name:           node.ProductName,
-			Image:          node.ImageURL,
-			Price:          effectivePrice,
-			OriginalPrice:  originalPrice,
-			PriceMin:       priceMin,
-			PriceMax:       priceMax,
-			Discount:       discount,
-			CommissionRate: commissionRate,
-			Sales:          int(node.Sales),
-			ShopName:       node.ShopName,
-			ShopRating:     ratingStar,
-			AffiliateLink:  node.OfferLink,
-			ProductURL:     node.ProductLink,
-		}
-
-		offers = append(offers, offer)
-	}
-
-	return &models.ShopeeSearchResult{
-		Offers:  offers,
-		Total:   len(offers),
-		HasMore: len(result.ShopeeOfferV2.Nodes) >= limit,
 	}, nil
 }
 
