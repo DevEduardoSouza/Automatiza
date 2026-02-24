@@ -169,10 +169,14 @@ jobs:
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server ./cmd/server
 
+      - name: Setup buf
+        uses: bufbuild/buf-setup-action@v1
+
       - name: Build Frontend
         working-directory: client
         run: |
           npm ci
+          npx buf generate
           npm run build
 
       - name: Verify builds
