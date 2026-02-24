@@ -442,11 +442,33 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 	}, nil
 }
 
+func isShopeeShortURL(rawURL string) bool {
+	lower := strings.ToLower(rawURL)
+	return strings.Contains(lower, "s.shopee.com.br/") ||
+		strings.Contains(lower, "shp.ee/") ||
+		strings.Contains(lower, "shope.ee/")
+}
+
 func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, userID string) (*models.ShopeeAffiliateLink, error) {
 	// Extract item and shop IDs from URL
 	shopID, itemID, err := s.ExtractProductIDs(productURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid shopee URL: %w", err)
+		// Short URL? Try expanding first (s.shopee.com.br, shp.ee, shope.ee)
+		if isShopeeShortURL(productURL) {
+			expanded, expandErr := s.ExpandURL(ctx, productURL)
+			if expandErr != nil {
+				return nil, fmt.Errorf("failed to expand short URL: %w", expandErr)
+			}
+			shopID, itemID, err = s.ExtractProductIDs(expanded)
+			if err != nil {
+				return nil, fmt.Errorf("invalid shopee URL after expansion: %w", err)
+			}
+			s.logger.Info("Short URL expanded for affiliate link",
+				zap.String("original", productURL),
+				zap.String("expanded", expanded))
+		} else {
+			return nil, fmt.Errorf("invalid shopee URL: %w", err)
+		}
 	}
 
 	// Check cache first (keyed by userID to prevent cross-user affiliate link pollution)
