@@ -449,8 +449,8 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		return nil, fmt.Errorf("invalid shopee URL: %w", err)
 	}
 
-	// Check cache first
-	cacheKey := fmt.Sprintf("shopee_link:%d:%d", shopID, itemID)
+	// Check cache first (keyed by userID to prevent cross-user affiliate link pollution)
+	cacheKey := fmt.Sprintf("shopee_link:%s:%d:%d", userID, shopID, itemID)
 	var cached models.ShopeeAffiliateLink
 	if s.cache != nil {
 		if err := s.cache.GetJSON(ctx, cacheKey, &cached); err == nil {

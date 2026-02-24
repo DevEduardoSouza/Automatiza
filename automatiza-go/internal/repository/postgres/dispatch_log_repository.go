@@ -30,8 +30,9 @@ func (r *dispatchLogRepository) Create(ctx context.Context, log *models.Dispatch
 	query := `
 		INSERT INTO dispatch_logs (
 			user_id, automation_id, automation_name, store, group_id,
-			product_url, product_page_url, canonical_key, status, type, created_at, copy_index
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			product_url, product_page_url, canonical_key, status, type, created_at, copy_index,
+			affiliate_link
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id, created_at
 	`
 
@@ -42,6 +43,7 @@ func (r *dispatchLogRepository) Create(ctx context.Context, log *models.Dispatch
 	err := r.db.QueryRow(ctx, query,
 		log.UserID, log.AutomationID, log.AutomationName, log.Store, log.GroupID,
 		log.ProductURL, log.ProductPageURL, log.CanonicalKey, log.Status, log.Type, now, log.CopyIndex,
+		log.AffiliateLink,
 	).Scan(&id, &createdAt)
 
 	if err != nil {

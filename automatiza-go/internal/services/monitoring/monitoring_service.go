@@ -193,7 +193,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	for _, link := range shopeeLinks {
 		if s.shopeeService != nil {
 			aff, err := s.shopeeService.GenerateAffiliateLink(ctx, link, automation.UserID)
-			if err == nil && aff != nil {
+			if err != nil {
+				s.logger.Warn("Failed to generate Shopee affiliate link, keeping original",
+					zap.String("automationID", automation.ID),
+					zap.String("userID", automation.UserID),
+					zap.String("originalLink", link),
+					zap.Error(err))
+			} else if aff != nil && aff.AffiliateLink != "" {
 				affiliateLinks[link] = aff.AffiliateLink
 			}
 		}
@@ -202,7 +208,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	for _, link := range mlLinks {
 		if s.mlService != nil {
 			aff, err := s.mlService.CreateAffiliateLink(ctx, link, automation.UserID)
-			if err == nil && aff != nil {
+			if err != nil {
+				s.logger.Warn("Failed to generate ML affiliate link, keeping original",
+					zap.String("automationID", automation.ID),
+					zap.String("userID", automation.UserID),
+					zap.String("originalLink", link),
+					zap.Error(err))
+			} else if aff != nil && aff.AffiliateLink != "" {
 				affiliateLinks[link] = aff.AffiliateLink
 			}
 		}
