@@ -49,14 +49,16 @@ test('debug virtual table', async ({ page }) => {
         node.textContent?.includes('Enviado') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
     });
     const results: string[] = [];
-    let node: Node | null;
-    while ((node = walker.nextNode())) {
+    let node: Node | null = walker.nextNode();
+    while (node) {
       const el = node.parentElement;
-      if (!el) continue;
-      const rect = el.getBoundingClientRect();
-      results.push(
-        `"${node.textContent?.trim()}" in <${el.tagName} class="${el.className?.substring(0, 40)}"> visible=${rect.width > 0 && rect.height > 0} rect=${JSON.stringify({ x: rect.x, y: rect.y, w: rect.width, h: rect.height })}`
-      );
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        results.push(
+          `"${node.textContent?.trim()}" in <${el.tagName} class="${el.className?.substring(0, 40)}"> visible=${rect.width > 0 && rect.height > 0} rect=${JSON.stringify({ x: rect.x, y: rect.y, w: rect.width, h: rect.height })}`
+        );
+      }
+      node = walker.nextNode();
     }
     return results;
   });

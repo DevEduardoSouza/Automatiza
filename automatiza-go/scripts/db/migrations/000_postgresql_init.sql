@@ -276,6 +276,7 @@ CREATE TABLE IF NOT EXISTS dispatch_texts (
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     body TEXT NOT NULL,
+    copies TEXT[] NOT NULL DEFAULT '{}',
     media_url TEXT,
     media_type VARCHAR(50),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -1411,6 +1411,14 @@
         "affiliateLink": "https://s.shopee.com.br/806Bcl3ADX",
         "priceWarning": "O preço e disponibilidade do produto podem variar. As promoções são por tempo limitado"
       },
+      "copies": {
+        "add": "Adicionar variação",
+        "remove": "Remover variação",
+        "variation": "Variação {{n}}",
+        "hint": "{{count}} variações de copy — o sistema sorteia uma diferente a cada mensagem enviada.",
+        "count": "{{count}} variações",
+        "variations": "variações"
+      },
       "aria": {
         "editItem": "Editar {{name}}",
         "deleteItem": "Excluir {{name}}"

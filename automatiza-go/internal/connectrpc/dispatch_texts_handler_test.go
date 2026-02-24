@@ -309,20 +309,21 @@ func TestCreateDispatchText_Success(t *testing.T) {
 	ctx := createTestUserContextForDispatchTexts(userID)
 
 	mockRepo.On("CreateDispatchText", mock.Anything, userID, mock.MatchedBy(func(dt *models.DispatchText) bool {
-		return dt.Name == "New Template" && dt.Body == "Hello World" && dt.IsActive == true
+		return dt.Name == "New Template" && len(dt.Copies) == 1 && dt.Copies[0] == "Hello {link_afiliado}" && dt.IsActive == true
 	})).Return(&models.DispatchText{
 		ID:        "dt-new",
 		UserID:    userID,
 		Name:      "New Template",
-		Body:      "Hello World",
+		Body:      "Hello {link_afiliado}",
 		IsActive:  true,
 		CreatedAt: "2026-01-01T00:00:00Z",
 		UpdatedAt: "2026-01-01T00:00:00Z",
+		Copies:    []string{"Hello {link_afiliado}"},
 	}, nil)
 
 	req := connect.NewRequest(&dispatchtextsv1.CreateDispatchTextRequest{
-		Name: "New Template",
-		Body: "Hello World",
+		Name:   "New Template",
+		Copies: []string{"Hello {link_afiliado}"},
 	})
 	resp, err := handler.CreateDispatchText(ctx, req)
 
@@ -330,6 +331,7 @@ func TestCreateDispatchText_Success(t *testing.T) {
 	assert.Equal(t, "dt-new", resp.Msg.DispatchText.Id)
 	assert.Equal(t, "New Template", resp.Msg.DispatchText.Name)
 	assert.True(t, resp.Msg.DispatchText.IsActive)
+	assert.Equal(t, []string{"Hello {link_afiliado}"}, resp.Msg.DispatchText.Copies)
 
 	mockRepo.AssertExpectations(t)
 }
@@ -342,21 +344,22 @@ func TestCreateDispatchText_WithIsActiveFalse(t *testing.T) {
 	ctx := createTestUserContextForDispatchTexts(userID)
 
 	mockRepo.On("CreateDispatchText", mock.Anything, userID, mock.MatchedBy(func(dt *models.DispatchText) bool {
-		return dt.Name == "Inactive Template" && dt.IsActive == false
+		return dt.Name == "Inactive Template" && dt.IsActive == false && len(dt.Copies) == 1
 	})).Return(&models.DispatchText{
 		ID:        "dt-new",
 		UserID:    userID,
 		Name:      "Inactive Template",
-		Body:      "Content",
+		Body:      "Content {link_afiliado}",
 		IsActive:  false,
 		CreatedAt: "2026-01-01T00:00:00Z",
 		UpdatedAt: "2026-01-01T00:00:00Z",
+		Copies:    []string{"Content {link_afiliado}"},
 	}, nil)
 
 	isActive := false
 	req := connect.NewRequest(&dispatchtextsv1.CreateDispatchTextRequest{
 		Name:     "Inactive Template",
-		Body:     "Content",
+		Copies:   []string{"Content {link_afiliado}"},
 		IsActive: &isActive,
 	})
 	resp, err := handler.CreateDispatchText(ctx, req)
@@ -598,8 +601,8 @@ func TestCreateDispatchText_Unauthenticated(t *testing.T) {
 	ctx := context.Background() // No user in context
 
 	req := connect.NewRequest(&dispatchtextsv1.CreateDispatchTextRequest{
-		Name: "New Template",
-		Body: "Hello World",
+		Name:   "New Template",
+		Copies: []string{"Hello {link_afiliado}"},
 	})
 	_, err := handler.CreateDispatchText(ctx, req)
 
@@ -619,8 +622,8 @@ func TestCreateDispatchText_RepositoryError(t *testing.T) {
 	mockRepo.On("CreateDispatchText", mock.Anything, userID, mock.Anything).Return(nil, errors.New("database error"))
 
 	req := connect.NewRequest(&dispatchtextsv1.CreateDispatchTextRequest{
-		Name: "New Template",
-		Body: "Hello World",
+		Name:   "New Template",
+		Copies: []string{"Hello {link_afiliado}"},
 	})
 	_, err := handler.CreateDispatchText(ctx, req)
 

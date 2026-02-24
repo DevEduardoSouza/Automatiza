@@ -24,7 +24,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useDispatchTexts } from '@/hooks/use-dispatch-texts';
 import { WhatsAppFormattedText } from '@/lib/whatsapp-formatter';
-import { AlertCircle, Copy, FileText, HelpCircle, Plus, Type } from 'lucide-react';
+import { AlertCircle, Copy, FileText, HelpCircle, Plus, Trash2, Type } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const colors = {
@@ -55,6 +55,7 @@ export default function DispatchTexts() {
     variableChips,
     preview,
     saving,
+    activeCopyIndex,
     setDialogOpen,
     openCreate,
     openEdit,
@@ -66,6 +67,10 @@ export default function DispatchTexts() {
     updateFormField,
     insertAtCursor,
     copyToken,
+    setActiveCopyIndex,
+    addCopyVariation,
+    removeCopyVariation,
+    updateCopyAtIndex,
   } = useDispatchTexts();
 
   return (
@@ -226,17 +231,80 @@ export default function DispatchTexts() {
                       </div>
 
                       <div className="space-y-1.5 xs:space-y-2">
-                        <Label htmlFor="dispatch-text-body" className="text-[#8D2D53]">
-                          {t('pages.dispatchTexts.form.text')}
-                        </Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[#8D2D53]">
+                            {t('pages.dispatchTexts.form.text')}
+                          </Label>
+                          {form.copies.length < 10 && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={addCopyVariation}
+                              className="h-7 text-xs"
+                            >
+                              <Plus className="h-3 w-3 mr-1" aria-hidden="true" />
+                              {t('pages.dispatchTexts.copies.add')}
+                            </Button>
+                          )}
+                        </div>
+
+                        {form.copies.length > 1 && (
+                          <div className="flex flex-wrap gap-1.5" role="tablist">
+                            {form.copies.map((_, idx) => (
+                              <button
+                                key={`copy-tab-${idx}`}
+                                type="button"
+                                role="tab"
+                                aria-selected={activeCopyIndex === idx}
+                                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                                  activeCopyIndex === idx
+                                    ? 'bg-[#8D2D53] text-white'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                                onClick={() => setActiveCopyIndex(idx)}
+                              >
+                                {t('pages.dispatchTexts.copies.variation', { n: idx + 1 })}
+                                {form.copies.length > 1 && (
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    className="ml-0.5 rounded-full p-0.5 hover:bg-white/20"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      removeCopyVariation(idx);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        removeCopyVariation(idx);
+                                      }
+                                    }}
+                                    aria-label={t('pages.dispatchTexts.copies.remove')}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
                         <Textarea
                           id="dispatch-text-body"
                           className="text-black min-h-[120px] xs:min-h-[150px] lg:min-h-[200px] xl:min-h-[250px] 2xl:min-h-[300px]"
                           rows={12}
-                          value={form.body}
-                          onChange={(e) => updateFormField('body', e.target.value)}
+                          value={form.copies[activeCopyIndex] ?? ''}
+                          onChange={(e) => updateCopyAtIndex(activeCopyIndex, e.target.value)}
                           placeholder={t('pages.dispatchTexts.form.textPlaceholder')}
                         />
+
+                        {form.copies.length > 1 && (
+                          <p className="text-xs" style={{ color: colors.wineTextMuted }}>
+                            {t('pages.dispatchTexts.copies.hint', { count: form.copies.length })}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex flex-col-reverse xs:flex-row justify-end gap-2 xs:gap-3">

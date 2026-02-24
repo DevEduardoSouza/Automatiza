@@ -70,7 +70,10 @@ export function GroupSelector({
     return (
       <div
         className={`flex items-center space-x-2 cursor-pointer rounded-md py-1 px-2 -mx-2 transition-colors hover:bg-accent ${isSelectedButFiltered ? 'bg-primary/5' : ''}`}
+        role="button"
+        tabIndex={0}
         onClick={() => onToggleGroup(group.id)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleGroup(group.id); } }}
       >
         <Checkbox
           id={`group-${group.id}`}

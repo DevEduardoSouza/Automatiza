@@ -4,11 +4,9 @@ import {
   mockAppShellApis,
   mockAuthApi,
   mockDispatchLogsApi,
-  mockDispatchLogsApiError,
   mockDispatchLogsApiSlow,
   mockListJobsApi,
   mockLogAutomationsApi,
-  mockLogAutomationsApiError,
   mockLogGroupsApi,
   mockQueueStatusApi,
   setupAutomationLogsMocks,
@@ -293,8 +291,7 @@ test.describe('Automation Logs - Error Scenarios', () => {
       page.on('pageerror', (error) => errors.push(error));
 
       const longErrorMessage =
-        'Este e um erro muito longo que pode potencialmente quebrar o layout da tabela ' +
-        'se nao houver tratamento adequado de overflow. '.repeat(5);
+        `Este e um erro muito longo que pode potencialmente quebrar o layout da tabela ${'se nao houver tratamento adequado de overflow. '.repeat(5)}`;
 
       const logsWithLongError = [
         {

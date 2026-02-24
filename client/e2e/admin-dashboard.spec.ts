@@ -1,10 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { setupAuthMocks } from './fixtures/auth.fixture';
 import {
-  MOCK_ADMIN_PROFILE_STATS,
-  MOCK_OBSERVABILITY,
-  MOCK_SHOPEE_AUDIT,
-  MOCK_WEBHOOK_LOGS,
   mockCurrentUserAsAdmin,
   mockGetAdminProfileStats,
   mockGetObservability,

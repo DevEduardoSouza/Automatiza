@@ -23,8 +23,8 @@ message DispatchText {
   // Template name
   string name = 3;
 
-  // Template body with variables
-  string body = 4;
+  // [deprecated] Use copies instead. Returns copies[0] for backward compatibility.
+  string body = 4 [deprecated = true];
 
   // Whether the template is active
   bool is_active = 5;
@@ -34,6 +34,9 @@ message DispatchText {
 
   // Last update timestamp (ISO 8601)
   string updated_at = 7;
+
+  // Copy variations — system randomly selects one per message
+  repeated string copies = 8;
 }
 
 // ============================================================
@@ -64,8 +67,11 @@ message GetDispatchTextResponse {
 
 message CreateDispatchTextRequest {
   string name = 1 [(buf.validate.field).string = {min_len: 1, max_len: 255}];
-  string body = 2 [(buf.validate.field).string = {min_len: 1, max_len: 4000}];
+  // [deprecated] Use copies instead.
+  string body = 2 [deprecated = true];
   optional bool is_active = 3;
+  // Copy variations (1-10 items, each max 4000 chars)
+  repeated string copies = 4;
 }
 
 message CreateDispatchTextResponse {
@@ -79,8 +85,11 @@ message CreateDispatchTextResponse {
 message UpdateDispatchTextRequest {
   string id = 1 [(buf.validate.field).string.min_len = 1];
   optional string name = 2 [(buf.validate.field).string.max_len = 255];
-  optional string body = 3 [(buf.validate.field).string.max_len = 4000];
+  // [deprecated] Use copies instead.
+  optional string body = 3 [deprecated = true];
   optional bool is_active = 4;
+  // Copy variations (1-10 items, each max 4000 chars)
+  repeated string copies = 5;
 }
 
 message UpdateDispatchTextResponse {

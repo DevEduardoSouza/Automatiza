@@ -38,9 +38,11 @@ export function useDispatchTexts() {
   const [editing, setEditing] = useState<DispatchText | null>(null);
   const [form, setForm] = useState<DispatchTextFormState>({
     name: '',
-    body: '',
+    copies: [''],
     is_active: true,
   });
+
+  const [activeCopyIndex, setActiveCopyIndex] = useState(0);
 
   const [deleteTarget, setDeleteTarget] = useState<DispatchText | null>(null);
 
@@ -67,8 +69,9 @@ export function useDispatchTexts() {
   );
 
   const preview = useMemo(() => {
-    return renderTemplate(form.body, sampleVars);
-  }, [form.body, sampleVars]);
+    const currentCopy = form.copies[activeCopyIndex] ?? '';
+    return renderTemplate(currentCopy, sampleVars);
+  }, [form.copies, activeCopyIndex, sampleVars]);
 
   // items is an alias for dispatchTexts to maintain backward compatibility
   const items = dispatchTexts as DispatchText[];
@@ -77,19 +80,22 @@ export function useDispatchTexts() {
     setEditing(null);
     setForm({
       name: '',
-      body: t('pages.dispatchTexts.defaultTemplate'),
+      copies: [t('pages.dispatchTexts.defaultTemplate')],
       is_active: true,
     });
+    setActiveCopyIndex(0);
     setDialogOpen(true);
   }, [t]);
 
   const openEdit = useCallback((item: DispatchText) => {
     setEditing(item);
+    const copies = item.copies?.length > 0 ? [...item.copies] : item.body ? [item.body] : [''];
     setForm({
       name: item.name || '',
-      body: item.body || '',
+      copies,
       is_active: item.is_active !== false,
     });
+    setActiveCopyIndex(0);
     setDialogOpen(true);
   }, []);
 
@@ -100,7 +106,8 @@ export function useDispatchTexts() {
 
   const save = useCallback(async () => {
     if (!user) return;
-    if (!form.name.trim() || !form.body.trim()) {
+    const nonEmptyCopies = form.copies.filter((c) => c.trim() !== '');
+    if (!form.name.trim() || nonEmptyCopies.length === 0) {
       toast({
         title: t('pages.dispatchTexts.errors.requiredFields'),
         description: t('pages.dispatchTexts.errors.requiredFieldsMessage'),
@@ -113,13 +120,13 @@ export function useDispatchTexts() {
         await updateDispatchText({
           id: editing.id,
           name: form.name.trim(),
-          body: form.body,
+          copies: nonEmptyCopies,
           is_active: form.is_active,
         });
       } else {
         await createDispatchText({
           name: form.name.trim(),
-          body: form.body,
+          copies: nonEmptyCopies,
           is_active: form.is_active,
         });
       }
@@ -155,12 +162,17 @@ export function useDispatchTexts() {
     []
   );
 
-  const insertAtCursor = useCallback((token: string) => {
-    setForm((prev) => ({
-      ...prev,
-      body: `${prev.body}${prev.body ? '\n' : ''}${token}`,
-    }));
-  }, []);
+  const insertAtCursor = useCallback(
+    (token: string) => {
+      setForm((prev) => {
+        const newCopies = [...prev.copies];
+        const current = newCopies[activeCopyIndex] ?? '';
+        newCopies[activeCopyIndex] = `${current}${current ? '\n' : ''}${token}`;
+        return { ...prev, copies: newCopies };
+      });
+    },
+    [activeCopyIndex]
+  );
 
   const copyToken = useCallback(
     async (token: string) => {
@@ -176,6 +188,35 @@ export function useDispatchTexts() {
     },
     [toast, t]
   );
+
+  const addCopyVariation = useCallback(() => {
+    setForm((prev) => {
+      if (prev.copies.length >= 10) return prev;
+      const newCopies = [...prev.copies, ''];
+      return { ...prev, copies: newCopies };
+    });
+    setActiveCopyIndex((prev) => prev + 1);
+  }, []);
+
+  const removeCopyVariation = useCallback(
+    (index: number) => {
+      setForm((prev) => {
+        if (prev.copies.length <= 1) return prev;
+        const newCopies = prev.copies.filter((_, i) => i !== index);
+        return { ...prev, copies: newCopies };
+      });
+      setActiveCopyIndex((prev) => Math.min(prev, form.copies.length - 2));
+    },
+    [form.copies.length]
+  );
+
+  const updateCopyAtIndex = useCallback((index: number, value: string) => {
+    setForm((prev) => {
+      const newCopies = [...prev.copies];
+      newCopies[index] = value;
+      return { ...prev, copies: newCopies };
+    });
+  }, []);
 
   // Derive saving state from mutations
   const saving = isCreatingDispatchText || isUpdatingDispatchText;
@@ -193,6 +234,7 @@ export function useDispatchTexts() {
     preview,
     saving,
     deleting,
+    activeCopyIndex,
 
     // Actions
     setDialogOpen,
@@ -207,5 +249,9 @@ export function useDispatchTexts() {
     insertAtCursor,
     copyToken,
     refetch,
+    setActiveCopyIndex,
+    addCopyVariation,
+    removeCopyVariation,
+    updateCopyAtIndex,
   };
 }
