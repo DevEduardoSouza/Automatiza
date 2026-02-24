@@ -38,6 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -50,6 +52,7 @@ jobs:
         with:
           version: latest
           working-directory: automatiza-go
+          only-new-issues: true
 
   test-frontend:
     name: Test Frontend
