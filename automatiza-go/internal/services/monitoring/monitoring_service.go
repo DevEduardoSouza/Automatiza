@@ -390,7 +390,7 @@ func (s *monitoringService) findMatchingAutomations(ctx context.Context, instanc
 
 var (
 	httpURLRegex   = regexp.MustCompile(`https?://[^\s\n\r*_~` + "`" + `]+`)
-	shopeeURLRegex = regexp.MustCompile(`(?i)(shopee\.com\.br|shope\.ee)`)
+	shopeeURLRegex = regexp.MustCompile(`(?i)(shopee\.com\.br|shope\.ee|shp\.ee)`)
 	mlURLRegex     = regexp.MustCompile(`(?i)(mercadolivre\.com\.br|mercadolibre\.com|meli\.co)`)
 )
 
