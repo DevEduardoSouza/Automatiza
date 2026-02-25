@@ -385,6 +385,38 @@ func TestExtractProductIDs(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Tests: isNonProductShopeeURL
+// ---------------------------------------------------------------------------
+
+func TestIsNonProductShopeeURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want bool
+	}{
+		{name: "coupon page", url: "https://shopee.com.br/m/cupom-de-desconto?mmp_pid=an_123", want: true},
+		{name: "campaign page", url: "https://shopee.com.br/m/campaign-name?utm_source=foo", want: true},
+		{name: "mall page", url: "https://shopee.com.br/mall/some-store", want: true},
+		{name: "flash sale", url: "https://shopee.com.br/flash_sale", want: true},
+		{name: "daily discover", url: "https://shopee.com.br/daily_discover", want: true},
+		{name: "product page opaanlp", url: "https://shopee.com.br/opaanlp/123/456", want: false},
+		{name: "product page with dot IDs", url: "https://shopee.com.br/product-name.123.456", want: false},
+		{name: "product page /product/ path", url: "https://shopee.com.br/product/123/456", want: false},
+		{name: "search page", url: "https://shopee.com.br/search?q=fone", want: false},
+		{name: "case insensitive", url: "https://Shopee.com.br/M/Cupom", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isNonProductShopeeURL(tt.url)
+			if got != tt.want {
+				t.Errorf("isNonProductShopeeURL(%q) = %v, want %v", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Tests: parseDiscount
 // ---------------------------------------------------------------------------
 

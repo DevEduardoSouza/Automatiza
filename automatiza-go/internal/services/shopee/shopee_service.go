@@ -449,6 +449,16 @@ func isShopeeShortURL(rawURL string) bool {
 		strings.Contains(lower, "shope.ee/")
 }
 
+// isNonProductShopeeURL detects Shopee URLs that are not product pages
+// (e.g., coupon pages, campaign pages) and cannot have affiliate links generated.
+func isNonProductShopeeURL(expandedURL string) bool {
+	lower := strings.ToLower(expandedURL)
+	return strings.Contains(lower, "shopee.com.br/m/") ||
+		strings.Contains(lower, "shopee.com.br/mall/") ||
+		strings.Contains(lower, "shopee.com.br/flash_sale") ||
+		strings.Contains(lower, "shopee.com.br/daily_discover")
+}
+
 func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, userID string) (*models.ShopeeAffiliateLink, error) {
 	// Extract item and shop IDs from URL
 	shopID, itemID, err := s.ExtractProductIDs(productURL)
@@ -461,6 +471,13 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 			}
 			shopID, itemID, err = s.ExtractProductIDs(expanded)
 			if err != nil {
+				// Non-product pages (coupons, campaigns) — skip silently
+				if isNonProductShopeeURL(expanded) {
+					s.logger.Debug("Shopee URL is a non-product page, skipping affiliate link",
+						zap.String("original", productURL),
+						zap.String("expanded", expanded))
+					return nil, nil
+				}
 				return nil, fmt.Errorf("invalid shopee URL after expansion: %w", err)
 			}
 			s.logger.Info("Short URL expanded for affiliate link",
