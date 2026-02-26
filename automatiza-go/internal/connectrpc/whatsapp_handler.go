@@ -14,6 +14,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/getsentry/sentry-go"
+	"go.uber.org/zap"
 )
 
 // WhatsAppHandler implements the whatsappv1connect.WhatsAppServiceHandler interface.
@@ -89,7 +90,7 @@ func (h *WhatsAppHandler) CreateInstance(
 			info, err := h.waProvider.GetSessionStatus(ctx, sessionInfo.Name)
 			if err != nil {
 				// SQ11: Capture status poll failure during instance creation
-				observability.LogAndCapture(nil, sentry.LevelInfo, "failed to poll session status during create", err, map[string]string{
+				observability.LogAndCapture(zap.L(), sentry.LevelInfo, "failed to poll session status during create", err, map[string]string{
 					"module": "whatsapp-handler", "operation": "create-status-poll", "instance": sessionInfo.Name,
 				})
 				break
@@ -109,7 +110,7 @@ func (h *WhatsAppHandler) CreateInstance(
 		qrData, err := h.waProvider.GetQRCode(ctx, sessionInfo.Name)
 		if err != nil {
 			// SQ12: Capture QR fetch failure during instance creation
-			observability.LogAndCapture(nil, sentry.LevelWarning, "failed to fetch QR code during create", err, map[string]string{
+			observability.LogAndCapture(zap.L(), sentry.LevelWarning, "failed to fetch QR code during create", err, map[string]string{
 				"module": "whatsapp-handler", "operation": "create-qr-fetch", "instance": sessionInfo.Name,
 			})
 		} else if qrData != nil && qrData.Base64Image != "" {
@@ -186,7 +187,7 @@ func (h *WhatsAppHandler) ReconnectInstance(
 		info, err := h.waProvider.GetSessionStatus(ctx, instanceName)
 		if err != nil {
 			// SQ13: Capture status poll failure during reconnect
-			observability.LogAndCapture(nil, sentry.LevelInfo, "failed to poll session status during reconnect", err, map[string]string{
+			observability.LogAndCapture(zap.L(), sentry.LevelInfo, "failed to poll session status during reconnect", err, map[string]string{
 				"module": "whatsapp-handler", "operation": "reconnect-status-poll", "instance": instanceName,
 			})
 			break
@@ -204,7 +205,7 @@ func (h *WhatsAppHandler) ReconnectInstance(
 		qrData, err := h.waProvider.GetQRCode(ctx, instanceName)
 		if err != nil {
 			// SQ14: Capture QR fetch failure during reconnect
-			observability.LogAndCapture(nil, sentry.LevelWarning, "failed to fetch QR code during reconnect", err, map[string]string{
+			observability.LogAndCapture(zap.L(), sentry.LevelWarning, "failed to fetch QR code during reconnect", err, map[string]string{
 				"module": "whatsapp-handler", "operation": "reconnect-qr-fetch", "instance": instanceName,
 			})
 		} else if qrData != nil && qrData.Base64Image != "" {
@@ -260,7 +261,7 @@ func (h *WhatsAppHandler) CheckStatus(
 		qrData, err := h.waProvider.GetQRCode(ctx, req.Msg.GetInstanceName())
 		if err != nil {
 			// SQ12: Capture QR fetch failure during status check
-			observability.LogAndCapture(nil, sentry.LevelWarning, "failed to fetch QR code during status check", err, map[string]string{
+			observability.LogAndCapture(zap.L(), sentry.LevelWarning, "failed to fetch QR code during status check", err, map[string]string{
 				"module": "whatsapp-handler", "operation": "check-status-qr-fetch", "instance": req.Msg.GetInstanceName(),
 			})
 		} else if qrData != nil && qrData.Base64Image != "" {

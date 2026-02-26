@@ -14,6 +14,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/getsentry/sentry-go"
+	"go.uber.org/zap"
 )
 
 // InstancesHandler implements the instancesv1connect.InstancesServiceHandler interface.
@@ -333,7 +334,7 @@ func (h *InstancesHandler) ReconnectInstance(
 		var providerErr *whatsapp.ProviderError
 		if errors.As(err, &providerErr) && providerErr.Code == whatsapp.ErrCodeSessionNotFound {
 			// Session lost in WAHA (container restart, timeout, etc.) — create a new one
-			observability.LogAndCapture(nil, sentry.LevelInfo, "session not found in WAHA, falling back to CreateSession", err, map[string]string{
+			observability.LogAndCapture(zap.L(), sentry.LevelInfo, "session not found in WAHA, falling back to CreateSession", err, map[string]string{
 				"module": "whatsapp", "operation": "reconnect_fallback", "instanceName": instanceName,
 			})
 			_, createErr := h.waProvider.CreateSession(ctx, whatsapp.CreateSessionInput{
