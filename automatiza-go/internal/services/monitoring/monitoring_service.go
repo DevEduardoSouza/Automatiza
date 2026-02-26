@@ -284,7 +284,28 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 	}
 
-	// 9. Get destination groups
+	// 9. Resolve the automation owner's connected WAHA session for sending.
+	// We must NOT use msg.InstanceName (the session that received the webhook),
+	// because that belongs to whichever user's session captured the incoming message.
+	instances, err := s.instanceRepo.GetUserInstances(ctx, automation.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to get user instances: %w", err)
+	}
+	var senderSession string
+	for _, inst := range instances {
+		if inst.Status == "connected" {
+			senderSession = inst.InstanceID
+			break
+		}
+	}
+	if senderSession == "" {
+		s.logger.Warn("No connected WhatsApp instance for automation owner, skipping",
+			zap.String("automationID", automation.ID),
+			zap.String("userID", automation.UserID))
+		return nil
+	}
+
+	// 10. Get destination groups
 	destinationGroups := automation.SendGroups
 	if len(destinationGroups) == 0 {
 		destinationGroups = automation.GetTargetGroups()
@@ -296,12 +317,12 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		return nil
 	}
 
-	// 10. Get deduplication settings
+	// 12. Get deduplication settings
 	dedupeHours := automation.GetDedupeHours()
 	canonicalKey := s.extractCanonicalKey(links)
 	store := s.detectStore(links)
 
-	// 11. Send to destination groups
+	// 13. Send to destination groups
 	for _, groupID := range destinationGroups {
 		// Skip if same group
 		if groupID == msg.RemoteJID {
@@ -326,12 +347,12 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 		time.Sleep(time.Duration(delay) * time.Second)
 
-		// Send message via WhatsAppProvider with dedicated timeout
+		// Send message via WhatsAppProvider using the automation owner's session
 		sendCtx, sendCancel := context.WithTimeout(ctx, 30*time.Second)
 		var err error
 		if imageBase64 != "" {
 			_, err = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
-				SessionName: msg.InstanceName,
+				SessionName: senderSession,
 				ChatID:      groupID,
 				Caption:     processedText,
 				ImageBase64: imageBase64,
@@ -339,7 +360,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			})
 		} else {
 			_, err = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
-				SessionName: msg.InstanceName,
+				SessionName: senderSession,
 				ChatID:      groupID,
 				Text:        processedText,
 			})
