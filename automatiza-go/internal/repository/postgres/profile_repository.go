@@ -192,23 +192,24 @@ func (r *profileRepository) GetProfileByEmail(ctx context.Context, email string)
 func (r *profileRepository) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
 	now := time.Now().UTC()
 
-	// Update user_credentials table (used by AuthService for login)
+	// Upsert user_credentials table (used by AuthService for login)
+	// Uses INSERT ... ON CONFLICT to handle users created without credentials (e.g. via Kiwify webhook)
 	query := `
-		UPDATE user_credentials
-		SET password_hash = $1, password_changed_at = $2, failed_attempts = 0, locked_until = NULL
-		WHERE user_id = $3
+		INSERT INTO user_credentials (user_id, password_hash, password_changed_at, failed_attempts)
+		VALUES ($1, $2, $3, 0)
+		ON CONFLICT (user_id) DO UPDATE
+		SET password_hash = EXCLUDED.password_hash,
+		    password_changed_at = EXCLUDED.password_changed_at,
+		    failed_attempts = 0,
+		    locked_until = NULL
 	`
 
-	result, err := r.db.pool.Exec(ctx, query, passwordHash, now, userID)
+	_, err := r.db.pool.Exec(ctx, query, userID, passwordHash, now)
 	if err != nil {
-		r.logger.Error("Failed to update password in user_credentials",
+		r.logger.Error("Failed to upsert password in user_credentials",
 			zap.String("userID", userID),
 			zap.Error(err))
-		return fmt.Errorf("update password: %w", err)
-	}
-
-	if result.RowsAffected() == 0 {
-		return fmt.Errorf("user credentials not found")
+		return fmt.Errorf("upsert password: %w", err)
 	}
 
 	// Also update profiles table for consistency
