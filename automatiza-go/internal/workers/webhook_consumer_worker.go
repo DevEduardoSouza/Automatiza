@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"automatiza-go/internal/metrics"
+	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/reconciliation"
@@ -372,6 +373,12 @@ func (w *WebhookConsumerWorker) handleSessionStatusEvent(ctx context.Context, da
 				zap.String("session", data.Session),
 				zap.Int("instanceID", instance.ID),
 				zap.String("status", dbStatus))
+
+			// Auto-sync groups when session becomes connected
+			// This migrates groups from old disconnected instances to the new one
+			if dbStatus == "connected" && w.queueClient != nil {
+				w.enqueueAutoGroupSync(ctx, instance, data.Session)
+			}
 		}
 	}
 
@@ -653,6 +660,32 @@ func (w *WebhookConsumerWorker) ProcessTaskWrapper() asynq.HandlerFunc {
 	return func(ctx context.Context, task *asynq.Task) error {
 		return w.ProcessTask(ctx, task)
 	}
+}
+
+// enqueueAutoGroupSync enqueues a background group sync job when a session connects.
+// This ensures groups are automatically migrated from old disconnected instances
+// to the newly connected one, preventing orphaned groups.
+func (w *WebhookConsumerWorker) enqueueAutoGroupSync(ctx context.Context, instance *models.Instance, sessionName string) {
+	syncData := &GroupsSyncJobData{
+		UserID:       instance.UserID,
+		InstanceName: sessionName,
+		InstanceID:   instance.ID,
+	}
+
+	_, err := w.queueClient.EnqueueGroupsSync(ctx, syncData)
+	if err != nil {
+		w.logger.Warn("Failed to enqueue auto group sync on session connect",
+			zap.String("session", sessionName),
+			zap.Int("instanceID", instance.ID),
+			zap.String("userID", instance.UserID),
+			zap.Error(err))
+		return
+	}
+
+	w.logger.Info("Auto group sync enqueued on session connect",
+		zap.String("session", sessionName),
+		zap.Int("instanceID", instance.ID),
+		zap.String("userID", instance.UserID))
 }
 
 // =============================================================================
