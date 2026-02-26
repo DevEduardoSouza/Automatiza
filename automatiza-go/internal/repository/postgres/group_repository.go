@@ -209,6 +209,7 @@ func (r *groupRepository) SyncGroups(ctx context.Context, userID string, instanc
 			                    members_count, member_limit, is_admin, admin_only, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			ON CONFLICT (user_id, wa_group_id) DO UPDATE SET
+				instance_id = EXCLUDED.instance_id,
 				name = EXCLUDED.name,
 				description = EXCLUDED.description,
 				picture_url = EXCLUDED.picture_url,
@@ -292,6 +293,7 @@ func (r *groupRepository) SyncGroupsWithStats(ctx context.Context, userID string
 			                    members_count, member_limit, is_admin, admin_only, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			ON CONFLICT (user_id, wa_group_id) DO UPDATE SET
+				instance_id = EXCLUDED.instance_id,
 				name = EXCLUDED.name,
 				description = EXCLUDED.description,
 				picture_url = EXCLUDED.picture_url,
