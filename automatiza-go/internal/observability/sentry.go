@@ -233,6 +233,11 @@ func SafeGo(name string, fn func()) {
 // The level parameter controls both the Zap log level and Sentry severity.
 // Tags are added as Sentry tags for filtering and alerting.
 func LogAndCapture(logger *zap.Logger, level sentry.Level, msg string, err error, tags map[string]string) {
+	// Fallback to global logger if nil to prevent nil pointer panic
+	if logger == nil {
+		logger = zap.L()
+	}
+
 	// Always log
 	fields := make([]zap.Field, 0, len(tags)+1)
 	if err != nil {
