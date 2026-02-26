@@ -105,6 +105,18 @@ export default function Auth() {
                 </p>
               </div>
 
+              {/* Migration Notice Banner */}
+              <div className="mb-5 xs:mb-6 sm:mb-8 rounded-xl border border-amber-200 bg-amber-50 p-3 xs:p-4 text-center">
+                <p className="text-xs xs:text-sm text-amber-800 leading-relaxed">
+                  Você já está acessando o <strong>novo ambiente</strong>, agora em uma versão melhorada.
+                  Para garantir o funcionamento correto, é necessário <strong>resetar sua senha</strong> e <strong>conectar o WhatsApp novamente</strong> dentro da plataforma.
+                </p>
+                <p className="mt-2 text-xs xs:text-sm text-amber-700">
+                  Após esses passos, você poderá utilizar normalmente todos os recursos da nova versão.
+                  Em caso de dúvidas, acione o suporte.
+                </p>
+              </div>
+
               {/* Magic Link Success State */}
               {magicLinkSent ? (
                 <div className="space-y-6">
