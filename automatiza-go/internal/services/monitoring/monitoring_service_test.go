@@ -473,11 +473,20 @@ func disabledCache() *cache.Cache {
 	return cache.NewCache(nil, "test", true)
 }
 
+// connectedInstanceRepo returns a mockInstanceRepo that always returns a connected instance.
+func connectedInstanceRepo() *mockInstanceRepo {
+	return &mockInstanceRepo{
+		GetUserInstancesFn: func(_ context.Context, _ string) ([]models.Instance, error) {
+			return []models.Instance{{InstanceID: "test-session", Status: "connected"}}, nil
+		},
+	}
+}
+
 func newTestService(t *testing.T, opts ...func(*monitoringService)) *monitoringService {
 	t.Helper()
 	svc := &monitoringService{
 		automationRepo:  &mockAutomationRepo{},
-		instanceRepo:    &mockInstanceRepo{},
+		instanceRepo:    connectedInstanceRepo(),
 		dispatchLogRepo: &mockDispatchLogRepo{},
 		shopeeService:   &mockShopeeService{},
 		mlService:       &mockMLService{},
@@ -1364,4 +1373,93 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			t.Error("stores=nil should default to [shopee] and skip ML links")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// processAutomation - session resolution
+// ---------------------------------------------------------------------------
+
+func TestProcessAutomation_UsesOwnerSession(t *testing.T) {
+	var usedSession string
+	svc := newTestService(t, func(s *monitoringService) {
+		s.instanceRepo = &mockInstanceRepo{
+			GetUserInstancesFn: func(_ context.Context, userID string) ([]models.Instance, error) {
+				if userID != "owner-user" {
+					t.Errorf("expected userID=owner-user, got %s", userID)
+				}
+				return []models.Instance{{InstanceID: "owner-session-abc", Status: "connected"}}, nil
+			},
+		}
+		s.waProvider = &mockWAProvider{
+			SendTextFn: func(_ context.Context, input whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+				usedSession = input.SessionName
+				return &whatsapp.MessageResult{ID: "msg-1"}, nil
+			},
+		}
+	})
+
+	delayZero := 0
+	auto := &models.Automation{
+		ID:           "auto-1",
+		UserID:       "owner-user",
+		Name:         "test",
+		Stores:       []string{"shopee"},
+		SendGroups:   []string{"dest@g.us"},
+		Status:       "active",
+		DelaySeconds: &delayZero,
+	}
+
+	err := svc.processAutomation(context.Background(), auto, &models.IncomingMessage{
+		InstanceName: "other-user-session", // webhook from a different user's session
+		RemoteJID:    "source@g.us",
+		Body:         "https://shopee.com.br/product-i.123.456",
+	}, []string{"https://shopee.com.br/product-i.123.456"})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if usedSession != "owner-session-abc" {
+		t.Errorf("expected session=owner-session-abc, got %s", usedSession)
+	}
+}
+
+func TestProcessAutomation_NoConnectedInstance_Skips(t *testing.T) {
+	var sent bool
+	svc := newTestService(t, func(s *monitoringService) {
+		s.instanceRepo = &mockInstanceRepo{
+			GetUserInstancesFn: func(_ context.Context, _ string) ([]models.Instance, error) {
+				return []models.Instance{{InstanceID: "old-session", Status: "disconnected"}}, nil
+			},
+		}
+		s.waProvider = &mockWAProvider{
+			SendTextFn: func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+				sent = true
+				return &whatsapp.MessageResult{ID: "msg-1"}, nil
+			},
+		}
+	})
+
+	delayZero := 0
+	auto := &models.Automation{
+		ID:           "auto-1",
+		UserID:       "user-1",
+		Name:         "test",
+		Stores:       []string{"shopee"},
+		SendGroups:   []string{"dest@g.us"},
+		Status:       "active",
+		DelaySeconds: &delayZero,
+	}
+
+	err := svc.processAutomation(context.Background(), auto, &models.IncomingMessage{
+		InstanceName: "inst1",
+		RemoteJID:    "source@g.us",
+		Body:         "https://shopee.com.br/product-i.123.456",
+	}, []string{"https://shopee.com.br/product-i.123.456"})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sent {
+		t.Error("should NOT send when owner has no connected instance")
+	}
 }
