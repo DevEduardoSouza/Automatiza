@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -332,11 +333,11 @@ func (s *PasswordService) ChangePassword(ctx context.Context, userID string, inp
 }
 
 // hashToken creates an HMAC-SHA256 hash of the token
-// This ensures consistent hashing and prevents timing attacks
-func (s *PasswordService) hashToken(token string) []byte {
+// Returns hex-encoded string for consistent storage in VARCHAR column
+func (s *PasswordService) hashToken(token string) string {
 	h := hmac.New(sha256.New, s.hmacKey)
 	h.Write([]byte(token))
-	return h.Sum(nil)
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // validatePasswordStrength checks password requirements
