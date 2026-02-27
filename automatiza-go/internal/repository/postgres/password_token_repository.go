@@ -48,7 +48,7 @@ func (r *passwordResetTokenRepository) Create(ctx context.Context, token *reposi
 }
 
 // GetByHash retrieves a token by its hash
-func (r *passwordResetTokenRepository) GetByHash(ctx context.Context, tokenHash []byte) (*repository.PasswordResetToken, error) {
+func (r *passwordResetTokenRepository) GetByHash(ctx context.Context, tokenHash string) (*repository.PasswordResetToken, error) {
 	query := `
 		SELECT t.id, t.user_id, t.token_hash, t.expires_at, t.used_at, t.created_at,
 		       t.ip_address, t.user_agent, p.email
@@ -89,7 +89,7 @@ func (r *passwordResetTokenRepository) GetByHash(ctx context.Context, tokenHash 
 }
 
 // MarkUsed marks a token as used
-func (r *passwordResetTokenRepository) MarkUsed(ctx context.Context, tokenHash []byte) error {
+func (r *passwordResetTokenRepository) MarkUsed(ctx context.Context, tokenHash string) error {
 	query := `
 		UPDATE password_reset_tokens
 		SET used_at = NOW()
