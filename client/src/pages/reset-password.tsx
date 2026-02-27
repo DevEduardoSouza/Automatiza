@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useResetPassword } from '@/hooks';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 
 /**
  * Reset password page component.
@@ -19,9 +20,9 @@ import { useTranslation } from 'react-i18next';
  */
 export default function ResetPassword() {
   const { t } = useTranslation();
-  const { form, validSession, checkingSession, onSubmit } = useResetPassword();
+  const { form, tokenStatus, maskedEmail, onSubmit } = useResetPassword();
 
-  if (checkingSession) {
+  if (tokenStatus === 'loading') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 p-4">
         <Card className="w-full max-w-md border-border/50 shadow-xl">
@@ -40,8 +41,42 @@ export default function ResetPassword() {
     );
   }
 
-  if (!validSession) {
-    return null;
+  if (tokenStatus !== 'valid') {
+    return (
+      <ErrorBoundary>
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 p-4">
+          <Card className="w-full max-w-md border-border/50 shadow-xl">
+            <CardHeader className="space-y-1 text-center pb-8">
+              <div className="mb-6 flex justify-center">
+                <img
+                  src="/novalogo.png"
+                  alt="Automatisa Grupos"
+                  className="h-10 w-auto object-contain"
+                />
+              </div>
+              <CardTitle className="text-xl">
+                {t('pages.resetPassword.errors.invalidLink')}
+              </CardTitle>
+              <CardDescription>
+                {tokenStatus === 'expired'
+                  ? t('pages.resetPassword.errors.tokenExpired')
+                  : tokenStatus === 'used'
+                    ? t('pages.resetPassword.errors.tokenUsed')
+                    : t('pages.resetPassword.errors.invalidLinkMessage')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex justify-center">
+              <Link
+                to="/forgot-password"
+                className="animated-save-btn group/btn inline-flex items-center gap-2 !border !border-gray-300 shadow-sm transition relative overflow-hidden font-semibold rounded-full py-2 text-xs xs:py-2.5 xs:text-sm lg:py-3 lg:text-base justify-center px-8"
+              >
+                {t('pages.resetPassword.errors.requestNewLink')}
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </ErrorBoundary>
+    );
   }
 
   return (
@@ -57,7 +92,11 @@ export default function ResetPassword() {
               />
             </div>
             <CardTitle className="text-xl">{t('pages.resetPassword.title')}</CardTitle>
-            <CardDescription>{t('pages.resetPassword.subtitle')}</CardDescription>
+            <CardDescription>
+              {maskedEmail
+                ? t('pages.resetPassword.subtitleWithEmail', { email: maskedEmail })
+                : t('pages.resetPassword.subtitle')}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>

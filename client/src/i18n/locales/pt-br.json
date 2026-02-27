@@ -266,6 +266,7 @@
     "resetPassword": {
       "title": "Redefinir Senha",
       "subtitle": "Digite sua nova senha abaixo",
+      "subtitleWithEmail": "Digite a nova senha para {{email}}",
       "form": {
         "newPassword": "Nova Senha",
         "confirmPassword": "Confirmar Senha",
@@ -280,6 +281,9 @@
       "errors": {
         "invalidLink": "Link inválido ou expirado",
         "invalidLinkMessage": "Por favor, solicite um novo link de recuperação.",
+        "tokenExpired": "Este link expirou. Solicite um novo link de recuperação.",
+        "tokenUsed": "Este link já foi utilizado. Solicite um novo link de recuperação.",
+        "requestNewLink": "Solicitar novo link",
         "passwordMismatch": "Senhas não coincidem",
         "passwordMismatchMessage": "As senhas devem ser iguais.",
         "passwordTooShort": "Senha muito curta",

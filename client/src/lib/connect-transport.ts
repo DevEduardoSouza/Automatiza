@@ -491,6 +491,8 @@ function createAuthRefreshInterceptor(): Interceptor {
       'VerifyMagicLink',
       'GetCurrentUser',
       'ForgotPassword',
+      'ResetPassword',
+      'ValidateResetToken',
       'SendMagicLink',
       'VerifyEmail',
       'ResendVerificationEmail',
