@@ -20,7 +20,7 @@ interface UseResetPasswordReturn {
 /**
  * Hook for reset password page logic.
  * Extracts token from URL, validates it via backend, then resets password.
- * Uses AuthService.ResetPassword (token-based, no session required).
+ * Uses ProfilesService for both validation and reset (consistent token hashing).
  */
 export function useResetPassword(): UseResetPasswordReturn {
   const { t } = useTranslation();
@@ -82,10 +82,10 @@ export function useResetPassword(): UseResetPasswordReturn {
       if (!token) return;
 
       try {
-        const { AuthService, ResetPasswordRequestSchema } = await import(
-          '@/gen/auth/v1/auth_pb'
+        const { ProfilesService, ResetPasswordRequestSchema } = await import(
+          '@/gen/profiles/v1/profiles_pb'
         );
-        const client = createClient(AuthService, transport);
+        const client = createClient(ProfilesService, transport);
         await client.resetPassword(
           create(ResetPasswordRequestSchema, {
             token,

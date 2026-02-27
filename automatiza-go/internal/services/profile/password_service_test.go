@@ -3,7 +3,6 @@ package profile
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"errors"
 	"testing"
 	"time"
@@ -159,29 +158,26 @@ func (m *mockTokenRepo) Create(ctx context.Context, token *repository.PasswordRe
 	if m.shouldFail {
 		return m.failError
 	}
-	key := base64.StdEncoding.EncodeToString(token.TokenHash)
-	m.tokens[key] = token
+	m.tokens[token.TokenHash] = token
 	return nil
 }
 
-func (m *mockTokenRepo) GetByHash(ctx context.Context, tokenHash []byte) (*repository.PasswordResetToken, error) {
+func (m *mockTokenRepo) GetByHash(ctx context.Context, tokenHash string) (*repository.PasswordResetToken, error) {
 	if m.shouldFail {
 		return nil, m.failError
 	}
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-	token, ok := m.tokens[key]
+	token, ok := m.tokens[tokenHash]
 	if !ok {
 		return nil, errors.New("token not found")
 	}
 	return token, nil
 }
 
-func (m *mockTokenRepo) MarkUsed(ctx context.Context, tokenHash []byte) error {
+func (m *mockTokenRepo) MarkUsed(ctx context.Context, tokenHash string) error {
 	if m.shouldFail {
 		return m.failError
 	}
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-	if token, ok := m.tokens[key]; ok {
+	if token, ok := m.tokens[tokenHash]; ok {
 		now := time.Now()
 		token.UsedAt = &now
 	}
@@ -438,9 +434,8 @@ func TestValidateResetToken_Expired(t *testing.T) {
 	// Manually create an expired token
 	token := "test-token"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
 
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(-1 * time.Hour), // Expired
@@ -473,10 +468,9 @@ func TestValidateResetToken_AlreadyUsed(t *testing.T) {
 	// Create a used token
 	token := "test-token"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
 
 	usedAt := time.Now()
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -514,9 +508,8 @@ func TestResetPassword_Success(t *testing.T) {
 	// Create a valid token
 	token := "test-reset-token"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
 
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -541,7 +534,7 @@ func TestResetPassword_Success(t *testing.T) {
 	}
 
 	// Verify token was marked as used
-	storedToken := tokenRepo.tokens[key]
+	storedToken := tokenRepo.tokens[tokenHash]
 	if storedToken.UsedAt == nil {
 		t.Error("token should be marked as used")
 	}
@@ -568,9 +561,8 @@ func TestResetPassword_WeakPassword(t *testing.T) {
 
 	token := "test-reset-token"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
 
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),

@@ -1,7 +1,6 @@
 package profile
 
 import (
-	"encoding/base64"
 	"errors"
 	"testing"
 	"time"
@@ -161,9 +160,7 @@ func TestValidateResetToken_ValidToken(t *testing.T) {
 
 	token := "valid-test-token"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -209,9 +206,7 @@ func TestValidateResetToken_JustExpired(t *testing.T) {
 
 	token := "just-expired-token"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(-1 * time.Second), // Just expired
@@ -237,9 +232,7 @@ func TestValidateResetToken_ShortLocalEmail(t *testing.T) {
 
 	token := "test-token-short-email"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -269,9 +262,7 @@ func TestResetPassword_ExpiredToken(t *testing.T) {
 
 	token := "expired-reset-token"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(-1 * time.Hour),
@@ -295,10 +286,9 @@ func TestResetPassword_UsedToken(t *testing.T) {
 
 	token := "used-reset-token"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
 
 	usedAt := time.Now().Add(-30 * time.Minute)
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -340,9 +330,7 @@ func TestResetPassword_UpdatePasswordError(t *testing.T) {
 
 	token := "valid-token-for-update-err"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -373,9 +361,7 @@ func TestResetPassword_MarkUsedError_StillSucceeds(t *testing.T) {
 
 	token := "valid-token-mark-used-err"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -414,9 +400,7 @@ func TestResetPassword_GetProfileErrorAfterReset_StillSucceeds(t *testing.T) {
 	// But add by email for the token record
 	token := "valid-token-no-profile"
 	tokenHash := svc.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-no-profile",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -443,9 +427,7 @@ func TestResetPassword_EmailSendError_StillSucceeds(t *testing.T) {
 
 	token := "valid-token-email-err"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -474,9 +456,7 @@ func TestResetPassword_PasswordExactlyMinLength(t *testing.T) {
 
 	token := "valid-token-min-len"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -501,9 +481,7 @@ func TestResetPassword_PasswordOneCharBelowMinLength(t *testing.T) {
 
 	token := "valid-token-below-min"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -702,7 +680,7 @@ func TestHashToken_Deterministic(t *testing.T) {
 	hash1 := service.hashToken("same-token")
 	hash2 := service.hashToken("same-token")
 
-	if !CompareTokensConstantTime(hash1, hash2) {
+	if hash1 != hash2 {
 		t.Error("same token should produce same hash")
 	}
 }
@@ -714,7 +692,7 @@ func TestHashToken_DifferentTokens_DifferentHashes(t *testing.T) {
 	hash1 := service.hashToken("token-a")
 	hash2 := service.hashToken("token-b")
 
-	if CompareTokensConstantTime(hash1, hash2) {
+	if hash1 == hash2 {
 		t.Error("different tokens should produce different hashes")
 	}
 }
@@ -728,9 +706,9 @@ func TestHashToken_EmptyToken(t *testing.T) {
 		t.Error("hash of empty token should not be empty")
 	}
 
-	// SHA-256 always produces 32 bytes
-	if len(hash) != 32 {
-		t.Errorf("expected 32-byte hash, got %d bytes", len(hash))
+	// SHA-256 HMAC produces 32 bytes = 64 hex chars
+	if len(hash) != 64 {
+		t.Errorf("expected 64-char hex hash, got %d chars", len(hash))
 	}
 }
 
@@ -973,9 +951,7 @@ func TestResetPassword_SecondGetByHashFails(t *testing.T) {
 
 	token := "valid-token-second-hash-fail"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),
@@ -1010,9 +986,7 @@ func TestResetPassword_GetProfileFailsAfterPasswordUpdate(t *testing.T) {
 
 	token := "valid-token-getprofile-fail"
 	tokenHash := service.hashToken(token)
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-
-	tokenRepo.tokens[key] = &repository.PasswordResetToken{
+	tokenRepo.tokens[tokenHash] = &repository.PasswordResetToken{
 		UserID:    "user-123",
 		TokenHash: tokenHash,
 		ExpiresAt: time.Now().Add(1 * time.Hour),

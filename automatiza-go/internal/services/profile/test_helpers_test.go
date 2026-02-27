@@ -3,7 +3,6 @@ package profile
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"errors"
 	"testing"
 	"time"
@@ -429,12 +428,11 @@ func (m *enhancedMockTokenRepo) Create(ctx context.Context, token *repository.Pa
 	if m.shouldFail {
 		return m.failError
 	}
-	key := base64.StdEncoding.EncodeToString(token.TokenHash)
-	m.tokens[key] = token
+	m.tokens[token.TokenHash] = token
 	return nil
 }
 
-func (m *enhancedMockTokenRepo) GetByHash(ctx context.Context, tokenHash []byte) (*repository.PasswordResetToken, error) {
+func (m *enhancedMockTokenRepo) GetByHash(ctx context.Context, tokenHash string) (*repository.PasswordResetToken, error) {
 	m.getByHashCallCount++
 	if m.getByHashFailAfterCall > 0 && m.getByHashCallCount >= m.getByHashFailAfterCall {
 		return nil, m.getByHashFailAfterErr
@@ -445,23 +443,21 @@ func (m *enhancedMockTokenRepo) GetByHash(ctx context.Context, tokenHash []byte)
 	if m.shouldFail {
 		return nil, m.failError
 	}
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-	token, ok := m.tokens[key]
+	token, ok := m.tokens[tokenHash]
 	if !ok {
 		return nil, errors.New("token not found")
 	}
 	return token, nil
 }
 
-func (m *enhancedMockTokenRepo) MarkUsed(ctx context.Context, tokenHash []byte) error {
+func (m *enhancedMockTokenRepo) MarkUsed(ctx context.Context, tokenHash string) error {
 	if m.markUsedErr != nil {
 		return m.markUsedErr
 	}
 	if m.shouldFail {
 		return m.failError
 	}
-	key := base64.StdEncoding.EncodeToString(tokenHash)
-	if token, ok := m.tokens[key]; ok {
+	if token, ok := m.tokens[tokenHash]; ok {
 		now := time.Now()
 		token.UsedAt = &now
 	}
