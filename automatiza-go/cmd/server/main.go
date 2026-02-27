@@ -778,6 +778,9 @@ func main() {
 
 	frontendURL := os.Getenv("FRONTEND_URL")
 	if frontendURL == "" {
+		frontendURL = os.Getenv("PUBLIC_BASE_URL")
+	}
+	if frontendURL == "" {
 		frontendURL = "http://localhost:3003"
 	}
 
