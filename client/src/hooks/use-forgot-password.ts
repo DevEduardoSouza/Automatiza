@@ -6,7 +6,7 @@ import { type ForgotPasswordFormData, forgotPasswordSchema } from '@/schemas';
 import { create } from '@bufbuild/protobuf';
 import { createClient } from '@connectrpc/connect';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { type UseFormReturn, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 
@@ -36,8 +36,12 @@ export function useForgotPassword(): UseForgotPasswordReturn {
     },
   });
 
+  const submittingRef = useRef(false);
+
   const onSubmit = useCallback(
     async (data: ForgotPasswordFormData) => {
+      if (submittingRef.current) return;
+      submittingRef.current = true;
       try {
         const { ProfilesService, RequestPasswordResetRequestSchema } = await import(
           '@/gen/profiles/v1/profiles_pb'
@@ -60,6 +64,8 @@ export function useForgotPassword(): UseForgotPasswordReturn {
           title: t('pages.forgotPassword.errors.send'),
           description: error instanceof Error ? error.message : t(getAuthErrorKey(error)),
         });
+      } finally {
+        submittingRef.current = false;
       }
     },
     [toast, t]
