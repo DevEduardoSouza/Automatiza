@@ -1614,3 +1614,149 @@ func TestWahaAdapter_RequireWorkingSession(t *testing.T) {
 		assert.Equal(t, "msg-123", result.ID)
 	})
 }
+
+// =============================================================================
+// Per-Session Circuit Breaker Tests
+// =============================================================================
+
+func TestWahaAdapter_CircuitBreaker_PerSession(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("isolation: failure in session A does not block session B", func(t *testing.T) {
+		callCount := 0
+		adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/sessions/") {
+				sessionName := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
+				if sessionName == "session-a" {
+					// session-a always fails
+					jsonResponse(t, http.StatusInternalServerError, map[string]interface{}{
+						"message": "internal error",
+					})(w, r)
+					return
+				}
+				// session-b always succeeds
+				jsonResponse(t, http.StatusOK, map[string]interface{}{
+					"name":   "session-b",
+					"status": "WORKING",
+				})(w, r)
+				return
+			}
+		})
+
+		// Trip session-a's circuit breaker (3 failures)
+		for i := 0; i < 3; i++ {
+			_, err := adapter.GetSessionStatus(ctx, "session-a")
+			require.Error(t, err)
+		}
+
+		// session-a should now be blocked by circuit breaker
+		_, err := adapter.GetSessionStatus(ctx, "session-a")
+		require.Error(t, err)
+		var providerErr *ProviderError
+		require.ErrorAs(t, err, &providerErr)
+		assert.Equal(t, ErrCodeCircuitBreakerOpen, providerErr.Code)
+
+		// session-b should still work fine
+		info, err := adapter.GetSessionStatus(ctx, "session-b")
+		require.NoError(t, err)
+		assert.Equal(t, "session-b", info.Name)
+	})
+
+	t.Run("resets after successful request", func(t *testing.T) {
+		failCount := 0
+		adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/sessions/") {
+				failCount++
+				if failCount <= 2 {
+					// First 2 calls fail
+					jsonResponse(t, http.StatusInternalServerError, map[string]interface{}{
+						"message": "internal error",
+					})(w, r)
+					return
+				}
+				// After that, succeed
+				jsonResponse(t, http.StatusOK, map[string]interface{}{
+					"name":   "test-session",
+					"status": "WORKING",
+				})(w, r)
+				return
+			}
+		})
+
+		// 2 failures (below threshold of 3)
+		for i := 0; i < 2; i++ {
+			_, err := adapter.GetSessionStatus(ctx, "test-session")
+			require.Error(t, err)
+		}
+
+		// Clear cache so next call hits the server
+		adapter.ClearStatusCache("test-session")
+
+		// 3rd call succeeds → resets failure counter
+		info, err := adapter.GetSessionStatus(ctx, "test-session")
+		require.NoError(t, err)
+		assert.Equal(t, "test-session", info.Name)
+
+		// Now fail 2 more times — should NOT trip breaker since counter was reset
+		failCount = 0 // reset mock counter to make it fail again
+		adapter.ClearStatusCache("test-session")
+		_, err = adapter.GetSessionStatus(ctx, "test-session")
+		require.Error(t, err) // failure 1
+
+		adapter.ClearStatusCache("test-session")
+		_, err = adapter.GetSessionStatus(ctx, "test-session")
+		require.Error(t, err) // failure 2
+
+		// Should still be allowed (only 2 failures since last reset)
+		failCount = 100 // make mock succeed
+		adapter.ClearStatusCache("test-session")
+		info, err = adapter.GetSessionStatus(ctx, "test-session")
+		require.NoError(t, err)
+		assert.Equal(t, "test-session", info.Name)
+	})
+
+	t.Run("ClearCircuitBreaker resets the breaker for a session", func(t *testing.T) {
+		callCount := 0
+		adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/sessions/") {
+				if callCount <= 3 {
+					// First 3 calls fail to trip the breaker
+					jsonResponse(t, http.StatusInternalServerError, map[string]interface{}{
+						"message": "internal error",
+					})(w, r)
+					return
+				}
+				// After clear, succeed
+				jsonResponse(t, http.StatusOK, map[string]interface{}{
+					"name":   "test-session",
+					"status": "WORKING",
+				})(w, r)
+				return
+			}
+		})
+
+		// Trip the circuit breaker (3 failures)
+		for i := 0; i < 3; i++ {
+			_, err := adapter.GetSessionStatus(ctx, "test-session")
+			require.Error(t, err)
+		}
+
+		// Should be blocked
+		_, err := adapter.GetSessionStatus(ctx, "test-session")
+		require.Error(t, err)
+		var providerErr *ProviderError
+		require.ErrorAs(t, err, &providerErr)
+		assert.Equal(t, ErrCodeCircuitBreakerOpen, providerErr.Code)
+
+		// Clear the circuit breaker
+		adapter.ClearCircuitBreaker("test-session")
+		adapter.ClearStatusCache("test-session")
+
+		// Should be allowed again
+		info, err := adapter.GetSessionStatus(ctx, "test-session")
+		require.NoError(t, err)
+		assert.Equal(t, "test-session", info.Name)
+	})
+}
