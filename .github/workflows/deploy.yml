@@ -190,7 +190,8 @@ jobs:
           $SSH_CMD "echo '${{ secrets.DOCKERHUB_TOKEN }}' | docker login -u devlikeapro --password-stdin 2>/dev/null" || echo "WARNING: Docker Hub login failed (WAHA image may use cached version)"
 
           # Step 2: Pull new images (with explicit image tags)
-          $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose pull server worker frontend postgres redis waha"
+          $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose pull server worker frontend postgres redis"
+          $SSH_CMD "cd /opt/automatiza/docker && docker compose pull waha" || echo "WARNING: WAHA pull failed (using cached image)"
 
           # Step 3: Run migrations (allowed to fail without blocking deploy)
           echo "=== Running migrations ==="
