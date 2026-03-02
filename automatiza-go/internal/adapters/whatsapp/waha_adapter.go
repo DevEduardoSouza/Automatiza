@@ -176,8 +176,11 @@ type WahaAdapter struct {
 	statusCacheMu  sync.RWMutex
 	statusCacheTTL time.Duration
 
-	// Circuit breaker for status checks
-	circuitBreaker *circuitBreaker
+	// Per-session circuit breakers for status checks
+	circuitBreakers map[string]*circuitBreaker
+	cbMu            sync.RWMutex
+	cbThreshold     int
+	cbBackoffTime   time.Duration
 
 	// retryEnabled controls whether network retries with backoff are enabled.
 	// Controlled by WAHA_RETRY_ENABLED env var (default: true).
@@ -230,6 +233,43 @@ func (cb *circuitBreaker) recordSuccess() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 	cb.failures = 0
+}
+
+// getOrCreateCircuitBreaker returns the circuit breaker for the given session,
+// creating one lazily if it doesn't exist (double-checked locking).
+func (a *WahaAdapter) getOrCreateCircuitBreaker(sessionName string) *circuitBreaker {
+	// Fast path: read lock
+	a.cbMu.RLock()
+	cb, ok := a.circuitBreakers[sessionName]
+	a.cbMu.RUnlock()
+	if ok {
+		return cb
+	}
+
+	// Slow path: write lock + re-check
+	a.cbMu.Lock()
+	defer a.cbMu.Unlock()
+	cb, ok = a.circuitBreakers[sessionName]
+	if ok {
+		return cb
+	}
+	cb = newCircuitBreaker(a.cbThreshold, a.cbBackoffTime)
+	a.circuitBreakers[sessionName] = cb
+	return cb
+}
+
+// ClearCircuitBreaker removes the circuit breaker for a specific session.
+func (a *WahaAdapter) ClearCircuitBreaker(sessionName string) {
+	a.cbMu.Lock()
+	defer a.cbMu.Unlock()
+	delete(a.circuitBreakers, sessionName)
+}
+
+// ClearAllCircuitBreakers removes all per-session circuit breakers.
+func (a *WahaAdapter) ClearAllCircuitBreakers() {
+	a.cbMu.Lock()
+	defer a.cbMu.Unlock()
+	a.circuitBreakers = make(map[string]*circuitBreaker)
 }
 
 // statusCacheEntry holds cached session status with expiration.
@@ -327,7 +367,9 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 		mapper:         newMapperWithLogger(namedLogger),
 		statusCache:    make(map[string]*statusCacheEntry),
 		statusCacheTTL: statusCacheTTL,
-		circuitBreaker: newCircuitBreaker(3, 60*time.Second), // 3 failures = 60s backoff (aligned with watchdog CheckInterval)
+		circuitBreakers: make(map[string]*circuitBreaker),
+		cbThreshold:     3,                // 3 failures before opening circuit
+		cbBackoffTime:   60 * time.Second, // 60s backoff (aligned with watchdog CheckInterval)
 		retryEnabled:   retryEnabled,
 		retryCfg:       defaultRetryConfig(),
 	}, nil
@@ -559,6 +601,7 @@ func (a *WahaAdapter) DeleteSession(ctx context.Context, sessionName string) err
 
 	// Clear from cache
 	a.ClearStatusCache(sessionName)
+	a.ClearCircuitBreaker(sessionName)
 
 	return nil
 }
@@ -570,8 +613,9 @@ func (a *WahaAdapter) GetSessionStatus(ctx context.Context, sessionName string) 
 		return info, nil
 	}
 
-	// Check circuit breaker
-	if !a.circuitBreaker.canRequest() {
+	// Check per-session circuit breaker
+	cb := a.getOrCreateCircuitBreaker(sessionName)
+	if !cb.canRequest() {
 		a.logger.Warn("circuit breaker open, blocking status check",
 			zap.String("session", sessionName))
 		return nil, NewProviderError(ErrCodeCircuitBreakerOpen, "service temporarily unavailable (circuit breaker open)", nil)
@@ -583,18 +627,18 @@ func (a *WahaAdapter) GetSessionStatus(ctx context.Context, sessionName string) 
 
 	resp, err := a.doRequest(statusCtx, http.MethodGet, "/api/sessions/"+url.PathEscape(sessionName), nil)
 	if err != nil {
-		a.circuitBreaker.recordFailure()
+		cb.recordFailure()
 		return nil, fmt.Errorf("failed to get session status: %w", err)
 	}
 
 	var wahaSession wahaSession
 	if err := json.Unmarshal(resp, &wahaSession); err != nil {
-		a.circuitBreaker.recordFailure()
+		cb.recordFailure()
 		return nil, NewProviderError(ErrCodeProviderError, "failed to parse session response", err)
 	}
 
 	// Success - reset circuit breaker
-	a.circuitBreaker.recordSuccess()
+	cb.recordSuccess()
 
 	info := a.mapper.SessionInfoFromWaha(&wahaSession)
 
@@ -666,6 +710,7 @@ func (a *WahaAdapter) RestartSession(ctx context.Context, sessionName string) er
 
 	// Clear cache so next status check gets fresh data
 	a.ClearStatusCache(sessionName)
+	a.ClearCircuitBreaker(sessionName)
 
 	return nil
 }
@@ -679,6 +724,7 @@ func (a *WahaAdapter) LogoutSession(ctx context.Context, sessionName string) err
 
 	// Clear cache
 	a.ClearStatusCache(sessionName)
+	a.ClearCircuitBreaker(sessionName)
 
 	return nil
 }
