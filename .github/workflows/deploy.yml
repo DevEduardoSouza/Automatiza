@@ -187,7 +187,7 @@ jobs:
 
           # Step 1: Login to registries
           $SSH_CMD "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin 2>/dev/null"
-          $SSH_CMD "echo '${{ secrets.DOCKERHUB_TOKEN }}' | docker login -u devlikeapro --password-stdin 2>/dev/null"
+          $SSH_CMD "echo '${{ secrets.DOCKERHUB_TOKEN }}' | docker login -u devlikeapro --password-stdin 2>/dev/null" || echo "WARNING: Docker Hub login failed (WAHA image may use cached version)"
 
           # Step 2: Pull new images (with explicit image tags)
           $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose pull server worker frontend postgres redis waha"
