@@ -475,7 +475,60 @@ func isNonProductShopeeURL(expandedURL string) bool {
 	return strings.Contains(lower, "shopee.com.br/m/") ||
 		strings.Contains(lower, "shopee.com.br/mall/") ||
 		strings.Contains(lower, "shopee.com.br/flash_sale") ||
-		strings.Contains(lower, "shopee.com.br/daily_discover")
+		strings.Contains(lower, "shopee.com.br/daily_discover") ||
+		strings.Contains(lower, "shopee.com.br/voucher")
+}
+
+// generateNonProductAffiliateLink converts non-product Shopee URLs (coupons, campaigns)
+// into affiliate short links using the client's credentials via generateShortLink mutation.
+func (s *shopeeService) generateNonProductAffiliateLink(ctx context.Context, originalURL, expandedURL, userID string) (*models.ShopeeAffiliateLink, error) {
+	// Get affiliate credentials for this user
+	creds, err := s.affiliateRepo.GetByUserAndStore(ctx, userID, "shopee")
+	if err != nil || creds == nil {
+		return nil, fmt.Errorf("shopee credentials not configured")
+	}
+	appID, secret := getShopeeCredentials(creds)
+
+	s.logger.Info("Generating affiliate link for non-product Shopee URL",
+		zap.String("original", originalURL),
+		zap.String("expanded", expandedURL),
+		zap.String("userID", userID))
+
+	// Use generateShortLink mutation — works with any Shopee URL
+	shortLinkQuery := fmt.Sprintf(`mutation { generateShortLink(input: {originUrl: %q}) { shortLink } }`, expandedURL)
+	shortPayload, marshalErr := json.Marshal(map[string]string{"query": shortLinkQuery})
+	if marshalErr != nil {
+		return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", marshalErr)
+	}
+
+	shortData, shortErr := s.shopeeGraphQL(ctx, appID, secret, string(shortPayload))
+	if shortErr != nil {
+		return nil, fmt.Errorf("failed to generate affiliate link for non-product URL: %w", shortErr)
+	}
+
+	var shortResult struct {
+		GenerateShortLink struct {
+			ShortLink string `json:"shortLink"`
+		} `json:"generateShortLink"`
+	}
+	if unmarshalErr := json.Unmarshal(shortData, &shortResult); unmarshalErr != nil {
+		return nil, fmt.Errorf("failed to parse generateShortLink response: %w", unmarshalErr)
+	}
+
+	affiliateLink := shortResult.GenerateShortLink.ShortLink
+	if affiliateLink == "" {
+		return nil, fmt.Errorf("no affiliate link generated for non-product URL")
+	}
+
+	s.logger.Info("Non-product affiliate link generated",
+		zap.String("original", originalURL),
+		zap.String("affiliateLink", affiliateLink))
+
+	return &models.ShopeeAffiliateLink{
+		OriginalURL:   originalURL,
+		AffiliateLink: affiliateLink,
+		ShortLink:     affiliateLink,
+	}, nil
 }
 
 func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, userID string) (*models.ShopeeAffiliateLink, error) {
@@ -490,12 +543,9 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 			}
 			shopID, itemID, err = s.ExtractProductIDs(expanded)
 			if err != nil {
-				// Non-product pages (coupons, campaigns) — skip silently
+				// Non-product pages (coupons, campaigns) — convert via generateShortLink
 				if isNonProductShopeeURL(expanded) {
-					s.logger.Debug("Shopee URL is a non-product page, skipping affiliate link",
-						zap.String("original", productURL),
-						zap.String("expanded", expanded))
-					return nil, nil
+					return s.generateNonProductAffiliateLink(ctx, productURL, expanded, userID)
 				}
 				return nil, fmt.Errorf("invalid shopee URL after expansion: %w", err)
 			}
@@ -853,6 +903,7 @@ func parseDiscount(discount string) float64 {
 // IMPORTANT: Uses IDs from Shopee "categories" field (100XXX), NOT "fe_categories" (110XXXXX).
 // The "categories" IDs are the ones that work with the Shopee Affiliate API.
 // Source of truth: antigo-projeto/backend/src/config/shopeeCategories.ts
+//
 //nolint:misspell // Portuguese category names are not English misspellings
 func initCategoryMapping() map[string][]int {
 	return map[string][]int{
