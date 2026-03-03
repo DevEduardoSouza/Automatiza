@@ -853,6 +853,7 @@ func parseDiscount(discount string) float64 {
 // IMPORTANT: Uses IDs from Shopee "categories" field (100XXX), NOT "fe_categories" (110XXXXX).
 // The "categories" IDs are the ones that work with the Shopee Affiliate API.
 // Source of truth: antigo-projeto/backend/src/config/shopeeCategories.ts
+//nolint:misspell // Portuguese category names are not English misspellings
 func initCategoryMapping() map[string][]int {
 	return map[string][]int{
 		// ── Main categories ──
