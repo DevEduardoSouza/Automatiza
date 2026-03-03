@@ -1630,3 +1630,82 @@ func (a *WahaAdapter) DownloadMediaByURL(ctx context.Context, mediaURL string) (
 		Filename: filename,
 	}, nil
 }
+
+// RedownloadMedia implements MediaDownloader.RedownloadMedia.
+// Re-downloads media from WhatsApp servers by fetching a specific message with downloadMedia=true.
+// This bypasses the local WAHA file cache, which may have expired (WHATSAPP_FILES_LIFETIME).
+// WhatsApp retains media on their servers for ~30 days.
+func (a *WahaAdapter) RedownloadMedia(ctx context.Context, sessionName, chatID, messageID string) (*DownloadMediaResult, error) {
+	if sessionName == "" {
+		return nil, NewProviderError(ErrCodeInvalidInput, "session name is required", nil)
+	}
+	if chatID == "" {
+		return nil, NewProviderError(ErrCodeInvalidInput, "chat ID is required", nil)
+	}
+	if messageID == "" {
+		return nil, NewProviderError(ErrCodeInvalidInput, "message ID is required", nil)
+	}
+
+	a.logger.Debug("Re-downloading media from WhatsApp servers",
+		zap.String("session", sessionName),
+		zap.String("chatID", chatID),
+		zap.String("messageID", messageID))
+
+	// GET /api/{session}/chats/{chatId}/messages/{messageId}?downloadMedia=true
+	path := fmt.Sprintf("/api/%s/chats/%s/messages/%s?downloadMedia=true",
+		url.PathEscape(sessionName),
+		url.PathEscape(chatID),
+		url.PathEscape(messageID))
+
+	resp, err := a.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-download media: %w", err)
+	}
+
+	// Parse the message response to extract fresh media URL
+	var msgResp struct {
+		Media struct {
+			URL      string `json:"url"`
+			Mimetype string `json:"mimetype"`
+		} `json:"media"`
+		MediaURL string `json:"mediaUrl"` // Legacy field
+		Mimetype string `json:"mimetype"`
+	}
+	if err := json.Unmarshal(resp, &msgResp); err != nil {
+		return nil, NewProviderError(ErrCodeProviderError, "failed to parse re-download response", err)
+	}
+
+	// Extract the fresh media URL (prefer media.url over legacy mediaUrl)
+	freshMediaURL := msgResp.Media.URL
+	if freshMediaURL == "" {
+		freshMediaURL = msgResp.MediaURL
+	}
+	if freshMediaURL == "" {
+		return nil, NewProviderError(ErrCodeProviderError, "no media URL in re-download response", nil)
+	}
+
+	// Extract mimetype from response
+	mimetype := msgResp.Media.Mimetype
+	if mimetype == "" {
+		mimetype = msgResp.Mimetype
+	}
+
+	a.logger.Debug("Got fresh media URL from re-download",
+		zap.String("freshURL", freshMediaURL),
+		zap.String("mimetype", mimetype))
+
+	// Download the fresh media using the new URL
+	result, err := a.DownloadMediaByURL(ctx, freshMediaURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download fresh media: %w", err)
+	}
+
+	// Use the mimetype from the message response if the download didn't provide one
+	if result.Mimetype == "" || result.Mimetype == "application/octet-stream" {
+		if mimetype != "" {
+			result.Mimetype = mimetype
+		}
+	}
+
+	return result, nil
+}

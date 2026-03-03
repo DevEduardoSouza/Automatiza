@@ -66,6 +66,7 @@ services:
       WHATSAPP_HOOK_URL: http://server:3000/api/v1/webhooks/waha
       WHATSAPP_HOOK_EVENTS: message,message.ack,session.status,group.join,group.leave
       WHATSAPP_HOOK_HMAC_KEY: ${WEBHOOK_SECRET}
+      WHATSAPP_FILES_LIFETIME: "600"
       WAHA_DASHBOARD_ENABLED: "false"
       WAHA_LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:

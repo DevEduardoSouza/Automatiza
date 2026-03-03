@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -146,6 +147,11 @@ func validCreds() *models.AffiliateCredentials {
 func graphqlResponse(data interface{}) string {
 	d, _ := json.Marshal(data)
 	return fmt.Sprintf(`{"data":%s,"errors":null}`, string(d))
+}
+
+func readBody(r *http.Request) (string, error) {
+	b, err := io.ReadAll(r.Body)
+	return string(b), err
 }
 
 // ---------------------------------------------------------------------------
@@ -951,15 +957,25 @@ func TestSearchOffers(t *testing.T) {
 func TestGenerateAffiliateLink(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("success generates link", func(t *testing.T) {
+	t.Run("success via productOfferV2 with imageUrl", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			resp := map[string]interface{}{
-				"generateShortLink": map[string]interface{}{
-					"shortLink": "https://s.shopee.com.br/generated-link",
-				},
-			}
+			body, _ := readBody(r)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, graphqlResponse(resp))
+			if strings.Contains(body, "productOfferV2") {
+				resp := map[string]interface{}{
+					"productOfferV2": map[string]interface{}{
+						"nodes": []map[string]interface{}{
+							{
+								"offerLink": "https://s.shopee.com.br/offer-link",
+								"imageUrl":  "https://cf.shopee.com.br/file/product-image.jpg",
+							},
+						},
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			} else {
+				t.Error("unexpected API call — expected productOfferV2")
+			}
 		}))
 		defer server.Close()
 
@@ -974,14 +990,64 @@ func TestGenerateAffiliateLink(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result.ShortLink != "https://s.shopee.com.br/generated-link" {
-			t.Errorf("shortLink = %q, want %q", result.ShortLink, "https://s.shopee.com.br/generated-link")
+		if result.AffiliateLink != "https://s.shopee.com.br/offer-link" {
+			t.Errorf("affiliateLink = %q, want %q", result.AffiliateLink, "https://s.shopee.com.br/offer-link")
+		}
+		if result.ImageURL != "https://cf.shopee.com.br/file/product-image.jpg" {
+			t.Errorf("imageURL = %q, want %q", result.ImageURL, "https://cf.shopee.com.br/file/product-image.jpg")
 		}
 		if result.ItemID != 456 {
 			t.Errorf("itemID = %d, want 456", result.ItemID)
 		}
 		if result.ShopID != 123 {
 			t.Errorf("shopID = %d, want 123", result.ShopID)
+		}
+	})
+
+	t.Run("fallback to generateShortLink when productOfferV2 has no offerLink", func(t *testing.T) {
+		callCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := readBody(r)
+			w.Header().Set("Content-Type", "application/json")
+			callCount++
+			if strings.Contains(body, "productOfferV2") {
+				// Return empty nodes (no offerLink)
+				resp := map[string]interface{}{
+					"productOfferV2": map[string]interface{}{
+						"nodes": []map[string]interface{}{},
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			} else if strings.Contains(body, "generateShortLink") {
+				resp := map[string]interface{}{
+					"generateShortLink": map[string]interface{}{
+						"shortLink": "https://s.shopee.com.br/fallback-link",
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			}
+		}))
+		defer server.Close()
+
+		repo := &mockAffiliateRepo{
+			GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
+				return validCreds(), nil
+			},
+		}
+		svc := newTestService(t, server.URL, repo, &mockSettingsRepo{})
+
+		result, err := svc.GenerateAffiliateLink(ctx, "https://shopee.com.br/product/123/456", "user1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.AffiliateLink != "https://s.shopee.com.br/fallback-link" {
+			t.Errorf("affiliateLink = %q, want %q", result.AffiliateLink, "https://s.shopee.com.br/fallback-link")
+		}
+		if result.ImageURL != "" {
+			t.Errorf("imageURL should be empty on fallback, got %q", result.ImageURL)
+		}
+		if callCount != 2 {
+			t.Errorf("expected 2 API calls (productOfferV2 + generateShortLink), got %d", callCount)
 		}
 	})
 
@@ -1027,15 +1093,27 @@ func TestGenerateAffiliateLink(t *testing.T) {
 		}
 	})
 
-	t.Run("empty shortLink returns error", func(t *testing.T) {
+	t.Run("empty links from both APIs returns error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			resp := map[string]interface{}{
-				"generateShortLink": map[string]interface{}{
-					"shortLink": "",
-				},
-			}
+			body, _ := readBody(r)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, graphqlResponse(resp))
+			if strings.Contains(body, "productOfferV2") {
+				resp := map[string]interface{}{
+					"productOfferV2": map[string]interface{}{
+						"nodes": []map[string]interface{}{
+							{"offerLink": "", "imageUrl": ""},
+						},
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			} else if strings.Contains(body, "generateShortLink") {
+				resp := map[string]interface{}{
+					"generateShortLink": map[string]interface{}{
+						"shortLink": "",
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			}
 		}))
 		defer server.Close()
 
@@ -1048,7 +1126,7 @@ func TestGenerateAffiliateLink(t *testing.T) {
 
 		_, err := svc.GenerateAffiliateLink(ctx, "https://shopee.com.br/product/123/456", "user1")
 		if err == nil {
-			t.Fatal("expected error for empty shortLink")
+			t.Fatal("expected error for empty affiliate link")
 		}
 	})
 
@@ -1105,15 +1183,20 @@ func TestGenerateAffiliateLink_ShortURL(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("short URL is expanded then generates affiliate link", func(t *testing.T) {
-		// Shopee GraphQL server that generates affiliate links
+		// Shopee GraphQL server that generates affiliate links (productOfferV2)
 		graphqlServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			resp := map[string]interface{}{
-				"generateShortLink": map[string]interface{}{
-					"shortLink": "https://s.shopee.com.br/affiliate-link",
-				},
-			}
+			body, _ := readBody(r)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, graphqlResponse(resp))
+			if strings.Contains(body, "productOfferV2") {
+				resp := map[string]interface{}{
+					"productOfferV2": map[string]interface{}{
+						"nodes": []map[string]interface{}{
+							{"offerLink": "https://s.shopee.com.br/affiliate-link", "imageUrl": ""},
+						},
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			}
 		}))
 		defer graphqlServer.Close()
 
@@ -1143,8 +1226,6 @@ func TestGenerateAffiliateLink_ShortURL(t *testing.T) {
 		// Redirect server: simulates short URL → long product URL
 		expandServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/short123" {
-				// Redirect to a URL that matches the shopee product pattern
-				// We redirect to the graphQL server itself with a path matching the regex
 				http.Redirect(w, r, "https://shopee.com.br/Product.999.888", http.StatusFound)
 				return
 			}
@@ -1152,15 +1233,23 @@ func TestGenerateAffiliateLink_ShortURL(t *testing.T) {
 		}))
 		defer expandServer.Close()
 
-		// GraphQL server for affiliate link generation
+		// GraphQL server for affiliate link generation (productOfferV2)
 		graphqlServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			resp := map[string]interface{}{
-				"generateShortLink": map[string]interface{}{
-					"shortLink": "https://s.shopee.com.br/affiliate-result",
-				},
-			}
+			body, _ := readBody(r)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, graphqlResponse(resp))
+			if strings.Contains(body, "productOfferV2") {
+				resp := map[string]interface{}{
+					"productOfferV2": map[string]interface{}{
+						"nodes": []map[string]interface{}{
+							{
+								"offerLink": "https://s.shopee.com.br/affiliate-result",
+								"imageUrl":  "https://cf.shopee.com.br/file/img.jpg",
+							},
+						},
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			}
 		}))
 		defer graphqlServer.Close()
 
@@ -1170,14 +1259,6 @@ func TestGenerateAffiliateLink_ShortURL(t *testing.T) {
 			},
 		}
 		svc := newTestService(t, graphqlServer.URL, repo, &mockSettingsRepo{})
-
-		// Use the expand server URL with s.shopee.com.br in the host to trigger short URL detection.
-		// Since we can't actually have s.shopee.com.br in tests, we test the helper directly
-		// and test the integration path with a real redirect that ExpandURL can follow.
-
-		// Test: a URL containing "s.shopee.com.br/" triggers expansion
-		// We can't make a real HTTP call to s.shopee.com.br in unit tests,
-		// but we CAN test ExpandURL separately and test the branching logic.
 
 		// Direct test: provide a long URL that works
 		result, err := svc.GenerateAffiliateLink(ctx, "https://shopee.com.br/Product.999.888", "user1")
@@ -1190,8 +1271,11 @@ func TestGenerateAffiliateLink_ShortURL(t *testing.T) {
 		if result.ItemID != 888 {
 			t.Errorf("itemID = %d, want 888", result.ItemID)
 		}
-		if result.ShortLink != "https://s.shopee.com.br/affiliate-result" {
-			t.Errorf("shortLink = %q, want affiliate-result", result.ShortLink)
+		if result.AffiliateLink != "https://s.shopee.com.br/affiliate-result" {
+			t.Errorf("affiliateLink = %q, want affiliate-result", result.AffiliateLink)
+		}
+		if result.ImageURL != "https://cf.shopee.com.br/file/img.jpg" {
+			t.Errorf("imageURL = %q, want img.jpg", result.ImageURL)
 		}
 	})
 
@@ -1761,4 +1845,3 @@ func TestSearchOffers_RoutingByCategory(t *testing.T) {
 		}
 	})
 }
-

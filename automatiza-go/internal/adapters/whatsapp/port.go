@@ -50,6 +50,12 @@ type MediaDownloader interface {
 	// This is needed because WAHA webhook media.url contains an internal URL
 	// (e.g. http://localhost:3000/api/files/...) that requires auth.
 	DownloadMediaByURL(ctx context.Context, mediaURL string) (*DownloadMediaResult, error)
+
+	// RedownloadMedia re-downloads media from WhatsApp servers for a specific message.
+	// Uses GET /api/{session}/chats/{chatId}/messages/{messageId}?downloadMedia=true
+	// to force a fresh download from WhatsApp servers (not the local WAHA cache).
+	// This is useful when the local WAHA media file has expired (WHATSAPP_FILES_LIFETIME).
+	RedownloadMedia(ctx context.Context, sessionName, chatID, messageID string) (*DownloadMediaResult, error)
 }
 
 // DownloadMediaResult contains the downloaded media data with metadata.

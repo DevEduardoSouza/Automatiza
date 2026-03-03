@@ -364,6 +364,9 @@ func (m *mockWAProvider) DownloadMedia(_ context.Context, _ whatsapp.DownloadMed
 func (m *mockWAProvider) DownloadMediaByURL(_ context.Context, _ string) (*whatsapp.DownloadMediaResult, error) {
 	return nil, nil
 }
+func (m *mockWAProvider) RedownloadMedia(_ context.Context, _, _, _ string) (*whatsapp.DownloadMediaResult, error) {
+	return nil, nil
+}
 
 var _ whatsapp.WhatsAppProvider = (*mockWAProvider)(nil)
 

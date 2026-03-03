@@ -116,7 +116,7 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee GraphQL HTTP request failed", err, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "graphql",
+			"endpoint":         "graphql",
 		})
 		return nil, fmt.Errorf("shopee API request failed: %w", err)
 	}
@@ -126,7 +126,7 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to read Shopee GraphQL response body", err, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "graphql",
+			"endpoint":         "graphql",
 		})
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -135,8 +135,8 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 		httpErr := fmt.Errorf("shopee API error %d: %s", resp.StatusCode, string(body))
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee GraphQL returned non-200 status", httpErr, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "graphql",
-			"http_status":     fmt.Sprintf("%d", resp.StatusCode),
+			"endpoint":         "graphql",
+			"http_status":      fmt.Sprintf("%d", resp.StatusCode),
 		})
 		return nil, httpErr
 	}
@@ -151,7 +151,7 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 	if err := json.Unmarshal(body, &gqlResp); err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal Shopee GraphQL response", err, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "graphql",
+			"endpoint":         "graphql",
 		})
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -171,7 +171,7 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee GraphQL returned error", gqlErr, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "graphql",
+			"endpoint":         "graphql",
 		})
 		return nil, gqlErr
 	}
@@ -253,7 +253,7 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 	var allOffers []models.ShopeeOffer
 	perCategoryLimit := limit
 	if len(categoryIDs) > 1 {
-		perCategoryLimit = max(3, limit/len(categoryIDs))
+		perCategoryLimit = max(5, limit/len(categoryIDs))
 	}
 
 	for _, catID := range categoryIDs {
@@ -342,7 +342,7 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 	if marshalErr != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee search payload", marshalErr, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "searchOffers",
+			"endpoint":         "searchOffers",
 		})
 		return nil, fmt.Errorf("failed to marshal search payload: %w", marshalErr)
 	}
@@ -378,7 +378,7 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 	if err := json.Unmarshal(data, &result); err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal Shopee search results", err, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "searchOffers",
+			"endpoint":         "searchOffers",
 		})
 		return nil, fmt.Errorf("failed to parse search results: %w", err)
 	}
@@ -530,53 +530,80 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		zap.Int64("itemID", itemID),
 		zap.Int64("shopID", shopID))
 
-	// Use GraphQL mutation to generate short link
-	originURL := fmt.Sprintf("https://shopee.com.br/product/%d/%d", shopID, itemID)
-	gqlQuery := fmt.Sprintf(`mutation { generateShortLink(input: {originUrl: %q}) { shortLink } }`, originURL)
+	// Try productOfferV2 first — returns offerLink + imageUrl in 1 API call
+	gqlQuery := fmt.Sprintf(`{ productOfferV2(itemId: %d, shopId: %d, limit: 1) { nodes { offerLink imageUrl } } }`, itemID, shopID)
 	payload, marshalErr := json.Marshal(map[string]string{"query": gqlQuery})
 	if marshalErr != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee generateShortLink payload", marshalErr, map[string]string{
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee productOfferV2 payload", marshalErr, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "generateShortLink",
+			"endpoint":         "productOfferV2_link",
 		})
-		return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", marshalErr)
-	}
-	payloadStr := string(payload)
-
-	data, err := s.shopeeGraphQL(ctx, appID, secret, payloadStr)
-	if err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee generateShortLink API failed", err, map[string]string{
-			"external_service": "shopee",
-			"endpoint":        "generateShortLink",
-		})
-		return nil, fmt.Errorf("failed to generate affiliate link: %w", err)
+		return nil, fmt.Errorf("failed to marshal productOfferV2 payload: %w", marshalErr)
 	}
 
-	var gqlResult struct {
-		GenerateShortLink struct {
-			ShortLink string `json:"shortLink"`
-		} `json:"generateShortLink"`
-	}
-	if err := json.Unmarshal(data, &gqlResult); err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal Shopee generateShortLink response", err, map[string]string{
-			"external_service": "shopee",
-			"endpoint":        "generateShortLink",
-		})
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	var affiliateLink string
+	var imageURL string
+
+	data, err := s.shopeeGraphQL(ctx, appID, secret, string(payload))
+	if err == nil {
+		var offerResult struct {
+			ProductOfferV2 struct {
+				Nodes []struct {
+					OfferLink string `json:"offerLink"`
+					ImageURL  string `json:"imageUrl"`
+				} `json:"nodes"`
+			} `json:"productOfferV2"`
+		}
+		if unmarshalErr := json.Unmarshal(data, &offerResult); unmarshalErr == nil &&
+			len(offerResult.ProductOfferV2.Nodes) > 0 {
+			node := offerResult.ProductOfferV2.Nodes[0]
+			affiliateLink = node.OfferLink
+			imageURL = node.ImageURL
+		}
+	} else {
+		s.logger.Warn("productOfferV2 failed, will try generateShortLink fallback",
+			zap.Int64("itemID", itemID),
+			zap.Error(err))
 	}
 
-	shortLink := gqlResult.GenerateShortLink.ShortLink
-	if shortLink == "" {
+	// Fallback to generateShortLink if productOfferV2 didn't return an offerLink
+	if affiliateLink == "" {
+		originURL := fmt.Sprintf("https://shopee.com.br/product/%d/%d", shopID, itemID)
+		shortLinkQuery := fmt.Sprintf(`mutation { generateShortLink(input: {originUrl: %q}) { shortLink } }`, originURL)
+		shortPayload, shortMarshalErr := json.Marshal(map[string]string{"query": shortLinkQuery})
+		if shortMarshalErr != nil {
+			return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", shortMarshalErr)
+		}
+
+		shortData, shortErr := s.shopeeGraphQL(ctx, appID, secret, string(shortPayload))
+		if shortErr != nil {
+			return nil, fmt.Errorf("failed to generate affiliate link: %w", shortErr)
+		}
+
+		var shortResult struct {
+			GenerateShortLink struct {
+				ShortLink string `json:"shortLink"`
+			} `json:"generateShortLink"`
+		}
+		if unmarshalErr := json.Unmarshal(shortData, &shortResult); unmarshalErr != nil {
+			return nil, fmt.Errorf("failed to parse generateShortLink response: %w", unmarshalErr)
+		}
+		affiliateLink = shortResult.GenerateShortLink.ShortLink
+	}
+
+	if affiliateLink == "" {
 		return nil, fmt.Errorf("no affiliate link generated")
 	}
 
 	s.logger.Info("AffiliateLink generated",
-		zap.String("shortLink", shortLink))
+		zap.String("affiliateLink", affiliateLink),
+		zap.String("imageURL", imageURL))
 
 	result := &models.ShopeeAffiliateLink{
 		OriginalURL:   productURL,
-		AffiliateLink: shortLink,
-		ShortLink:     shortLink,
+		AffiliateLink: affiliateLink,
+		ShortLink:     affiliateLink,
+		ImageURL:      imageURL,
 		ItemID:        itemID,
 		ShopID:        shopID,
 	}
@@ -586,7 +613,7 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		if cacheErr := s.cache.SetJSON(ctx, cacheKey, result, time.Hour); cacheErr != nil {
 			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to cache Shopee affiliate link", cacheErr, map[string]string{
 				"external_service": "shopee",
-				"endpoint":        "cache_set_link",
+				"endpoint":         "cache_set_link",
 			})
 		}
 	}
@@ -626,7 +653,7 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 	if marshalErr != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee getProduct payload", marshalErr, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "getProduct",
+			"endpoint":         "getProduct",
 		})
 		return nil, fmt.Errorf("failed to marshal getProduct payload: %w", marshalErr)
 	}
@@ -636,7 +663,7 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee getProduct API failed", err, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "getProduct",
+			"endpoint":         "getProduct",
 		})
 		return nil, err
 	}
@@ -665,7 +692,7 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 	if err := json.Unmarshal(data, &result); err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal Shopee product details", err, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "getProduct",
+			"endpoint":         "getProduct",
 		})
 		return nil, fmt.Errorf("failed to parse product details: %w", err)
 	}
@@ -746,7 +773,7 @@ func (s *shopeeService) ExpandURL(ctx context.Context, shortURL string) (string,
 	if reqErr != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to create Shopee ExpandURL request", reqErr, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "expandURL",
+			"endpoint":         "expandURL",
 		})
 		return shortURL, reqErr
 	}
@@ -759,7 +786,7 @@ func (s *shopeeService) ExpandURL(ctx context.Context, shortURL string) (string,
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee ExpandURL HTTP request failed", err, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "expandURL",
+			"endpoint":         "expandURL",
 		})
 		return shortURL, err
 	}
@@ -772,7 +799,7 @@ func (s *shopeeService) ExpandURL(ctx context.Context, shortURL string) (string,
 		if cacheErr := s.cache.Set(ctx, cacheKey, finalURL, 24*time.Hour); cacheErr != nil {
 			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to cache Shopee expanded URL", cacheErr, map[string]string{
 				"external_service": "shopee",
-				"endpoint":        "cache_set_expandURL",
+				"endpoint":         "cache_set_expandURL",
 			})
 		}
 	}
@@ -826,6 +853,7 @@ func parseDiscount(discount string) float64 {
 // IMPORTANT: Uses IDs from Shopee "categories" field (100XXX), NOT "fe_categories" (110XXXXX).
 // The "categories" IDs are the ones that work with the Shopee Affiliate API.
 // Source of truth: antigo-projeto/backend/src/config/shopeeCategories.ts
+//nolint:misspell // Portuguese category names are not English misspellings
 func initCategoryMapping() map[string][]int {
 	return map[string][]int{
 		// ── Main categories ──
@@ -1046,99 +1074,99 @@ func initCategoryMapping() map[string][]int {
 		},
 
 		// ── Subcategories: Moda Feminina ──
-		"Moda Feminina - Vestidos":              {100104},
-		"Moda Feminina - Shorts":                {100360},
-		"Moda Feminina - Calçados (Tênis)":      {100557},
+		"Moda Feminina - Vestidos":               {100104},
+		"Moda Feminina - Shorts":                 {100360},
+		"Moda Feminina - Calçados (Tênis)":       {100557},
 		"Moda Feminina - Calçados (Plataformas)": {100560},
-		"Moda Feminina - Calças":                {100358},
-		"Moda Feminina - Jeans":                 {100103},
-		"Moda Feminina - Camisetas":             {100352},
-		"Moda Feminina - Blusas":                {100353},
-		"Moda Feminina - Bolsas":                {100095},
-		"Moda Feminina - Lingerie (Calcinhas)":  {100382},
+		"Moda Feminina - Calças":                 {100358},
+		"Moda Feminina - Jeans":                  {100103},
+		"Moda Feminina - Camisetas":              {100352},
+		"Moda Feminina - Blusas":                 {100353},
+		"Moda Feminina - Bolsas":                 {100095},
+		"Moda Feminina - Lingerie (Calcinhas)":   {100382},
 
 		// ── Subcategories: Moda Masculina ──
-		"Moda Masculina - Bermudas":           {100053},
-		"Moda Masculina - Camisas":            {100242},
-		"Moda Masculina - Jeans":              {100047},
-		"Moda Masculina - Calçados (Tênis)":   {100064},
+		"Moda Masculina - Bermudas":            {100053},
+		"Moda Masculina - Camisas":             {100242},
+		"Moda Masculina - Jeans":               {100047},
+		"Moda Masculina - Calçados (Tênis)":    {100064},
 		"Moda Masculina - Calçados (Chinelos)": {100259},
 
 		// ── Subcategories: Homens ──
-		"Homens - Roupas (Camisetas)":                  {100244},
-		"Homens - Roupas (Bermudas)":                   {100053},
-		"Homens - Roupas (Jeans)":                      {100047},
-		"Homens - Roupas (Calças Cargo)":               {100238},
-		"Homens - Roupas (Moletons)":                   {100226},
-		"Homens - Roupas (Jaquetas)":                   {101310},
-		"Homens - Calçados (Tênis)":                    {101301},
-		"Homens - Calçados (Chinelos)":                 {100259},
-		"Homens - Calçados (Botas)":                    {100255},
-		"Homens - Calçados (Sociais/Oxford)":           {100067},
-		"Homens - Íntimas (Cuecas)":                    {100247},
-		"Homens - Íntimas (Meias)":                     {100062},
-		"Homens - Acessórios (Bonés)":                  {100028},
-		"Homens - Acessórios (Relógios)":               {100574},
+		"Homens - Roupas (Camisetas)":                   {100244},
+		"Homens - Roupas (Bermudas)":                    {100053},
+		"Homens - Roupas (Jeans)":                       {100047},
+		"Homens - Roupas (Calças Cargo)":                {100238},
+		"Homens - Roupas (Moletons)":                    {100226},
+		"Homens - Roupas (Jaquetas)":                    {101310},
+		"Homens - Calçados (Tênis)":                     {101301},
+		"Homens - Calçados (Chinelos)":                  {100259},
+		"Homens - Calçados (Botas)":                     {100255},
+		"Homens - Calçados (Sociais/Oxford)":            {100067},
+		"Homens - Íntimas (Cuecas)":                     {100247},
+		"Homens - Íntimas (Meias)":                      {100062},
+		"Homens - Acessórios (Bonés)":                   {100028},
+		"Homens - Acessórios (Relógios)":                {100574},
 		"Homens - Acessórios (Carteiras/Porta-cartões)": {100608},
-		"Homens - Acessórios (Cintos)":                 {100032},
-		"Homens - Acessórios (Óculos de sol)":          {100151},
-		"Homens - Barbearia (Aparadores)":              {101624},
-		"Homens - Barbearia (Cremes/Géis)":             {101620},
-		"Homens - Perfumes":                            {100661},
+		"Homens - Acessórios (Cintos)":                  {100032},
+		"Homens - Acessórios (Óculos de sol)":           {100151},
+		"Homens - Barbearia (Aparadores)":               {101624},
+		"Homens - Barbearia (Cremes/Géis)":              {101620},
+		"Homens - Perfumes":                             {100661},
 
 		// ── Subcategories: Eletrônicos ──
-		"Eletrônicos - Celulares (Smartphones)":         {100073},
-		"Eletrônicos - Celulares (Capas)":               {100490},
-		"Eletrônicos - Celulares (Carregadores)":        {100482},
-		"Eletrônicos - Celulares (Powerbank)":           {100486},
-		"Eletrônicos - Computadores (Notebooks)":        {101942},
-		"Eletrônicos - Computadores (SSD)":              {101962},
-		"Eletrônicos - Computadores (RAM)":              {101955},
-		"Eletrônicos - Computadores (Teclados)":         {101999},
-		"Eletrônicos - Computadores (Monitores)":        {101933},
-		"Eletrônicos - Áudio (Fones/Headsets)":          {100578},
-		"Eletrônicos - Áudio (Caixas de Som)":           {100625},
-		"Eletrônicos - Games (Consoles)":                {101081},
-		"Eletrônicos - Games (Acessórios/Controles)":    {100696},
-		"Eletrônicos - Wearables (Smartwatch)":          {100270},
-		"Eletrônicos - Câmeras (Webcams)":               {101988},
-		"Eletrônicos - Drones":                          {100705},
+		"Eletrônicos - Celulares (Smartphones)":      {100073},
+		"Eletrônicos - Celulares (Capas)":            {100490},
+		"Eletrônicos - Celulares (Carregadores)":     {100482},
+		"Eletrônicos - Celulares (Powerbank)":        {100486},
+		"Eletrônicos - Computadores (Notebooks)":     {101942},
+		"Eletrônicos - Computadores (SSD)":           {101962},
+		"Eletrônicos - Computadores (RAM)":           {101955},
+		"Eletrônicos - Computadores (Teclados)":      {101999},
+		"Eletrônicos - Computadores (Monitores)":     {101933},
+		"Eletrônicos - Áudio (Fones/Headsets)":       {100578},
+		"Eletrônicos - Áudio (Caixas de Som)":        {100625},
+		"Eletrônicos - Games (Consoles)":             {101081},
+		"Eletrônicos - Games (Acessórios/Controles)": {100696},
+		"Eletrônicos - Wearables (Smartwatch)":       {100270},
+		"Eletrônicos - Câmeras (Webcams)":            {101988},
+		"Eletrônicos - Drones":                       {100705},
 
 		// ── Subcategories: Eletrodomésticos ──
-		"Eletrodomésticos - Cozinha (Airfryer)":                    {100198},
-		"Eletrodomésticos - Cozinha (Liquidificador/Espremedor)":   {100193},
-		"Eletrodomésticos - Cozinha (Cafeteira)":                   {100194},
-		"Eletrodomésticos - Cozinha (Micro-ondas)":                 {100200},
-		"Eletrodomésticos - Cozinha (Torradeira/Sanduicheira)":     {100202},
-		"Eletrodomésticos - Cozinha (Batedeira/Mixer)":             {100195},
-		"Eletrodomésticos - Cozinha (Geladeira)":                   {100209},
-		"Eletrodomésticos - Cozinha (Filtro/Água)":                 {100190},
-		"Eletrodomésticos - Climatização (Ventilador)":             {100466},
-		"Eletrodomésticos - Climatização (Ar-condicionado)":        {100464},
-		"Eletrodomésticos - Climatização (Portátil/Climatizador)":  {100465},
-		"Eletrodomésticos - Limpeza (Aspirador/Robô)":              {100177},
-		"Eletrodomésticos - Lavanderia (Lava e Seca)":              {100463},
-		"Eletrodomésticos - Lavanderia (Ferro/Vaporizador)":        {100175},
-		"Eletrodomésticos - TVs (TV)":                              {100185},
+		"Eletrodomésticos - Cozinha (Airfryer)":                   {100198},
+		"Eletrodomésticos - Cozinha (Liquidificador/Espremedor)":  {100193},
+		"Eletrodomésticos - Cozinha (Cafeteira)":                  {100194},
+		"Eletrodomésticos - Cozinha (Micro-ondas)":                {100200},
+		"Eletrodomésticos - Cozinha (Torradeira/Sanduicheira)":    {100202},
+		"Eletrodomésticos - Cozinha (Batedeira/Mixer)":            {100195},
+		"Eletrodomésticos - Cozinha (Geladeira)":                  {100209},
+		"Eletrodomésticos - Cozinha (Filtro/Água)":                {100190},
+		"Eletrodomésticos - Climatização (Ventilador)":            {100466},
+		"Eletrodomésticos - Climatização (Ar-condicionado)":       {100464},
+		"Eletrodomésticos - Climatização (Portátil/Climatizador)": {100465},
+		"Eletrodomésticos - Limpeza (Aspirador/Robô)":             {100177},
+		"Eletrodomésticos - Lavanderia (Lava e Seca)":             {100463},
+		"Eletrodomésticos - Lavanderia (Ferro/Vaporizador)":       {100175},
+		"Eletrodomésticos - TVs (TV)":                             {100185},
 
 		// ── Subcategories: Casa e Decoração ──
-		"Casa - Cozinha (Armazenamento)":       {101220},
-		"Casa - Cozinha (Cortadores)":          {101233},
-		"Casa - Quarto (Cama/Edredom)":         {101146},
-		"Casa - Decoração (Tapetes)":           {101160},
-		"Casa - Decoração (Cortinas)":          {101155},
-		"Casa - Decoração (Vasos)":             {101161},
-		"Casa - Decoração (Parede/Molduras)":   {101156},
-		"Casa - Banheiro (Suportes/Sabonete)":  {101133},
-		"Casa - Organização (Guarda-roupa)":    {101259},
-		"Casa - Organização (Sapateiras)":      {101255},
-		"Casa - Móveis (Prateleiras/Racks)":    {101174},
-		"Casa - Móveis (Mesas/Escrivaninhas)":  {101169},
-		"Casa - Móveis (Guarda-roupas)":        {101170},
-		"Casa - Móveis (Armários/Gabinetes)":   {101173},
-		"Casa - Móveis (Camas/Cabeceiras)":     {101168},
-		"Casa - Móveis (Sofás)":                {101172},
-		"Casa - Móveis (Cadeiras/Banquetas)":   {101171},
+		"Casa - Cozinha (Armazenamento)":      {101220},
+		"Casa - Cozinha (Cortadores)":         {101233},
+		"Casa - Quarto (Cama/Edredom)":        {101146},
+		"Casa - Decoração (Tapetes)":          {101160},
+		"Casa - Decoração (Cortinas)":         {101155},
+		"Casa - Decoração (Vasos)":            {101161},
+		"Casa - Decoração (Parede/Molduras)":  {101156},
+		"Casa - Banheiro (Suportes/Sabonete)": {101133},
+		"Casa - Organização (Guarda-roupa)":   {101259},
+		"Casa - Organização (Sapateiras)":     {101255},
+		"Casa - Móveis (Prateleiras/Racks)":   {101174},
+		"Casa - Móveis (Mesas/Escrivaninhas)": {101169},
+		"Casa - Móveis (Guarda-roupas)":       {101170},
+		"Casa - Móveis (Armários/Gabinetes)":  {101173},
+		"Casa - Móveis (Camas/Cabeceiras)":    {101168},
+		"Casa - Móveis (Sofás)":               {101172},
+		"Casa - Móveis (Cadeiras/Banquetas)":  {101171},
 
 		// ── Subcategories: Beleza ──
 		"Beleza - Perfumes e Fragrâncias":           {100661},
@@ -1163,13 +1191,13 @@ func initCategoryMapping() map[string][]int {
 		"Beleza - Unhas (Ferramentas)":              {102034},
 
 		// ── Subcategories: Esportes ──
-		"Esportes - Fitness (Camisetas)":            {101311},
-		"Esportes - Fitness (Regatas)":              {100245},
+		"Esportes - Fitness (Camisetas)":             {101311},
+		"Esportes - Fitness (Regatas)":               {100245},
 		"Esportes - Fitness (Musculação/Acessórios)": {101890},
-		"Esportes - Fitness (Máquinas)":             {101893},
-		"Esportes - Outdoor/Ciclismo (Acessórios)":  {101329},
-		"Esportes - Futebol (Bolas)":                {101847},
-		"Esportes - Lutas (Luvas/Bandagens)":        {101871},
-		"Esportes - Lutas (Sacos de Pancada)":       {101869},
+		"Esportes - Fitness (Máquinas)":              {101893},
+		"Esportes - Outdoor/Ciclismo (Acessórios)":   {101329},
+		"Esportes - Futebol (Bolas)":                 {101847},
+		"Esportes - Lutas (Luvas/Bandagens)":         {101871},
+		"Esportes - Lutas (Sacos de Pancada)":        {101869},
 	}
 }

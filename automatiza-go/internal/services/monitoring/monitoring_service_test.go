@@ -351,9 +351,10 @@ func (m *mockMLService) InvalidatePreviewCache(ctx context.Context, originURL st
 }
 
 type mockWAProvider struct {
-	SendTextFn          func(ctx context.Context, input whatsapp.SendTextInput) (*whatsapp.MessageResult, error)
-	SendImageFn         func(ctx context.Context, input whatsapp.SendImageInput) (*whatsapp.MessageResult, error)
+	SendTextFn           func(ctx context.Context, input whatsapp.SendTextInput) (*whatsapp.MessageResult, error)
+	SendImageFn          func(ctx context.Context, input whatsapp.SendImageInput) (*whatsapp.MessageResult, error)
 	DownloadMediaByURLFn func(ctx context.Context, mediaURL string) (*whatsapp.DownloadMediaResult, error)
+	RedownloadMediaFn    func(ctx context.Context, sessionName, chatID, messageID string) (*whatsapp.DownloadMediaResult, error)
 }
 
 // SessionManager methods
@@ -451,6 +452,13 @@ func (m *mockWAProvider) DownloadMedia(_ context.Context, _ whatsapp.DownloadMed
 func (m *mockWAProvider) DownloadMediaByURL(ctx context.Context, mediaURL string) (*whatsapp.DownloadMediaResult, error) {
 	if m.DownloadMediaByURLFn != nil {
 		return m.DownloadMediaByURLFn(ctx, mediaURL)
+	}
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockWAProvider) RedownloadMedia(ctx context.Context, sessionName, chatID, messageID string) (*whatsapp.DownloadMediaResult, error) {
+	if m.RedownloadMediaFn != nil {
+		return m.RedownloadMediaFn(ctx, sessionName, chatID, messageID)
 	}
 	return nil, fmt.Errorf("not implemented")
 }
