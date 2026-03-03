@@ -336,7 +336,7 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 
 	statusCacheTTL := cfg.StatusCacheTTL
 	if statusCacheTTL == 0 {
-		statusCacheTTL = 5 * time.Second
+		statusCacheTTL = 30 * time.Second
 	}
 
 	// C6: Configure HTTP transport with connection pool limits

@@ -105,9 +105,9 @@ func TestNewWahaAdapter(t *testing.T) {
 		}, nil)
 		require.NoError(t, err)
 
-		// Should use default HTTP timeout (30s) and status cache TTL (5s)
+		// Should use default HTTP timeout (30s) and status cache TTL (30s)
 		assert.NotNil(t, adapter.httpClient)
-		assert.Equal(t, 5*time.Second, adapter.statusCacheTTL)
+		assert.Equal(t, 30*time.Second, adapter.statusCacheTTL)
 	})
 }
 
