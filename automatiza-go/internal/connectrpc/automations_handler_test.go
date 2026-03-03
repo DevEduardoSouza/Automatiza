@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"automatiza-go/internal/auth"
 	automationsv1 "automatiza-go/internal/gen/automations/v1"
@@ -88,6 +89,11 @@ func (m *mockDispatchLogRepoForHandler) CreateIfNotExists(ctx context.Context, l
 		return nil, args.Bool(1), args.Error(2)
 	}
 	return args.Get(0).(*models.DispatchLog), args.Bool(1), args.Error(2)
+}
+
+func (m *mockDispatchLogRepoForHandler) DeleteOldLogsByStatus(ctx context.Context, status string, olderThan time.Duration) (int64, error) {
+	args := m.Called(ctx, status, olderThan)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 // =============================================================================

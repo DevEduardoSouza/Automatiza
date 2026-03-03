@@ -202,6 +202,8 @@ type DispatchLogRepository interface {
 	// Returns the created log and true if created, or nil and false if already exists.
 	// This is idempotent and safe for concurrent reconciliation.
 	CreateIfNotExists(ctx context.Context, log *models.DispatchLog, dedupWindowHours int) (*models.DispatchLog, bool, error)
+	// DeleteOldLogsByStatus deletes dispatch logs with a specific status older than the given duration.
+	DeleteOldLogsByStatus(ctx context.Context, status string, olderThan time.Duration) (int64, error)
 }
 
 // ScheduledJobRepository handles scheduled job data operations

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"automatiza-go/internal/observability"
+	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/jobs"
 
 	"github.com/getsentry/sentry-go"
@@ -64,6 +65,8 @@ type cronTask struct {
 type cronService struct {
 	jobsService         jobs.Service
 	automationScheduler AutomationScheduler
+	dispatchLogRepo     repository.DispatchLogRepository
+	webhookEventsRepo   repository.WebhookEventsRepository
 	logger              *zap.Logger
 	tasks               map[string]*cronTask
 	tasksMu             sync.RWMutex
@@ -96,6 +99,24 @@ func NewCronServiceWithScheduler(
 	return &cronService{
 		jobsService:         jobsService,
 		automationScheduler: automationScheduler,
+		logger:              logger,
+		tasks:               make(map[string]*cronTask),
+	}
+}
+
+// NewCronServiceFull creates a cron service with all dependencies including cleanup repos.
+func NewCronServiceFull(
+	jobsService jobs.Service,
+	automationScheduler AutomationScheduler,
+	dispatchLogRepo repository.DispatchLogRepository,
+	webhookEventsRepo repository.WebhookEventsRepository,
+	logger *zap.Logger,
+) Service {
+	return &cronService{
+		jobsService:         jobsService,
+		automationScheduler: automationScheduler,
+		dispatchLogRepo:     dispatchLogRepo,
+		webhookEventsRepo:   webhookEventsRepo,
 		logger:              logger,
 		tasks:               make(map[string]*cronTask),
 	}
@@ -308,4 +329,52 @@ func (s *cronService) registerDefaultTasks() {
 		return s.automationScheduler.ProcessActiveAutomations(ctx)
 	})
 
+	// Cleanup dispatch logs daily with differentiated retention by status
+	s.RegisterTask("cleanup_dispatch_logs", 24*time.Hour, func(ctx context.Context) error {
+		if s.dispatchLogRepo == nil {
+			return nil
+		}
+		retentionPolicy := []struct {
+			status string
+			maxAge time.Duration
+		}{
+			{"skipped", 3 * 24 * time.Hour},
+			{"sent", 14 * 24 * time.Hour},
+			{"failed", 30 * 24 * time.Hour},
+			{"info", 90 * 24 * time.Hour},
+			{"error", 90 * 24 * time.Hour},
+		}
+		var totalDeleted int64
+		for _, p := range retentionPolicy {
+			deleted, err := s.dispatchLogRepo.DeleteOldLogsByStatus(ctx, p.status, p.maxAge)
+			if err != nil {
+				s.logger.Error("Dispatch log cleanup failed",
+					zap.String("status", p.status),
+					zap.Error(err))
+				continue
+			}
+			totalDeleted += deleted
+		}
+		if totalDeleted > 0 {
+			s.logger.Info("Dispatch log cleanup completed",
+				zap.Int64("deleted", totalDeleted))
+		}
+		return nil
+	})
+
+	// Cleanup processed webhook events older than 7 days
+	s.RegisterTask("cleanup_webhook_events", 24*time.Hour, func(ctx context.Context) error {
+		if s.webhookEventsRepo == nil {
+			return nil
+		}
+		deleted, err := s.webhookEventsRepo.Cleanup(ctx, 7*24*time.Hour)
+		if err != nil {
+			return err
+		}
+		if deleted > 0 {
+			s.logger.Info("Webhook events cleanup completed",
+				zap.Int64("deleted", deleted))
+		}
+		return nil
+	})
 }
