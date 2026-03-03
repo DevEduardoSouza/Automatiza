@@ -276,6 +276,9 @@ func (m *mockWahaProvider) DownloadMedia(context.Context, whatsapp.DownloadMedia
 func (m *mockWahaProvider) DownloadMediaByURL(context.Context, string) (*whatsapp.DownloadMediaResult, error) {
 	return nil, nil
 }
+func (m *mockWahaProvider) RedownloadMedia(context.Context, string, string, string) (*whatsapp.DownloadMediaResult, error) {
+	return nil, nil
+}
 
 // ---------------------------------------------------------------------------
 // Helper

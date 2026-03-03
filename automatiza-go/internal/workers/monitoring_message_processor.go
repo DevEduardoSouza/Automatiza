@@ -452,8 +452,10 @@ func (p *MonitoringMessageProcessor) enrichWithLinkPreview(msg *models.IncomingM
 		msg.Body = strings.Join(parts, "\n\n")
 	}
 
-	// Set thumbnail as inline image (avoids needing DownloadMedia)
-	if thumbnail != "" && !msg.HasMedia {
+	// Set thumbnail as inline image (avoids needing DownloadMedia).
+	// Always set when thumbnail is available — even if HasMedia is already true,
+	// since the original media.url may have expired (WAHA deletes files after WHATSAPP_FILES_LIFETIME).
+	if thumbnail != "" {
 		msg.HasMedia = true
 		msg.MediaBase64 = thumbnail
 		msg.MediaType = "image"

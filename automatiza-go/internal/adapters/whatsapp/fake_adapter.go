@@ -931,6 +931,24 @@ func (f *FakeAdapter) DownloadMediaByURL(ctx context.Context, mediaURL string) (
 	}, nil
 }
 
+// RedownloadMedia implements MediaDownloader.RedownloadMedia.
+func (f *FakeAdapter) RedownloadMedia(ctx context.Context, sessionName, chatID, messageID string) (*DownloadMediaResult, error) {
+	f.recordCall("RedownloadMedia", map[string]string{
+		"sessionName": sessionName,
+		"chatID":      chatID,
+		"messageID":   messageID,
+	})
+
+	if f.SimulateError != nil {
+		return nil, f.SimulateError
+	}
+
+	return &DownloadMediaResult{
+		Data:     []byte("fake-redownloaded-media"),
+		Mimetype: "image/jpeg",
+	}, nil
+}
+
 // SetMediaData configures media data for testing.
 func (f *FakeAdapter) SetMediaData(sessionName, mediaID string, data []byte) {
 	f.mu.Lock()

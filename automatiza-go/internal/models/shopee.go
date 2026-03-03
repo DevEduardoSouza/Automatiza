@@ -71,6 +71,7 @@ type ShopeeAffiliateLink struct {
 	AffiliateLink string `json:"affiliateLink"`
 	AffiliateURL  string `json:"affiliateUrl,omitempty"` // Alias for AffiliateLink
 	ShortLink     string `json:"shortLink,omitempty"`
+	ImageURL      string `json:"imageUrl,omitempty"`
 	ItemID        int64  `json:"itemId,omitempty"`
 	ShopID        int64  `json:"shopId,omitempty"`
 }

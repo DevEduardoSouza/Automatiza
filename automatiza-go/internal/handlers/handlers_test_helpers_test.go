@@ -821,6 +821,9 @@ func (m *mockWhatsAppProvider) DownloadMedia(ctx context.Context, input whatsapp
 func (m *mockWhatsAppProvider) DownloadMediaByURL(ctx context.Context, mediaURL string) (*whatsapp.DownloadMediaResult, error) {
 	return nil, nil
 }
+func (m *mockWhatsAppProvider) RedownloadMedia(ctx context.Context, sessionName, chatID, messageID string) (*whatsapp.DownloadMediaResult, error) {
+	return nil, nil
+}
 
 // ---------------------------------------------------------------------------
 // Mock: Services

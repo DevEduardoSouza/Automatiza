@@ -187,8 +187,9 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		return nil
 	}
 
-	// 4. Generate affiliate links
+	// 4. Generate affiliate links + capture CDN image URL
 	affiliateLinks := make(map[string]string)
+	var productImageURL string
 
 	for _, link := range shopeeLinks {
 		if s.shopeeService != nil {
@@ -201,6 +202,9 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 					zap.Error(err))
 			} else if aff != nil && aff.AffiliateLink != "" {
 				affiliateLinks[link] = aff.AffiliateLink
+				if aff.ImageURL != "" && productImageURL == "" {
+					productImageURL = aff.ImageURL
+				}
 			}
 		}
 	}
@@ -241,13 +245,24 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		return nil
 	}
 
-	// 8. Resolve image media if present
-	// Supports two sources:
-	//   a) Inline base64 from link preview thumbnail (JPEGThumbnail extracted by processor)
-	//   b) Download via WAHA media.url (internal localhost, requires API key auth)
+	// 8. Resolve image via multi-layer strategy:
+	//   Layer 1: CDN Shopee URL (high quality ~800px, from productOfferV2)
+	//   Layer 2: WAHA download (local cache → re-download from WhatsApp servers)
+	//   Layer 3: Text-only fallback
 	var imageBase64 string
 	var imageMimetype string
-	if msg.HasMedia && (msg.MediaType == "image" || strings.HasPrefix(msg.MimeType, "image/")) {
+	var imageURL string
+
+	// Layer 1: Use CDN image URL from Shopee affiliate link result
+	if productImageURL != "" {
+		imageURL = productImageURL
+		s.logger.Info("Using Shopee CDN image URL",
+			zap.String("automationID", automation.ID),
+			zap.String("imageURL", imageURL))
+	}
+
+	// Layer 2: WAHA media download (only if no CDN image)
+	if imageURL == "" && msg.HasMedia && (msg.MediaType == "image" || strings.HasPrefix(msg.MimeType, "image/")) {
 		if msg.MediaBase64 != "" {
 			// Use inline base64 directly (link preview thumbnail)
 			imageBase64 = msg.MediaBase64
@@ -259,30 +274,50 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				zap.String("automationID", automation.ID),
 				zap.Int("base64Len", len(imageBase64)),
 				zap.String("mimetype", imageMimetype))
-		} else if msg.MediaURL != "" && s.waProvider != nil {
-			// Download via WAHA media URL
-			s.logger.Info("Downloading image media for forwarding",
-				zap.String("automationID", automation.ID),
-				zap.String("mediaURL", msg.MediaURL),
-				zap.String("mimeType", msg.MimeType))
-			result, err := s.waProvider.DownloadMediaByURL(ctx, msg.MediaURL)
-			if err == nil && result != nil && len(result.Data) > 0 {
-				imageBase64 = base64.StdEncoding.EncodeToString(result.Data)
-				imageMimetype = result.Mimetype
-				if imageMimetype == "" {
-					imageMimetype = msg.MimeType
+		} else if s.waProvider != nil {
+			// Try downloading via WAHA media URL (fast, uses local cache)
+			if msg.MediaURL != "" {
+				result, dlErr := s.waProvider.DownloadMediaByURL(ctx, msg.MediaURL)
+				if dlErr == nil && result != nil && len(result.Data) > 0 {
+					imageBase64 = base64.StdEncoding.EncodeToString(result.Data)
+					imageMimetype = result.Mimetype
+					if imageMimetype == "" {
+						imageMimetype = msg.MimeType
+					}
+					s.logger.Info("Image media downloaded successfully",
+						zap.String("automationID", automation.ID),
+						zap.Int("dataLen", len(result.Data)),
+						zap.String("mimetype", imageMimetype))
+				} else if dlErr != nil {
+					s.logger.Warn("WAHA local download failed, trying re-download from WhatsApp servers",
+						zap.String("automationID", automation.ID),
+						zap.Error(dlErr))
 				}
-				s.logger.Info("Image media downloaded successfully",
-					zap.String("automationID", automation.ID),
-					zap.Int("dataLen", len(result.Data)),
-					zap.String("mimetype", imageMimetype))
-			} else if err != nil {
-				s.logger.Warn("Failed to download image media, will send text only",
-					zap.String("automationID", automation.ID),
-					zap.Error(err))
+			}
+
+			// Fallback: re-download from WhatsApp servers (bypasses expired local cache)
+			if imageBase64 == "" && msg.MessageID != "" && msg.RemoteJID != "" {
+				result, reErr := s.waProvider.RedownloadMedia(ctx, msg.InstanceName, msg.RemoteJID, msg.MessageID)
+				if reErr == nil && result != nil && len(result.Data) > 0 {
+					imageBase64 = base64.StdEncoding.EncodeToString(result.Data)
+					imageMimetype = result.Mimetype
+					if imageMimetype == "" {
+						imageMimetype = msg.MimeType
+					}
+					s.logger.Info("Image re-downloaded from WhatsApp servers",
+						zap.String("automationID", automation.ID),
+						zap.Int("dataLen", len(result.Data)),
+						zap.String("mimetype", imageMimetype))
+				} else if reErr != nil {
+					s.logger.Warn("All image download attempts failed, sending text only",
+						zap.String("automationID", automation.ID),
+						zap.Error(reErr))
+				}
 			}
 		}
 	}
+
+	// Layer 3: No image available → imageURL and imageBase64 stay empty → text-only send
 
 	// 9. Resolve the automation owner's connected WAHA session for sending.
 	// We must NOT use msg.InstanceName (the session that received the webhook),
@@ -350,11 +385,12 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// Send message via WhatsAppProvider using the automation owner's session
 		sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		var err error
-		if imageBase64 != "" {
+		if imageURL != "" || imageBase64 != "" {
 			_, err = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
 				SessionName: senderSession,
 				ChatID:      groupID,
 				Caption:     processedText,
+				ImageURL:    imageURL,
 				ImageBase64: imageBase64,
 				Mimetype:    imageMimetype,
 			})

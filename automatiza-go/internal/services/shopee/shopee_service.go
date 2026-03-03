@@ -253,7 +253,7 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 	var allOffers []models.ShopeeOffer
 	perCategoryLimit := limit
 	if len(categoryIDs) > 1 {
-		perCategoryLimit = max(3, limit/len(categoryIDs))
+		perCategoryLimit = max(5, limit/len(categoryIDs))
 	}
 
 	for _, catID := range categoryIDs {
@@ -530,53 +530,80 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		zap.Int64("itemID", itemID),
 		zap.Int64("shopID", shopID))
 
-	// Use GraphQL mutation to generate short link
-	originURL := fmt.Sprintf("https://shopee.com.br/product/%d/%d", shopID, itemID)
-	gqlQuery := fmt.Sprintf(`mutation { generateShortLink(input: {originUrl: %q}) { shortLink } }`, originURL)
+	// Try productOfferV2 first — returns offerLink + imageUrl in 1 API call
+	gqlQuery := fmt.Sprintf(`{ productOfferV2(itemId: %d, shopId: %d, limit: 1) { nodes { offerLink imageUrl } } }`, itemID, shopID)
 	payload, marshalErr := json.Marshal(map[string]string{"query": gqlQuery})
 	if marshalErr != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee generateShortLink payload", marshalErr, map[string]string{
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee productOfferV2 payload", marshalErr, map[string]string{
 			"external_service": "shopee",
-			"endpoint":        "generateShortLink",
+			"endpoint":        "productOfferV2_link",
 		})
-		return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", marshalErr)
-	}
-	payloadStr := string(payload)
-
-	data, err := s.shopeeGraphQL(ctx, appID, secret, payloadStr)
-	if err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee generateShortLink API failed", err, map[string]string{
-			"external_service": "shopee",
-			"endpoint":        "generateShortLink",
-		})
-		return nil, fmt.Errorf("failed to generate affiliate link: %w", err)
+		return nil, fmt.Errorf("failed to marshal productOfferV2 payload: %w", marshalErr)
 	}
 
-	var gqlResult struct {
-		GenerateShortLink struct {
-			ShortLink string `json:"shortLink"`
-		} `json:"generateShortLink"`
-	}
-	if err := json.Unmarshal(data, &gqlResult); err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal Shopee generateShortLink response", err, map[string]string{
-			"external_service": "shopee",
-			"endpoint":        "generateShortLink",
-		})
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	var affiliateLink string
+	var imageURL string
+
+	data, err := s.shopeeGraphQL(ctx, appID, secret, string(payload))
+	if err == nil {
+		var offerResult struct {
+			ProductOfferV2 struct {
+				Nodes []struct {
+					OfferLink string `json:"offerLink"`
+					ImageURL  string `json:"imageUrl"`
+				} `json:"nodes"`
+			} `json:"productOfferV2"`
+		}
+		if unmarshalErr := json.Unmarshal(data, &offerResult); unmarshalErr == nil &&
+			len(offerResult.ProductOfferV2.Nodes) > 0 {
+			node := offerResult.ProductOfferV2.Nodes[0]
+			affiliateLink = node.OfferLink
+			imageURL = node.ImageURL
+		}
+	} else {
+		s.logger.Warn("productOfferV2 failed, will try generateShortLink fallback",
+			zap.Int64("itemID", itemID),
+			zap.Error(err))
 	}
 
-	shortLink := gqlResult.GenerateShortLink.ShortLink
-	if shortLink == "" {
+	// Fallback to generateShortLink if productOfferV2 didn't return an offerLink
+	if affiliateLink == "" {
+		originURL := fmt.Sprintf("https://shopee.com.br/product/%d/%d", shopID, itemID)
+		shortLinkQuery := fmt.Sprintf(`mutation { generateShortLink(input: {originUrl: %q}) { shortLink } }`, originURL)
+		shortPayload, shortMarshalErr := json.Marshal(map[string]string{"query": shortLinkQuery})
+		if shortMarshalErr != nil {
+			return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", shortMarshalErr)
+		}
+
+		shortData, shortErr := s.shopeeGraphQL(ctx, appID, secret, string(shortPayload))
+		if shortErr != nil {
+			return nil, fmt.Errorf("failed to generate affiliate link: %w", shortErr)
+		}
+
+		var shortResult struct {
+			GenerateShortLink struct {
+				ShortLink string `json:"shortLink"`
+			} `json:"generateShortLink"`
+		}
+		if unmarshalErr := json.Unmarshal(shortData, &shortResult); unmarshalErr != nil {
+			return nil, fmt.Errorf("failed to parse generateShortLink response: %w", unmarshalErr)
+		}
+		affiliateLink = shortResult.GenerateShortLink.ShortLink
+	}
+
+	if affiliateLink == "" {
 		return nil, fmt.Errorf("no affiliate link generated")
 	}
 
 	s.logger.Info("AffiliateLink generated",
-		zap.String("shortLink", shortLink))
+		zap.String("affiliateLink", affiliateLink),
+		zap.String("imageURL", imageURL))
 
 	result := &models.ShopeeAffiliateLink{
 		OriginalURL:   productURL,
-		AffiliateLink: shortLink,
-		ShortLink:     shortLink,
+		AffiliateLink: affiliateLink,
+		ShortLink:     affiliateLink,
+		ImageURL:      imageURL,
 		ItemID:        itemID,
 		ShopID:        shopID,
 	}
