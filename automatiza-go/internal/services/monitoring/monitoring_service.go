@@ -348,7 +348,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		time.Sleep(time.Duration(delay) * time.Second)
 
 		// Send message via WhatsAppProvider using the automation owner's session
-		sendCtx, sendCancel := context.WithTimeout(ctx, 30*time.Second)
+		sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		var err error
 		if imageBase64 != "" {
 			_, err = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
@@ -368,6 +368,8 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		sendCancel()
 
 		if err != nil {
+			// Release dedup slot so the product can be retried on the next cycle
+			s.releaseProductSlot(ctx, automation.UserID, groupID, canonicalKey)
 			s.logDispatch(ctx, automation, groupID, links[0], "failed", err.Error(), canonicalKey, store)
 			s.logger.Error("Failed to send message",
 				zap.String("groupID", groupID),
@@ -548,6 +550,23 @@ func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupI
 	}
 
 	return true
+}
+
+// releaseProductSlot removes a dedup slot from Redis, allowing the product to be retried.
+// Called when a send fails so transient errors don't permanently block products.
+func (s *monitoringService) releaseProductSlot(ctx context.Context, userID, groupID, canonicalKey string) {
+	if canonicalKey == "" || s.cache == nil {
+		return
+	}
+
+	cacheKey := fmt.Sprintf("prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
+	if err := s.cache.Delete(ctx, cacheKey); err != nil {
+		s.logger.Warn("Failed to release dedup slot after send failure",
+			zap.String("userID", userID),
+			zap.String("groupID", groupID),
+			zap.String("canonicalKey", canonicalKey),
+			zap.Error(err))
+	}
 }
 
 // detectStore returns the store name based on the links found in the message.

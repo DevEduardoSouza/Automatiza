@@ -165,7 +165,7 @@ func (q *QueueClient) EnqueueWebhook(ctx context.Context, data *WebhookJobData) 
 	task := asynq.NewTask(TypeWAHAWebhook, payload,
 		asynq.MaxRetry(5),
 		asynq.Queue("webhooks"),
-		asynq.Timeout(30*time.Second),
+		asynq.Timeout(120*time.Second),
 		asynq.TaskID("waha:"+data.EventID), // Use event ID for deduplication
 	)
 
