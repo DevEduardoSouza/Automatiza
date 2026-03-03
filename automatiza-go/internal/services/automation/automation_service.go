@@ -575,6 +575,52 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		zap.String("automationID", automation.ID),
 		zap.Int("startPage", startPage))
 
+	// Category rotation: for automations with many categories, search a subset
+	// per run and rotate. This gives more products per category (higher variety)
+	// while still covering all categories across runs.
+	const maxCategoriesPerRun = 8
+	searchCategories := automation.Categories
+
+	if len(automation.Categories) > maxCategoriesPerRun {
+		catRotationKey := fmt.Sprintf("cat_rotation:%s", automation.ID)
+		catOffset := 0
+		if s.cache != nil {
+			if val, err := s.cache.Get(ctx, catRotationKey); err == nil && val != "" {
+				if parsed, parseErr := strconv.Atoi(val); parseErr == nil {
+					catOffset = parsed
+				}
+			}
+		}
+
+		// Wrap offset if categories changed since last run
+		totalCats := len(automation.Categories)
+		catOffset = catOffset % totalCats
+
+		// Select subset starting from offset
+		end := catOffset + maxCategoriesPerRun
+		if end > totalCats {
+			// Wrap around: take end of list + beginning
+			searchCategories = append(
+				automation.Categories[catOffset:],
+				automation.Categories[:end-totalCats]...,
+			)
+		} else {
+			searchCategories = automation.Categories[catOffset:end]
+		}
+
+		// Advance offset for next run
+		nextOffset := (catOffset + maxCategoriesPerRun) % totalCats
+		if s.cache != nil {
+			_ = s.cache.Set(ctx, catRotationKey, strconv.Itoa(nextOffset), 24*time.Hour)
+		}
+
+		s.logger.Info("Category rotation",
+			zap.String("automationID", automation.ID),
+			zap.Int("totalCategories", totalCats),
+			zap.Int("offset", catOffset),
+			zap.Int("subsetSize", len(searchCategories)))
+	}
+
 	for pageAttempt := 0; pageAttempt < maxSearchPages; pageAttempt++ {
 		currentPage := (startPage + pageAttempt) % maxSearchPages
 		searchOffset := currentPage * limitPerKeyword
@@ -593,7 +639,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 						}
 						params := models.ShopeeSearchParams{
 							Keyword:     kwPtr,
-							Categories:  automation.Categories,
+							Categories:  searchCategories,
 							MinPrice:    automation.MinPrice,
 							MaxPrice:    automation.MaxPrice,
 							MinDiscount: automation.MinDiscount,
