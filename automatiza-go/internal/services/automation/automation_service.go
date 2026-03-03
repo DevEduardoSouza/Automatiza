@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 	"time"
 
@@ -555,8 +556,28 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 	const limitPerKeyword = 50
 	var totalOffersFound int
 
+	// Page rotation: start from a different page each run for product variety.
+	// Each execution cycle (1→2→3→1) brings completely different products from the ranking.
+	// With limit=50 and 3 pages, the effective pool triples (~135 unique products vs ~45).
+	startPage := 0
+	pageRotationKey := fmt.Sprintf("page_rotation:%s", automation.ID)
+	if s.cache != nil {
+		if val, err := s.cache.Get(ctx, pageRotationKey); err == nil && val != "" {
+			if parsed, parseErr := strconv.Atoi(val); parseErr == nil {
+				startPage = parsed % maxSearchPages
+			}
+		}
+		nextPage := (startPage + 1) % maxSearchPages
+		_ = s.cache.Set(ctx, pageRotationKey, strconv.Itoa(nextPage), 24*time.Hour)
+	}
+
+	s.logger.Info("Page rotation",
+		zap.String("automationID", automation.ID),
+		zap.Int("startPage", startPage))
+
 	for pageAttempt := 0; pageAttempt < maxSearchPages; pageAttempt++ {
-		searchOffset := pageAttempt * limitPerKeyword
+		currentPage := (startPage + pageAttempt) % maxSearchPages
+		searchOffset := currentPage * limitPerKeyword
 
 		// Search for products
 		var allOffers []models.ShopeeOffer
@@ -584,13 +605,13 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 							s.logger.Warn("Shopee search failed",
 								zap.String("automationID", automation.ID),
 								zap.String("keyword", kwCopy),
-								zap.Int("page", pageAttempt+1),
+								zap.Int("page", currentPage+1),
 								zap.Error(err))
 						} else if result != nil {
 							s.logger.Info("Shopee search completed",
 								zap.String("automationID", automation.ID),
 								zap.String("keyword", kwCopy),
-								zap.Int("page", pageAttempt+1),
+								zap.Int("page", currentPage+1),
 								zap.Int("offersReturned", len(result.Offers)))
 							allOffers = append(allOffers, result.Offers...)
 						}
@@ -640,7 +661,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					zap.String("automationID", automation.ID),
 					zap.String("canonicalKey", canonicalKey),
 					zap.Int("offerIndex", i),
-					zap.Int("page", pageAttempt+1))
+					zap.Int("page", currentPage+1))
 				for _, groupID := range targetGroups {
 					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "dedupe", withCanonicalKey(canonicalKey, store))
 				}
@@ -823,7 +844,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		// All offers on this page were deduped — try next page for fresh products
 		s.logger.Info("All offers deduped on current page, trying next page",
 			zap.String("automationID", automation.ID),
-			zap.Int("page", pageAttempt+1),
+			zap.Int("page", currentPage+1),
 			zap.Int("offersChecked", len(allOffers)),
 			zap.Int("skippedSoFar", skippedCount))
 	} // end pageAttempt loop
