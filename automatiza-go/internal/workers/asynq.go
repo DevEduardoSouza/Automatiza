@@ -167,6 +167,7 @@ func (q *QueueClient) EnqueueWebhook(ctx context.Context, data *WebhookJobData) 
 		asynq.Queue("webhooks"),
 		asynq.Timeout(120*time.Second),
 		asynq.TaskID("waha:"+data.EventID), // Use event ID for deduplication
+		asynq.Deadline(time.Now().Add(5*time.Minute)),
 	)
 
 	return q.client.EnqueueContext(ctx, task)

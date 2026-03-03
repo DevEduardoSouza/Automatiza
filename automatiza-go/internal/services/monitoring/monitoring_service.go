@@ -533,8 +533,9 @@ func (s *monitoringService) extractCanonicalKey(links []string) string {
 		}
 	}
 
-	// Fallback: hash only product-like links (skip coupon/campaign short URLs)
-	for _, link := range links {
+	// Fallback: hash the last product-like link (product links appear after coupon links)
+	for i := len(links) - 1; i >= 0; i-- {
+		link := links[i]
 		if shopeeURLRegex.MatchString(link) || mlURLRegex.MatchString(link) {
 			hash := sha256.Sum256([]byte(link))
 			return "link:" + hex.EncodeToString(hash[:8])

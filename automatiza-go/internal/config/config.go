@@ -158,7 +158,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("CORS_ORIGIN", "http://localhost:3003")
 	viper.SetDefault("CACHE_REDIS_URI", "redis://localhost:6379/0")
 	viper.SetDefault("APP_CACHE_PREFIX", "zappgrupos")
-	viper.SetDefault("WORKER_CONCURRENCY", 5)
+	viper.SetDefault("WORKER_CONCURRENCY", 20)
 	viper.SetDefault("WHATSAPP_SEND_LIMIT_PER_MINUTE", 15)
 	viper.SetDefault("PRODUCER_BACKPRESSURE_DELAY_MS", 15000)
 	viper.SetDefault("PRODUCER_USER_MAX_ENQUEUED_10MIN", 200)
