@@ -1845,4 +1845,3 @@ func TestSearchOffers_RoutingByCategory(t *testing.T) {
 		}
 	})
 }
-
