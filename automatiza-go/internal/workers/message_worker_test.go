@@ -197,6 +197,11 @@ func (m *mockDispatchLogRepo) CreateIfNotExists(ctx context.Context, log *models
 	return args.Get(0).(*models.DispatchLog), args.Bool(1), args.Error(2)
 }
 
+func (m *mockDispatchLogRepo) DeleteOldLogsByStatus(ctx context.Context, status string, olderThan time.Duration) (int64, error) {
+	args := m.Called(ctx, status, olderThan)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 // =============================================================================
 // Helpers
 // =============================================================================

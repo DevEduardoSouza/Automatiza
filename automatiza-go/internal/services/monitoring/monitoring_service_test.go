@@ -261,6 +261,10 @@ func (m *mockDispatchLogRepo) CreateIfNotExists(ctx context.Context, log *models
 	return log, true, nil
 }
 
+func (m *mockDispatchLogRepo) DeleteOldLogsByStatus(ctx context.Context, status string, olderThan time.Duration) (int64, error) {
+	return 0, nil
+}
+
 type mockShopeeService struct {
 	GenerateAffiliateLinkFn func(ctx context.Context, productURL, userID string) (*models.ShopeeAffiliateLink, error)
 	ExtractProductIDsFn     func(productURL string) (shopID, itemID int64, err error)

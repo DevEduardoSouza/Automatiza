@@ -614,6 +614,9 @@ func (m *mockDispatchLogRepo) ExistsByCanonicalKey(ctx context.Context, userID, 
 func (m *mockDispatchLogRepo) CreateIfNotExists(ctx context.Context, log *models.DispatchLog, dedupWindowHours int) (*models.DispatchLog, bool, error) {
 	return nil, false, nil
 }
+func (m *mockDispatchLogRepo) DeleteOldLogsByStatus(ctx context.Context, status string, olderThan time.Duration) (int64, error) {
+	return 0, nil
+}
 
 // ---------------------------------------------------------------------------
 // Mock: ScheduledJobRepository

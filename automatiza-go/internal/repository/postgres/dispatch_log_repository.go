@@ -263,6 +263,19 @@ func (r *dispatchLogRepository) DeleteOldLogs(ctx context.Context, olderThan tim
 	return result.RowsAffected(), nil
 }
 
+// DeleteOldLogsByStatus deletes dispatch logs with a specific status older than the given duration.
+func (r *dispatchLogRepository) DeleteOldLogsByStatus(ctx context.Context, status string, olderThan time.Duration) (int64, error) {
+	query := `DELETE FROM dispatch_logs WHERE status = $1 AND created_at < $2`
+	cutoff := time.Now().Add(-olderThan)
+
+	result, err := r.db.pool.Exec(ctx, query, status, cutoff)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected(), nil
+}
+
 // DeleteRecentByAutomation deletes dispatch logs for an automation within the last N days
 func (r *dispatchLogRepository) DeleteRecentByAutomation(ctx context.Context, automationID string, sinceDays int) (int64, error) {
 	query := `
@@ -536,7 +549,7 @@ func (r *dispatchLogRepository) GetUserLogsWithFilters(ctx context.Context, user
 			argIndex++
 		}
 		if filters.SearchURL != nil && *filters.SearchURL != "" {
-			conditions = append(conditions, fmt.Sprintf("dl.product_url ILIKE $%d", argIndex))
+			conditions = append(conditions, fmt.Sprintf("dl.product_url LIKE $%d", argIndex))
 			args = append(args, "%"+*filters.SearchURL+"%")
 			argIndex++
 		}

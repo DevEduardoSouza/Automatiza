@@ -440,11 +440,13 @@ func main() {
 		config.NewModuleLogger(logger, "automation-scheduler"),
 	)
 
-	// Create cron service with automation scheduler support
+	// Create cron service with automation scheduler + cleanup repos
 	// Uses standaloneJobsService to process jobs from the 'jobs' table (standalone jobs)
-	cronService := cron.NewCronServiceWithScheduler(
+	cronService := cron.NewCronServiceFull(
 		standaloneJobsService,
 		automationScheduler,
+		dispatchLogRepo,
+		repos.WebhookEvents,
 		config.NewModuleLogger(logger, "cron"),
 	)
 

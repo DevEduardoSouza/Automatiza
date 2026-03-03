@@ -72,6 +72,10 @@ func (m *mockDispatchLogRepo) CreateIfNotExists(ctx context.Context, log *models
 	return log, true, nil
 }
 
+func (m *mockDispatchLogRepo) DeleteOldLogsByStatus(ctx context.Context, status string, olderThan time.Duration) (int64, error) {
+	return 0, nil
+}
+
 // stubInstanceRepo is a stub implementation of InstanceRepository for dispatch log tests
 type stubInstanceRepo struct {
 	instance *models.Instance
