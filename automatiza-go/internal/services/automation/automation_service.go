@@ -552,7 +552,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 	// Pagination: when all offers from page N are deduped, try page N+1.
 	// This prevents niche categories with limited product variety from getting stuck.
 	const maxSearchPages = 3
-	const limitPerKeyword = 20
+	const limitPerKeyword = 50
 	var totalOffersFound int
 
 	for pageAttempt := 0; pageAttempt < maxSearchPages; pageAttempt++ {
