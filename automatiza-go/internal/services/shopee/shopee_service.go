@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -215,24 +216,36 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 	}
 
 	// sortType: 1=relevance, 2=sales, 3=highest price, 4=lowest price, 5=commission
-	sortType := 2 // default: sales
+	// When SortBy is explicitly set, use it for all categories.
+	// When nil (automations), randomize per category for maximum product variety.
+	var fixedSortType *int
 	if params.SortBy != nil {
+		st := 2
 		switch *params.SortBy {
 		case "relevance":
-			sortType = 1
+			st = 1
 		case "sales":
-			sortType = 2
+			st = 2
 		case "price_desc":
-			sortType = 3
+			st = 3
 		case "price_asc":
-			sortType = 4
+			st = 4
 		case "commission":
-			sortType = 5
+			st = 5
 		}
+		fixedSortType = &st
 	}
+	// Pool of sort types for variety: relevance, sales, commission
+	varietySortTypes := []int{1, 2, 5}
 
 	// If no categories resolved (or "Ofertas gerais"), search without category filter
 	if len(categoryIDs) == 0 {
+		sortType := 2
+		if fixedSortType != nil {
+			sortType = *fixedSortType
+		} else {
+			sortType = varietySortTypes[rand.Intn(len(varietySortTypes))]
+		}
 		return s.searchShopee(ctx, appID, secret, params.Keyword, nil, sortType, limit, params)
 	}
 
@@ -245,6 +258,12 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 
 	for _, catID := range categoryIDs {
 		catIDCopy := int64(catID)
+		sortType := 2
+		if fixedSortType != nil {
+			sortType = *fixedSortType
+		} else {
+			sortType = varietySortTypes[rand.Intn(len(varietySortTypes))]
+		}
 		result, err := s.searchShopee(ctx, appID, secret, params.Keyword, &catIDCopy, sortType, perCategoryLimit, params)
 		if err != nil {
 			s.logger.Warn("Shopee search failed for category",
