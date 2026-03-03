@@ -501,15 +501,27 @@ func (s *monitoringService) markContentProcessed(ctx context.Context, key string
 
 func (s *monitoringService) extractCanonicalKey(links []string) string {
 	// Pick the best link for deduplication
-	// Prefer product links over coupon links
+	// Prefer product links (with shop/item IDs) — skip coupon/campaign links
 	for _, link := range links {
 		if shopeeURLRegex.MatchString(link) {
-			// Try to extract shop/item IDs
 			if s.shopeeService != nil {
+				// Try direct extraction first
 				shopID, itemID, err := s.shopeeService.ExtractProductIDs(link)
 				if err == nil {
 					return fmt.Sprintf("shopee:%d:%d", shopID, itemID)
 				}
+				// For short URLs, try expanding to get product IDs
+				lower := strings.ToLower(link)
+				if strings.Contains(lower, "s.shopee.com.br/") || strings.Contains(lower, "shp.ee/") || strings.Contains(lower, "shope.ee/") {
+					expanded, expandErr := s.shopeeService.ExpandURL(context.Background(), link)
+					if expandErr == nil {
+						shopID, itemID, err = s.shopeeService.ExtractProductIDs(expanded)
+						if err == nil {
+							return fmt.Sprintf("shopee:%d:%d", shopID, itemID)
+						}
+					}
+				}
+				// No product IDs → this is a coupon/campaign link, skip it for dedup
 			}
 		} else if mlURLRegex.MatchString(link) {
 			if s.mlService != nil {
@@ -521,10 +533,12 @@ func (s *monitoringService) extractCanonicalKey(links []string) string {
 		}
 	}
 
-	// Fallback to first link hash
-	if len(links) > 0 {
-		hash := sha256.Sum256([]byte(links[0]))
-		return "link:" + hex.EncodeToString(hash[:8])
+	// Fallback: hash only product-like links (skip coupon/campaign short URLs)
+	for _, link := range links {
+		if shopeeURLRegex.MatchString(link) || mlURLRegex.MatchString(link) {
+			hash := sha256.Sum256([]byte(link))
+			return "link:" + hex.EncodeToString(hash[:8])
+		}
 	}
 
 	return ""
