@@ -195,6 +195,30 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		if s.shopeeService != nil {
 			aff, err := s.shopeeService.GenerateAffiliateLink(ctx, link, automation.UserID)
 			if err != nil {
+				errStr := err.Error()
+				if strings.Contains(errStr, "Invalid Signature") ||
+					strings.Contains(errStr, "credentials incomplete") {
+					s.logger.Warn("Shopee credential error, pausing automation",
+						zap.String("automationID", automation.ID),
+						zap.String("userID", automation.UserID),
+						zap.Error(err))
+
+					ck := s.extractCanonicalKey(links)
+					st := s.detectStore(links)
+					s.logDispatch(ctx, automation, "", link,
+						"failed", "Credenciais Shopee inválidas - reconfigure App ID e Senha",
+						ck, st)
+
+					now := time.Now().UTC().Format(time.RFC3339)
+					_ = s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
+						"status":        models.AutomationStatusPaused,
+						"last_error":    "Credenciais Shopee inválidas (Invalid Signature) - automação pausada automaticamente",
+						"last_error_at": now,
+					})
+
+					return nil
+				}
+
 				s.logger.Warn("Failed to generate Shopee affiliate link, keeping original",
 					zap.String("automationID", automation.ID),
 					zap.String("userID", automation.UserID),
@@ -213,6 +237,31 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		if s.mlService != nil {
 			aff, err := s.mlService.CreateAffiliateLink(ctx, link, automation.UserID)
 			if err != nil {
+				errStr := err.Error()
+				if strings.Contains(errStr, "Invalid Signature") ||
+					strings.Contains(errStr, "credentials incomplete") ||
+					strings.Contains(errStr, "invalid_token") {
+					s.logger.Warn("ML credential error, pausing automation",
+						zap.String("automationID", automation.ID),
+						zap.String("userID", automation.UserID),
+						zap.Error(err))
+
+					ck := s.extractCanonicalKey(links)
+					st := s.detectStore(links)
+					s.logDispatch(ctx, automation, "", link,
+						"failed", "Credenciais Mercado Livre inválidas - reconfigure suas credenciais",
+						ck, st)
+
+					now := time.Now().UTC().Format(time.RFC3339)
+					_ = s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
+						"status":        models.AutomationStatusPaused,
+						"last_error":    "Credenciais ML inválidas - automação pausada automaticamente",
+						"last_error_at": now,
+					})
+
+					return nil
+				}
+
 				s.logger.Warn("Failed to generate ML affiliate link, keeping original",
 					zap.String("automationID", automation.ID),
 					zap.String("userID", automation.UserID),
