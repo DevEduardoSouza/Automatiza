@@ -89,19 +89,23 @@ func TestNewProducerBackpressure_NegativeValuesGetDefaults(t *testing.T) {
 	assert.Equal(t, 10, bp.windowMinutes)
 }
 
-func TestNewProducerBackpressure_LocalCountsMapInitialized(t *testing.T) {
-	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true})
-	assert.NotNil(t, bp.localCounts)
-	assert.Empty(t, bp.localCounts)
-}
-
 func TestNewProducerBackpressure_NilLoggerAccepted(t *testing.T) {
 	t.Parallel()
 	// Should not panic with nil logger
 	bp := NewProducerBackpressure(Config{Enabled: true}, nil, nil)
 	assert.NotNil(t, bp)
 	assert.Nil(t, bp.logger)
+}
+
+func TestNewProducerBackpressure_NoCacheAlwaysAllows(t *testing.T) {
+	t.Parallel()
+	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 1})
+	ctx := context.Background()
+
+	// Without cache, backpressure cannot track — always allows
+	can, _, err := bp.CanEnqueue(ctx, "user-1")
+	require.NoError(t, err)
+	assert.True(t, can)
 }
 
 // =============================================================================
@@ -143,57 +147,6 @@ func TestSetQueueInspector_NilResetsInspector(t *testing.T) {
 	can, _, err := bp.CanEnqueue(context.Background(), "user-1")
 	require.NoError(t, err)
 	assert.True(t, can)
-}
-
-// =============================================================================
-// RecordEnqueue — Local Only (no cache)
-// =============================================================================
-
-func TestRecordEnqueue_LocalOnly_IncrementsCount(t *testing.T) {
-	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 100})
-	ctx := context.Background()
-
-	require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
-	require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
-	require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
-
-	count, err := bp.GetUserCount(ctx, "user-1")
-	require.NoError(t, err)
-	assert.Equal(t, 3, count)
-}
-
-func TestRecordEnqueue_LocalOnly_TracksMultipleUsersIndependently(t *testing.T) {
-	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 100})
-	ctx := context.Background()
-
-	for i := 0; i < 5; i++ {
-		require.NoError(t, bp.RecordEnqueue(ctx, "user-A"))
-	}
-	for i := 0; i < 3; i++ {
-		require.NoError(t, bp.RecordEnqueue(ctx, "user-B"))
-	}
-
-	countA, _ := bp.GetUserCount(ctx, "user-A")
-	countB, _ := bp.GetUserCount(ctx, "user-B")
-	assert.Equal(t, 5, countA)
-	assert.Equal(t, 3, countB)
-}
-
-func TestRecordEnqueue_Disabled_NoOp(t *testing.T) {
-	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: false, UserMaxEnqueued: 5})
-	ctx := context.Background()
-
-	err := bp.RecordEnqueue(ctx, "user-1")
-	require.NoError(t, err)
-
-	// Should not increment even locally
-	bp.localCountsMu.RLock()
-	count := bp.localCounts["user-1"]
-	bp.localCountsMu.RUnlock()
-	assert.Equal(t, 0, count)
 }
 
 // =============================================================================
@@ -247,18 +200,26 @@ func TestRecordEnqueue_WithCache_DoesNotResetExpirationOnSubsequent(t *testing.T
 	assert.True(t, subsequentTTL < initialTTL, "TTL should not be reset on subsequent increments")
 }
 
-func TestRecordEnqueue_WithCache_AlsoTracksLocally(t *testing.T) {
+func TestRecordEnqueue_Disabled_NoOp(t *testing.T) {
 	t.Parallel()
-	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 100})
+	bp, mr := newTestBP(t, Config{Enabled: false, UserMaxEnqueued: 5})
 	ctx := context.Background()
 
-	require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
-	require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
+	err := bp.RecordEnqueue(ctx, "user-1")
+	require.NoError(t, err)
 
-	bp.localCountsMu.RLock()
-	localCount := bp.localCounts["user-1"]
-	bp.localCountsMu.RUnlock()
-	assert.Equal(t, 2, localCount)
+	// Redis should not have the key
+	assert.False(t, mr.Exists("test:backpressure:user:user-1"))
+}
+
+func TestRecordEnqueue_NilCache_NoOp(t *testing.T) {
+	t.Parallel()
+	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 5})
+	ctx := context.Background()
+
+	err := bp.RecordEnqueue(ctx, "user-1")
+	require.NoError(t, err)
+	// No panic, no error — silently no-op without cache
 }
 
 func TestRecordEnqueue_WithCache_ContinuesOnRedisError(t *testing.T) {
@@ -272,12 +233,24 @@ func TestRecordEnqueue_WithCache_ContinuesOnRedisError(t *testing.T) {
 	// Should not return error (fail-open)
 	err := bp.RecordEnqueue(ctx, "user-1")
 	require.NoError(t, err)
+}
 
-	// Local count should still be tracked
-	bp.localCountsMu.RLock()
-	localCount := bp.localCounts["user-1"]
-	bp.localCountsMu.RUnlock()
-	assert.Equal(t, 1, localCount)
+func TestRecordEnqueue_WithCache_TracksMultipleUsersIndependently(t *testing.T) {
+	t.Parallel()
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 100})
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		require.NoError(t, bp.RecordEnqueue(ctx, "user-A"))
+	}
+	for i := 0; i < 3; i++ {
+		require.NoError(t, bp.RecordEnqueue(ctx, "user-B"))
+	}
+
+	countA, _ := bp.GetUserCount(ctx, "user-A")
+	countB, _ := bp.GetUserCount(ctx, "user-B")
+	assert.Equal(t, 5, countA)
+	assert.Equal(t, 3, countB)
 }
 
 // =============================================================================
@@ -286,7 +259,7 @@ func TestRecordEnqueue_WithCache_ContinuesOnRedisError(t *testing.T) {
 
 func TestGetUserCount_UnknownUser_ReturnsZero(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true})
+	bp, _ := newTestBP(t, Config{Enabled: true})
 	ctx := context.Background()
 
 	count, err := bp.GetUserCount(ctx, "nonexistent")
@@ -307,22 +280,28 @@ func TestGetUserCount_WithCache_ReadsFromRedis(t *testing.T) {
 	assert.Equal(t, 42, count)
 }
 
-func TestGetUserCount_WithCache_FallsBackToLocalOnRedisError(t *testing.T) {
+func TestGetUserCount_WithCache_ReturnsZeroOnKeyNotFound(t *testing.T) {
+	t.Parallel()
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 100})
+	ctx := context.Background()
+
+	// Key does not exist in Redis — should return 0 (not fallback to stale local)
+	count, err := bp.GetUserCount(ctx, "user-1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestGetUserCount_WithCache_ReturnsZeroOnRedisError(t *testing.T) {
 	t.Parallel()
 	bp, mr := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 100})
 	ctx := context.Background()
 
-	// Record locally
-	bp.localCountsMu.Lock()
-	bp.localCounts["user-1"] = 7
-	bp.localCountsMu.Unlock()
-
-	// Close Redis to force error
+	// Close Redis to force real error
 	mr.Close()
 
 	count, err := bp.GetUserCount(ctx, "user-1")
 	require.NoError(t, err)
-	assert.Equal(t, 7, count)
+	assert.Equal(t, 0, count) // fail-open
 }
 
 func TestGetUserCount_WithCache_HandlesNonNumericValue(t *testing.T) {
@@ -350,28 +329,19 @@ func TestGetUserCount_WithCache_HandlesEmptyStringValue(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
+func TestGetUserCount_NilCache_ReturnsZero(t *testing.T) {
+	t.Parallel()
+	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 5})
+	ctx := context.Background()
+
+	count, err := bp.GetUserCount(ctx, "user-1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
 // =============================================================================
 // ResetUserCount
 // =============================================================================
-
-func TestResetUserCount_LocalOnly_ResetsToZero(t *testing.T) {
-	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 100})
-	ctx := context.Background()
-
-	for i := 0; i < 10; i++ {
-		require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
-	}
-
-	count, _ := bp.GetUserCount(ctx, "user-1")
-	assert.Equal(t, 10, count)
-
-	err := bp.ResetUserCount(ctx, "user-1")
-	require.NoError(t, err)
-
-	count, _ = bp.GetUserCount(ctx, "user-1")
-	assert.Equal(t, 0, count)
-}
 
 func TestResetUserCount_WithCache_RemovesFromRedis(t *testing.T) {
 	t.Parallel()
@@ -391,24 +361,7 @@ func TestResetUserCount_WithCache_RemovesFromRedis(t *testing.T) {
 	assert.False(t, mr.Exists("test:backpressure:user:user-1"))
 }
 
-func TestResetUserCount_WithCache_ClearsLocalAndRedis(t *testing.T) {
-	t.Parallel()
-	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 100})
-	ctx := context.Background()
-
-	require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
-
-	err := bp.ResetUserCount(ctx, "user-1")
-	require.NoError(t, err)
-
-	// Local should be cleared
-	bp.localCountsMu.RLock()
-	localCount := bp.localCounts["user-1"]
-	bp.localCountsMu.RUnlock()
-	assert.Equal(t, 0, localCount)
-}
-
-func TestResetUserCount_NonExistentUser_NoError(t *testing.T) {
+func TestResetUserCount_NilCache_NoError(t *testing.T) {
 	t.Parallel()
 	bp := newLocalOnlyBP(Config{Enabled: true})
 	ctx := context.Background()
@@ -419,7 +372,7 @@ func TestResetUserCount_NonExistentUser_NoError(t *testing.T) {
 
 func TestResetUserCount_DoesNotAffectOtherUsers(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 100})
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 100})
 	ctx := context.Background()
 
 	require.NoError(t, bp.RecordEnqueue(ctx, "user-A"))
@@ -435,7 +388,7 @@ func TestResetUserCount_DoesNotAffectOtherUsers(t *testing.T) {
 
 func TestResetUserCount_AllowsReEnqueueAfterReset(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 3})
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 3})
 	ctx := context.Background()
 
 	// Fill up the limit
@@ -523,7 +476,7 @@ func TestCanEnqueue_FailsOpenOnCacheError(t *testing.T) {
 
 func TestCanEnqueue_UserLimitMessage_IncludesWindowMinutes(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{
+	bp, _ := newTestBP(t, Config{
 		Enabled:         true,
 		UserMaxEnqueued: 10,
 		WindowMinutes:   15,
@@ -541,7 +494,7 @@ func TestCanEnqueue_UserLimitMessage_IncludesWindowMinutes(t *testing.T) {
 
 func TestCanEnqueue_ExactlyAtLimit_Blocks(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{
+	bp, _ := newTestBP(t, Config{
 		Enabled:         true,
 		UserMaxEnqueued: 1,
 	})
@@ -556,7 +509,7 @@ func TestCanEnqueue_ExactlyAtLimit_Blocks(t *testing.T) {
 
 func TestCanEnqueue_JustBelowLimit_Allows(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{
+	bp, _ := newTestBP(t, Config{
 		Enabled:         true,
 		UserMaxEnqueued: 3,
 	})
@@ -565,6 +518,30 @@ func TestCanEnqueue_JustBelowLimit_Allows(t *testing.T) {
 	require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
 	require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
 
+	can, _, err := bp.CanEnqueue(ctx, "user-1")
+	require.NoError(t, err)
+	assert.True(t, can)
+}
+
+func TestCanEnqueue_AfterKeyExpires_AllowsAgain(t *testing.T) {
+	t.Parallel()
+	bp, mr := newTestBP(t, Config{
+		Enabled:         true,
+		UserMaxEnqueued: 2,
+		WindowMinutes:   10,
+	})
+	ctx := context.Background()
+
+	// Fill to limit
+	require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
+	require.NoError(t, bp.RecordEnqueue(ctx, "user-1"))
+	can, _, _ := bp.CanEnqueue(ctx, "user-1")
+	assert.False(t, can)
+
+	// Fast-forward past the window — key expires
+	mr.FastForward(11 * time.Minute)
+
+	// Should allow again (key not found = count 0)
 	can, _, err := bp.CanEnqueue(ctx, "user-1")
 	require.NoError(t, err)
 	assert.True(t, can)
@@ -712,7 +689,7 @@ func TestGetGlobalQueueDepth_InspectorReturnsZero(t *testing.T) {
 
 func TestRecordEnqueue_ConcurrentAccess_IsThreadSafe(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 10000})
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 10000})
 	ctx := context.Background()
 
 	const goroutines = 50
@@ -739,7 +716,7 @@ func TestRecordEnqueue_ConcurrentAccess_IsThreadSafe(t *testing.T) {
 
 func TestRecordEnqueue_ConcurrentMultipleUsers_IsThreadSafe(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 10000})
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 10000})
 	ctx := context.Background()
 
 	const users = 10
@@ -769,7 +746,7 @@ func TestRecordEnqueue_ConcurrentMultipleUsers_IsThreadSafe(t *testing.T) {
 
 func TestCanEnqueue_ConcurrentReadsAndWrites(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 1000})
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 1000})
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
@@ -803,7 +780,7 @@ func TestCanEnqueue_ConcurrentReadsAndWrites(t *testing.T) {
 
 func TestResetUserCount_ConcurrentWithRecord(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 10000})
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 10000})
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
@@ -931,7 +908,7 @@ func TestFullFlow_MultipleUsers_IndependentLimits(t *testing.T) {
 
 func TestCanEnqueue_EmptyUserID(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 5})
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 5})
 	ctx := context.Background()
 
 	can, _, err := bp.CanEnqueue(ctx, "")
@@ -946,7 +923,7 @@ func TestCanEnqueue_EmptyUserID(t *testing.T) {
 
 func TestCanEnqueue_SpecialCharactersInUserID(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 5})
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 5})
 	ctx := context.Background()
 
 	specialIDs := []string{
@@ -999,7 +976,7 @@ func (c *callTrackingInspector) GetQueueDepth(ctx context.Context) (int, error) 
 
 func TestRecordEnqueue_ReturnValueAlwaysNil(t *testing.T) {
 	t.Parallel()
-	bp := newLocalOnlyBP(Config{Enabled: true, UserMaxEnqueued: 100})
+	bp, _ := newTestBP(t, Config{Enabled: true, UserMaxEnqueued: 100})
 	ctx := context.Background()
 
 	// RecordEnqueue always returns nil (errors are logged, not returned)
