@@ -169,13 +169,12 @@ func TestProducerBackpressure_UserLimit_AllowsWhenUnderLimit(t *testing.T) {
 }
 
 func TestProducerBackpressure_UserLimit_BlocksWhenAtLimit(t *testing.T) {
-	logger := zap.NewNop()
-	bp := NewProducerBackpressure(Config{
+	bp, _ := newTestBP(t, Config{
 		Enabled:           true,
 		GlobalMaxEnqueued: 0,
 		UserMaxEnqueued:   5,
 		WindowMinutes:     10,
-	}, nil, logger)
+	})
 
 	ctx := context.Background()
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/lib/backpressure"
+	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/workers"
 	"context"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 // ---------------------------------------------------------------------------
@@ -1444,12 +1446,16 @@ func TestWhatsAppHandler_SendMessage_BackpressureRejects(t *testing.T) {
 	t.Parallel()
 	deps, mocks, _ := newTestDepsWithQueue(t)
 
-	// Override backpressure with one that rejects after 1 message
+	// Override backpressure with one that rejects after 1 message (needs Redis for counting)
+	bpMr := miniredis.RunT(t)
+	bpRc := redis.NewClient(&redis.Options{Addr: bpMr.Addr()})
+	t.Cleanup(func() { bpRc.Close() })
+	bpCache := cache.NewCache(bpRc, "test", false)
 	bp := backpressure.NewProducerBackpressure(backpressure.Config{
 		Enabled:         true,
 		UserMaxEnqueued: 1,
 		WindowMinutes:   10,
-	}, nil, testLogger())
+	}, bpCache, testLogger())
 	deps.Backpressure = bp
 
 	handler := NewWhatsAppHandler(deps)

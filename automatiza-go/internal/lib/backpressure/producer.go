@@ -2,12 +2,13 @@ package backpressure
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"automatiza-go/internal/lib/cache"
 
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -27,10 +28,6 @@ type ProducerBackpressure struct {
 	windowMinutes     int
 	enabled           bool
 	queueInspector    QueueInspector
-
-	// Local tracking
-	localCounts   map[string]int
-	localCountsMu sync.RWMutex
 }
 
 // Config for producer backpressure
@@ -62,7 +59,6 @@ func NewProducerBackpressure(cfg Config, cache *cache.Cache, logger *zap.Logger)
 		globalMaxEnqueued: cfg.GlobalMaxEnqueued,
 		windowMinutes:     cfg.WindowMinutes,
 		enabled:           cfg.Enabled,
-		localCounts:       make(map[string]int),
 	}
 }
 
@@ -146,23 +142,21 @@ func (p *ProducerBackpressure) RecordEnqueue(ctx context.Context, userID string)
 
 	key := p.getUserKey(userID)
 
-	// Increment in Redis
-	if p.cache != nil {
-		count, err := p.cache.Incr(ctx, key)
-		if err != nil {
-			p.logger.Warn("Failed to increment enqueue count",
-				zap.String("userID", userID),
-				zap.Error(err))
-		} else if count == 1 {
-			// Set expiration on first increment
-			_ = p.cache.Expire(ctx, key, time.Duration(p.windowMinutes)*time.Minute)
-		}
+	if p.cache == nil {
+		return nil
 	}
 
-	// Also track locally
-	p.localCountsMu.Lock()
-	p.localCounts[userID]++
-	p.localCountsMu.Unlock()
+	count, err := p.cache.Incr(ctx, key)
+	if err != nil {
+		p.logger.Warn("Failed to increment enqueue count",
+			zap.String("userID", userID),
+			zap.Error(err))
+		return nil
+	}
+	if count == 1 {
+		// Set expiration on first increment
+		_ = p.cache.Expire(ctx, key, time.Duration(p.windowMinutes)*time.Minute)
+	}
 
 	return nil
 }
@@ -189,19 +183,21 @@ func (p *ProducerBackpressure) getUserEnqueuedCount(ctx context.Context, userID 
 	key := p.getUserKey(userID)
 
 	if p.cache == nil {
-		p.localCountsMu.RLock()
-		count := p.localCounts[userID]
-		p.localCountsMu.RUnlock()
-		return count, nil
+		// Without Redis, backpressure cannot track counts reliably — allow all
+		return 0, nil
 	}
 
 	countStr, err := p.cache.Get(ctx, key)
 	if err != nil {
-		// Fall back to local count
-		p.localCountsMu.RLock()
-		count := p.localCounts[userID]
-		p.localCountsMu.RUnlock()
-		return count, nil
+		// Key not found in Redis means the window expired — count is 0
+		if errors.Is(err, redis.Nil) {
+			return 0, nil
+		}
+		// Real Redis error — allow enqueue (fail-open)
+		p.logger.Warn("Redis error getting backpressure count, allowing",
+			zap.String("userID", userID),
+			zap.Error(err))
+		return 0, nil
 	}
 
 	var count int
@@ -215,14 +211,9 @@ func (p *ProducerBackpressure) getUserKey(userID string) string {
 
 // ResetUserCount resets the enqueue count for a user
 func (p *ProducerBackpressure) ResetUserCount(ctx context.Context, userID string) error {
-	p.localCountsMu.Lock()
-	delete(p.localCounts, userID)
-	p.localCountsMu.Unlock()
-
 	if p.cache != nil {
 		return p.cache.Delete(ctx, p.getUserKey(userID))
 	}
-
 	return nil
 }
 

@@ -3115,16 +3115,17 @@ func TestExecuteSearchAutomation_BackpressureBlock(t *testing.T) {
 
 	logger := zaptest.NewLogger(t)
 
-	// Create backpressure with very low limit
+	// Create backpressure with very low limit (needs real Redis to track counts)
+	bpCache, _ := newTestCache(t)
 	bp := bpLib.NewProducerBackpressure(bpLib.Config{
 		Enabled:           true,
 		UserMaxEnqueued:   1,
 		GlobalMaxEnqueued: 0, // no global limit
 		WindowMinutes:     10,
-	}, nil, logger)
+	}, bpCache, logger)
 	svc.backpressure = bp
 
-	// Pre-fill the user's local count
+	// Pre-fill the user's count in Redis
 	_ = bp.RecordEnqueue(context.Background(), "user-1")
 
 	keyword := "test"
@@ -3216,12 +3217,13 @@ func TestExecuteSearchAutomation_WithBackpressureRecord(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 
 	// Create backpressure with high limit (allows enqueue) to cover RecordEnqueue path
+	bpCache, _ := newTestCache(t)
 	bp := bpLib.NewProducerBackpressure(bpLib.Config{
 		Enabled:           true,
 		UserMaxEnqueued:   100,
 		GlobalMaxEnqueued: 0,
 		WindowMinutes:     10,
-	}, nil, logger)
+	}, bpCache, logger)
 	svc.backpressure = bp
 
 	keyword := "test"
@@ -3305,16 +3307,17 @@ func TestProcessListMode_BackpressureBlock(t *testing.T) {
 
 	logger := zaptest.NewLogger(t)
 
-	// Create backpressure with very low limit
+	// Create backpressure with very low limit (needs real Redis to track counts)
+	bpCache, _ := newTestCache(t)
 	bp := bpLib.NewProducerBackpressure(bpLib.Config{
 		Enabled:           true,
 		UserMaxEnqueued:   1,
 		GlobalMaxEnqueued: 0,
 		WindowMinutes:     10,
-	}, nil, logger)
+	}, bpCache, logger)
 	svc.backpressure = bp
 
-	// Pre-fill user count
+	// Pre-fill user count in Redis
 	_ = bp.RecordEnqueue(context.Background(), "user-1")
 
 	listID := "list-1"
@@ -3386,12 +3389,13 @@ func TestProcessListMode_WithBackpressureRecord(t *testing.T) {
 
 	logger := zaptest.NewLogger(t)
 
+	bpCache, _ := newTestCache(t)
 	bp := bpLib.NewProducerBackpressure(bpLib.Config{
 		Enabled:           true,
 		UserMaxEnqueued:   100,
 		GlobalMaxEnqueued: 0,
 		WindowMinutes:     10,
-	}, nil, logger)
+	}, bpCache, logger)
 	svc.backpressure = bp
 
 	listID := "list-1"
