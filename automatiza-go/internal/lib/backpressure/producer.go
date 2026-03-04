@@ -2,6 +2,7 @@ package backpressure
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -189,7 +190,7 @@ func (p *ProducerBackpressure) getUserEnqueuedCount(ctx context.Context, userID 
 	countStr, err := p.cache.Get(ctx, key)
 	if err != nil {
 		// Key not found in Redis means the window expired — count is 0
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return 0, nil
 		}
 		// Real Redis error — allow enqueue (fail-open)
