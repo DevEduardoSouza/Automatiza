@@ -11,6 +11,8 @@ import (
 	"connectrpc.com/connect"
 )
 
+const platformAll = "all"
+
 // CTAsHandler implements the ctasv1connect.CTAsServiceHandler interface.
 type CTAsHandler struct {
 	ctasService ctas.Service
@@ -194,7 +196,7 @@ func ctaToProto(c *models.CTA) *ctasv1.CTA {
 
 func modelPlatformToProto(platform string) ctasv1.Platform {
 	switch platform {
-	case "all":
+	case platformAll:
 		return ctasv1.Platform_PLATFORM_ALL
 	case "shopee":
 		return ctasv1.Platform_PLATFORM_SHOPEE
@@ -208,19 +210,19 @@ func modelPlatformToProto(platform string) ctasv1.Platform {
 func protoPlatformToModel(platform ctasv1.Platform) string {
 	switch platform {
 	case ctasv1.Platform_PLATFORM_ALL:
-		return "all"
+		return platformAll
 	case ctasv1.Platform_PLATFORM_SHOPEE:
 		return "shopee"
 	case ctasv1.Platform_PLATFORM_MERCADO_LIVRE:
 		return "ml"
 	default:
-		return "all"
+		return platformAll
 	}
 }
 
 func modelCTATypeToProto(ctaType string) ctasv1.CTAType {
 	switch ctaType {
-	case "all":
+	case platformAll:
 		return ctasv1.CTAType_CTA_TYPE_ALL
 	case "normal":
 		return ctasv1.CTAType_CTA_TYPE_NORMAL
@@ -234,12 +236,12 @@ func modelCTATypeToProto(ctaType string) ctasv1.CTAType {
 func protoCTATypeToModel(ctaType ctasv1.CTAType) string {
 	switch ctaType {
 	case ctasv1.CTAType_CTA_TYPE_ALL:
-		return "all"
+		return platformAll
 	case ctasv1.CTAType_CTA_TYPE_NORMAL:
 		return "normal"
 	case ctasv1.CTAType_CTA_TYPE_DISCOUNT:
 		return "discount"
 	default:
-		return "all"
+		return platformAll
 	}
 }

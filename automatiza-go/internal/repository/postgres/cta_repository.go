@@ -47,7 +47,6 @@ func (r *ctaRepository) GetUserCTAs(ctx context.Context, userID string, filters 
 	if isActive, ok := filters["is_active"].(bool); ok {
 		query += fmt.Sprintf(" AND is_active = $%d", argIndex)
 		args = append(args, isActive)
-		argIndex++
 	}
 
 	query += " ORDER BY created_at DESC"

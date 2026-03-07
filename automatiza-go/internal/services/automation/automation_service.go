@@ -936,9 +936,9 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 	// Select random CTA: prefer CTA entities, fallback to inline CTAs
 	cta := ""
 	if len(ctaEntities) > 0 {
-		cta = ctaEntities[rand.IntN(len(ctaEntities))].Message
+		cta = ctaEntities[rand.IntN(len(ctaEntities))].Message //nolint:gosec // G404: non-security random for CTA selection
 	} else if len(automation.CTAs) > 0 {
-		cta = automation.CTAs[rand.IntN(len(automation.CTAs))]
+		cta = automation.CTAs[rand.IntN(len(automation.CTAs))] //nolint:gosec // G404: non-security random for CTA selection
 	}
 
 	// Build coupon info
