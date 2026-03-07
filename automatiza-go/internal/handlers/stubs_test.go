@@ -466,7 +466,7 @@ func TestMLHandler_Preview_Error(t *testing.T) {
 func TestMLHandler_Connect_Success(t *testing.T) {
 	t.Parallel()
 	deps, mocks := newTestDeps()
-	mocks.MLService.SaveCredentialsFunc = func(ctx context.Context, userID, cookie, csrf string) error {
+	mocks.MLService.SaveCredentialsFunc = func(ctx context.Context, userID, cookie, csrf, tag string) error {
 		return nil
 	}
 
@@ -504,7 +504,7 @@ func TestMLHandler_Connect_NilService(t *testing.T) {
 func TestMLHandler_Connect_Error(t *testing.T) {
 	t.Parallel()
 	deps, mocks := newTestDeps()
-	mocks.MLService.SaveCredentialsFunc = func(ctx context.Context, userID, cookie, csrf string) error {
+	mocks.MLService.SaveCredentialsFunc = func(ctx context.Context, userID, cookie, csrf, tag string) error {
 		return errors.New("connect error")
 	}
 

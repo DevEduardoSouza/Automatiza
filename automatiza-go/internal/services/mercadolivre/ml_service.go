@@ -28,7 +28,7 @@ type Service interface {
 	CreateAffiliateLink(ctx context.Context, originURL, userID string) (*models.MLAffiliateLink, error)
 	GetProductPreview(ctx context.Context, originURL, userID string) (*models.MLProductPreview, error)
 	LoadCredentials(ctx context.Context, userID string) (*models.MLCredentials, error)
-	SaveCredentials(ctx context.Context, userID, cookie, csrf string) error
+	SaveCredentials(ctx context.Context, userID, cookie, csrf, tag string) error
 	IsConnected(ctx context.Context, userID string) (bool, error)
 	ExtractProductID(productURL string) (string, error)
 	InvalidatePreviewCache(ctx context.Context, originURL string) error
@@ -170,7 +170,7 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 			// Update stored credentials with new CSRF (best-effort)
 			csrfCopy := csrf
 			observability.SafeGo("ml.saveCredentials.initialCSRF", func() {
-				if saveErr := s.SaveCredentials(context.Background(), userID, creds.Cookie, csrfCopy); saveErr != nil {
+				if saveErr := s.SaveCredentials(context.Background(), userID, creds.Cookie, csrfCopy, creds.Tag); saveErr != nil {
 					observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to save initial CSRF credentials", saveErr, map[string]string{
 						"external_service": "mercadolivre",
 						"endpoint":        "saveCredentials",
@@ -187,7 +187,7 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 	doRequest := func(csrfToken string) (*http.Response, []byte, error) {
 		payload := map[string]interface{}{
 			"urls": []string{originURL},
-			"tag":  "", // Tag is embedded in the cookie session
+			"tag":  creds.Tag,
 		}
 
 		jsonPayload, marshalErr := json.Marshal(payload)
@@ -260,7 +260,7 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 		// Update stored credentials with new CSRF (best-effort, async)
 		csrfRetry := csrf
 		observability.SafeGo("ml.saveCredentials.csrfRefresh", func() {
-			if saveErr := s.SaveCredentials(context.Background(), userID, creds.Cookie, csrfRetry); saveErr != nil {
+			if saveErr := s.SaveCredentials(context.Background(), userID, creds.Cookie, csrfRetry, creds.Tag); saveErr != nil {
 				observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to save refreshed CSRF credentials", saveErr, map[string]string{
 					"external_service": "mercadolivre",
 					"endpoint":        "saveCredentials",
@@ -279,7 +279,8 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 		s.logger.Warn("ML createLink non-200",
 			zap.Int("status", resp.StatusCode),
 			zap.String("body", string(body[:min(len(body), 300)])))
-		httpErr := fmt.Errorf("ML API error %d: session may have expired", resp.StatusCode)
+		bodySnippet := string(body[:min(len(body), 500)])
+		httpErr := fmt.Errorf("ML API error %d: %s", resp.StatusCode, bodySnippet)
 		observability.LogAndCapture(s.logger, sentry.LevelError, "ML createLink returned non-200 status", httpErr, map[string]string{
 			"external_service": "mercadolivre",
 			"endpoint":        "createLink",
@@ -544,10 +545,11 @@ func (s *mlService) LoadCredentials(ctx context.Context, userID string) (*models
 	return &creds, nil
 }
 
-func (s *mlService) SaveCredentials(ctx context.Context, userID, cookie, csrf string) error {
+func (s *mlService) SaveCredentials(ctx context.Context, userID, cookie, csrf, tag string) error {
 	creds := &models.MLCredentials{
 		Cookie: cookie,
 		CSRF:   csrf,
+		Tag:    tag,
 	}
 
 	// Encrypt credentials
@@ -587,10 +589,11 @@ func (s *mlService) IsConnected(ctx context.Context, userID string) (bool, error
 	return creds != nil && creds.Cookie != "" && creds.CSRF != "", nil
 }
 
+// Patterns match UPPERCASED URLs (see ExtractProductID)
 var (
-	mlProductIDRegex  = regexp.MustCompile(`MLB-?(\d+)`)
-	mlProductIDRegex2 = regexp.MustCompile(`/p/(MLB\d+)`)
-	mlProductIDRegex3 = regexp.MustCompile(`mercadolivre\.com\.br/[^/]+/p/(MLB\d+)`)
+	mlProductIDRegex  = regexp.MustCompile(`MLB[A-Z]?-?(\d+)`)
+	mlProductIDRegex2 = regexp.MustCompile(`/(?:P|UP)/(MLB[A-Z]?\d+)`)
+	mlProductIDRegex3 = regexp.MustCompile(`MERCADOLIVRE\.COM\.BR/[^/]+/(?:P|UP)/(MLB[A-Z]?\d+)`)
 )
 
 func (s *mlService) ExtractProductID(productURL string) (string, error) {

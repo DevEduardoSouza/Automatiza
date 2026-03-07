@@ -216,7 +216,7 @@ func (h *MLHandler) Connect(c *gin.Context) {
 		return
 	}
 
-	err := h.deps.MLService.SaveCredentials(c.Request.Context(), user.ID, req.Cookie, req.CSRF)
+	err := h.deps.MLService.SaveCredentials(c.Request.Context(), user.ID, req.Cookie, req.CSRF, req.Tag)
 	if err != nil {
 		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao conectar: "+err.Error())
 		return

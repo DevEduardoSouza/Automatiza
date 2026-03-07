@@ -70,6 +70,7 @@ type MLAffiliateLink struct {
 type MLCredentials struct {
 	Cookie string `json:"cookie"`
 	CSRF   string `json:"csrf"`
+	Tag    string `json:"tag,omitempty"`
 }
 
 // MLCredentialsDB represents ML credentials stored in the database
@@ -94,7 +95,8 @@ type MLPreviewRequest struct {
 // MLConnectRequest represents a request to connect ML credentials
 type MLConnectRequest struct {
 	Cookie string `json:"cookie" validate:"required"`
-	CSRF   string `json:"csrf" validate:"required"`
+	CSRF   string `json:"csrf"`
+	Tag    string `json:"tag" validate:"required"`
 }
 
 // MLLinkListItem represents an item in a user's ML link list

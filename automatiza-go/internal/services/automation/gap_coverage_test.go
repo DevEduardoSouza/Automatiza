@@ -2108,8 +2108,8 @@ func (m *mockMLService) LoadCredentials(ctx context.Context, userID string) (*mo
 	return args.Get(0).(*models.MLCredentials), args.Error(1)
 }
 
-func (m *mockMLService) SaveCredentials(ctx context.Context, userID, cookie, csrf string) error {
-	args := m.Called(ctx, userID, cookie, csrf)
+func (m *mockMLService) SaveCredentials(ctx context.Context, userID, cookie, csrf, tag string) error {
+	args := m.Called(ctx, userID, cookie, csrf, tag)
 	return args.Error(0)
 }
 

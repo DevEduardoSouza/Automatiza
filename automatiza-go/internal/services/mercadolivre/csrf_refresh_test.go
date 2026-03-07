@@ -117,7 +117,7 @@ func TestIsCSRFError(t *testing.T) {
 		{name: "200 is not CSRF error", statusCode: http.StatusOK, want: false},
 		{name: "500 is not CSRF error", statusCode: http.StatusInternalServerError, want: false},
 		{name: "404 is not CSRF error", statusCode: http.StatusNotFound, want: false},
-		{name: "400 is not CSRF error", statusCode: http.StatusBadRequest, want: false},
+		{name: "400 is CSRF error", statusCode: http.StatusBadRequest, want: true},
 		{name: "302 is not CSRF error", statusCode: http.StatusFound, want: false},
 	}
 

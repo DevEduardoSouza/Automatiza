@@ -5,9 +5,23 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 )
+
+// decodeKey accepts both hex (64 chars) and base64 encoded 32-byte keys.
+func decodeKey(raw string) ([]byte, error) {
+	if len(raw) == 64 {
+		if key, err := hex.DecodeString(raw); err == nil && len(key) == 32 {
+			return key, nil
+		}
+	}
+	if key, err := base64.StdEncoding.DecodeString(raw); err == nil && len(key) == 32 {
+		return key, nil
+	}
+	return nil, fmt.Errorf("invalid encryption key: must be 32 bytes (hex or base64 encoded)")
+}
 
 // EncryptedBlobV1 represents an encrypted value with metadata
 type EncryptedBlobV1 struct {
@@ -20,9 +34,9 @@ type EncryptedBlobV1 struct {
 
 // EncryptJSONV1 encrypts a value using AES-256-GCM
 func EncryptJSONV1(value interface{}, keyBase64 string) (*EncryptedBlobV1, error) {
-	key, err := base64.StdEncoding.DecodeString(keyBase64)
-	if err != nil || len(key) != 32 {
-		return nil, fmt.Errorf("invalid encryption key: must be 32 bytes base64 encoded")
+	key, err := decodeKey(keyBase64)
+	if err != nil {
+		return nil, err
 	}
 
 	plaintext, err := json.Marshal(value)
@@ -69,8 +83,8 @@ func DecryptJSONV1(blob *EncryptedBlobV1, keyBase64 string, dest interface{}) er
 		return fmt.Errorf("unsupported encryption format: v=%d alg=%s", blob.V, blob.Alg)
 	}
 
-	key, err := base64.StdEncoding.DecodeString(keyBase64)
-	if err != nil || len(key) != 32 {
+	key, err := decodeKey(keyBase64)
+	if err != nil {
 		return fmt.Errorf("invalid decryption key")
 	}
 

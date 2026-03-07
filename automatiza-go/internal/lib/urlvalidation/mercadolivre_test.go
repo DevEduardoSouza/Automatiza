@@ -392,8 +392,8 @@ func TestValidateAndNormalizeURL(t *testing.T) {
 			errCode: apperrors.ErrInvalidURL,
 		},
 		{
-			name:    "no product indicator returns validation error",
-			url:     "https://www.mercadolivre.com.br/categorias",
+			name:    "unsupported domain returns validation error",
+			url:     "https://www.magazineluiza.com.br/produto/12345",
 			want:    "",
 			wantErr: true,
 			errCode: apperrors.ErrInvalidURL,
