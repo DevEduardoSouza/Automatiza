@@ -5,6 +5,7 @@ export { ListModeConfig } from './list-mode-section';
 export { SendGroupsSelector, MonitorGroupsSelector, GroupsListCheckbox } from './groups-section';
 export { StoresSelector } from './stores-section';
 export { CouponSelector } from './coupon-section';
+export { CTASelector } from './cta-section';
 export { CategoriesSection } from './categories-section';
 export { PriorityFilterSection, FiltersSection } from './filters-section';
 export { DispatchTextSelector } from './dispatch-text-section';

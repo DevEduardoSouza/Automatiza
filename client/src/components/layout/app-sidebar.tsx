@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/sidebar';
 import { useAuth } from '@/contexts';
 import { useSettingsConnect } from '@/hooks/use-settings-connect';
-import { BookOpen, type LucideIcon, Type } from 'lucide-react';
+import { BookOpen, type LucideIcon, MessageSquare, Type } from 'lucide-react';
 
 const DashboardIcon: LucideIcon = ({ className, ...props }) => (
   <svg
@@ -359,6 +359,7 @@ export const menuItems: MenuItem[] = [
   { titleKey: 'sidebar.linkLists', url: '/ml-link-lists', icon: LinkListsIcon, comingSoon: true },
   { titleKey: 'sidebar.dispatchTexts', url: '/dispatch-texts', icon: Type },
   { titleKey: 'sidebar.affiliatePrograms', url: '/affiliate-programs', icon: AffiliateIcon },
+  { titleKey: 'sidebar.ctas', url: '/ctas', icon: MessageSquare },
   { titleKey: 'sidebar.coupons', url: '/coupons', icon: CouponsIcon },
   { titleKey: 'sidebar.automationLogs', url: '/automation-logs', icon: AutomationLogsIcon },
   { titleKey: 'sidebar.history', url: '/history', icon: HistoryIcon },

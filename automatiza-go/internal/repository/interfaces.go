@@ -634,3 +634,13 @@ type CategoryRepository interface {
 	// DeleteSubcategory deletes a subcategory (only if not is_system)
 	DeleteSubcategory(ctx context.Context, id string) error
 }
+
+// CTARepository handles CTA (Call-to-Action) data operations
+type CTARepository interface {
+	GetUserCTAs(ctx context.Context, userID string, filters map[string]interface{}) ([]models.CTA, error)
+	GetCTAByID(ctx context.Context, ctaID, userID string) (*models.CTA, error)
+	GetCTAsByIDs(ctx context.Context, ctaIDs []string, userID string) ([]models.CTA, error)
+	CreateCTA(ctx context.Context, userID string, data *models.CTA) (*models.CTA, error)
+	UpdateCTA(ctx context.Context, ctaID, userID string, updates map[string]interface{}) error
+	DeleteCTA(ctx context.Context, ctaID, userID string) error
+}

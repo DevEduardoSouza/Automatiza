@@ -406,6 +406,11 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 		proto.Ctas = a.CTAs
 	}
 
+	// CTA entity IDs
+	if len(a.CTAIDs) > 0 {
+		proto.CtaIds = a.CTAIDs
+	}
+
 	if a.LastRunAt != nil {
 		proto.LastRunAt = a.LastRunAt
 	}
@@ -701,6 +706,11 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.CTAs = msg.GetCtas()
 	}
 
+	// CTA entity IDs
+	if len(msg.GetCtaIds()) > 0 {
+		automation.CTAIDs = msg.GetCtaIds()
+	}
+
 	if msg.DelaySeconds != nil {
 		delay := int(msg.GetDelaySeconds())
 		automation.DelaySeconds = &delay
@@ -805,6 +815,11 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 	// Handle CTAs
 	if msg.Ctas != nil {
 		updates["ctas"] = msg.GetCtas()
+	}
+
+	// CTA entity IDs
+	if msg.CtaIds != nil {
+		updates["cta_ids"] = msg.GetCtaIds()
 	}
 
 	// Priority and filter types

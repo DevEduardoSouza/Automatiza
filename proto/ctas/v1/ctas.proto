@@ -1,0 +1,159 @@
+syntax = "proto3";
+
+package ctas.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/automatiza/proto/ctas/v1;ctasv1";
+
+/**
+ * Platform defines the affiliate platform a CTA applies to.
+ */
+enum Platform {
+  PLATFORM_UNSPECIFIED = 0;
+  PLATFORM_ALL = 1;
+  PLATFORM_SHOPEE = 2;
+  PLATFORM_MERCADO_LIVRE = 3;
+}
+
+/**
+ * CTAType defines the type of CTA.
+ */
+enum CTAType {
+  CTA_TYPE_UNSPECIFIED = 0;
+  CTA_TYPE_ALL = 1;
+  CTA_TYPE_NORMAL = 2;
+  CTA_TYPE_DISCOUNT = 3;
+}
+
+/**
+ * CTA represents a call-to-action text for affiliate marketing.
+ */
+message CTA {
+  // Unique identifier
+  string id = 1;
+
+  // User who owns this CTA
+  string user_id = 2;
+
+  // CTA message text
+  string message = 3;
+
+  // Target platform
+  Platform platform = 4;
+
+  // CTA type
+  CTAType cta_type = 5;
+
+  // Whether the CTA is active
+  bool is_active = 6;
+
+  // Creation timestamp (ISO 8601)
+  string created_at = 7;
+
+  // Last update timestamp (ISO 8601)
+  string updated_at = 8;
+}
+
+/**
+ * CTAFilter defines filters for listing CTAs.
+ */
+message CTAFilter {
+  // Filter by platform
+  optional Platform platform = 1;
+
+  // Filter by CTA type
+  optional CTAType cta_type = 2;
+
+  // Filter by active status
+  optional bool is_active = 3;
+}
+
+// ============================================================
+// List CTAs
+// ============================================================
+
+message ListCTAsRequest {
+  // Optional filters
+  optional CTAFilter filter = 1;
+}
+
+message ListCTAsResponse {
+  repeated CTA ctas = 1;
+}
+
+// ============================================================
+// Get CTA
+// ============================================================
+
+message GetCTARequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetCTAResponse {
+  CTA cta = 1;
+}
+
+// ============================================================
+// Create CTA
+// ============================================================
+
+message CreateCTARequest {
+  string message = 1 [(buf.validate.field).string = {min_len: 1, max_len: 2000}];
+  Platform platform = 2;
+  CTAType cta_type = 3;
+}
+
+message CreateCTAResponse {
+  CTA cta = 1;
+}
+
+// ============================================================
+// Update CTA
+// ============================================================
+
+message UpdateCTARequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  optional string message = 2 [(buf.validate.field).string.max_len = 2000];
+  optional Platform platform = 3;
+  optional CTAType cta_type = 4;
+  optional bool is_active = 5;
+}
+
+message UpdateCTAResponse {
+  CTA cta = 1;
+}
+
+// ============================================================
+// Delete CTA
+// ============================================================
+
+message DeleteCTARequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteCTAResponse {}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+/**
+ * CTAsService provides operations for managing call-to-action texts.
+ */
+service CTAsService {
+  // Lists all CTAs for the authenticated user with optional filters.
+  rpc ListCTAs(ListCTAsRequest) returns (ListCTAsResponse);
+
+  // Gets a specific CTA by ID.
+  rpc GetCTA(GetCTARequest) returns (GetCTAResponse);
+
+  // Creates a new CTA.
+  rpc CreateCTA(CreateCTARequest) returns (CreateCTAResponse);
+
+  // Updates an existing CTA.
+  rpc UpdateCTA(UpdateCTARequest) returns (UpdateCTAResponse);
+
+  // Deletes a CTA.
+  rpc DeleteCTA(DeleteCTARequest) returns (DeleteCTAResponse);
+}

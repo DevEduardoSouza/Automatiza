@@ -1,0 +1,2 @@
+ALTER TABLE automations DROP COLUMN IF EXISTS cta_ids;
+DROP TABLE IF EXISTS ctas;

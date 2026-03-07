@@ -1428,6 +1428,67 @@
         "deleteItem": "Excluir {{name}}"
       }
     },
+    "ctas": {
+      "title": "CTAs",
+      "subtitle": "Gerencie suas chamadas para ação (CTAs) que serão anexadas às mensagens",
+      "newCTA": "Novo CTA",
+      "editTitle": "Editar CTA",
+      "createTitle": "Novo CTA",
+      "form": {
+        "platform": "Plataforma",
+        "ctaType": "Tipo",
+        "active": "Ativo",
+        "activeHint": "CTAs inativos não serão usados nas mensagens",
+        "message": "Mensagem do CTA",
+        "messagePlaceholder": "Ex: Aproveite essa oferta incrível! Clique no link acima para garantir o seu."
+      },
+      "platforms": {
+        "all": "Todas",
+        "shopee": "Shopee",
+        "ml": "Mercado Livre"
+      },
+      "types": {
+        "all": "Todos",
+        "normal": "Normal",
+        "discount": "Com desconto"
+      },
+      "filters": {
+        "platform": "Plataforma",
+        "type": "Tipo",
+        "status": "Status"
+      },
+      "status": {
+        "all": "Todos",
+        "active": "Ativos",
+        "inactive": "Inativos"
+      },
+      "table": {
+        "title": "Seus CTAs",
+        "description": "CTAs cadastrados para uso nas automações"
+      },
+      "preview": {
+        "title": "Pré-visualização",
+        "empty": "Digite uma mensagem para ver a pré-visualização"
+      },
+      "empty": "Nenhum CTA encontrado. Crie seu primeiro CTA!",
+      "confirmDeleteTitle": "Excluir CTA",
+      "confirmDeleteDescription": "Tem certeza que deseja excluir este CTA? Esta ação não pode ser desfeita.",
+      "howItWorks": {
+        "title": "Como funciona?",
+        "description": "CTAs são mensagens adicionadas ao final de cada oferta enviada. Quando a automação roda, um CTA é sorteado aleatoriamente entre os selecionados.",
+        "platforms": "Use filtro por plataforma para direcionar CTAs por loja (Shopee, Mercado Livre ou todas)",
+        "types": "Tipos permitem separar CTAs normais dos voltados para ofertas com desconto",
+        "automations": "Selecione os CTAs desejados na configuração de cada automação"
+      },
+      "success": {
+        "created": "CTA criado com sucesso!",
+        "updated": "CTA atualizado com sucesso!",
+        "deleted": "CTA excluído com sucesso!"
+      },
+      "errors": {
+        "messageRequired": "A mensagem do CTA é obrigatória"
+      }
+    },
     "coupons": {
       "title": "Cupons",
       "subtitle": "Gerencie seus cupons de desconto",
@@ -1517,6 +1578,65 @@
         "codeRequired": "O código do cupom é obrigatório.",
         "titleRequired": "A descrição do cupom é obrigatória.",
         "storeRequired": "Selecione uma loja."
+      }
+    },
+    "ctas": {
+      "title": "CTAs",
+      "subtitle": "Gerencie seus textos de chamada para ação",
+      "newCTA": "Novo CTA",
+      "editTitle": "Editar CTA",
+      "createTitle": "Novo CTA",
+      "form": {
+        "message": "Mensagem",
+        "messagePlaceholder": "Digite o texto do CTA...",
+        "platform": "Plataforma",
+        "ctaType": "Tipo de CTA",
+        "active": "Ativo",
+        "activeHint": "CTAs inativos não serão usados nas automações"
+      },
+      "platforms": {
+        "all": "Todas",
+        "shopee": "Shopee",
+        "ml": "Mercado Livre"
+      },
+      "types": {
+        "all": "Todos",
+        "normal": "Normal",
+        "discount": "Com desconto"
+      },
+      "filters": {
+        "platform": "Plataforma",
+        "type": "Tipo",
+        "status": "Status"
+      },
+      "table": {
+        "title": "Meus CTAs",
+        "description": "Gerencie seus textos de chamada para ação"
+      },
+      "preview": {
+        "title": "Preview WhatsApp",
+        "empty": "Digite uma mensagem para visualizar o preview..."
+      },
+      "empty": "Você ainda não criou nenhum CTA.",
+      "confirmDeleteTitle": "Excluir CTA",
+      "confirmDeleteDescription": "Tem certeza que deseja excluir este CTA? Esta ação não pode ser desfeita.",
+      "howItWorks": {
+        "title": "Como funciona",
+        "description": "CTAs (Call-to-Action) são textos de chamada para ação usados nas automações para engajar os usuários.",
+        "platforms": "Defina CTAs específicos para cada plataforma (Shopee, Mercado Livre) ou para todas.",
+        "types": "Separe CTAs normais dos CTAs com desconto para enviar a mensagem certa em cada situação.",
+        "automations": "Vincule CTAs às automações para que sejam selecionados automaticamente no envio."
+      },
+      "success": {
+        "created": "CTA criado com sucesso",
+        "updated": "CTA atualizado com sucesso",
+        "deleted": "CTA excluído com sucesso"
+      },
+      "errors": {
+        "notFound": "CTA não encontrado.",
+        "createFailed": "Erro ao criar CTA.",
+        "updateFailed": "Erro ao atualizar CTA.",
+        "messageRequired": "A mensagem do CTA é obrigatória."
       }
     },
     "contactExtractor": {
@@ -2092,6 +2212,9 @@
         "couponHint": "Selecione um cupom para incluir nas ofertas enviadas",
         "couponActive": "O cupom será incluído automaticamente nas mensagens de ofertas",
         "noCoupon": "Nenhum cupom",
+        "ctas": "CTAs - Chamadas para Ação (Opcional)",
+        "ctasHint": "Selecione os CTAs que serão usados nas mensagens desta automação",
+        "ctasSelected": "{{count}} CTA(s) selecionado(s)",
         "active": "Ativa",
         "startTime": "Horário de Início",
         "endTime": "Horário de Término",
@@ -3442,6 +3565,7 @@
     "linkLists": "Listas de links",
     "dispatchTexts": "Textos de Disparo",
     "affiliatePrograms": "Programas de Afiliado",
+    "ctas": "CTAs",
     "coupons": "Cupons",
     "automationLogs": "Logs de Automações",
     "history": "Histórico",

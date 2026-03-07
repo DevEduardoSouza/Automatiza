@@ -55,8 +55,11 @@ type Automation struct {
 	PriorityType *string `json:"priority_type,omitempty" db:"priority_type"` // "discount" | "price" | "commission"
 	FilterType   *string `json:"filter_type,omitempty" db:"filter_type"`     // "light" | "heavy"
 
-	// Call-to-action texts
+	// Call-to-action texts (inline, legacy)
 	CTAs []string `json:"ctas,omitempty" db:"ctas"`
+
+	// CTA entity IDs (references ctas table)
+	CTAIDs []string `json:"cta_ids,omitempty" db:"cta_ids"`
 
 	// Search keywords (multiple)
 	Texts []string `json:"texts,omitempty" db:"texts"`

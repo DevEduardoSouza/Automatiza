@@ -499,6 +499,8 @@ type Automation struct {
 	LastError *string `protobuf:"bytes,23,opt,name=last_error,json=lastError,proto3,oneof" json:"last_error,omitempty"`
 	// Timestamp of the last error
 	LastErrorAt *timestamppb.Timestamp `protobuf:"bytes,29,opt,name=last_error_at,json=lastErrorAt,proto3,oneof" json:"last_error_at,omitempty"`
+	// CTA entity IDs referenced by this automation
+	CtaIds []string `protobuf:"bytes,30,rep,name=cta_ids,json=ctaIds,proto3" json:"cta_ids,omitempty"`
 	// Delay between sending messages in seconds
 	DelaySeconds *int32 `protobuf:"varint,24,opt,name=delay_seconds,json=delaySeconds,proto3,oneof" json:"delay_seconds,omitempty"`
 	// Associated coupon ID
@@ -707,6 +709,13 @@ func (x *Automation) GetLastError() string {
 func (x *Automation) GetLastErrorAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.LastErrorAt
+	}
+	return nil
+}
+
+func (x *Automation) GetCtaIds() []string {
+	if x != nil {
+		return x.CtaIds
 	}
 	return nil
 }
@@ -1115,6 +1124,7 @@ type CreateAutomationRequest struct {
 	MlLinkListId        *string                `protobuf:"bytes,22,opt,name=ml_link_list_id,json=mlLinkListId,proto3,oneof" json:"ml_link_list_id,omitempty"`
 	ListItemsPerRun     *int32                 `protobuf:"varint,23,opt,name=list_items_per_run,json=listItemsPerRun,proto3,oneof" json:"list_items_per_run,omitempty"`
 	ListIncludeImage    *bool                  `protobuf:"varint,24,opt,name=list_include_image,json=listIncludeImage,proto3,oneof" json:"list_include_image,omitempty"`
+	CtaIds              []string               `protobuf:"bytes,25,rep,name=cta_ids,json=ctaIds,proto3" json:"cta_ids,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1317,6 +1327,13 @@ func (x *CreateAutomationRequest) GetListIncludeImage() bool {
 	return false
 }
 
+func (x *CreateAutomationRequest) GetCtaIds() []string {
+	if x != nil {
+		return x.CtaIds
+	}
+	return nil
+}
+
 type CreateAutomationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Automation    *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
@@ -1388,6 +1405,7 @@ type UpdateAutomationRequest struct {
 	MlLinkListId        *string                `protobuf:"bytes,23,opt,name=ml_link_list_id,json=mlLinkListId,proto3,oneof" json:"ml_link_list_id,omitempty"`
 	ListItemsPerRun     *int32                 `protobuf:"varint,24,opt,name=list_items_per_run,json=listItemsPerRun,proto3,oneof" json:"list_items_per_run,omitempty"`
 	ListIncludeImage    *bool                  `protobuf:"varint,25,opt,name=list_include_image,json=listIncludeImage,proto3,oneof" json:"list_include_image,omitempty"`
+	CtaIds              []string               `protobuf:"bytes,26,rep,name=cta_ids,json=ctaIds,proto3" json:"cta_ids,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1595,6 +1613,13 @@ func (x *UpdateAutomationRequest) GetListIncludeImage() bool {
 		return *x.ListIncludeImage
 	}
 	return false
+}
+
+func (x *UpdateAutomationRequest) GetCtaIds() []string {
+	if x != nil {
+		return x.CtaIds
+	}
+	return nil
 }
 
 type UpdateAutomationResponse struct {
@@ -2388,7 +2413,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x16\n" +
 	"\x06suffix\x18\x04 \x01(\tR\x06suffix\x12!\n" +
 	"\fclean_phones\x18\x05 \x01(\bR\vcleanPhones\x12%\n" +
-	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xc8\v\n" +
+	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xe1\v\n" +
 	"\n" +
 	"Automation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -2421,7 +2446,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x06status\x18\x16 \x01(\x0e2 .automations.v1.AutomationStatusR\x06status\x12\"\n" +
 	"\n" +
 	"last_error\x18\x17 \x01(\tH\aR\tlastError\x88\x01\x01\x12C\n" +
-	"\rlast_error_at\x18\x1d \x01(\v2\x1a.google.protobuf.TimestampH\bR\vlastErrorAt\x88\x01\x01\x12(\n" +
+	"\rlast_error_at\x18\x1d \x01(\v2\x1a.google.protobuf.TimestampH\bR\vlastErrorAt\x88\x01\x01\x12\x17\n" +
+	"\acta_ids\x18\x1e \x03(\tR\x06ctaIds\x12(\n" +
 	"\rdelay_seconds\x18\x18 \x01(\x05H\tR\fdelaySeconds\x88\x01\x01\x12 \n" +
 	"\tcoupon_id\x18\x19 \x01(\tH\n" +
 	"R\bcouponId\x88\x01\x01\x12*\n" +
@@ -2473,7 +2499,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x15GetAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xf8\t\n" +
+	"automation\"\x91\n" +
+	"\n" +
 	"\x17CreateAutomationRequest\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x04name\x122\n" +
@@ -2505,7 +2532,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\tcoupon_id\x18\x15 \x01(\tH\x06R\bcouponId\x88\x01\x01\x12*\n" +
 	"\x0fml_link_list_id\x18\x16 \x01(\tH\aR\fmlLinkListId\x88\x01\x01\x120\n" +
 	"\x12list_items_per_run\x18\x17 \x01(\x05H\bR\x0flistItemsPerRun\x88\x01\x01\x121\n" +
-	"\x12list_include_image\x18\x18 \x01(\bH\tR\x10listIncludeImage\x88\x01\x01B\x13\n" +
+	"\x12list_include_image\x18\x18 \x01(\bH\tR\x10listIncludeImage\x88\x01\x01\x12\x17\n" +
+	"\acta_ids\x18\x19 \x03(\tR\x06ctaIdsB\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
 	"\x16_monitoring_text_rulesB\x0f\n" +
 	"\r_min_discountB\f\n" +
@@ -2522,7 +2550,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x18CreateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\x87\v\n" +
+	"automation\"\xa0\v\n" +
 	"\x17UpdateAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
 	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x127\n" +
@@ -2555,7 +2583,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\tcoupon_id\x18\x16 \x01(\tH\x0eR\bcouponId\x88\x01\x01\x12*\n" +
 	"\x0fml_link_list_id\x18\x17 \x01(\tH\x0fR\fmlLinkListId\x88\x01\x01\x120\n" +
 	"\x12list_items_per_run\x18\x18 \x01(\x05H\x10R\x0flistItemsPerRun\x88\x01\x01\x121\n" +
-	"\x12list_include_image\x18\x19 \x01(\bH\x11R\x10listIncludeImage\x88\x01\x01B\a\n" +
+	"\x12list_include_image\x18\x19 \x01(\bH\x11R\x10listIncludeImage\x88\x01\x01\x12\x17\n" +
+	"\acta_ids\x18\x1a \x03(\tR\x06ctaIdsB\a\n" +
 	"\x05_nameB\a\n" +
 	"\x05_modeB\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +

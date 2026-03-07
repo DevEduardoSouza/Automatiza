@@ -50,6 +50,7 @@ const Auth = lazyWithRetry(() => import('./pages/auth'));
 const AuthMagic = lazyWithRetry(() => import('./pages/auth-magic'));
 const AutomationLogs = lazyWithRetry(() => import('./pages/automation-logs'));
 const Coupons = lazyWithRetry(() => import('./pages/coupons'));
+const CTAs = lazyWithRetry(() => import('./pages/ctas'));
 const Dashboard = lazyWithRetry(() => import('./pages/dashboard'));
 const DispatchTexts = lazyWithRetry(() => import('./pages/dispatch-texts'));
 const ForgotPassword = lazyWithRetry(() => import('./pages/forgot-password'));
@@ -219,6 +220,17 @@ const App = () => (
                         <ProtectedRoute>
                           <AppLayout>
                             <AffiliatePrograms />
+                          </AppLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/ctas"
+                      element={
+                        <ProtectedRoute>
+                          <AppLayout>
+                            <CTAs />
                           </AppLayout>
                         </ProtectedRoute>
                       }
