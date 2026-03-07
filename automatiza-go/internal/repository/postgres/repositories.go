@@ -16,6 +16,7 @@ type Repositories struct {
 	ActionHistory      repository.ActionHistoryRepository
 	ScheduledJob       repository.ScheduledJobRepository
 	Job                repository.JobRepository
+	CTA                repository.CTARepository
 	Coupon             repository.CouponRepository
 	Affiliate          repository.AffiliateCredentialsRepository
 	MLCredentials      repository.MLCredentialsRepository
@@ -51,6 +52,7 @@ func NewRepositories(db *DB, logger *zap.Logger) *Repositories {
 		ActionHistory:      NewActionHistoryRepository(db, logger),
 		ScheduledJob:       NewScheduledJobRepository(db, logger),
 		Job:                NewJobRepository(db, logger),
+		CTA:                NewCTARepository(db, logger),
 		Coupon:             NewCouponRepository(db, logger),
 		Affiliate:          NewAffiliateCredentialsRepository(db, logger),
 		MLCredentials:      NewMLCredentialsRepository(db, logger),

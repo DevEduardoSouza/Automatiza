@@ -20,12 +20,13 @@ import (
 	"automatiza-go/internal/connectrpc"
 	"automatiza-go/internal/gen/admin/v1/adminv1connect"
 	"automatiza-go/internal/gen/affiliates/v1/affiliatesv1connect"
+	aiv1connect "automatiza-go/internal/gen/ai/v1/aiv1connect"
 	"automatiza-go/internal/gen/auth/v1/authv1connect"
 	"automatiza-go/internal/gen/automations/v1/automationsv1connect"
 	"automatiza-go/internal/gen/coupons/v1/couponsv1connect"
+	"automatiza-go/internal/gen/ctas/v1/ctasv1connect"
 	"automatiza-go/internal/gen/dashboard/v1/dashboardv1connect"
 	dispatchtextsv1connect "automatiza-go/internal/gen/dispatch_texts/v1/dispatch_textsv1connect"
-	"automatiza-go/internal/gen/whatsapp/v1/whatsappv1connect"
 	"automatiza-go/internal/gen/groups/v1/groupsv1connect"
 	"automatiza-go/internal/gen/history/v1/historyv1connect"
 	"automatiza-go/internal/gen/instances/v1/instancesv1connect"
@@ -33,10 +34,10 @@ import (
 	mllinksv1connect "automatiza-go/internal/gen/ml_links/v1/ml_linksv1connect"
 	"automatiza-go/internal/gen/plans/v1/plansv1connect"
 	"automatiza-go/internal/gen/profiles/v1/profilesv1connect"
-	aiv1connect "automatiza-go/internal/gen/ai/v1/aiv1connect"
 	redirectv1connect "automatiza-go/internal/gen/redirect/v1/redirectv1connect"
 	"automatiza-go/internal/gen/settings/v1/settingsv1connect"
 	"automatiza-go/internal/gen/webhooks/v1/webhooksv1connect"
+	"automatiza-go/internal/gen/whatsapp/v1/whatsappv1connect"
 	"automatiza-go/internal/handlers"
 	"automatiza-go/internal/lib/backpressure"
 	"automatiza-go/internal/lib/cache"
@@ -49,6 +50,7 @@ import (
 	"automatiza-go/internal/services/automation"
 	"automatiza-go/internal/services/coupons"
 	"automatiza-go/internal/services/cron"
+	"automatiza-go/internal/services/ctas"
 	"automatiza-go/internal/services/dashboard"
 	"automatiza-go/internal/services/email"
 	"automatiza-go/internal/services/jobs"
@@ -283,6 +285,7 @@ func main() {
 	automationRepo := repos.Automation
 	actionHistoryRepo := repos.ActionHistory
 	settingsRepo := repos.Settings
+	ctaRepo := repos.CTA
 	couponRepo := repos.Coupon
 	dispatchLogRepo := repos.DispatchLog
 	scheduledJobRepo := repos.ScheduledJob
@@ -414,6 +417,12 @@ func main() {
 		config.NewModuleLogger(logger, "coupons"),
 	)
 
+	ctasService := ctas.NewCTAsService(
+		ctaRepo,
+		cacheClient,
+		config.NewModuleLogger(logger, "ctas"),
+	)
+
 	automationService := automation.NewAutomationService(
 		automationRepo,
 		repos.AutomationRun,
@@ -424,6 +433,7 @@ func main() {
 		settingsRepo,
 		profileRepo,
 		repos.MlLinkListItem,
+		ctaRepo,
 		shopeeService,
 		mlService,
 		urlSafetyService,
@@ -632,7 +642,7 @@ func main() {
 		Redis:           redisClientForAuth,
 		CookieConfig:    cookieConfig,
 		EmailService:    emailService,
-		PublicBaseURL:    cfg.PublicBaseURL,
+		PublicBaseURL:   cfg.PublicBaseURL,
 		Logger:          config.NewModuleLogger(logger, "auth"),
 		RateLimitConfig: rateLimitConfig,
 	})
@@ -829,6 +839,14 @@ func main() {
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
 	)
 	connectServer.RegisterService(couponsPath, couponsHTTPHandler)
+
+	// Register CTAs service handler (requires auth)
+	ctasHandler := connectrpc.NewCTAsHandler(ctasService)
+	ctasPath, ctasHTTPHandler := ctasv1connect.NewCTAsServiceHandler(
+		ctasHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(ctasPath, ctasHTTPHandler)
 
 	// Register admin service handler (requires auth + admin role)
 	adminHandler := connectrpc.NewAdminHandler(

@@ -65,6 +65,7 @@ type automationService struct {
 	settingsRepo       repository.SettingsRepository
 	profileRepo        repository.ProfileRepository
 	mlLinkListItemRepo repository.MlLinkListItemRepository
+	ctaRepo            repository.CTARepository
 
 	shopeeService    shopee.Service
 	mlService        mercadolivre.Service
@@ -91,6 +92,7 @@ func NewAutomationService(
 	settingsRepo repository.SettingsRepository,
 	profileRepo repository.ProfileRepository,
 	mlLinkListItemRepo repository.MlLinkListItemRepository,
+	ctaRepo repository.CTARepository,
 	shopeeService shopee.Service,
 	mlService mercadolivre.Service,
 	urlSafetyService *urlsafety.Service,
@@ -109,6 +111,7 @@ func NewAutomationService(
 		settingsRepo:       settingsRepo,
 		profileRepo:        profileRepo,
 		mlLinkListItemRepo: mlLinkListItemRepo,
+		ctaRepo:            ctaRepo,
 		shopeeService:      shopeeService,
 		mlService:          mlService,
 		queueClient:        queueClient,
@@ -503,11 +506,25 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		stores = []string{"shopee"}
 	}
 
+	// Pre-fetch CTA entities if automation references cta_ids
+	var ctaEntities []models.CTA
+	if s.ctaRepo != nil && len(automation.CTAIDs) > 0 {
+		fetched, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, automation.CTAIDs, automation.UserID)
+		if ctaErr != nil {
+			s.logger.Warn("Failed to fetch CTA entities, falling back to inline CTAs",
+				zap.String("automationID", automation.ID),
+				zap.Error(ctaErr))
+		} else {
+			ctaEntities = fetched
+		}
+	}
+
 	s.logger.Info("Search automation setup complete",
 		zap.String("automationID", automation.ID),
 		zap.Int("targetGroups", len(targetGroups)),
 		zap.String("instanceID", connectedInstance.InstanceID),
-		zap.Strings("stores", stores))
+		zap.Strings("stores", stores),
+		zap.Int("ctaEntities", len(ctaEntities)))
 
 	// Build keywords list: prefer Texts array, fallback to single Keyword
 	keywords := automation.Texts
@@ -801,7 +818,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				selectedCopy := dispatchCopies[copyIndex]
 
 				// Build message from selected copy
-				message := s.buildOfferMessage(selectedCopy, &offer, automation)
+				message := s.buildOfferMessage(selectedCopy, &offer, automation, ctaEntities)
 
 				s.logger.Debug("Message built for offer",
 					zap.String("automationID", automation.ID),
@@ -915,11 +932,13 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 	}, nil
 }
 
-func (s *automationService) buildOfferMessage(template string, offer *models.ShopeeOffer, automation *models.Automation) string {
-	// Select random CTA if available
+func (s *automationService) buildOfferMessage(template string, offer *models.ShopeeOffer, automation *models.Automation, ctaEntities []models.CTA) string {
+	// Select random CTA: prefer CTA entities, fallback to inline CTAs
 	cta := ""
-	if len(automation.CTAs) > 0 {
-		cta = automation.CTAs[rand.IntN(len(automation.CTAs))]
+	if len(ctaEntities) > 0 {
+		cta = ctaEntities[rand.IntN(len(ctaEntities))].Message //nolint:gosec // G404: non-security random for CTA selection
+	} else if len(automation.CTAs) > 0 {
+		cta = automation.CTAs[rand.IntN(len(automation.CTAs))] //nolint:gosec // G404: non-security random for CTA selection
 	}
 
 	// Build coupon info

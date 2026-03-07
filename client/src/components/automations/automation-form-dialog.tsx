@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { RefinementState } from '@/hooks/use-automations';
+import type { CTA } from '@/entities/cta';
 import type {
   Automation,
   AutomationCoupon,
@@ -22,6 +23,7 @@ import { AlertCircle, Info, Plus, Save } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import {
+  CTASelector,
   CategoriesSection,
   CouponSelector,
   DispatchTextSelector,
@@ -49,6 +51,7 @@ interface AutomationFormDialogProps {
   allGroups: AutomationGroup[];
   activeStores: StoreKey[];
   availableCoupons: AutomationCoupon[];
+  availableCTAs: CTA[];
   dispatchTexts: DispatchText[];
   mlLinkLists: MlLinkList[];
   loadingMlLinkLists: boolean;
@@ -76,6 +79,7 @@ export function AutomationFormDialog({
   allGroups,
   activeStores,
   availableCoupons,
+  availableCTAs,
   dispatchTexts,
   mlLinkLists,
   loadingMlLinkLists,
@@ -273,6 +277,15 @@ export function AutomationFormDialog({
             setFormData={setFormData}
             availableCoupons={availableCoupons}
           />
+
+          {/* CTA Selection (search + list mode) */}
+          {formData.mode !== 'monitor' && (
+            <CTASelector
+              formData={formData}
+              setFormData={setFormData}
+              availableCTAs={availableCTAs}
+            />
+          )}
 
           {/* Categories (only for search mode) */}
           {formData.mode === 'search' && (

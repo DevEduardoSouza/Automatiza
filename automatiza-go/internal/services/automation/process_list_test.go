@@ -688,6 +688,7 @@ func TestProcessListMode_EdgeCases(t *testing.T) {
 				deps.settingsRepo,
 				deps.profileRepo,
 				deps.mlLinkListItemRepo,
+				nil, // ctaRepo
 				deps.shopeeService,
 				deps.mlService,
 				nil, nil, nil, nil,

@@ -22,6 +22,7 @@ import {
   useAutomationsConnect,
 } from '@/hooks/use-automations-connect';
 import { useCoupons } from '@/hooks/use-coupons';
+import { useCTAsConnect } from '@/hooks/use-ctas-connect';
 import { useDispatchTextsConnect } from '@/hooks/use-dispatch-texts-connect';
 import { useGroupsConnect } from '@/hooks/use-groups-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
@@ -30,6 +31,7 @@ import { useProfilesConnect } from '@/hooks/use-profiles-connect';
 import { useShopeeConnect } from '@/hooks/use-shopee-connect';
 import { useToast } from '@/hooks/use-toast';
 import { captureHookError } from '@/lib/sentry';
+import type { CTA } from '@/entities/cta';
 import type {
   Automation,
   AutomationCoupon,
@@ -98,6 +100,7 @@ export interface UseAutomationsReturn {
   monitorDelayUnit: 'seconds' | 'minutes';
   monitorDelayInput: string;
   availableCoupons: AutomationCoupon[];
+  availableCTAs: CTA[];
   dispatchTexts: DispatchText[];
   mlLinkLists: MlLinkList[];
   loadingMlLinkLists: boolean;
@@ -216,6 +219,7 @@ export function useAutomations(): UseAutomationsReturn {
   const instancesConnect = useInstancesConnect();
   const affiliateCredentialsConnect = useAffiliateCredentialsConnect();
   const { coupons: allCoupons } = useCoupons();
+  const ctasConnect = useCTAsConnect();
   const { searchOffers } = useShopeeConnect();
   const { suggestOfferText } = useAiToolsConnect();
 
@@ -328,6 +332,12 @@ export function useAutomations(): UseAutomationsReturn {
           is_active: dt.is_active,
         })),
     [dispatchTextsConnect.dispatchTexts]
+  );
+
+  // CTAs from ConnectRPC (only active CTAs available for selection)
+  const availableCTAs: CTA[] = useMemo(
+    () => ctasConnect.ctas.filter((cta) => cta.is_active),
+    [ctasConnect.ctas]
   );
 
   // ML Link Lists from ConnectRPC
@@ -1044,6 +1054,7 @@ export function useAutomations(): UseAutomationsReturn {
     monitorDelayUnit,
     monitorDelayInput,
     availableCoupons,
+    availableCTAs,
     dispatchTexts,
     mlLinkLists,
     loadingMlLinkLists,

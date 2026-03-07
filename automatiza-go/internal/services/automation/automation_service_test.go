@@ -904,6 +904,7 @@ func newTestService(t *testing.T) (automation.Service, *testServiceDeps) {
 		deps.settingsRepo,
 		deps.profileRepo,
 		deps.mlLinkListItemRepo,
+		nil, // ctaRepo
 		deps.shopeeService,
 		deps.mlService,
 		nil, // urlSafetyService
@@ -2074,6 +2075,7 @@ func TestNewAutomationService_WithNonNilDependencies(t *testing.T) {
 
 	svc := automation.NewAutomationService(
 		nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, // ctaRepo
 		nil, nil,
 		usSvc, bpSvc,
 		nil, nil,

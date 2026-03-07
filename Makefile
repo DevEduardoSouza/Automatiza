@@ -56,13 +56,11 @@ help: ## Show this help message
 # =============================================================================
 
 dev: db-up db-wait waha-up ## Start all services (DB + WAHA + Backend + Worker + Frontend)
-	@echo "$(GREEN)Starting backend...$(RESET)"
-	@cd automatiza-go && go run ./cmd/server/main.go &
-	@sleep 2
-	@echo "$(GREEN)Starting worker...$(RESET)"
-	@cd automatiza-go && go run ./cmd/server/main.go -worker &
-	@sleep 1
-	@echo "$(GREEN)Starting frontend...$(RESET)"
+	@echo "$(GREEN)Starting backend + worker + frontend...$(RESET)"
+	@echo "$(CYAN)Backend: http://localhost:3000$(RESET)"
+	@echo "$(CYAN)Frontend: http://localhost:5173$(RESET)"
+	@start /B cmd /c "cd automatiza-go && go run ./cmd/server/main.go"
+	@start /B cmd /c "cd automatiza-go && go run ./cmd/server/main.go -worker"
 	@cd client && npm run dev
 
 dev-client: ## Start frontend only
@@ -78,13 +76,9 @@ dev-worker: ## Start Go worker only
 	@cd automatiza-go && go run ./cmd/server/main.go -worker
 
 dev-all: db-up waha-up ## Start everything (DB + WAHA + Backend + Worker + Frontend)
-	@echo "$(GREEN)Starting backend...$(RESET)"
-	@cd automatiza-go && go run ./cmd/server/main.go &
-	@sleep 2
-	@echo "$(GREEN)Starting worker...$(RESET)"
-	@cd automatiza-go && go run ./cmd/server/main.go -worker &
-	@sleep 1
-	@echo "$(GREEN)Starting frontend...$(RESET)"
+	@echo "$(GREEN)Starting backend + worker + frontend...$(RESET)"
+	@start /B cmd /c "cd automatiza-go && go run ./cmd/server/main.go"
+	@start /B cmd /c "cd automatiza-go && go run ./cmd/server/main.go -worker"
 	@cd client && npm run dev
 
 # =============================================================================
@@ -96,12 +90,9 @@ db-up: ## Start PostgreSQL + Redis
 	@cd automatiza-go && docker compose up -d postgres redis
 
 db-wait: ## Wait for PostgreSQL to accept connections
-	@printf "$(YELLOW)Waiting for PostgreSQL..."
-	@cd automatiza-go && until docker compose exec -T postgres pg_isready -U $${POSTGRES_USER:-automatiza} -d $${POSTGRES_DB:-automatiza} > /dev/null 2>&1; do \
-		printf "."; \
-		sleep 1; \
-	done
-	@echo " ready!$(RESET)"
+	@echo "$(YELLOW)Waiting for PostgreSQL...$(RESET)"
+	@cd automatiza-go && docker compose exec -T postgres sh -c 'until pg_isready -U $${POSTGRES_USER:-automatiza} -d $${POSTGRES_DB:-automatiza} > /dev/null 2>&1; do sleep 1; done'
+	@echo "$(GREEN)PostgreSQL ready!$(RESET)"
 
 db-down: ## Stop PostgreSQL + Redis
 	@echo "$(YELLOW)Stopping database services...$(RESET)"
@@ -113,7 +104,7 @@ db-logs: ## Show PostgreSQL logs
 db-migrate: ## Run all pending migrations on existing database
 	@echo "$(GREEN)Running database migrations...$(RESET)"
 	@cd automatiza-go && docker compose up -d postgres
-	@sleep 2
+	@cd automatiza-go && docker compose exec -T postgres sh -c 'until pg_isready -U $${POSTGRES_USER:-automatiza} > /dev/null 2>&1; do sleep 1; done'
 	@cd automatiza-go && docker compose exec postgres sh -c \
 		'for f in /docker-entrypoint-initdb.d/migrations/*.sql; do \
 			case "$$f" in *rollback*|*.down.*) continue;; esac; \
@@ -127,7 +118,7 @@ db-reset: ## Reset database (DESTRUCTIVE - removes all data)
 	@cd automatiza-go && docker compose down -v
 	@cd automatiza-go && docker compose up -d postgres redis
 	@echo "$(GREEN)Database reset complete! Waiting for init...$(RESET)"
-	@sleep 5
+	@cd automatiza-go && docker compose exec -T postgres sh -c 'until pg_isready -U $${POSTGRES_USER:-automatiza} > /dev/null 2>&1; do sleep 1; done'
 
 db-shell: ## Open PostgreSQL shell
 	@cd automatiza-go && docker compose exec postgres psql -U $${POSTGRES_USER:-automatiza} -d $${POSTGRES_DB:-automatiza}

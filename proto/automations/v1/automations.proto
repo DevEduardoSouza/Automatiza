@@ -177,6 +177,9 @@ message Automation {
   // Timestamp of the last error
   optional google.protobuf.Timestamp last_error_at = 29;
 
+  // CTA entity IDs referenced by this automation
+  repeated string cta_ids = 30;
+
   // Delay between sending messages in seconds
   optional int32 delay_seconds = 24;
 
@@ -287,6 +290,7 @@ message CreateAutomationRequest {
   optional string ml_link_list_id = 22;
   optional int32 list_items_per_run = 23;
   optional bool list_include_image = 24;
+  repeated string cta_ids = 25;
 }
 
 message CreateAutomationResponse {
@@ -323,6 +327,7 @@ message UpdateAutomationRequest {
   optional string ml_link_list_id = 23;
   optional int32 list_items_per_run = 24;
   optional bool list_include_image = 25;
+  repeated string cta_ids = 26;
 }
 
 message UpdateAutomationResponse {

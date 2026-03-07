@@ -2692,7 +2692,7 @@ func TestBuildOfferMessage_WithCoupon(t *testing.T) {
 	}
 
 	template := "{{PRODUTO_NOME}}\n{{LINK_AFILIADO}}\n{{CTA}}"
-	message := svc.buildOfferMessage(template, offer, automation)
+	message := svc.buildOfferMessage(template, offer, automation, nil)
 	assert.Contains(t, message, "Product A")
 	assert.Contains(t, message, "https://s.shopee.com/aff1")
 }

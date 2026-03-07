@@ -80,6 +80,7 @@ export default function OfferAutomations() {
     monitorDelayUnit,
     monitorDelayInput,
     availableCoupons,
+    availableCTAs,
     dispatchTexts,
     mlLinkLists,
     loadingMlLinkLists,
@@ -209,6 +210,7 @@ export default function OfferAutomations() {
                 allGroups={allGroups}
                 activeStores={activeStores}
                 availableCoupons={availableCoupons}
+                availableCTAs={availableCTAs}
                 dispatchTexts={dispatchTexts}
                 mlLinkLists={mlLinkLists}
                 loadingMlLinkLists={loadingMlLinkLists}
