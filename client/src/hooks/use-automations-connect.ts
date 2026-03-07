@@ -82,6 +82,7 @@ export interface LocalAutomation {
   maxPrice?: number;
   texts: string[];
   ctas: string[];
+  ctaIds: string[];
   lastRunAt?: string;
   nextRunAt?: string;
   status: LocalAutomationStatus;
@@ -129,6 +130,7 @@ export interface CreateAutomationParams {
   maxPrice?: number;
   texts: string[];
   ctas: string[];
+  ctaIds: string[];
   status: LocalAutomationStatus;
   delaySeconds?: number;
   couponId?: string;
@@ -157,6 +159,7 @@ export interface UpdateAutomationParams {
   maxPrice?: number;
   texts?: string[];
   ctas?: string[];
+  ctaIds?: string[];
   status?: LocalAutomationStatus;
   delaySeconds?: number;
   couponId?: string;
@@ -355,6 +358,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     maxPrice: automation.maxPrice,
     texts: [...automation.texts],
     ctas: [...automation.ctas],
+    ctaIds: [...automation.ctaIds],
     lastRunAt: automation.lastRunAt,
     nextRunAt: automation.nextRunAt,
     status: fromProtoStatus(automation.status),
@@ -500,6 +504,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           maxPrice: params.maxPrice,
           texts: params.texts,
           ctas: params.ctas,
+          ctaIds: params.ctaIds,
           status: toProtoStatus(params.status),
           delaySeconds: params.delaySeconds,
           couponId: params.couponId,
@@ -566,6 +571,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           maxPrice: params.maxPrice,
           texts: params.texts ?? [],
           ctas: params.ctas ?? [],
+          ctaIds: params.ctaIds ?? [],
           status: params.status ? toProtoStatus(params.status) : undefined,
           delaySeconds: params.delaySeconds,
           couponId: params.couponId,
