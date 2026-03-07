@@ -121,6 +121,7 @@ func (r *ctaRepository) CreateCTA(ctx context.Context, userID string, data *mode
 	return data, nil
 }
 
+//nolint:dupl // similar pattern to coupon update but different entity
 func (r *ctaRepository) UpdateCTA(ctx context.Context, ctaID, userID string, updates map[string]interface{}) error {
 	if len(updates) == 0 {
 		return nil
