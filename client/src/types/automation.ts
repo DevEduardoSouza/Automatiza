@@ -51,6 +51,7 @@ export interface Automation {
   max_price?: number | null;
   texts: string[];
   ctas: string[];
+  cta_ids: string[];
   last_run_at?: string;
   next_run_at?: string;
   status: AutomationStatus;

@@ -14,13 +14,13 @@ interface CTASelectorProps {
 
 export function CTASelector({ formData, setFormData, availableCTAs }: CTASelectorProps) {
   const { t } = useTranslation();
-  const selectedIds = formData.ctas || [];
+  const selectedIds = formData.cta_ids || [];
 
   const handleToggle = (ctaId: string, checked: boolean) => {
     setFormData((prev) => {
-      const current = prev.ctas || [];
+      const current = prev.cta_ids || [];
       const next = checked ? [...current, ctaId] : current.filter((id) => id !== ctaId);
-      return { ...prev, ctas: next };
+      return { ...prev, cta_ids: next };
     });
   };
 
