@@ -1354,7 +1354,8 @@
         "originalPrice": "Preço original (37,90)",
         "originalPriceFormatted": "Preço original (R$ 37,90)",
         "affiliateLink": "Link afiliado",
-        "priceWarning": "Aviso padrão"
+        "priceWarning": "Aviso padrão",
+        "cta": "Call-to-Action (CTA)"
       },
       "alert": {
         "formatting": "Você pode usar formatação do WhatsApp: *negrito*, _itálico_, ~riscado~ e quebras de linha. Variáveis ficam entre chaves: {nome_produto}.",
@@ -1413,7 +1414,8 @@
         "originalPrice": "37,90",
         "originalPriceFormatted": "R$ 37,90",
         "affiliateLink": "https://s.shopee.com.br/806Bcl3ADX",
-        "priceWarning": "O preço e disponibilidade do produto podem variar. As promoções são por tempo limitado"
+        "priceWarning": "O preço e disponibilidade do produto podem variar. As promoções são por tempo limitado",
+        "cta": "🔥 Aproveite agora! Clique no link e garanta o seu!"
       },
       "copies": {
         "add": "Adicionar variação",
