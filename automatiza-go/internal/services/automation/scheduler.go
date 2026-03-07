@@ -171,5 +171,19 @@ func (s *Scheduler) isDueForExecution(automation *models.Automation, now time.Ti
 
 	// Check if next run time has passed
 	nextRunAt := lastRunAt.Add(time.Duration(intervalMinutes) * time.Minute)
-	return now.After(nextRunAt) || now.Equal(nextRunAt)
+	if !now.After(nextRunAt) && !now.Equal(nextRunAt) {
+		return false
+	}
+
+	// Defense in depth: also respect next_run_at if set.
+	// If next_run_at is in the future, the automation is not due yet
+	// (even if last_run_at suggests it is).
+	if automation.NextRunAt != nil && *automation.NextRunAt != "" {
+		nextScheduled, err := time.Parse(time.RFC3339, *automation.NextRunAt)
+		if err == nil && now.Before(nextScheduled) {
+			return false
+		}
+	}
+
+	return true
 }

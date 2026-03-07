@@ -350,12 +350,24 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 	// Release lock when done
 	defer func() { _ = s.releaseExecutionLock(ctx, automation.ID) }()
 
+	// Update last_run_at immediately after lock to prevent double-trigger.
+	// Uses independent context so it doesn't fail on cron batch timeout.
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer dbCancel()
+	if updateErr := s.automationRepo.UpdateLastRunAt(dbCtx, automation.ID); updateErr != nil {
+		s.logger.Warn("Failed to update last_run_at",
+			zap.String("automationID", automation.ID),
+			zap.Error(updateErr))
+	}
+
 	// Always update next_run_at when execution completes (success or error)
 	// This ensures the scheduler knows when to run again even if this run fails
 	defer func() {
 		if automation.IntervalMinutes != nil && *automation.IntervalMinutes > 0 {
 			nextRun := time.Now().UTC().Add(time.Duration(*automation.IntervalMinutes) * time.Minute)
-			if updateErr := s.automationRepo.UpdateNextRunAt(ctx, automation.ID, nextRun); updateErr != nil {
+			nrCtx, nrCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer nrCancel()
+			if updateErr := s.automationRepo.UpdateNextRunAt(nrCtx, automation.ID, nextRun); updateErr != nil {
 				s.logger.Warn("Failed to update next_run_at",
 					zap.String("automationID", automation.ID),
 					zap.Error(updateErr))
@@ -447,13 +459,6 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 			Success: false,
 			Message: err.Error(),
 		}, nil
-	}
-
-	// Update last_run_at after successful execution
-	if updateErr := s.automationRepo.UpdateLastRunAt(ctx, automation.ID); updateErr != nil {
-		s.logger.Warn("Failed to update last_run_at",
-			zap.String("automationID", automation.ID),
-			zap.Error(updateErr))
 	}
 
 	if observability.GlobalMetrics != nil {
