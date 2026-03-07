@@ -18,15 +18,26 @@ function normalizeUrl(raw: string): string {
 }
 
 /**
- * Checks if a URL is a valid Mercado Livre product URL.
+ * Checks if a URL is from a supported product platform (Mercado Livre or Shopee).
  */
-function isMercadoLivreUrl(raw: string): boolean {
+function isSupportedProductUrl(raw: string): boolean {
   try {
     const u = new URL(String(raw || '').trim());
     const host = u.hostname.toLowerCase();
-    if (!host.includes('mercadolivre.')) return false;
-    const path = u.pathname.toLowerCase();
-    return path.includes('/p/') || path.includes('mlb');
+
+    // Mercado Livre
+    if (host.includes('mercadolivre.') || host.includes('mercadolibre.')) {
+      const path = u.pathname.toLowerCase();
+      const full = u.href.toLowerCase();
+      return path.includes('/p/') || full.includes('mlb');
+    }
+
+    // Shopee
+    if (host.includes('shopee.com') || host.includes('shp.ee')) {
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }
@@ -417,7 +428,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     if (!user || !selectedListId) return;
     const raw = String(singleUrl || '').trim();
     if (!raw) return;
-    if (!isMercadoLivreUrl(raw)) {
+    if (!isSupportedProductUrl(raw)) {
       toast({
         title: t('pages.mlLinkLists.errors.invalidLink'),
         description: t('pages.mlLinkLists.errors.invalidLinkMessage'),
@@ -496,7 +507,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
       .filter(Boolean);
     if (lines.length === 0) return;
 
-    const normalized = lines.filter(isMercadoLivreUrl).map((l) => {
+    const normalized = lines.filter(isSupportedProductUrl).map((l) => {
       try {
         return normalizeUrl(l);
       } catch (error: unknown) {
