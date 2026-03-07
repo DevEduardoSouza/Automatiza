@@ -64,6 +64,7 @@ export function useDispatchTexts() {
       preco_original_formatado: t('pages.dispatchTexts.sampleVars.originalPriceFormatted'),
       link_afiliado: t('pages.dispatchTexts.sampleVars.affiliateLink'),
       aviso_preco: t('pages.dispatchTexts.sampleVars.priceWarning'),
+      cta: t('pages.dispatchTexts.sampleVars.cta'),
     }),
     [t]
   );

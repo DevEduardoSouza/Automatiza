@@ -159,9 +159,9 @@ describe('useDispatchTexts', () => {
       expect(result.current.deleteTarget).toBeNull();
     });
 
-    it('should have 7 variable chips', () => {
+    it('should have 8 variable chips', () => {
       const result = renderAndGet();
-      expect(result.current.variableChips).toHaveLength(7);
+      expect(result.current.variableChips).toHaveLength(8);
     });
 
     it('should have saving = false initially', () => {

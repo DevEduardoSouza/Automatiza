@@ -986,6 +986,11 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 
 	message := text.RenderShopeeOfferTemplate(template, vars)
 
+	// Auto-append CTA if template doesn't contain {cta} variable but a CTA was selected
+	if cta != "" && !strings.Contains(template, "{cta}") {
+		message = message + "\n\n" + cta
+	}
+
 	return text.NormalizeOutgoingWhatsAppText(message)
 }
 
