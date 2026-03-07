@@ -481,6 +481,7 @@ func TestIsDueForExecution(t *testing.T) {
 		name            string
 		intervalMinutes *int
 		lastRunAt       *string
+		nextRunAt       *string
 		want            bool
 	}{
 		{
@@ -540,6 +541,33 @@ func TestIsDueForExecution(t *testing.T) {
 			lastRunAt:       strPtr(now.Add(-24 * time.Hour).Format(time.RFC3339)),
 			want:            true,
 		},
+		{
+			name:            "not due - next_run_at in future",
+			intervalMinutes: intPtr(30),
+			lastRunAt:       strPtr(now.Add(-45 * time.Minute).Format(time.RFC3339)),
+			nextRunAt:       strPtr(now.Add(15 * time.Minute).Format(time.RFC3339)),
+			want:            false,
+		},
+		{
+			name:            "due - next_run_at in past",
+			intervalMinutes: intPtr(30),
+			lastRunAt:       strPtr(now.Add(-45 * time.Minute).Format(time.RFC3339)),
+			nextRunAt:       strPtr(now.Add(-15 * time.Minute).Format(time.RFC3339)),
+			want:            true,
+		},
+		{
+			name:            "due - next_run_at nil",
+			intervalMinutes: intPtr(30),
+			lastRunAt:       strPtr(now.Add(-45 * time.Minute).Format(time.RFC3339)),
+			want:            true,
+		},
+		{
+			name:            "due - next_run_at empty",
+			intervalMinutes: intPtr(30),
+			lastRunAt:       strPtr(now.Add(-45 * time.Minute).Format(time.RFC3339)),
+			nextRunAt:       strPtr(""),
+			want:            true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -549,6 +577,7 @@ func TestIsDueForExecution(t *testing.T) {
 				ID:              "auto-test",
 				IntervalMinutes: tt.intervalMinutes,
 				LastRunAt:       tt.lastRunAt,
+				NextRunAt:       tt.nextRunAt,
 			}
 
 			got := scheduler.isDueForExecution(auto, now)
