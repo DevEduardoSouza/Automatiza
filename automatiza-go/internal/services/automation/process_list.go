@@ -179,6 +179,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 
 		// Fetch product preview and generate affiliate link based on platform
 		var preview *models.MLProductPreview
+		var shopeeProduct *models.ShopeeOffer
 		var shopeeImageURL string
 		affiliateURL := originURL
 
@@ -202,7 +203,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				affiliateURL = link.AffiliateLink
 			}
 		} else if isShopee && s.shopeeService != nil {
-			// Shopee: generate affiliate link (no preview scraping in MVP)
+			// Shopee: generate affiliate link + fetch product details
 			link, err := s.shopeeService.GenerateAffiliateLink(ctx, originURL, automation.UserID)
 			if err != nil {
 				s.logger.Warn("Failed to create Shopee affiliate link, using origin URL",
@@ -213,11 +214,28 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				if link.ImageURL != "" {
 					shopeeImageURL = link.ImageURL
 				}
+				// Fetch product details (title, price) for the message template
+				if link.ItemID > 0 && link.ShopID > 0 {
+					product, prodErr := s.shopeeService.GetProduct(ctx, link.ItemID, link.ShopID, automation.UserID)
+					if prodErr != nil {
+						s.logger.Warn("Failed to get Shopee product details for list item",
+							zap.String("originURL", originURL),
+							zap.Int64("itemID", link.ItemID),
+							zap.Int64("shopID", link.ShopID),
+							zap.Error(prodErr))
+					} else {
+						shopeeProduct = product
+						// Use product image if affiliate link didn't return one
+						if shopeeImageURL == "" && product.Image != "" {
+							shopeeImageURL = product.Image
+						}
+					}
+				}
 			}
 		}
 
 		// Build message for this item
-		message := s.buildListModeMessage(automation, item, preview, affiliateURL, dispatchTemplate, isShopee, ctaEntities)
+		message := s.buildListModeMessage(automation, item, preview, shopeeProduct, affiliateURL, dispatchTemplate, isShopee, ctaEntities)
 
 		// Get image URL if available and enabled
 		var imageURL *string
@@ -360,6 +378,7 @@ func (s *automationService) buildListModeMessage(
 	automation *models.Automation,
 	item *models.MlLinkListItem,
 	preview *models.MLProductPreview,
+	shopeeProduct *models.ShopeeOffer,
 	affiliateURL string,
 	dispatchTemplate string,
 	isShopee bool,
@@ -380,14 +399,23 @@ func (s *automationService) buildListModeMessage(
 			AffiliateLink: affiliateURL,
 			CTA:           cta,
 		}
-		// Use item metadata if available
-		if item.ProductTitle != nil {
+		// Use product data fetched from Shopee API
+		if shopeeProduct != nil {
+			vars.Title = shopeeProduct.Name
+			vars.Price = shopeeProduct.Price
+			vars.OriginalPrice = shopeeProduct.OriginalPrice
+			vars.Discount = shopeeProduct.Discount
+			vars.Image = shopeeProduct.Image
+			vars.Store = shopeeProduct.ShopName
+		}
+		// Fallback to item metadata if product fetch failed
+		if vars.Title == "" && item.ProductTitle != nil {
 			vars.Title = *item.ProductTitle
 		}
-		if item.ProductPrice != nil {
+		if vars.Price == 0 && item.ProductPrice != nil {
 			vars.Price = *item.ProductPrice
 		}
-		if item.ProductImageURL != nil {
+		if vars.Image == "" && item.ProductImageURL != nil {
 			vars.Image = *item.ProductImageURL
 		}
 
