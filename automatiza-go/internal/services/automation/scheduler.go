@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"automatiza-go/internal/models"
@@ -17,6 +18,7 @@ type Scheduler struct {
 	automationRepo repository.AutomationRepository
 	service        Service
 	logger         *zap.Logger
+	mu             sync.Mutex // prevents concurrent ProcessActiveAutomations calls
 }
 
 // NewScheduler creates a new automation scheduler.
@@ -35,6 +37,14 @@ func NewScheduler(
 // ProcessActiveAutomations processes all active automations that are due for execution.
 // It implements the cron.AutomationScheduler interface.
 func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
+	// Prevent concurrent executions — if another goroutine is already processing,
+	// skip this tick to avoid double-triggering automations with stale in-memory data.
+	if !s.mu.TryLock() {
+		s.logger.Warn("ProcessActiveAutomations already running, skipping this tick")
+		return nil
+	}
+	defer s.mu.Unlock()
+
 	automations, err := s.automationRepo.GetActiveAutomations(ctx)
 	if err != nil {
 		s.logger.Error("Failed to get active automations", zap.Error(err))
