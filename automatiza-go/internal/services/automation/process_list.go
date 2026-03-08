@@ -30,7 +30,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 
 	// Validate ml_link_list_id is configured
 	if automation.MlLinkListID == nil || strings.TrimSpace(*automation.MlLinkListID) == "" {
-		errMsg := "Selecione uma Lista de Links (Mercado Livre) para usar no modo Lista."
+		errMsg := "Selecione uma Lista de Links para usar no modo Lista."
 		s.logDispatch(ctx, automation, "system", "https://error.log", "error", errMsg)
 		return &models.RunAutomationResult{
 			Success: false,
@@ -146,6 +146,19 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		MessagesSent: 0,
 	}
 
+	// Pre-fetch CTA entities if automation references cta_ids
+	var ctaEntities []models.CTA
+	if s.ctaRepo != nil && len(automation.CTAIDs) > 0 {
+		fetched, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, automation.CTAIDs, automation.UserID)
+		if ctaErr != nil {
+			s.logger.Warn("Failed to fetch CTA entities, falling back to inline CTAs",
+				zap.String("automationID", automation.ID),
+				zap.Error(ctaErr))
+		} else {
+			ctaEntities = fetched
+		}
+	}
+
 	// Process each item
 	for _, item := range items {
 		originURL := strings.TrimSpace(item.OriginURL)
@@ -155,19 +168,21 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			continue
 		}
 
-		// Validate URL is a Mercado Livre URL
-		if !strings.Contains(strings.ToLower(originURL), "mercadolivre.") &&
-			!strings.Contains(strings.ToLower(originURL), "mercadolibre.") {
-			s.logDispatch(ctx, automation, "system", originURL, "skipped", "URL invalida (nao parece ser Mercado Livre).")
+		// Detect platform
+		isML := text.IsMLLink(originURL)
+		isShopee := text.IsShopeeLink(originURL)
+		if !isML && !isShopee {
+			s.logDispatch(ctx, automation, "system", originURL, "skipped", "URL invalida (plataforma nao suportada).")
 			continue
 		}
 
-		// Fetch product preview and generate affiliate link
+		// Fetch product preview and generate affiliate link based on platform
 		var preview *models.MLProductPreview
+		var shopeeImageURL string
 		affiliateURL := originURL
 
-		if s.mlService != nil {
-			// Try to get product preview
+		if isML && s.mlService != nil {
+			// ML: get preview + affiliate link
 			p, err := s.mlService.GetProductPreview(ctx, originURL, automation.UserID)
 			if err != nil {
 				s.logger.Warn("Failed to get ML product preview",
@@ -177,7 +192,6 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				preview = p
 			}
 
-			// Try to generate affiliate link
 			link, err := s.mlService.CreateAffiliateLink(ctx, originURL, automation.UserID)
 			if err != nil {
 				s.logger.Warn("Failed to create ML affiliate link, using origin URL",
@@ -186,16 +200,31 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			} else if link != nil && link.AffiliateLink != "" {
 				affiliateURL = link.AffiliateLink
 			}
+		} else if isShopee && s.shopeeService != nil {
+			// Shopee: generate affiliate link (no preview scraping in MVP)
+			link, err := s.shopeeService.GenerateAffiliateLink(ctx, originURL, automation.UserID)
+			if err != nil {
+				s.logger.Warn("Failed to create Shopee affiliate link, using origin URL",
+					zap.String("originURL", originURL),
+					zap.Error(err))
+			} else if link != nil && link.AffiliateLink != "" {
+				affiliateURL = link.AffiliateLink
+				if link.ImageURL != "" {
+					shopeeImageURL = link.ImageURL
+				}
+			}
 		}
 
 		// Build message for this item
-		message := s.buildListModeMessage(automation, item, preview, affiliateURL, dispatchTemplate)
+		message := s.buildListModeMessage(automation, item, preview, affiliateURL, dispatchTemplate, isShopee, ctaEntities)
 
 		// Get image URL if available and enabled
 		var imageURL *string
 		if includeImage {
 			if preview != nil && preview.Image != "" {
 				imageURL = &preview.Image
+			} else if shopeeImageURL != "" {
+				imageURL = &shopeeImageURL
 			} else if item.ProductImageURL != nil && *item.ProductImageURL != "" {
 				imageURL = item.ProductImageURL
 			}
@@ -289,14 +318,51 @@ func (s *automationService) buildListModeMessage(
 	preview *models.MLProductPreview,
 	affiliateURL string,
 	dispatchTemplate string,
+	isShopee bool,
+	ctaEntities []models.CTA,
 ) string {
-	// Select random CTA if available
+	// Select random CTA: prefer CTA entities, fallback to inline CTAs
 	cta := ""
-	if len(automation.CTAs) > 0 {
+	if len(ctaEntities) > 0 {
+		cta = ctaEntities[rand.IntN(len(ctaEntities))].Message
+	} else if len(automation.CTAs) > 0 {
 		cta = automation.CTAs[rand.IntN(len(automation.CTAs))]
 	}
 
-	// Build ML offer variables with all fields for parity
+	if isShopee {
+		// Shopee: use ShopeeOfferVars
+		vars := text.ShopeeOfferVars{
+			Link:          item.OriginURL,
+			AffiliateLink: affiliateURL,
+			CTA:           cta,
+		}
+		// Use item metadata if available
+		if item.ProductTitle != nil {
+			vars.Title = *item.ProductTitle
+		}
+		if item.ProductPrice != nil {
+			vars.Price = *item.ProductPrice
+		}
+		if item.ProductImageURL != nil {
+			vars.Image = *item.ProductImageURL
+		}
+
+		var message string
+		if dispatchTemplate != "" {
+			message = text.RenderShopeeOfferTemplate(dispatchTemplate, vars)
+		} else {
+			message = text.RenderShopeeOfferTemplate(text.DefaultShopeeTemplate(), vars)
+		}
+
+		// Auto-append CTA if template doesn't contain {cta} variable
+		if cta != "" && !strings.Contains(dispatchTemplate, "{cta}") {
+			message = message + "\n\n" + cta
+		}
+
+		return text.NormalizeOutgoingWhatsAppText(message)
+	}
+
+	// ML: use MLOfferVars (original logic)
 	vars := text.MLOfferVars{
 		Link:          item.OriginURL,
 		AffiliateLink: affiliateURL,
@@ -312,7 +378,6 @@ func (s *automationService) buildListModeMessage(
 		}
 		vars.Discount = preview.Discount
 		vars.Image = preview.Image
-		// ML-specific fields from preview
 		if preview.Condition != nil {
 			vars.Condition = *preview.Condition
 		}
@@ -329,7 +394,6 @@ func (s *automationService) buildListModeMessage(
 			vars.Installments = *preview.Installments
 		}
 	} else {
-		// Use item metadata as fallback
 		if item.ProductTitle != nil {
 			vars.Title = *item.ProductTitle
 		}
@@ -341,13 +405,16 @@ func (s *automationService) buildListModeMessage(
 		}
 	}
 
-	// Use dispatch template if available
 	var message string
 	if dispatchTemplate != "" {
 		message = text.RenderMLOfferTemplate(dispatchTemplate, vars)
 	} else {
-		// Use default ML template (already includes aviso_preco)
 		message = text.RenderMLOfferTemplate(text.DefaultMLTemplate(), vars)
+	}
+
+	// Auto-append CTA if template doesn't contain {cta} variable
+	if cta != "" && !strings.Contains(dispatchTemplate, "{cta}") {
+		message = message + "\n\n" + cta
 	}
 
 	return text.NormalizeOutgoingWhatsAppText(message)

@@ -18,15 +18,26 @@ function normalizeUrl(raw: string): string {
 }
 
 /**
- * Checks if a URL is a valid Mercado Livre product URL.
+ * Checks if a URL is from a supported product platform (Mercado Livre or Shopee).
  */
-function isMercadoLivreUrl(raw: string): boolean {
+function isSupportedProductUrl(raw: string): boolean {
   try {
     const u = new URL(String(raw || '').trim());
     const host = u.hostname.toLowerCase();
-    if (!host.includes('mercadolivre.')) return false;
-    const path = u.pathname.toLowerCase();
-    return path.includes('/p/') || path.includes('mlb');
+
+    // Mercado Livre
+    if (host.includes('mercadolivre.') || host.includes('mercadolibre.')) {
+      const path = u.pathname.toLowerCase();
+      const full = u.href.toLowerCase();
+      return path.includes('/p/') || full.includes('mlb');
+    }
+
+    // Shopee
+    if (host.includes('shopee.com') || host.includes('shp.ee')) {
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }
@@ -43,7 +54,6 @@ interface UseMlLinkListsReturn {
   editingList: MlLinkList | null;
   listForm: ListForm;
   singleUrl: string;
-  bulkText: string;
   importing: boolean;
   lastPreview: PreviewState | null;
   selectedList: MlLinkList | null;
@@ -58,7 +68,7 @@ interface UseMlLinkListsReturn {
   setListDialogOpen: (open: boolean) => void;
   setListForm: React.Dispatch<React.SetStateAction<ListForm>>;
   setSingleUrl: (url: string) => void;
-  setBulkText: (text: string) => void;
+  importFromFile: (file: File) => Promise<void>;
   loadLists: () => Promise<void>;
   loadMoreItems: () => Promise<void>;
   openCreateList: () => void;
@@ -75,7 +85,6 @@ interface UseMlLinkListsReturn {
   confirmResetConsumed: () => Promise<void>;
   copyToClipboard: (text: string) => Promise<void>;
   addOneLink: () => Promise<void>;
-  importBulk: () => Promise<void>;
   toggleItemActive: (item: MlLinkListItem) => Promise<void>;
   moveItem: (item: MlLinkListItem, dir: 'up' | 'down') => Promise<void>;
 }
@@ -158,7 +167,6 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
   });
 
   const [singleUrl, setSingleUrl] = useState('');
-  const [bulkText, setBulkText] = useState('');
   const [importing, setImporting] = useState(false);
 
   const [lastPreview, setLastPreview] = useState<PreviewState | null>(null);
@@ -417,7 +425,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     if (!user || !selectedListId) return;
     const raw = String(singleUrl || '').trim();
     if (!raw) return;
-    if (!isMercadoLivreUrl(raw)) {
+    if (!isSupportedProductUrl(raw)) {
       toast({
         title: t('pages.mlLinkLists.errors.invalidLink'),
         description: t('pages.mlLinkLists.errors.invalidLinkMessage'),
@@ -488,41 +496,46 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     }
   }, [user, selectedListId, singleUrl, items, toast, t, loadItems, mlPreview, mlLinksConnect]);
 
-  const importBulk = useCallback(async () => {
+  const importFromFile = useCallback(async (file: File) => {
     if (!user || !selectedListId) return;
-    const lines = String(bulkText || '')
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (lines.length === 0) return;
-
-    const normalized = lines.filter(isMercadoLivreUrl).map((l) => {
-      try {
-        return normalizeUrl(l);
-      } catch (error: unknown) {
-        captureHookError(error, 'useMlLinkLists', 'normalizeUrlBulk');
-        return l;
-      }
-    });
-
-    if (normalized.length === 0) {
-      toast({
-        title: t('pages.mlLinkLists.errors.noValidLinks'),
-        description: t('pages.mlLinkLists.errors.noValidLinksMessage'),
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setImporting(true);
     try {
+      const text = await file.text();
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => {
+          // CSV: pick first field (separator may be , or ;)
+          const firstField = l.split(/[,;]/)[0].trim();
+          return firstField;
+        })
+        .filter(Boolean);
+
+      const validated = lines.filter(isSupportedProductUrl).map((l) => {
+        try {
+          return normalizeUrl(l);
+        } catch {
+          return l;
+        }
+      });
+
+      const uniq = Array.from(new Set(validated));
+      if (uniq.length === 0) {
+        toast({
+          title: t('pages.mlLinkLists.errors.noValidLinks'),
+          description: t('pages.mlLinkLists.errors.noValidLinksMessage'),
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const baseOrder =
         items.length > 0 ? Math.max(...items.map((i) => i.order_index || 0)) + 1 : 0;
-      const uniq = Array.from(new Set(normalized));
 
       await mlLinksConnect.bulkCreateMlLinkListItems(selectedListId, uniq, baseOrder);
-      setBulkText('');
       loadItems(selectedListId);
+      toast({
+        title: t('pages.mlLinkLists.items.imported', { count: uniq.length }),
+      });
     } catch (e: unknown) {
       const errorMessage =
         e instanceof Error ? e.message : t('pages.mlLinkLists.errors.importMessage');
@@ -534,7 +547,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     } finally {
       setImporting(false);
     }
-  }, [user, selectedListId, bulkText, items, toast, t, loadItems, mlLinksConnect]);
+  }, [user, selectedListId, items, toast, t, loadItems, mlLinksConnect]);
 
   const toggleItemActive = useCallback(
     async (it: MlLinkListItem) => {
@@ -597,7 +610,6 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     editingList,
     listForm,
     singleUrl,
-    bulkText,
     importing,
     lastPreview,
     selectedList,
@@ -612,7 +624,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     setListDialogOpen,
     setListForm,
     setSingleUrl,
-    setBulkText,
+    importFromFile,
     loadLists,
     loadMoreItems,
     openCreateList,
@@ -629,7 +641,6 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     confirmResetConsumed,
     copyToClipboard,
     addOneLink,
-    importBulk,
     toggleItemActive,
     moveItem,
   };

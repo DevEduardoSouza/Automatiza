@@ -426,7 +426,7 @@ func TestSaveCredentials(t *testing.T) {
 
 	t.Run("encrypt error with invalid key", func(t *testing.T) {
 		svc := NewMLService(nil, &mockMLCredsRepo{}, &mockMLLinkRepo{}, "invalid-key", logger)
-		err := svc.SaveCredentials(context.Background(), "user1", "cookie", "csrf")
+		err := svc.SaveCredentials(context.Background(), "user1", "cookie", "csrf", "tag1")
 		if err == nil {
 			t.Fatal("expected error for invalid encryption key")
 		}
@@ -439,7 +439,7 @@ func TestSaveCredentials(t *testing.T) {
 			},
 		}, &mockMLLinkRepo{}, testEncryptionKey, logger)
 
-		err := svc.SaveCredentials(context.Background(), "user1", "cookie", "csrf")
+		err := svc.SaveCredentials(context.Background(), "user1", "cookie", "csrf", "tag1")
 		if err == nil {
 			t.Fatal("expected error from repo save")
 		}
@@ -455,7 +455,7 @@ func TestSaveCredentials(t *testing.T) {
 			},
 		}, &mockMLLinkRepo{}, testEncryptionKey, logger)
 
-		err := svc.SaveCredentials(context.Background(), "user1", "my-cookie", "my-csrf")
+		err := svc.SaveCredentials(context.Background(), "user1", "my-cookie", "my-csrf", "my-tag")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

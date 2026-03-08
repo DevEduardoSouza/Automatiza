@@ -32,17 +32,21 @@ func (h *MercadoLivreHandler) Connect(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	// Get cookie and CSRF token from request
+	// Get fields from request
 	cookie := req.Msg.GetCookie()
 	csrfToken := req.Msg.GetCsrfToken()
+	tag := req.Msg.GetTag()
 
-	// Validate required fields for saving credentials
-	if cookie == "" || csrfToken == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cookie and csrf_token are required"))
+	// Validate required fields
+	if tag == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("tag is required"))
+	}
+	if cookie == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cookie is required"))
 	}
 
-	// Save credentials using the ML service
-	err := h.mlService.SaveCredentials(ctx, user.ID, cookie, csrfToken)
+	// Save credentials using the ML service (CSRF token is optional, auto-refreshed)
+	err := h.mlService.SaveCredentials(ctx, user.ID, cookie, csrfToken, tag)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to save ML credentials: %w", err))
 	}

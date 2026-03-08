@@ -41,7 +41,9 @@ import {
   Plus,
   RefreshCcw,
   Trash2,
+  Upload,
 } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const LinkListsIcon = ({
@@ -81,6 +83,92 @@ const colors = {
   iconBgHover: 'rgba(141, 45, 83, 0.15)',
 };
 
+function FileImportSection({
+  importing,
+  onImport,
+}: { importing: boolean; onImport: (file: File) => Promise<void> }) {
+  const { t } = useTranslation();
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 xs:gap-3">
+        <div
+          className="p-1.5 xs:p-2 rounded-lg"
+          style={{ backgroundColor: colors.iconBg }}
+        >
+          <Upload
+            className="w-4 h-4 xs:w-5 xs:h-5"
+            style={{ color: colors.wine }}
+            aria-hidden="true"
+          />
+        </div>
+        <span
+          className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
+          style={{ color: colors.wineTextLight }}
+        >
+          {t('pages.mlLinkLists.items.fileImport')}
+        </span>
+      </div>
+      <div className="space-y-2">
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept=".csv,.txt"
+          className="hidden"
+          onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)}
+        />
+
+        {!csvFile ? (
+          <>
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+            >
+              <Upload className="h-4 w-4 mr-2" aria-hidden="true" />
+              {t('pages.mlLinkLists.items.fileSelect')}
+            </Button>
+            <div className="text-xs" style={{ color: colors.wineTextMuted }}>
+              {t('pages.mlLinkLists.items.fileHint')}
+            </div>
+          </>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm" style={{ color: colors.wineText }}>
+              {t('pages.mlLinkLists.items.fileSelected', { name: csvFile.name })}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  onImport(csvFile);
+                  setCsvFile(null);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+                disabled={importing}
+              >
+                <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+                {t('pages.mlLinkLists.items.fileImportButton')}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCsvFile(null);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+                disabled={importing}
+              >
+                {t('common.cancel')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * ML Link Lists page component.
  * Manages Mercado Livre link lists for automation use.
@@ -98,7 +186,6 @@ export default function MlLinkLists() {
     editingList,
     listForm,
     singleUrl,
-    bulkText,
     importing,
     lastPreview,
     selectedList,
@@ -113,7 +200,7 @@ export default function MlLinkLists() {
     setListDialogOpen,
     setListForm,
     setSingleUrl,
-    setBulkText,
+    importFromFile,
     loadLists,
     loadMoreItems,
     openCreateList,
@@ -130,7 +217,6 @@ export default function MlLinkLists() {
     confirmResetConsumed,
     copyToClipboard,
     addOneLink,
-    importBulk,
     toggleItemActive,
     moveItem,
   } = useMlLinkLists();
@@ -507,53 +593,10 @@ export default function MlLinkLists() {
                         )}
                       </div>
 
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 xs:gap-3">
-                          <div
-                            className="p-1.5 xs:p-2 rounded-lg"
-                            style={{ backgroundColor: colors.iconBg }}
-                          >
-                            <LinkIcon
-                              className="w-4 h-4 xs:w-5 xs:h-5"
-                              style={{ color: colors.wine }}
-                              aria-hidden="true"
-                            />
-                          </div>
-                          <span
-                            className="uppercase text-[10px] xs:text-xs tracking-[0.1em] xs:tracking-[0.12em] font-semibold"
-                            style={{ color: colors.wineTextLight }}
-                          >
-                            {t('pages.mlLinkLists.items.bulkImport')}
-                          </span>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="bulk-text">
-                            {t('pages.mlLinkLists.items.onePerLine')}
-                          </Label>
-                          <Textarea
-                            id="bulk-text"
-                            value={bulkText}
-                            onChange={(e) => setBulkText(e.target.value)}
-                            placeholder={t('pages.mlLinkLists.items.bulkPlaceholder')}
-                          />
-                          <div className="flex flex-wrap gap-2">
-                            <Button onClick={importBulk} disabled={importing || !bulkText.trim()}>
-                              <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
-                              {t('pages.mlLinkLists.items.import')}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              onClick={() => setBulkText('')}
-                              disabled={importing || !bulkText.trim()}
-                            >
-                              {t('pages.mlLinkLists.items.clear')}
-                            </Button>
-                          </div>
-                          <div className="text-xs" style={{ color: colors.wineTextMuted }}>
-                            {t('pages.mlLinkLists.items.bulkHint')}
-                          </div>
-                        </div>
-                      </div>
+                      <FileImportSection
+                        importing={importing}
+                        onImport={importFromFile}
+                      />
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-2">

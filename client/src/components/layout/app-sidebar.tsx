@@ -356,7 +356,7 @@ export const menuItems: MenuItem[] = [
   { titleKey: 'sidebar.schedules', url: '/jobs', icon: SchedulesIcon },
   { titleKey: 'sidebar.redirect', url: '/redirect', icon: RedirectIcon },
   { titleKey: 'sidebar.offerAutomations', url: '/offer-automations', icon: AIIcon },
-  { titleKey: 'sidebar.linkLists', url: '/ml-link-lists', icon: LinkListsIcon, comingSoon: true },
+  { titleKey: 'sidebar.linkLists', url: '/ml-link-lists', icon: LinkListsIcon },
   { titleKey: 'sidebar.dispatchTexts', url: '/dispatch-texts', icon: Type },
   { titleKey: 'sidebar.affiliatePrograms', url: '/affiliate-programs', icon: AffiliateIcon },
   { titleKey: 'sidebar.ctas', url: '/ctas', icon: MessageSquare },

@@ -68,6 +68,65 @@ func ValidateMercadoLivreURL(rawURL string) error {
 	return nil
 }
 
+// ValidateProductURL validates that a URL is a valid product URL from a supported platform.
+// Supported platforms: Mercado Livre, Shopee
+func ValidateProductURL(rawURL string) error {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return apperrors.NewMLLinksFieldError(
+			apperrors.ErrInvalidURL.Error(),
+			"URL cannot be empty",
+			"origin_url",
+			apperrors.ErrInvalidURL,
+		)
+	}
+
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return apperrors.NewMLLinksFieldError(
+			apperrors.ErrInvalidURLFormat.Error(),
+			fmt.Sprintf("invalid URL format: %v", err),
+			"origin_url",
+			apperrors.ErrInvalidURLFormat,
+		)
+	}
+
+	host := strings.ToLower(u.Hostname())
+
+	// Check Mercado Livre
+	isML := strings.Contains(host, "mercadolivre.") || strings.Contains(host, "mercadolibre.")
+	// Check Shopee
+	isShopee := strings.Contains(host, "shopee.com") || strings.Contains(host, "shp.ee")
+
+	if !isML && !isShopee {
+		return apperrors.NewMLLinksFieldError(
+			apperrors.ErrInvalidURL.Error(),
+			"URL must be from Mercado Livre or Shopee",
+			"origin_url",
+			apperrors.ErrInvalidURL,
+		)
+	}
+
+	if isML {
+		path := strings.ToLower(u.Path)
+		fullURL := strings.ToLower(rawURL)
+		hasProductPath := strings.Contains(path, "/p/")
+		hasMLBCode := strings.Contains(fullURL, "mlb")
+		if !hasProductPath && !hasMLBCode {
+			return apperrors.NewMLLinksFieldError(
+				apperrors.ErrInvalidURL.Error(),
+				"URL must be a product page (contain /p/ or mlb)",
+				"origin_url",
+				apperrors.ErrInvalidURL,
+			)
+		}
+	}
+
+	// Shopee URLs don't need additional path validation for MVP
+
+	return nil
+}
+
 // NormalizeURL removes the hash fragment from a URL and trims whitespace.
 // This ensures URLs can be properly compared for deduplication.
 //
@@ -131,19 +190,19 @@ func DeduplicateURLs(urls []string) []string {
 // ValidateAndNormalizeURL validates and normalizes a URL in a single operation.
 // Returns the normalized URL if valid, or an error if invalid.
 func ValidateAndNormalizeURL(rawURL string) (string, error) {
-	if err := ValidateMercadoLivreURL(rawURL); err != nil {
+	if err := ValidateProductURL(rawURL); err != nil {
 		return "", err
 	}
 	return NormalizeURL(rawURL)
 }
 
-// FilterValidURLs filters a slice of URLs, returning only valid Mercado Livre URLs.
+// FilterValidURLs filters a slice of URLs, returning only valid product URLs.
 // Invalid URLs are skipped silently.
 func FilterValidURLs(urls []string) []string {
 	result := make([]string, 0, len(urls))
 
 	for _, rawURL := range urls {
-		if err := ValidateMercadoLivreURL(rawURL); err == nil {
+		if err := ValidateProductURL(rawURL); err == nil {
 			result = append(result, rawURL)
 		}
 	}
@@ -157,7 +216,7 @@ func ValidateURLs(urls []string) map[string]error {
 	results := make(map[string]error, len(urls))
 
 	for _, rawURL := range urls {
-		results[rawURL] = ValidateMercadoLivreURL(rawURL)
+		results[rawURL] = ValidateProductURL(rawURL)
 	}
 
 	return results
@@ -177,7 +236,7 @@ func ValidateAndCategorizeURLs(urls []string) *ValidationResult {
 	}
 
 	for _, rawURL := range urls {
-		if err := ValidateMercadoLivreURL(rawURL); err != nil {
+		if err := ValidateProductURL(rawURL); err != nil {
 			result.InvalidURLs[rawURL] = err.Error()
 		} else {
 			result.ValidURLs = append(result.ValidURLs, rawURL)

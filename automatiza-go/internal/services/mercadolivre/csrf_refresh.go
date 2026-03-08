@@ -109,5 +109,5 @@ func (r *CSRFRefresher) RefreshCSRFToken(ctx context.Context, cookie string) (st
 
 // IsCSRFError checks if the HTTP status indicates a CSRF/auth error
 func IsCSRFError(statusCode int) bool {
-	return statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden
+	return statusCode == http.StatusBadRequest || statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden
 }

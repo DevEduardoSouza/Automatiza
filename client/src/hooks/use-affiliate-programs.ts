@@ -454,6 +454,13 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
               autoGenerate: Boolean(cred.auto_generate),
             });
 
+            await upsertCredential({
+              store: 'ml',
+              credentials: { tag: currentTag },
+              auto_generate: cred.auto_generate,
+              is_active: true,
+            });
+
             toast({ title: t('pages.affiliatePrograms.ml.updatedSuccess') });
             await refetchCredentials();
             return;
@@ -489,6 +496,13 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
             cookie,
             csrfToken: csrfToken || undefined,
             autoGenerate: Boolean(cred.auto_generate),
+          });
+
+          await upsertCredential({
+            store: 'ml',
+            credentials: { tag },
+            auto_generate: cred.auto_generate,
+            is_active: true,
           });
 
           setCredentials((prev) => ({

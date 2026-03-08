@@ -299,7 +299,7 @@ type mockMLService struct {
 	CreateAffiliateLinkFn    func(ctx context.Context, originURL, userID string) (*models.MLAffiliateLink, error)
 	GetProductPreviewFn      func(ctx context.Context, originURL, userID string) (*models.MLProductPreview, error)
 	LoadCredentialsFn        func(ctx context.Context, userID string) (*models.MLCredentials, error)
-	SaveCredentialsFn        func(ctx context.Context, userID, cookie, csrf string) error
+	SaveCredentialsFn        func(ctx context.Context, userID, cookie, csrf, tag string) error
 	IsConnectedFn            func(ctx context.Context, userID string) (bool, error)
 	ExtractProductIDFn       func(productURL string) (string, error)
 	InvalidatePreviewCacheFn func(ctx context.Context, originURL string) error
@@ -326,9 +326,9 @@ func (m *mockMLService) LoadCredentials(ctx context.Context, userID string) (*mo
 	return nil, nil
 }
 
-func (m *mockMLService) SaveCredentials(ctx context.Context, userID, cookie, csrf string) error {
+func (m *mockMLService) SaveCredentials(ctx context.Context, userID, cookie, csrf, tag string) error {
 	if m.SaveCredentialsFn != nil {
-		return m.SaveCredentialsFn(ctx, userID, cookie, csrf)
+		return m.SaveCredentialsFn(ctx, userID, cookie, csrf, tag)
 	}
 	return nil
 }

@@ -47,8 +47,8 @@ func (m *mockMlService) LoadCredentials(ctx context.Context, userID string) (*mo
 	return args.Get(0).(*models.MLCredentials), args.Error(1)
 }
 
-func (m *mockMlService) SaveCredentials(ctx context.Context, userID, cookie, csrf string) error {
-	args := m.Called(ctx, userID, cookie, csrf)
+func (m *mockMlService) SaveCredentials(ctx context.Context, userID, cookie, csrf, tag string) error {
+	args := m.Called(ctx, userID, cookie, csrf, tag)
 	return args.Error(0)
 }
 
@@ -88,11 +88,12 @@ func TestMlConnect_Success(t *testing.T) {
 
 	ctx := contextWithUser("user-123", "user@example.com")
 
-	svc.On("SaveCredentials", ctx, "user-123", "my-cookie-value", "my-csrf-token").Return(nil)
+	svc.On("SaveCredentials", ctx, "user-123", "my-cookie-value", "my-csrf-token", "my-tag").Return(nil)
 
 	req := connect.NewRequest(&affiliatesv1.MlConnectRequest{
 		Cookie:    strPtr("my-cookie-value"),
 		CsrfToken: strPtr("my-csrf-token"),
+		Tag:       "my-tag",
 	})
 
 	resp, err := handler.Connect(ctx, req)
@@ -127,6 +128,7 @@ func TestMlConnect_MissingCookie(t *testing.T) {
 	req := connect.NewRequest(&affiliatesv1.MlConnectRequest{
 		Cookie:    strPtr(""),
 		CsrfToken: strPtr("my-csrf-token"),
+		Tag:       "my-tag",
 	})
 
 	_, err := handler.Connect(ctx, req)
@@ -135,14 +137,15 @@ func TestMlConnect_MissingCookie(t *testing.T) {
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
-func TestMlConnect_MissingCsrfToken(t *testing.T) {
+func TestMlConnect_MissingTag(t *testing.T) {
 	handler, _ := createMlHandler(t)
 
 	ctx := contextWithUser("user-123", "user@example.com")
 
 	req := connect.NewRequest(&affiliatesv1.MlConnectRequest{
 		Cookie:    strPtr("my-cookie-value"),
-		CsrfToken: strPtr(""),
+		CsrfToken: strPtr("my-csrf-token"),
+		Tag:       "",
 	})
 
 	_, err := handler.Connect(ctx, req)
@@ -156,12 +159,13 @@ func TestMlConnect_ServiceError(t *testing.T) {
 
 	ctx := contextWithUser("user-123", "user@example.com")
 
-	svc.On("SaveCredentials", ctx, "user-123", "my-cookie", "my-csrf").
+	svc.On("SaveCredentials", ctx, "user-123", "my-cookie", "my-csrf", "my-tag").
 		Return(errors.New("encryption error"))
 
 	req := connect.NewRequest(&affiliatesv1.MlConnectRequest{
 		Cookie:    strPtr("my-cookie"),
 		CsrfToken: strPtr("my-csrf"),
+		Tag:       "my-tag",
 	})
 
 	_, err := handler.Connect(ctx, req)

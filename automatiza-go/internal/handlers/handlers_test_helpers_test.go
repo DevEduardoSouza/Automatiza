@@ -865,7 +865,7 @@ func (m *mockShopeeService) ExtractProductIDs(productURL string) (shopID, itemID
 type mockMLService struct {
 	CreateAffiliateLinkFunc func(ctx context.Context, originURL, userID string) (*models.MLAffiliateLink, error)
 	GetProductPreviewFunc   func(ctx context.Context, originURL, userID string) (*models.MLProductPreview, error)
-	SaveCredentialsFunc     func(ctx context.Context, userID, cookie, csrf string) error
+	SaveCredentialsFunc     func(ctx context.Context, userID, cookie, csrf, tag string) error
 }
 
 func (m *mockMLService) CreateAffiliateLink(ctx context.Context, originURL, userID string) (*models.MLAffiliateLink, error) {
@@ -883,9 +883,9 @@ func (m *mockMLService) GetProductPreview(ctx context.Context, originURL, userID
 func (m *mockMLService) LoadCredentials(ctx context.Context, userID string) (*models.MLCredentials, error) {
 	return nil, nil
 }
-func (m *mockMLService) SaveCredentials(ctx context.Context, userID, cookie, csrf string) error {
+func (m *mockMLService) SaveCredentials(ctx context.Context, userID, cookie, csrf, tag string) error {
 	if m.SaveCredentialsFunc != nil {
-		return m.SaveCredentialsFunc(ctx, userID, cookie, csrf)
+		return m.SaveCredentialsFunc(ctx, userID, cookie, csrf, tag)
 	}
 	return nil
 }

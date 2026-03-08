@@ -281,7 +281,7 @@ func (s *automationService) DiagnoseAutomation(ctx context.Context, automationID
 		if automation.MlLinkListID == nil || *automation.MlLinkListID == "" {
 			result.Status = "error"
 			mlLinkListCheck.Status = "error"
-			mlLinkListCheck.Message = "Lista de links nao configurada. Selecione uma Lista de Links (Mercado Livre)."
+			mlLinkListCheck.Message = "Lista de links nao configurada. Selecione uma Lista de Links."
 			result.Errors = append(result.Errors, mlLinkListCheck.Message)
 		} else {
 			// Check if list has unconsumed items
