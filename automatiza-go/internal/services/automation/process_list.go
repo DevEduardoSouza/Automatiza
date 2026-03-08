@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/workers"
@@ -256,13 +257,36 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				}
 			}
 
+			// Create dispatch log BEFORE enqueueing so the worker can update its status
+			var dispatchLogID *int
+			if s.dispatchLogRepo != nil {
+				featureFlags := config.GetFeatureFlags()
+				if featureFlags.ShouldCreateDispatchLog() {
+					dl := &models.DispatchLog{
+						UserID:         automation.UserID,
+						AutomationID:   &automation.ID,
+						AutomationName: &automation.Name,
+						GroupID:        &groupID,
+						ProductURL:     &originURL,
+						Status:         models.DispatchLogStatusQueued,
+						CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+					}
+					created, dlErr := s.dispatchLogRepo.Create(ctx, dl)
+					if dlErr == nil && created != nil {
+						dispatchLogID = &created.ID
+					}
+				}
+			}
+
 			// Enqueue message for sending
 			jobData := &workers.MessageJobData{
-				InstanceName: connectedInstance.InstanceID,
-				GroupID:      groupID,
-				Message:      message,
-				ImageURL:     imageURL,
-				UserID:       automation.UserID,
+				InstanceName:  connectedInstance.InstanceID,
+				GroupID:       groupID,
+				Message:       message,
+				ImageURL:      imageURL,
+				UserID:        automation.UserID,
+				AutomationID:  automation.ID,
+				DispatchLogID: dispatchLogID,
 			}
 
 			if s.queueClient != nil {
@@ -283,8 +307,6 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			if s.backpressure != nil {
 				_ = s.backpressure.RecordEnqueue(ctx, automation.UserID)
 			}
-
-			s.logDispatch(ctx, automation, groupID, originURL, "queued", "")
 			groupIDsSent = append(groupIDsSent, groupID)
 			result.MessagesSent++
 		}
