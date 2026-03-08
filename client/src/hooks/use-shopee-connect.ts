@@ -167,7 +167,7 @@ export function useShopeeConnect(): UseShopeeConnectReturn {
 
   // Mutation for generating affiliate link
   const generateLinkMutation = useMutation({
-    mutationFn: async (productUrl: string): Promise<string> => {
+    mutationFn: async (productUrl: string): Promise<GenerateAffiliateLinkResponse> => {
       if (!user?.id) {
         throw new Error(t('common.errors.notAuthenticated'));
       }
@@ -180,7 +180,7 @@ export function useShopeeConnect(): UseShopeeConnectReturn {
         })
       );
 
-      return response.affiliateUrl;
+      return response;
     },
     onError: (error: unknown) => {
       const errorInfo = getErrorInfo(error);
@@ -201,7 +201,20 @@ export function useShopeeConnect(): UseShopeeConnectReturn {
 
   const generateAffiliateLink = useCallback(
     async (productUrl: string): Promise<string> => {
-      return generateLinkMutation.mutateAsync(productUrl);
+      const resp = await generateLinkMutation.mutateAsync(productUrl);
+      return resp.affiliateUrl;
+    },
+    [generateLinkMutation]
+  );
+
+  const getProductPreview = useCallback(
+    async (productUrl: string) => {
+      const resp = await generateLinkMutation.mutateAsync(productUrl);
+      return {
+        title: resp.productTitle ?? null,
+        price: resp.productPrice ?? null,
+        imageUrl: resp.productImageUrl ?? null,
+      };
     },
     [generateLinkMutation]
   );
@@ -209,6 +222,7 @@ export function useShopeeConnect(): UseShopeeConnectReturn {
   return {
     searchOffers,
     generateAffiliateLink,
+    getProductPreview,
     isSearching: searchMutation.isPending,
     isGenerating: generateLinkMutation.isPending,
   };

@@ -474,9 +474,17 @@ func (x *GenerateAffiliateLinkRequest) GetUserId() string {
 type GenerateAffiliateLinkResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Generated affiliate URL
-	AffiliateUrl  string `protobuf:"bytes,1,opt,name=affiliate_url,json=affiliateUrl,proto3" json:"affiliate_url,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AffiliateUrl string `protobuf:"bytes,1,opt,name=affiliate_url,json=affiliateUrl,proto3" json:"affiliate_url,omitempty"`
+	// Product title (if available)
+	ProductTitle *string `protobuf:"bytes,2,opt,name=product_title,json=productTitle,proto3,oneof" json:"product_title,omitempty"`
+	// Product price
+	ProductPrice *float64 `protobuf:"fixed64,3,opt,name=product_price,json=productPrice,proto3,oneof" json:"product_price,omitempty"`
+	// Product original price (before discount)
+	ProductOriginalPrice *float64 `protobuf:"fixed64,4,opt,name=product_original_price,json=productOriginalPrice,proto3,oneof" json:"product_original_price,omitempty"`
+	// Product image URL
+	ProductImageUrl *string `protobuf:"bytes,5,opt,name=product_image_url,json=productImageUrl,proto3,oneof" json:"product_image_url,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *GenerateAffiliateLinkResponse) Reset() {
@@ -512,6 +520,34 @@ func (*GenerateAffiliateLinkResponse) Descriptor() ([]byte, []int) {
 func (x *GenerateAffiliateLinkResponse) GetAffiliateUrl() string {
 	if x != nil {
 		return x.AffiliateUrl
+	}
+	return ""
+}
+
+func (x *GenerateAffiliateLinkResponse) GetProductTitle() string {
+	if x != nil && x.ProductTitle != nil {
+		return *x.ProductTitle
+	}
+	return ""
+}
+
+func (x *GenerateAffiliateLinkResponse) GetProductPrice() float64 {
+	if x != nil && x.ProductPrice != nil {
+		return *x.ProductPrice
+	}
+	return 0
+}
+
+func (x *GenerateAffiliateLinkResponse) GetProductOriginalPrice() float64 {
+	if x != nil && x.ProductOriginalPrice != nil {
+		return *x.ProductOriginalPrice
+	}
+	return 0
+}
+
+func (x *GenerateAffiliateLinkResponse) GetProductImageUrl() string {
+	if x != nil && x.ProductImageUrl != nil {
+		return *x.ProductImageUrl
 	}
 	return ""
 }
@@ -569,9 +605,17 @@ const file_affiliates_v1_shopee_proto_rawDesc = "" +
 	"\x1cGenerateAffiliateLinkRequest\x12(\n" +
 	"\vproduct_url\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\n" +
 	"productUrl\x12 \n" +
-	"\auser_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06userId\"D\n" +
+	"\auser_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06userId\"\xd9\x02\n" +
 	"\x1dGenerateAffiliateLinkResponse\x12#\n" +
-	"\raffiliate_url\x18\x01 \x01(\tR\faffiliateUrl*\xa5\x01\n" +
+	"\raffiliate_url\x18\x01 \x01(\tR\faffiliateUrl\x12(\n" +
+	"\rproduct_title\x18\x02 \x01(\tH\x00R\fproductTitle\x88\x01\x01\x12(\n" +
+	"\rproduct_price\x18\x03 \x01(\x01H\x01R\fproductPrice\x88\x01\x01\x129\n" +
+	"\x16product_original_price\x18\x04 \x01(\x01H\x02R\x14productOriginalPrice\x88\x01\x01\x12/\n" +
+	"\x11product_image_url\x18\x05 \x01(\tH\x03R\x0fproductImageUrl\x88\x01\x01B\x10\n" +
+	"\x0e_product_titleB\x10\n" +
+	"\x0e_product_priceB\x19\n" +
+	"\x17_product_original_priceB\x14\n" +
+	"\x12_product_image_url*\xa5\x01\n" +
 	"\x06SortBy\x12\x17\n" +
 	"\x13SORT_BY_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12SORT_BY_COMMISSION\x10\x01\x12\x15\n" +
@@ -635,6 +679,7 @@ func file_affiliates_v1_shopee_proto_init() {
 	}
 	file_affiliates_v1_shopee_proto_msgTypes[0].OneofWrappers = []any{}
 	file_affiliates_v1_shopee_proto_msgTypes[1].OneofWrappers = []any{}
+	file_affiliates_v1_shopee_proto_msgTypes[4].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

@@ -2,6 +2,7 @@ import { useAuth } from '@/contexts';
 import type { ListForm, MlLinkList, MlLinkListItem, PreviewState } from '@/entities/ml-link-list';
 import { useMercadoLivreConnect } from '@/hooks/use-mercadolivre-connect';
 import { useMlLinksConnect } from '@/hooks/use-ml-links-connect';
+import { useShopeeConnect } from '@/hooks/use-shopee-connect';
 import { useToast } from '@/hooks/use-toast';
 import { captureHookError } from '@/lib/sentry';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -146,6 +147,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
   const { user } = useAuth();
   const { toast } = useToast();
   const { preview: mlPreview } = useMercadoLivreConnect();
+  const { getProductPreview: shopeePreview } = useShopeeConnect();
 
   // ConnectRPC hook for all ML Links operations
   const mlLinksConnect = useMlLinksConnect();
@@ -471,6 +473,21 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
           description: errorMessage,
           variant: 'destructive',
         });
+      }
+    } else {
+      try {
+        const previewData = await shopeePreview(cleanUrl);
+        if (previewData) {
+          preview = {
+            url: cleanUrl,
+            title: previewData.title,
+            price: previewData.price,
+            thumbnail: previewData.imageUrl,
+          };
+          setLastPreview(preview);
+        }
+      } catch {
+        // Shopee preview is best-effort; item will still be added
       }
     }
 
