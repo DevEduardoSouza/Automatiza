@@ -268,6 +268,22 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			}
 			// Use link preview instead of image attachment
 			imageURL = nil
+		} else if isShopee && shopeeProduct != nil && shopeeProduct.Name != "" {
+			desc := fmt.Sprintf("R$ %.2f", shopeeProduct.Price)
+			if shopeeProduct.OriginalPrice > 0 && shopeeProduct.OriginalPrice > shopeeProduct.Price {
+				desc = fmt.Sprintf("De R$ %.2f por R$ %.2f", shopeeProduct.OriginalPrice, shopeeProduct.Price)
+			}
+			imgURL := shopeeImageURL
+			if imgURL == "" && shopeeProduct.Image != "" {
+				imgURL = shopeeProduct.Image
+			}
+			linkPreview = &workers.LinkPreviewData{
+				URL:         affiliateURL,
+				Title:       shopeeProduct.Name,
+				Description: desc,
+				ImageURL:    imgURL,
+			}
+			imageURL = nil
 		}
 
 		// Send to each target group
