@@ -253,6 +253,9 @@ func (m *mockWahaProvider) SendVoice(context.Context, whatsapp.SendVoiceInput) (
 func (m *mockWahaProvider) SendPoll(context.Context, whatsapp.SendPollInput) (*whatsapp.MessageResult, error) {
 	return nil, nil
 }
+func (m *mockWahaProvider) SendLinkCustomPreview(context.Context, whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+	return nil, nil
+}
 func (m *mockWahaProvider) SendVideo(context.Context, whatsapp.SendVideoInput) (*whatsapp.MessageResult, error) {
 	return nil, nil
 }

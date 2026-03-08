@@ -56,7 +56,8 @@ type FakeAdapter struct {
 	SendVideoFunc    func(ctx context.Context, input SendVideoInput) (*MessageResult, error)
 	SendDocumentFunc func(ctx context.Context, input SendDocumentInput) (*MessageResult, error)
 	SendVoiceFunc    func(ctx context.Context, input SendVoiceInput) (*MessageResult, error)
-	SendPollFunc     func(ctx context.Context, input SendPollInput) (*MessageResult, error)
+	SendPollFunc              func(ctx context.Context, input SendPollInput) (*MessageResult, error)
+	SendLinkCustomPreviewFunc func(ctx context.Context, input SendLinkPreviewInput) (*MessageResult, error)
 
 	// Webhook function overrides
 	SetWebhookFunc func(ctx context.Context, input SetWebhookInput) error
@@ -808,6 +809,24 @@ func (f *FakeAdapter) SendPoll(ctx context.Context, input SendPollInput) (*Messa
 
 	if f.SendPollFunc != nil {
 		return f.SendPollFunc(ctx, input)
+	}
+
+	return &MessageResult{
+		ID:        generateFakeMessageID(),
+		Timestamp: time.Now(),
+	}, nil
+}
+
+// SendLinkCustomPreview implements MessageSender.SendLinkCustomPreview.
+func (f *FakeAdapter) SendLinkCustomPreview(ctx context.Context, input SendLinkPreviewInput) (*MessageResult, error) {
+	f.recordCall("SendLinkCustomPreview", input)
+
+	if f.SimulateError != nil {
+		return nil, f.SimulateError
+	}
+
+	if f.SendLinkCustomPreviewFunc != nil {
+		return f.SendLinkCustomPreviewFunc(ctx, input)
 	}
 
 	return &MessageResult{

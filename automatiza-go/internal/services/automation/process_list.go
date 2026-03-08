@@ -231,6 +231,27 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			}
 		}
 
+		// Build custom link preview for ML items with preview data
+		var linkPreview *workers.LinkPreviewData
+		if isML && preview != nil && preview.Title != "" {
+			desc := fmt.Sprintf("R$ %.2f", preview.Price)
+			if preview.OriginalPrice != nil {
+				desc = fmt.Sprintf("De R$ %.2f por R$ %.2f", *preview.OriginalPrice, preview.Price)
+			}
+			imgURL := ""
+			if preview.Image != "" {
+				imgURL = strings.Replace(preview.Image, ".webp", ".jpg", 1)
+			}
+			linkPreview = &workers.LinkPreviewData{
+				URL:         affiliateURL,
+				Title:       preview.Title,
+				Description: desc,
+				ImageURL:    imgURL,
+			}
+			// Use link preview instead of image attachment
+			imageURL = nil
+		}
+
 		// Send to each target group
 		groupIDsSent := make([]string, 0, len(validGroups))
 		for _, groupID := range validGroups {
@@ -287,6 +308,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				UserID:        automation.UserID,
 				AutomationID:  automation.ID,
 				DispatchLogID: dispatchLogID,
+				LinkPreview:   linkPreview,
 			}
 
 			if s.queueClient != nil {
