@@ -133,20 +133,10 @@ func (s *cronService) Start() {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.tasksMu.Unlock()
 
-	// Register default tasks
+	// Register default tasks.
+	// Because s.running is already true, RegisterTask will start a goroutine
+	// for each task automatically — no separate loop needed.
 	s.registerDefaultTasks()
-
-	// Start all tasks with SafeGo panic recovery (BG13)
-	s.tasksMu.RLock()
-	for _, task := range s.tasks {
-		t := task // capture loop variable
-		s.wg.Add(1)
-		observability.SafeGo("cron-task-"+t.name, func() {
-			defer s.wg.Done()
-			s.runTask(t)
-		})
-	}
-	s.tasksMu.RUnlock()
 
 	s.logger.Info("Cron service started",
 		zap.Int("tasks", len(s.tasks)))
