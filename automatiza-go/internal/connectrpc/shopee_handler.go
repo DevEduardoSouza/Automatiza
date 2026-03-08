@@ -124,9 +124,34 @@ func (h *ShopeeHandler) GenerateAffiliateLink(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to generate affiliate link: %w", err))
 	}
 
-	return connect.NewResponse(&affiliatesv1.GenerateAffiliateLinkResponse{
+	resp := &affiliatesv1.GenerateAffiliateLinkResponse{
 		AffiliateUrl: result.AffiliateLink,
-	}), nil
+	}
+
+	// Fetch product details if we have item/shop IDs
+	if result.ItemID > 0 && result.ShopID > 0 {
+		product, prodErr := h.shopeeService.GetProduct(ctx, result.ItemID, result.ShopID, user.ID)
+		if prodErr == nil && product != nil {
+			if product.Name != "" {
+				resp.ProductTitle = &product.Name
+			}
+			if product.Price > 0 {
+				resp.ProductPrice = &product.Price
+			}
+			if product.OriginalPrice > 0 {
+				resp.ProductOriginalPrice = &product.OriginalPrice
+			}
+			imgURL := product.Image
+			if imgURL == "" {
+				imgURL = result.ImageURL
+			}
+			if imgURL != "" {
+				resp.ProductImageUrl = &imgURL
+			}
+		}
+	}
+
+	return connect.NewResponse(resp), nil
 }
 
 // mapProtoSortBy converts proto SortBy enum to string for the service.

@@ -113,6 +113,18 @@ message GenerateAffiliateLinkRequest {
 message GenerateAffiliateLinkResponse {
   // Generated affiliate URL
   string affiliate_url = 1;
+
+  // Product title (if available)
+  optional string product_title = 2;
+
+  // Product price
+  optional double product_price = 3;
+
+  // Product original price (before discount)
+  optional double product_original_price = 4;
+
+  // Product image URL
+  optional string product_image_url = 5;
 }
 
 // ============================================================
