@@ -442,25 +442,36 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     }
 
     let preview: PreviewState | null = null;
-    try {
-      const previewData = await mlPreview(cleanUrl);
-      if (previewData) {
-        preview = {
-          url: cleanUrl,
-          title: previewData.title ?? null,
-          price: previewData.price ?? null,
-          thumbnail: previewData.imageUrl ?? null,
-        };
-        setLastPreview(preview);
+    const isML = (() => {
+      try {
+        const host = new URL(cleanUrl).hostname.toLowerCase();
+        return host.includes('mercadolivre.') || host.includes('mercadolibre.');
+      } catch {
+        return false;
       }
-    } catch (e: unknown) {
-      const errorMessage =
-        e instanceof Error ? e.message : t('pages.mlLinkLists.errors.previewUnavailableMessage');
-      toast({
-        title: t('pages.mlLinkLists.errors.previewUnavailable'),
-        description: errorMessage,
-        variant: 'destructive',
-      });
+    })();
+
+    if (isML) {
+      try {
+        const previewData = await mlPreview(cleanUrl);
+        if (previewData) {
+          preview = {
+            url: cleanUrl,
+            title: previewData.title ?? null,
+            price: previewData.price ?? null,
+            thumbnail: previewData.imageUrl ?? null,
+          };
+          setLastPreview(preview);
+        }
+      } catch (e: unknown) {
+        const errorMessage =
+          e instanceof Error ? e.message : t('pages.mlLinkLists.errors.previewUnavailableMessage');
+        toast({
+          title: t('pages.mlLinkLists.errors.previewUnavailable'),
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
     }
 
     try {
