@@ -209,6 +209,58 @@ func TestExtractImage(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// upscaleMLImageURL
+// ---------------------------------------------------------------------------
+
+func TestUpscaleMLImageURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{
+			name: "replaces -O with -F for webp",
+			url:  "https://http2.mlstatic.com/D_NQ_NP_852672-MLA99562209030_122025-O.webp",
+			want: "https://http2.mlstatic.com/D_NQ_NP_852672-MLA99562209030_122025-F.webp",
+		},
+		{
+			name: "replaces -O with -F for jpg",
+			url:  "https://http2.mlstatic.com/D_NQ_NP_807092-MLA100966388363_122025-O.jpg",
+			want: "https://http2.mlstatic.com/D_NQ_NP_807092-MLA100966388363_122025-F.jpg",
+		},
+		{
+			name: "replaces -I with -F",
+			url:  "https://http2.mlstatic.com/D_NQ_NP_123-MLA456-I.webp",
+			want: "https://http2.mlstatic.com/D_NQ_NP_123-MLA456-F.webp",
+		},
+		{
+			name: "keeps -F unchanged",
+			url:  "https://http2.mlstatic.com/D_NQ_NP_123-MLA456-F.webp",
+			want: "https://http2.mlstatic.com/D_NQ_NP_123-MLA456-F.webp",
+		},
+		{
+			name: "non-mlstatic URL unchanged",
+			url:  "https://img.com/product-O.jpg",
+			want: "https://img.com/product-O.jpg",
+		},
+		{
+			name: "empty string unchanged",
+			url:  "",
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := upscaleMLImageURL(tt.url)
+			if got != tt.want {
+				t.Errorf("upscaleMLImageURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // parseMoneyAmount
 // ---------------------------------------------------------------------------
 

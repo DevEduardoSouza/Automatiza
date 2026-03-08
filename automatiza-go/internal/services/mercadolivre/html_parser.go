@@ -73,16 +73,30 @@ func extractTitle(html string) string {
 	return ""
 }
 
+// mlImageSuffixRegex matches the size suffix in mlstatic.com image URLs.
+// Pattern: "-O.webp", "-O.jpg", "-I.webp", "-S.jpg", etc.
+var mlImageSuffixRegex = regexp.MustCompile(`-([OISVW])\.(webp|jpg|jpeg|png)$`)
+
+// upscaleMLImageURL replaces the ML image size suffix with "-F" (full ~800px).
+// ML CDN uses: -O (original/small ~300px), -I (icon), -S (small),
+// -F (full ~800px), -V (very large ~1200px).
+func upscaleMLImageURL(url string) string {
+	if !strings.Contains(url, "mlstatic.com") {
+		return url
+	}
+	return mlImageSuffixRegex.ReplaceAllString(url, "-F.$2")
+}
+
 // extractImage extracts product image from HTML
 func extractImage(html string) string {
 	// Try og:image first
 	if img := extractMeta(html, "og:image"); img != "" {
-		return img
+		return upscaleMLImageURL(img)
 	}
 
 	// Try twitter:image
 	if img := extractMeta(html, "twitter:image"); img != "" {
-		return img
+		return upscaleMLImageURL(img)
 	}
 
 	return ""
