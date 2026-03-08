@@ -177,6 +177,10 @@ type MessageSender interface {
 	// SendPoll sends a poll message to a chat.
 	// Polls support 2-12 options with configurable selection count.
 	SendPoll(ctx context.Context, input SendPollInput) (*MessageResult, error)
+
+	// SendLinkCustomPreview sends a message with a custom link preview card.
+	// Used for controlling the preview title, description, and image shown in WhatsApp.
+	SendLinkCustomPreview(ctx context.Context, input SendLinkPreviewInput) (*MessageResult, error)
 }
 
 // WebhookManager handles webhook configuration for receiving WhatsApp events.
@@ -538,6 +542,30 @@ type SendPollInput struct {
 	// SelectableCount is the maximum number of options a user can select.
 	// Must be >= 1 and <= len(Options).
 	SelectableCount int
+}
+
+// SendLinkPreviewInput contains parameters for sending a message with custom link preview.
+type SendLinkPreviewInput struct {
+	// SessionName is the session to use.
+	SessionName string
+
+	// ChatID is the recipient (group or individual WhatsApp ID).
+	ChatID string
+
+	// Text is the message content. Must contain the URL from the preview.
+	Text string
+
+	// URL is the URL to show in the preview card.
+	URL string
+
+	// Title is the preview card title.
+	Title string
+
+	// Description is the preview card description (e.g., price).
+	Description string
+
+	// ImageURL is the image to display in the preview card.
+	ImageURL string
 }
 
 // MessageResult contains the result of a sent message.

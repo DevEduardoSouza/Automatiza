@@ -1232,6 +1232,38 @@ func (a *WahaAdapter) SendPoll(ctx context.Context, input SendPollInput) (*Messa
 	return a.parseMessageResult(resp)
 }
 
+// SendLinkCustomPreview sends a message with a custom link preview card.
+func (a *WahaAdapter) SendLinkCustomPreview(ctx context.Context, input SendLinkPreviewInput) (*MessageResult, error) {
+	if err := a.requireWorkingSession(ctx, input.SessionName); err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("SendLinkCustomPreview request",
+		zap.String("session", input.SessionName),
+		zap.String("chatId", input.ChatID),
+		zap.String("previewURL", input.URL),
+		zap.String("title", input.Title))
+
+	payload := a.mapper.SendLinkPreviewToWaha(&input)
+
+	resp, err := a.doRequest(ctx, http.MethodPost, "/api/send/link-custom-preview", payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send link custom preview: %w", err)
+	}
+
+	result, err := a.parseMessageResult(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("SendLinkCustomPreview success",
+		zap.String("session", input.SessionName),
+		zap.String("chatId", input.ChatID),
+		zap.String("messageId", result.ID))
+
+	return result, nil
+}
+
 // SendVideo sends a video message to a chat.
 func (a *WahaAdapter) SendVideo(ctx context.Context, input SendVideoInput) (*MessageResult, error) {
 	if err := input.Validate(); err != nil {

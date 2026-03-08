@@ -101,7 +101,39 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 
 	// 3. Send Message via WhatsAppProvider
 	var sendErr error
-	if data.AudioBase64 != nil && *data.AudioBase64 != "" {
+	if data.LinkPreview != nil && data.LinkPreview.URL != "" {
+		// Send with custom link preview
+		w.logger.Info("Sending link custom preview",
+			zap.String("automationID", data.AutomationID),
+			zap.String("groupId", data.GroupID),
+			zap.String("previewURL", data.LinkPreview.URL))
+
+		previewInput := whatsapp.SendLinkPreviewInput{
+			SessionName: data.InstanceName,
+			ChatID:      data.GroupID,
+			Text:        normalizedMessage,
+			URL:         data.LinkPreview.URL,
+			Title:       data.LinkPreview.Title,
+			Description: data.LinkPreview.Description,
+			ImageURL:    data.LinkPreview.ImageURL,
+		}
+		_, sendErr = w.whatsappProvider.SendLinkCustomPreview(ctx, previewInput)
+
+		// Fallback: if link preview fails, try sending as image or text
+		if sendErr != nil {
+			w.logger.Warn("Link preview send failed, falling back to text",
+				zap.String("automationID", data.AutomationID),
+				zap.String("previewURL", data.LinkPreview.URL),
+				zap.Error(sendErr))
+			textInput := whatsapp.SendTextInput{
+				SessionName: data.InstanceName,
+				ChatID:      data.GroupID,
+				Text:        normalizedMessage,
+				Mentions:    data.Mentions,
+			}
+			_, sendErr = w.whatsappProvider.SendText(ctx, textInput)
+		}
+	} else if data.AudioBase64 != nil && *data.AudioBase64 != "" {
 		// Send voice message
 		mimetype := "audio/ogg; codecs=opus"
 		if data.Mimetype != nil && *data.Mimetype != "" {

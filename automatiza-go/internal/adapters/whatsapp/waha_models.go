@@ -379,6 +379,23 @@ type wahaPollData struct {
 	MultipleAnswers bool     `json:"multipleAnswers"`
 }
 
+// wahaSendLinkPreviewRequest represents a WAHA link custom preview request.
+// Maps to POST /api/send/link-custom-preview request body.
+type wahaSendLinkPreviewRequest struct {
+	Session string                      `json:"session"`
+	ChatID  string                      `json:"chatId"`
+	Text    string                      `json:"text"`
+	Preview *wahaSendLinkPreviewPreview `json:"preview"`
+}
+
+// wahaSendLinkPreviewPreview represents the preview object inside a link preview request.
+type wahaSendLinkPreviewPreview struct {
+	URL         string    `json:"url"`
+	Title       string    `json:"title"`
+	Description string    `json:"description,omitempty"`
+	Image       *wahaFile `json:"image,omitempty"`
+}
+
 // wahaFile represents a file attachment in WAHA requests.
 type wahaFile struct {
 	Data     string `json:"data,omitempty"`     // Base64 encoded data

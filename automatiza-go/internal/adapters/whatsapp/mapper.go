@@ -406,6 +406,32 @@ func (m *Mapper) SendPollToWaha(input *SendPollInput) *wahaSendPollRequest {
 	}
 }
 
+// SendLinkPreviewToWaha converts a domain SendLinkPreviewInput to a WAHA request.
+func (m *Mapper) SendLinkPreviewToWaha(input *SendLinkPreviewInput) *wahaSendLinkPreviewRequest {
+	if input == nil {
+		return nil
+	}
+
+	req := &wahaSendLinkPreviewRequest{
+		Session: input.SessionName,
+		ChatID:  input.ChatID,
+		Text:    input.Text,
+		Preview: &wahaSendLinkPreviewPreview{
+			URL:         input.URL,
+			Title:       input.Title,
+			Description: input.Description,
+		},
+	}
+
+	if input.ImageURL != "" {
+		req.Preview.Image = &wahaFile{
+			URL: input.ImageURL,
+		}
+	}
+
+	return req
+}
+
 // SendVideoToWaha converts a domain SendVideoInput to a WAHA request.
 func (m *Mapper) SendVideoToWaha(input *SendVideoInput) *wahaSendVideoRequest {
 	if input == nil {

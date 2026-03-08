@@ -25,20 +25,29 @@ const (
 
 // MessageJobData represents data for a send message job
 type MessageJobData struct {
-	InstanceName  string   `json:"instanceName"`
-	GroupID       string   `json:"groupId"`
-	Message       string   `json:"message"`
-	Mentions      []string `json:"mentions,omitempty"`
-	HistoryID     *string  `json:"historyId,omitempty"`
-	ImageURL      *string  `json:"imageUrl,omitempty"`
-	ImageBase64   *string  `json:"imageBase64,omitempty"`
-	DispatchLogID *int     `json:"dispatchLogId,omitempty"`
-	AudioBase64   *string  `json:"audioBase64,omitempty"`
-	Mimetype      *string  `json:"mimetype,omitempty"`
-	PTT           bool     `json:"ptt,omitempty"`
-	UserID        string   `json:"userId"`
-	AutomationID  string   `json:"automationId,omitempty"`
-	TraceID       string   `json:"trace_id,omitempty"`
+	InstanceName  string           `json:"instanceName"`
+	GroupID       string           `json:"groupId"`
+	Message       string           `json:"message"`
+	Mentions      []string         `json:"mentions,omitempty"`
+	HistoryID     *string          `json:"historyId,omitempty"`
+	ImageURL      *string          `json:"imageUrl,omitempty"`
+	ImageBase64   *string          `json:"imageBase64,omitempty"`
+	DispatchLogID *int             `json:"dispatchLogId,omitempty"`
+	AudioBase64   *string          `json:"audioBase64,omitempty"`
+	Mimetype      *string          `json:"mimetype,omitempty"`
+	PTT           bool             `json:"ptt,omitempty"`
+	UserID        string           `json:"userId"`
+	AutomationID  string           `json:"automationId,omitempty"`
+	TraceID       string           `json:"trace_id,omitempty"`
+	LinkPreview   *LinkPreviewData `json:"linkPreview,omitempty"`
+}
+
+// LinkPreviewData contains custom link preview metadata for WhatsApp messages.
+type LinkPreviewData struct {
+	URL         string `json:"url"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	ImageURL    string `json:"imageUrl,omitempty"`
 }
 
 // GroupsSyncJobData represents data for a groups sync job

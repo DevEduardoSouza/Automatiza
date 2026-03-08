@@ -809,6 +809,9 @@ func (m *mockWhatsAppProvider) SendPoll(ctx context.Context, input whatsapp.Send
 	}
 	return &whatsapp.MessageResult{ID: "poll-1"}, nil
 }
+func (m *mockWhatsAppProvider) SendLinkCustomPreview(ctx context.Context, input whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+	return &whatsapp.MessageResult{ID: "msg-1"}, nil
+}
 func (m *mockWhatsAppProvider) SetWebhook(ctx context.Context, input whatsapp.SetWebhookInput) error {
 	if m.SetWebhookFunc != nil {
 		return m.SetWebhookFunc(ctx, input)

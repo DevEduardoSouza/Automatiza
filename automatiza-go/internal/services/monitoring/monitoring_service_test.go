@@ -439,6 +439,9 @@ func (m *mockWAProvider) SendVoice(_ context.Context, _ whatsapp.SendVoiceInput)
 func (m *mockWAProvider) SendPoll(_ context.Context, _ whatsapp.SendPollInput) (*whatsapp.MessageResult, error) {
 	return nil, nil
 }
+func (m *mockWAProvider) SendLinkCustomPreview(_ context.Context, _ whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+	return nil, nil
+}
 
 // WebhookManager methods
 func (m *mockWAProvider) SetWebhook(_ context.Context, _ whatsapp.SetWebhookInput) error { return nil }
