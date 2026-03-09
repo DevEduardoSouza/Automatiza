@@ -23,6 +23,8 @@ type CouponResult struct {
 	CouponCode string
 	// SkipReason explains why the coupon was not applied (empty if applied)
 	SkipReason string
+	// DiscountedPrice is the price after applying the coupon discount
+	DiscountedPrice float64
 }
 
 // CouponHandler handles coupon validation and application for automations.
@@ -130,6 +132,7 @@ func (h *CouponHandler) ApplyCoupon(
 	// Coupon is valid - apply it
 	result.Applied = true
 	result.CouponText = h.formatCouponText(coupon)
+	result.DiscountedPrice = CalculateDiscountedPrice(offerPrice, coupon)
 
 	h.logger.Debug("Coupon applied successfully",
 		zap.String("couponID", coupon.ID),
@@ -280,6 +283,35 @@ func (h *CouponHandler) ApplyCouponWithPreloaded(
 	// Coupon is valid
 	result.Applied = true
 	result.CouponText = h.formatCouponText(coupon)
+	result.DiscountedPrice = CalculateDiscountedPrice(offerPrice, coupon)
 
 	return result
+}
+
+// CalculateDiscountedPrice calculates the price after applying a coupon discount.
+// Returns the original price if coupon is nil or has no discount configured.
+func CalculateDiscountedPrice(price float64, coupon *models.Coupon) float64 {
+	if coupon == nil || coupon.DiscountType == nil || coupon.DiscountValue == nil {
+		return price
+	}
+
+	discountType := *coupon.DiscountType
+	discountValue := *coupon.DiscountValue
+
+	switch discountType {
+	case "fixed":
+		result := price - discountValue
+		if result < 0 {
+			return 0
+		}
+		return result
+	case "percent":
+		discount := price * discountValue / 100
+		if coupon.MaxDiscount != nil && *coupon.MaxDiscount > 0 && discount > *coupon.MaxDiscount {
+			discount = *coupon.MaxDiscount
+		}
+		return price - discount
+	default:
+		return price
+	}
 }

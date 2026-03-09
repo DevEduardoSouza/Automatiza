@@ -107,6 +107,9 @@ type MLOfferVars struct {
 	ReviewCount   int
 	Installments  string
 	CTA           string
+	CouponCode    string
+	CouponText    string
+	CouponBlock   string
 }
 
 // RenderShopeeOfferTemplate renders a template for a Shopee offer
@@ -169,6 +172,8 @@ func RenderMLOfferTemplate(template string, offer MLOfferVars) string {
 		VarLinkAfiliado:           offer.AffiliateLink,
 		VarLinkProduto:            offer.Link,
 		VarCTA:                    offer.CTA,
+		VarCupom:                  offer.CouponCode,
+		VarCupomBloco:             offer.CouponBlock,
 		VarAvisoPreco:             AvisoPrecoDefault,
 		// ML-specific
 		VarDesconto:        formatDiscountPercent(offer.Discount),
@@ -187,6 +192,11 @@ func RenderMLOfferTemplate(template string, offer MLOfferVars) string {
 		VarImage:         offer.Image,
 		VarStore:         "Mercado Livre",
 		VarSeller:        offer.Seller,
+	}
+
+	if offer.CouponCode != "" {
+		vars[VarCouponCode] = offer.CouponCode
+		vars[VarCouponText] = offer.CouponText
 	}
 
 	return RenderTemplate(template, vars)

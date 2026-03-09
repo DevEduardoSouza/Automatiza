@@ -652,6 +652,7 @@ func TestProcessSearchMode_EdgeCases(t *testing.T) {
 				deps.shopeeService,
 				deps.mlService,
 				nil, nil, nil, nil,
+				nil, // couponRepo
 				logger,
 			)
 

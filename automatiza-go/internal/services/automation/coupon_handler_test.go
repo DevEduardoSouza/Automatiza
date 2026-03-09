@@ -787,6 +787,82 @@ func TestFormatCouponText_PercentDiscountWithoutMax(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
+// ---------------------------------------------------------------------------
+// CalculateDiscountedPrice tests
+// ---------------------------------------------------------------------------
+
+func TestCalculateDiscountedPrice_NilCoupon(t *testing.T) {
+	t.Parallel()
+	assert.InDelta(t, 150.0, CalculateDiscountedPrice(150, nil), 0.01)
+}
+
+func TestCalculateDiscountedPrice_FixedDiscount(t *testing.T) {
+	t.Parallel()
+	coupon := &models.Coupon{
+		Code:          "FIX15",
+		DiscountType:  strPtr("fixed"),
+		DiscountValue: float64Ptr(15),
+	}
+	assert.InDelta(t, 135.0, CalculateDiscountedPrice(150, coupon), 0.01)
+}
+
+func TestCalculateDiscountedPrice_PercentDiscount(t *testing.T) {
+	t.Parallel()
+	coupon := &models.Coupon{
+		Code:          "PCT10",
+		DiscountType:  strPtr("percent"),
+		DiscountValue: float64Ptr(10),
+	}
+	assert.InDelta(t, 135.0, CalculateDiscountedPrice(150, coupon), 0.01)
+}
+
+func TestCalculateDiscountedPrice_PercentWithMaxCap(t *testing.T) {
+	t.Parallel()
+	coupon := &models.Coupon{
+		Code:          "PCT50MAX20",
+		DiscountType:  strPtr("percent"),
+		DiscountValue: float64Ptr(50),
+		MaxDiscount:   float64Ptr(20),
+	}
+	assert.InDelta(t, 180.0, CalculateDiscountedPrice(200, coupon), 0.01)
+}
+
+func TestCalculateDiscountedPrice_FixedExceedsPriceReturnsZero(t *testing.T) {
+	t.Parallel()
+	coupon := &models.Coupon{
+		Code:          "FIX50",
+		DiscountType:  strPtr("fixed"),
+		DiscountValue: float64Ptr(50),
+	}
+	assert.InDelta(t, 0.0, CalculateDiscountedPrice(10, coupon), 0.01)
+}
+
+func TestCalculateDiscountedPrice_NoDiscountTypeReturnsOriginal(t *testing.T) {
+	t.Parallel()
+	coupon := &models.Coupon{
+		Code: "NODISCOUNT",
+	}
+	assert.InDelta(t, 100.0, CalculateDiscountedPrice(100, coupon), 0.01)
+}
+
+func TestApplyCouponWithPreloaded_PopulatesDiscountedPrice(t *testing.T) {
+	t.Parallel()
+	handler := newTestCouponHandler(new(mockCouponRepoForAutomation))
+
+	coupon := &models.Coupon{
+		ID:            "coupon-1",
+		Code:          "PCT10",
+		Store:         "ml",
+		IsActive:      true,
+		DiscountType:  strPtr("percent"),
+		DiscountValue: float64Ptr(10),
+	}
+
+	result := handler.ApplyCouponWithPreloaded(coupon, 150.0, "ml")
+	assert.True(t, result.Applied)
+	assert.InDelta(t, 135.0, result.DiscountedPrice, 0.01)
+}
+
 func TestLoadCouponOnce_RepoError(t *testing.T) {
 	t.Parallel()
 	repo := new(mockCouponRepoForAutomation)
