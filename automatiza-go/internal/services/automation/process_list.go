@@ -141,6 +141,18 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		}
 	}
 
+	// Load coupon once for all items (avoids repeated DB lookups)
+	var preloadedCoupon *models.Coupon
+	if s.couponHandler != nil {
+		coupon, skipMsg := s.couponHandler.LoadCouponOnce(ctx, automation)
+		if skipMsg != "" {
+			s.logger.Info("Coupon skip for list mode",
+				zap.String("automationID", automation.ID),
+				zap.String("reason", skipMsg))
+		}
+		preloadedCoupon = coupon
+	}
+
 	result := &models.RunAutomationResult{
 		Success:      true,
 		OffersFound:  len(items),
@@ -234,8 +246,25 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			}
 		}
 
+		// Apply coupon to this item
+		var couponResult *CouponResult
+		if s.couponHandler != nil && preloadedCoupon != nil {
+			var offerPrice float64
+			var offerStore string
+			if isML && preview != nil {
+				offerPrice = preview.Price
+				offerStore = "ml"
+			} else if isShopee && shopeeProduct != nil {
+				offerPrice = shopeeProduct.Price
+				offerStore = "shopee"
+			}
+			if offerPrice > 0 {
+				couponResult = s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, offerStore)
+			}
+		}
+
 		// Build message for this item
-		message := s.buildListModeMessage(automation, item, preview, shopeeProduct, affiliateURL, dispatchTemplate, isShopee, ctaEntities)
+		message := s.buildListModeMessage(automation, item, preview, shopeeProduct, affiliateURL, dispatchTemplate, isShopee, ctaEntities, couponResult)
 
 		// Get image URL if available and enabled
 		var imageURL *string
@@ -256,6 +285,9 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			if preview.OriginalPrice != nil {
 				desc = fmt.Sprintf("De R$ %.2f por R$ %.2f", *preview.OriginalPrice, preview.Price)
 			}
+			if couponResult != nil && couponResult.Applied && couponResult.DiscountedPrice < preview.Price {
+				desc = fmt.Sprintf("De R$ %.2f por R$ %.2f com cupom", preview.Price, couponResult.DiscountedPrice)
+			}
 			imgURL := ""
 			if preview.Image != "" {
 				imgURL = strings.Replace(preview.Image, ".webp", ".jpg", 1)
@@ -272,6 +304,9 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			desc := fmt.Sprintf("R$ %.2f", shopeeProduct.Price)
 			if shopeeProduct.OriginalPrice > 0 && shopeeProduct.OriginalPrice > shopeeProduct.Price {
 				desc = fmt.Sprintf("De R$ %.2f por R$ %.2f", shopeeProduct.OriginalPrice, shopeeProduct.Price)
+			}
+			if couponResult != nil && couponResult.Applied && couponResult.DiscountedPrice < shopeeProduct.Price {
+				desc = fmt.Sprintf("De R$ %.2f por R$ %.2f com cupom", shopeeProduct.Price, couponResult.DiscountedPrice)
 			}
 			imgURL := shopeeImageURL
 			if imgURL == "" && shopeeProduct.Image != "" {
@@ -399,6 +434,7 @@ func (s *automationService) buildListModeMessage(
 	dispatchTemplate string,
 	isShopee bool,
 	ctaEntities []models.CTA,
+	couponResult *CouponResult,
 ) string {
 	// Select random CTA: prefer CTA entities, fallback to inline CTAs
 	cta := ""
@@ -435,6 +471,13 @@ func (s *automationService) buildListModeMessage(
 			vars.Image = *item.ProductImageURL
 		}
 
+		// Populate coupon fields
+		if couponResult != nil && couponResult.Applied {
+			vars.CouponCode = couponResult.CouponCode
+			vars.CouponText = couponResult.CouponText
+			vars.CouponBlock = couponResult.CouponText
+		}
+
 		var message string
 		if dispatchTemplate != "" {
 			message = text.RenderShopeeOfferTemplate(dispatchTemplate, vars)
@@ -445,6 +488,11 @@ func (s *automationService) buildListModeMessage(
 		// Auto-append CTA if template doesn't contain {cta} variable
 		if cta != "" && !strings.Contains(dispatchTemplate, "{cta}") {
 			message = message + "\n\n" + cta
+		}
+
+		// Auto-append coupon text if template doesn't contain {cupom_bloco}
+		if couponResult != nil && couponResult.Applied && !strings.Contains(dispatchTemplate, "{cupom_bloco}") {
+			message = message + couponResult.CouponText
 		}
 
 		return text.NormalizeOutgoingWhatsAppText(message)
@@ -493,6 +541,13 @@ func (s *automationService) buildListModeMessage(
 		}
 	}
 
+	// Populate coupon fields
+	if couponResult != nil && couponResult.Applied {
+		vars.CouponCode = couponResult.CouponCode
+		vars.CouponText = couponResult.CouponText
+		vars.CouponBlock = couponResult.CouponText
+	}
+
 	var message string
 	if dispatchTemplate != "" {
 		message = text.RenderMLOfferTemplate(dispatchTemplate, vars)
@@ -503,6 +558,11 @@ func (s *automationService) buildListModeMessage(
 	// Auto-append CTA if template doesn't contain {cta} variable
 	if cta != "" && !strings.Contains(dispatchTemplate, "{cta}") {
 		message = message + "\n\n" + cta
+	}
+
+	// Auto-append coupon text if template doesn't contain {cupom_bloco}
+	if couponResult != nil && couponResult.Applied && !strings.Contains(dispatchTemplate, "{cupom_bloco}") {
+		message = message + couponResult.CouponText
 	}
 
 	return text.NormalizeOutgoingWhatsAppText(message)

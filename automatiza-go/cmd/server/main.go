@@ -440,6 +440,7 @@ func main() {
 		backpressureManager,
 		queueClient,
 		cacheClient,
+		couponRepo,
 		config.NewModuleLogger(logger, "automation"),
 	)
 

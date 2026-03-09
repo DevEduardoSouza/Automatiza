@@ -1158,7 +1158,7 @@ func TestBuildListModeMessage(t *testing.T) {
 			ProductImageURL: &imageURL,
 		}
 
-		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, nil)
+		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, nil, nil)
 		assert.NotEmpty(t, message)
 		assert.Contains(t, message, "Product Title")
 	})
@@ -1196,7 +1196,7 @@ func TestBuildListModeMessage(t *testing.T) {
 			Installments:  &installments,
 		}
 
-		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", "", false, nil)
+		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", "", false, nil, nil)
 		assert.NotEmpty(t, message)
 		assert.Contains(t, message, "Test Product Full")
 	})
@@ -1223,7 +1223,7 @@ func TestBuildListModeMessage(t *testing.T) {
 		}
 
 		template := "{{titulo}} por {{preco}} - {{link}}"
-		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", template, false, nil)
+		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", template, false, nil, nil)
 		assert.NotEmpty(t, message)
 	})
 
@@ -1244,7 +1244,7 @@ func TestBuildListModeMessage(t *testing.T) {
 			ProductImageURL: nil,
 		}
 
-		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, nil)
+		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, nil, nil)
 		assert.NotEmpty(t, message) // Should still render with empty/zero values
 	})
 }

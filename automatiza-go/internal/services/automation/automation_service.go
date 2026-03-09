@@ -72,9 +72,10 @@ type automationService struct {
 	urlSafetyService urlSafetyEvaluator
 	backpressure     backpressureProvider
 
-	queueClient *workers.QueueClient
-	cache       *cache.Cache
-	logger      *zap.Logger
+	couponHandler *CouponHandler
+	queueClient   *workers.QueueClient
+	cache         *cache.Cache
+	logger        *zap.Logger
 }
 
 // NewAutomationService creates a new automation service.
@@ -99,6 +100,7 @@ func NewAutomationService(
 	bp *bpLib.ProducerBackpressure,
 	queueClient *workers.QueueClient,
 	cache *cache.Cache,
+	couponRepo repository.CouponRepository,
 	logger *zap.Logger,
 ) Service {
 	svc := &automationService{
@@ -125,6 +127,9 @@ func NewAutomationService(
 	}
 	if bp != nil {
 		svc.backpressure = bp
+	}
+	if couponRepo != nil {
+		svc.couponHandler = NewCouponHandler(couponRepo, logger)
 	}
 	return svc
 }

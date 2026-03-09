@@ -271,12 +271,14 @@ export function AutomationFormDialog({
             </div>
           )}
 
-          {/* Coupon Selection */}
-          <CouponSelector
-            formData={formData}
-            setFormData={setFormData}
-            availableCoupons={availableCoupons}
-          />
+          {/* Coupon Selection (only for list mode) */}
+          {formData.mode === 'list' && (
+            <CouponSelector
+              formData={formData}
+              setFormData={setFormData}
+              availableCoupons={availableCoupons}
+            />
+          )}
 
           {/* CTA Selection (search + list mode) */}
           {formData.mode !== 'monitor' && (

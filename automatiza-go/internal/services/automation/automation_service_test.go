@@ -911,6 +911,7 @@ func newTestService(t *testing.T) (automation.Service, *testServiceDeps) {
 		nil, // backpressure
 		nil, // queueClient
 		nil, // cache
+		nil, // couponRepo
 		logger,
 	)
 
@@ -2079,6 +2080,7 @@ func TestNewAutomationService_WithNonNilDependencies(t *testing.T) {
 		nil, nil,
 		usSvc, bpSvc,
 		nil, nil,
+		nil, // couponRepo
 		logger,
 	)
 	assert.NotNil(t, svc)
