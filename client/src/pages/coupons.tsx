@@ -207,7 +207,7 @@ export default function Coupons() {
                           </SelectTrigger>
                           <SelectContent>
                             {stores.map((store) => (
-                              <SelectItem key={store.value} value={store.value}>
+                              <SelectItem key={store.value} value={store.value} disabled={store.disabled}>
                                 {store.label}
                               </SelectItem>
                             ))}
@@ -226,22 +226,6 @@ export default function Coupons() {
                         onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                         placeholder={t('pages.coupons.form.titlePlaceholder')}
                         required
-                        className={inputClasses}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="affiliate_link">
-                        {t('pages.coupons.form.affiliateLink')}
-                      </Label>
-                      <input
-                        id="affiliate_link"
-                        type="url"
-                        value={formData.affiliate_link}
-                        onChange={(e) =>
-                          setFormData({ ...formData, affiliate_link: e.target.value })
-                        }
-                        placeholder={t('pages.coupons.form.affiliateLinkPlaceholder')}
                         className={inputClasses}
                       />
                     </div>

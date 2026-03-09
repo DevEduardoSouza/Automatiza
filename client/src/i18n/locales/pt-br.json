@@ -1539,7 +1539,8 @@
         "ml": "Mercado Livre",
         "shein": "Shein",
         "aliexpress": "AliExpress",
-        "awin": "Awin"
+        "awin": "Awin",
+        "notConfigured": "não configurada"
       },
       "categories": {
         "generalOffers": "Ofertas gerais",
