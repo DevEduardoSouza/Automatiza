@@ -267,7 +267,6 @@ func (s *couponsService) UpdateCoupon(ctx context.Context, couponID, userID stri
 	}
 
 	updates := make(map[string]interface{})
-	updates["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 
 	// 2. If updating code, check for duplicates
 	if data.Code != nil && *data.Code != "" {
