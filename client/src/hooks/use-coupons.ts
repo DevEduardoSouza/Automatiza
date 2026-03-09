@@ -19,6 +19,7 @@ import { createConnectQueryKey, useQuery, useTransport } from '@connectrpc/conne
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAffiliateCredentialsConnect } from './use-affiliate-credentials-connect';
 
 /**
  * Maps gRPC error codes to i18n translation keys for coupon operations.
@@ -107,6 +108,7 @@ interface CreateCouponData {
 interface StoreOption {
   value: string;
   label: string;
+  disabled?: boolean;
 }
 
 interface CategoryOption {
@@ -262,13 +264,22 @@ export function useCoupons(): UseCouponsConnectReturn {
   const queryClient = useQueryClient();
   const transport = useTransport();
 
+  const { activeStores } = useAffiliateCredentialsConnect();
+
   const stores = useMemo<StoreOption[]>(
     () =>
-      STORE_KEYS.map((key) => ({
-        value: key,
-        label: t(`pages.coupons.stores.${key}`),
-      })),
-    [t]
+      STORE_KEYS.map((key) => {
+        const activeStore = activeStores.find((s) => s.store === key);
+        const isConfigured = activeStore?.is_configured ?? false;
+        return {
+          value: key,
+          label: isConfigured
+            ? t(`pages.coupons.stores.${key}`)
+            : `${t(`pages.coupons.stores.${key}`)} (${t('pages.coupons.stores.notConfigured')})`,
+          disabled: !isConfigured,
+        };
+      }),
+    [t, activeStores]
   );
 
   const categories = useMemo<CategoryOption[]>(
