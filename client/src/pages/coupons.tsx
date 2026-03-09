@@ -24,10 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useCoupons } from '@/hooks/use-coupons';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import {
-  Calendar,
   CheckCircle2,
   Copy,
   Edit,
@@ -96,7 +93,6 @@ export default function Coupons() {
     searchQuery,
     formData,
     stores,
-    categories,
     filteredCoupons,
     isPending,
     setFilterStore,
@@ -378,53 +374,6 @@ export default function Coupons() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="expires_at">{t('pages.coupons.form.validUntil')}</Label>
-                        <input
-                          id="expires_at"
-                          type="datetime-local"
-                          value={
-                            formData.expires_at
-                              ? format(new Date(formData.expires_at), "yyyy-MM-dd'T'HH:mm")
-                              : ''
-                          }
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              expires_at: e.target.value
-                                ? new Date(e.target.value).toISOString()
-                                : null,
-                            })
-                          }
-                          className={inputClasses}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="category">{t('common.category')}</Label>
-                        <Select
-                          value={formData.category || undefined}
-                          onValueChange={(value) =>
-                            setFormData({
-                              ...formData,
-                              category: value || null,
-                            })
-                          }
-                        >
-                          <SelectTrigger id="category">
-                            <SelectValue placeholder={t('common.select')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories.map((cat) => (
-                              <SelectItem key={cat.value} value={cat.value}>
-                                {cat.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
                     <div className="flex flex-col-reverse xs:flex-row justify-end gap-2 lg:gap-3 xl:gap-4">
                       <button
                         type="button"
@@ -586,8 +535,6 @@ export default function Coupons() {
                           <TableHead>{t('pages.coupons.table.code')}</TableHead>
                           <TableHead>{t('common.description')}</TableHead>
                           <TableHead>{t('common.store')}</TableHead>
-                          <TableHead>{t('common.category')}</TableHead>
-                          <TableHead>{t('pages.coupons.table.validUntil')}</TableHead>
                           <TableHead>{t('pages.coupons.table.status')}</TableHead>
                           <TableHead className="text-right">{t('common.actions')}</TableHead>
                         </TableRow>
@@ -620,37 +567,6 @@ export default function Coupons() {
                                 {stores.find((s) => s.value === coupon.store)?.label ||
                                   coupon.store}
                               </span>
-                            </TableCell>
-                            <TableCell>
-                              {coupon.category ? (
-                                <span
-                                  className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
-                                  style={{ backgroundColor: colors.iconBg, color: colors.wineText }}
-                                >
-                                  {categories.find((c) => c.value === coupon.category)?.label ||
-                                    coupon.category}
-                                </span>
-                              ) : (
-                                <span style={{ color: colors.wineTextMuted }}>-</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {coupon.expires_at ? (
-                                <div className="flex items-center gap-1">
-                                  <Calendar
-                                    className="h-3 w-3"
-                                    style={{ color: colors.wineTextMuted }}
-                                    aria-hidden="true"
-                                  />
-                                  <span className="text-sm xl:text-base">
-                                    {format(new Date(coupon.expires_at), 'dd/MM/yyyy HH:mm', {
-                                      locale: ptBR,
-                                    })}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span style={{ color: colors.wineTextMuted }}>-</span>
-                              )}
                             </TableCell>
                             <TableCell>
                               {isExpired(coupon) ? (
@@ -758,15 +674,6 @@ export default function Coupons() {
                                 {stores.find((s) => s.value === coupon.store)?.label ||
                                   coupon.store}
                               </span>
-                              {coupon.category && (
-                                <span
-                                  className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
-                                  style={{ backgroundColor: colors.iconBg, color: colors.wineText }}
-                                >
-                                  {categories.find((c) => c.value === coupon.category)?.label ||
-                                    coupon.category}
-                                </span>
-                              )}
                               {isExpired(coupon) ? (
                                 <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-700">
                                   {t('common.expired')}
@@ -792,19 +699,6 @@ export default function Coupons() {
                                 </span>
                               )}
                             </div>
-                            {coupon.expires_at && (
-                              <div
-                                className="flex items-center gap-1 text-sm xs:text-base"
-                                style={{ color: colors.wineTextMuted }}
-                              >
-                                <Calendar className="h-3 w-3" aria-hidden="true" />
-                                <span>
-                                  {format(new Date(coupon.expires_at), 'dd/MM/yyyy HH:mm', {
-                                    locale: ptBR,
-                                  })}
-                                </span>
-                              </div>
-                            )}
                           </div>
                         </div>
                         <div className="flex items-center justify-end gap-2 xs:gap-3 mt-4 pt-4 border-t">

@@ -471,11 +471,14 @@ func (s *automationService) buildListModeMessage(
 			vars.Image = *item.ProductImageURL
 		}
 
-		// Populate coupon fields
+		// Populate coupon fields and override price with discounted value
 		if couponResult != nil && couponResult.Applied {
 			vars.CouponCode = couponResult.CouponCode
 			vars.CouponText = couponResult.CouponText
 			vars.CouponBlock = couponResult.CouponText
+			if couponResult.DiscountedPrice > 0 {
+				vars.Price = couponResult.DiscountedPrice
+			}
 		}
 
 		var message string
@@ -541,11 +544,14 @@ func (s *automationService) buildListModeMessage(
 		}
 	}
 
-	// Populate coupon fields
+	// Populate coupon fields and override price with discounted value
 	if couponResult != nil && couponResult.Applied {
 		vars.CouponCode = couponResult.CouponCode
 		vars.CouponText = couponResult.CouponText
 		vars.CouponBlock = couponResult.CouponText
+		if couponResult.DiscountedPrice > 0 {
+			vars.Price = couponResult.DiscountedPrice
+		}
 	}
 
 	var message string
