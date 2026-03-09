@@ -65,6 +65,7 @@ export function useDispatchTexts() {
       link_afiliado: t('pages.dispatchTexts.sampleVars.affiliateLink'),
       aviso_preco: t('pages.dispatchTexts.sampleVars.priceWarning'),
       cta: t('pages.dispatchTexts.sampleVars.cta'),
+      cupom_bloco: t('pages.dispatchTexts.sampleVars.couponBlock'),
     }),
     [t]
   );

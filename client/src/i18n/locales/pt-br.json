@@ -1355,7 +1355,8 @@
         "originalPriceFormatted": "Preço original (R$ 37,90)",
         "affiliateLink": "Link afiliado",
         "priceWarning": "Aviso padrão",
-        "cta": "Call-to-Action (CTA)"
+        "cta": "Call-to-Action (CTA)",
+        "couponBlock": "Bloco do cupom"
       },
       "alert": {
         "formatting": "Você pode usar formatação do WhatsApp: *negrito*, _itálico_, ~riscado~ e quebras de linha. Variáveis ficam entre chaves: {nome_produto}.",
@@ -1376,7 +1377,7 @@
       "howItWorks": {
         "title": "Como funciona",
         "description": "Os Textos de Disparo são templates reutilizáveis que suas automações usam para enviar ofertas nos grupos do WhatsApp.",
-        "variables": "Use variáveis como {nome_produto}, {preco}, {preco_original}, {link_afiliado} e {aviso_preco} para preencher automaticamente os dados do produto.",
+        "variables": "Use variáveis como {nome_produto}, {preco}, {preco_original}, {link_afiliado}, {aviso_preco} e {cupom_bloco} para preencher automaticamente os dados do produto.",
         "formatting": "Formatação WhatsApp: *negrito*, _itálico_, ~riscado~ e > citação. Quebre linhas para organizar a mensagem.",
         "automations": "Ao criar uma automação, selecione um ou mais textos de disparo ativos. O sistema escolhe aleatoriamente entre eles para variar as mensagens.",
         "note": "Textos inativos não aparecem na seleção de automações. Ative pelo menos um texto antes de configurar uma automação."
@@ -1415,7 +1416,8 @@
         "originalPriceFormatted": "R$ 37,90",
         "affiliateLink": "https://s.shopee.com.br/806Bcl3ADX",
         "priceWarning": "O preço e disponibilidade do produto podem variar. As promoções são por tempo limitado",
-        "cta": "🔥 Aproveite agora! Clique no link e garanta o seu!"
+        "cta": "🔥 Aproveite agora! Clique no link e garanta o seu!",
+        "couponBlock": "\n\n🏷️ CUPOM: EXEMPLO10\n💰 Desconto: 10% OFF"
       },
       "copies": {
         "add": "Adicionar variação",

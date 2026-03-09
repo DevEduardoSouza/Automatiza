@@ -35,6 +35,7 @@ export const VARIABLE_KEYS = [
   'affiliateLink',
   'priceWarning',
   'cta',
+  'couponBlock',
 ] as const;
 
 export type VariableKey = (typeof VARIABLE_KEYS)[number];
@@ -51,6 +52,7 @@ export const VARIABLE_MAP: Record<VariableKey, string> = {
   affiliateLink: '{link_afiliado}',
   priceWarning: '{aviso_preco}',
   cta: '{cta}',
+  couponBlock: '{cupom_bloco}',
 };
 
 /**
