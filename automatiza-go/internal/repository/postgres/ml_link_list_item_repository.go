@@ -26,26 +26,22 @@ func NewMlLinkListItemRepository(db *DB, logger *zap.Logger) repository.MlLinkLi
 	}
 }
 
-// GetNextUnconsumed returns the next N unconsumed items from a list, ordered by position/order_index
+// GetNextUnconsumed returns the next N unconsumed items from a list, ordered by order_index
 func (r *mlLinkListItemRepository) GetNextUnconsumed(ctx context.Context, listID string, limit int) ([]*models.MlLinkListItem, error) {
 	if limit <= 0 {
 		limit = 1
 	}
 
-	// Use the aliased columns (position, ml_link_list_id) for API compatibility
-	// Fall back to original columns (order_index, list_id) for database compatibility
 	query := `
-		SELECT id, COALESCE(ml_link_list_id, list_id) as list_id,
-		       COALESCE(url, origin_url) as origin_url,
-		       COALESCE(position, order_index) as order_index,
+		SELECT id, list_id, origin_url, order_index,
 		       is_active, consumed_at, consumed_by_automation_id, consumed_by_group_id,
 		       product_title, product_price, product_image_url, metadata,
 		       created_at, updated_at
 		FROM ml_link_list_items
-		WHERE (list_id = $1 OR ml_link_list_id = $1)
+		WHERE list_id = $1
 		  AND consumed_at IS NULL
 		  AND is_active = true
-		ORDER BY COALESCE(position, order_index) ASC, created_at ASC
+		ORDER BY order_index ASC, created_at ASC
 		LIMIT $2
 	`
 
@@ -121,7 +117,7 @@ func (r *mlLinkListItemRepository) CountRemaining(ctx context.Context, listID st
 	query := `
 		SELECT COUNT(*)
 		FROM ml_link_list_items
-		WHERE (list_id = $1 OR ml_link_list_id = $1)
+		WHERE list_id = $1
 		  AND consumed_at IS NULL
 		  AND is_active = true
 	`
@@ -138,18 +134,16 @@ func (r *mlLinkListItemRepository) CountRemaining(ctx context.Context, listID st
 	return count, nil
 }
 
-// GetByListID returns all items for a list ordered by position
+// GetByListID returns all items for a list ordered by order_index
 func (r *mlLinkListItemRepository) GetByListID(ctx context.Context, listID string) ([]*models.MlLinkListItem, error) {
 	query := `
-		SELECT id, COALESCE(ml_link_list_id, list_id) as list_id,
-		       COALESCE(url, origin_url) as origin_url,
-		       COALESCE(position, order_index) as order_index,
+		SELECT id, list_id, origin_url, order_index,
 		       is_active, consumed_at, consumed_by_automation_id, consumed_by_group_id,
 		       product_title, product_price, product_image_url, metadata,
 		       created_at, updated_at
 		FROM ml_link_list_items
-		WHERE list_id = $1 OR ml_link_list_id = $1
-		ORDER BY COALESCE(position, order_index) ASC, created_at ASC
+		WHERE list_id = $1
+		ORDER BY order_index ASC, created_at ASC
 	`
 
 	rows, err := r.db.Query(ctx, query, listID)
@@ -174,25 +168,21 @@ func (r *mlLinkListItemRepository) Create(ctx context.Context, item *models.MlLi
 		metadata = []byte("{}")
 	}
 
-	// Use both original and aliased columns for compatibility
 	query := `
 		INSERT INTO ml_link_list_items (
-			list_id, ml_link_list_id, origin_url, url, order_index, position,
+			list_id, origin_url, order_index,
 			is_active, product_title, product_price, product_image_url, metadata,
 			created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at
 	`
 
 	var createdAt, updatedAt time.Time
 	err := r.db.QueryRow(ctx, query,
 		item.ListID,          // list_id
-		item.ListID,          // ml_link_list_id (alias)
 		item.OriginURL,       // origin_url
-		item.OriginURL,       // url (alias)
 		item.OrderIndex,      // order_index
-		item.OrderIndex,      // position (alias)
 		item.IsActive,        // is_active
 		item.ProductTitle,    // product_title
 		item.ProductPrice,    // product_price
@@ -225,11 +215,11 @@ func (r *mlLinkListItemRepository) BulkCreate(ctx context.Context, items []*mode
 	err := r.db.WithTx(ctx, func(tx pgx.Tx) error {
 		query := `
 			INSERT INTO ml_link_list_items (
-				list_id, ml_link_list_id, origin_url, url, order_index, position,
+				list_id, origin_url, order_index,
 				is_active, product_title, product_price, product_image_url, metadata,
 				created_at, updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			RETURNING id, created_at, updated_at
 		`
 
@@ -246,10 +236,7 @@ func (r *mlLinkListItemRepository) BulkCreate(ctx context.Context, items []*mode
 
 			err := tx.QueryRow(ctx, query,
 				item.ListID,
-				item.ListID,
 				item.OriginURL,
-				item.OriginURL,
-				item.OrderIndex,
 				item.OrderIndex,
 				item.IsActive,
 				item.ProductTitle,
@@ -290,7 +277,7 @@ func (r *mlLinkListItemRepository) ResetConsumed(ctx context.Context, listID str
 		    consumed_by_automation_id = NULL,
 		    consumed_by_group_id = NULL,
 		    updated_at = $2
-		WHERE (list_id = $1 OR ml_link_list_id = $1)
+		WHERE list_id = $1
 		  AND consumed_at IS NOT NULL
 	`
 
@@ -308,9 +295,7 @@ func (r *mlLinkListItemRepository) ResetConsumed(ctx context.Context, listID str
 // GetConsumedByAutomation returns all items consumed by a specific automation
 func (r *mlLinkListItemRepository) GetConsumedByAutomation(ctx context.Context, automationID string) ([]*models.MlLinkListItem, error) {
 	query := `
-		SELECT id, COALESCE(ml_link_list_id, list_id) as list_id,
-		       COALESCE(url, origin_url) as origin_url,
-		       COALESCE(position, order_index) as order_index,
+		SELECT id, list_id, origin_url, order_index,
 		       is_active, consumed_at, consumed_by_automation_id, consumed_by_group_id,
 		       product_title, product_price, product_image_url, metadata,
 		       created_at, updated_at
