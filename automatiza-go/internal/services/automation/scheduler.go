@@ -66,8 +66,8 @@ func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
 	for i := range automations {
 		automation := &automations[i]
 
-		// Skip MONITOR mode automations - they are triggered by incoming messages
-		if automation.IsMonitoring() {
+		// Skip event-driven automations - they are triggered by incoming messages, not by the scheduler
+		if automation.IsMonitoring() || automation.IsOfferGenerate() {
 			skippedCount++
 			continue
 		}
