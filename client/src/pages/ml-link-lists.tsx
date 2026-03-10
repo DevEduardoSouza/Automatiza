@@ -141,10 +141,11 @@ function FileImportSection({
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
-                onClick={() => {
-                  onImport(csvFile);
+                onClick={async () => {
+                  const f = csvFile;
                   setCsvFile(null);
                   if (fileInputRef.current) fileInputRef.current.value = '';
+                  if (f) await onImport(f);
                 }}
                 disabled={importing}
               >

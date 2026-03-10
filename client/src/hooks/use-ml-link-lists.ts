@@ -525,11 +525,18 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
   }, [user, selectedListId, singleUrl, items, toast, t, loadItems, mlPreview, mlLinksConnect]);
 
   const importFromFile = useCallback(async (file: File) => {
-    if (!user || !selectedListId) return;
+    if (!user || !selectedListId) {
+      toast({
+        title: t('pages.mlLinkLists.errors.import'),
+        description: 'Selecione uma lista antes de importar.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setImporting(true);
     try {
-      const text = await file.text();
-      const lines = text
+      const fileText = await file.text();
+      const lines = fileText
         .split(/\r?\n/)
         .map((l) => {
           // CSV: pick first field (separator may be , or ;)
@@ -538,6 +545,8 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
         })
         .filter(Boolean);
 
+      console.log('[import] lines parsed:', lines.length);
+
       const validated = lines.filter(isSupportedProductUrl).map((l) => {
         try {
           return normalizeUrl(l);
@@ -545,6 +554,8 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
           return l;
         }
       });
+
+      console.log('[import] valid URLs:', validated.length);
 
       const uniq = Array.from(new Set(validated));
       if (uniq.length === 0) {
@@ -559,12 +570,15 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
       const baseOrder =
         items.length > 0 ? Math.max(...items.map((i) => i.order_index || 0)) + 1 : 0;
 
-      await mlLinksConnect.bulkCreateMlLinkListItems(selectedListId, uniq, baseOrder);
-      loadItems(selectedListId);
+      console.log('[import] sending', uniq.length, 'URLs to backend');
+      const result = await mlLinksConnect.bulkCreateMlLinkListItems(selectedListId, uniq, baseOrder);
+      console.log('[import] result:', result);
+      await loadItems(selectedListId);
       toast({
         title: t('pages.mlLinkLists.items.imported', { count: uniq.length }),
       });
     } catch (e: unknown) {
+      console.error('[import] error:', e);
       const errorMessage =
         e instanceof Error ? e.message : t('pages.mlLinkLists.errors.importMessage');
       toast({
