@@ -433,6 +433,11 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 		s.logger.Info("Dispatching list mode", zap.String("automationID", automation.ID))
 		// LIST mode: process items from ML link list
 		result, err = s.processListMode(ctx, automation)
+	case "offer_generate":
+		s.logger.Info("Dispatching offer_generate mode", zap.String("automationID", automation.ID))
+		// OFFER_GENERATE mode: validate configuration and return status
+		// Actual message processing happens via webhooks in offer_generate service
+		result, err = s.processOfferGenerateMode(ctx, automation)
 	default:
 		s.logger.Info("Dispatching default (search) mode", zap.String("automationID", automation.ID))
 		result, err = s.executeSearchAutomation(ctx, automation, historyID)

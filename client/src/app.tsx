@@ -60,6 +60,7 @@ const Jobs = lazyWithRetry(() => import('./pages/jobs'));
 const MlLinkLists = lazyWithRetry(() => import('./pages/ml-link-lists'));
 const NotFound = lazyWithRetry(() => import('./pages/not-found'));
 const OfferAutomations = lazyWithRetry(() => import('./pages/offer-automations'));
+const OfferGenerate = lazyWithRetry(() => import('./pages/offer-generate'));
 const Profile = lazyWithRetry(() => import('./pages/profile'));
 const PublicRedirect = lazyWithRetry(() => import('./pages/public-redirect'));
 const RedirectLink = lazyWithRetry(() => import('./pages/redirect-link/index'));
@@ -187,6 +188,17 @@ const App = () => (
                         <ProtectedRoute>
                           <AppLayout>
                             <OfferAutomations />
+                          </AppLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/offer-generate"
+                      element={
+                        <ProtectedRoute>
+                          <AppLayout>
+                            <OfferGenerate />
                           </AppLayout>
                         </ProtectedRoute>
                       }

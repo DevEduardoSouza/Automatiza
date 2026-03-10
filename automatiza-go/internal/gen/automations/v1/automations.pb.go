@@ -23,15 +23,16 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// *
+//*
 // Mode of operation for an automation.
 type AutomationMode int32
 
 const (
-	AutomationMode_AUTOMATION_MODE_UNSPECIFIED AutomationMode = 0
-	AutomationMode_AUTOMATION_MODE_SEARCH      AutomationMode = 1
-	AutomationMode_AUTOMATION_MODE_MONITOR     AutomationMode = 2
-	AutomationMode_AUTOMATION_MODE_LIST        AutomationMode = 3
+	AutomationMode_AUTOMATION_MODE_UNSPECIFIED    AutomationMode = 0
+	AutomationMode_AUTOMATION_MODE_SEARCH         AutomationMode = 1
+	AutomationMode_AUTOMATION_MODE_MONITOR        AutomationMode = 2
+	AutomationMode_AUTOMATION_MODE_LIST           AutomationMode = 3
+	AutomationMode_AUTOMATION_MODE_OFFER_GENERATE AutomationMode = 4
 )
 
 // Enum value maps for AutomationMode.
@@ -41,12 +42,14 @@ var (
 		1: "AUTOMATION_MODE_SEARCH",
 		2: "AUTOMATION_MODE_MONITOR",
 		3: "AUTOMATION_MODE_LIST",
+		4: "AUTOMATION_MODE_OFFER_GENERATE",
 	}
 	AutomationMode_value = map[string]int32{
-		"AUTOMATION_MODE_UNSPECIFIED": 0,
-		"AUTOMATION_MODE_SEARCH":      1,
-		"AUTOMATION_MODE_MONITOR":     2,
-		"AUTOMATION_MODE_LIST":        3,
+		"AUTOMATION_MODE_UNSPECIFIED":    0,
+		"AUTOMATION_MODE_SEARCH":         1,
+		"AUTOMATION_MODE_MONITOR":        2,
+		"AUTOMATION_MODE_LIST":           3,
+		"AUTOMATION_MODE_OFFER_GENERATE": 4,
 	}
 )
 
@@ -77,7 +80,7 @@ func (AutomationMode) EnumDescriptor() ([]byte, []int) {
 	return file_automations_v1_automations_proto_rawDescGZIP(), []int{0}
 }
 
-// *
+//*
 // Status of an automation.
 type AutomationStatus int32
 
@@ -128,7 +131,7 @@ func (AutomationStatus) EnumDescriptor() ([]byte, []int) {
 	return file_automations_v1_automations_proto_rawDescGZIP(), []int{1}
 }
 
-// *
+//*
 // Priority type for offer sorting.
 type PriorityType int32
 
@@ -182,7 +185,7 @@ func (PriorityType) EnumDescriptor() ([]byte, []int) {
 	return file_automations_v1_automations_proto_rawDescGZIP(), []int{2}
 }
 
-// *
+//*
 // Filter intensity for offers.
 type FilterType int32
 
@@ -233,7 +236,7 @@ func (FilterType) EnumDescriptor() ([]byte, []int) {
 	return file_automations_v1_automations_proto_rawDescGZIP(), []int{3}
 }
 
-// *
+//*
 // Supported affiliate stores.
 type Store int32
 
@@ -299,7 +302,7 @@ func (Store) EnumDescriptor() ([]byte, []int) {
 	return file_automations_v1_automations_proto_rawDescGZIP(), []int{4}
 }
 
-// *
+//*
 // Text substitution rule for monitoring mode.
 type TextSubstitution struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -355,7 +358,7 @@ func (x *TextSubstitution) GetTo() string {
 	return ""
 }
 
-// *
+//*
 // Text processing rules for monitoring mode.
 type MonitoringTextRules struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -447,7 +450,7 @@ func (x *MonitoringTextRules) GetCleanMentions() bool {
 	return false
 }
 
-// *
+//*
 // Automation configuration.
 type Automation struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -755,7 +758,7 @@ func (x *Automation) GetListIncludeImage() bool {
 	return false
 }
 
-// *
+//*
 // Diagnostic step result.
 type DiagnosticStep struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -829,7 +832,7 @@ func (x *DiagnosticStep) GetMessage() string {
 	return ""
 }
 
-// *
+//*
 // Diagnostic result for an automation.
 type DiagnosticResult struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2697,12 +2700,13 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x13_coupon_skip_reasonB\x0e\n" +
 	"\f_product_urlB\x13\n" +
 	"\x11_product_page_urlB\x11\n" +
-	"\x0f_affiliate_link*\x84\x01\n" +
+	"\x0f_affiliate_link*\xa8\x01\n" +
 	"\x0eAutomationMode\x12\x1f\n" +
 	"\x1bAUTOMATION_MODE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16AUTOMATION_MODE_SEARCH\x10\x01\x12\x1b\n" +
 	"\x17AUTOMATION_MODE_MONITOR\x10\x02\x12\x18\n" +
-	"\x14AUTOMATION_MODE_LIST\x10\x03*q\n" +
+	"\x14AUTOMATION_MODE_LIST\x10\x03\x12\"\n" +
+	"\x1eAUTOMATION_MODE_OFFER_GENERATE\x10\x04*q\n" +
 	"\x10AutomationStatus\x12!\n" +
 	"\x1dAUTOMATION_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18AUTOMATION_STATUS_ACTIVE\x10\x01\x12\x1c\n" +

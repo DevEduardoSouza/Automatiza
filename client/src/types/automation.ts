@@ -6,7 +6,7 @@ export type { DispatchText } from '@/entities/dispatch-text';
 
 export type StoreKey = 'shopee' | 'amazon' | 'magalu' | 'ml' | 'shein' | 'aliexpress' | 'awin';
 
-export type AutomationMode = 'search' | 'monitor' | 'list';
+export type AutomationMode = 'search' | 'monitor' | 'list' | 'offer_generate';
 export type PriorityType = 'discount' | 'price' | 'commission';
 export type FilterType = 'light' | 'heavy';
 export type AutomationStatus = 'active' | 'paused';
@@ -33,7 +33,7 @@ export interface Automation {
   id: string;
   name: string;
   mode: AutomationMode;
-  type?: 'monitoring' | 'search' | 'list';
+  type?: 'monitoring' | 'search' | 'list' | 'offer_generate';
   dispatch_text_id?: string | null;
   monitoring_text_rules?: MonitoringTextRules | null;
   start_time: string;
@@ -90,7 +90,7 @@ export interface AutomationCoupon {
 
 export interface AutomationPayload extends Omit<Partial<Automation>, 'monitor_groups'> {
   user_id?: string;
-  type?: 'monitoring' | 'search' | 'list';
+  type?: 'monitoring' | 'search' | 'list' | 'offer_generate';
   monitor_group_ids?: string[] | null;
 }
 

@@ -1,0 +1,661 @@
+package offer_generate
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"math/rand/v2"
+	"strings"
+	"time"
+
+	"automatiza-go/internal/adapters/whatsapp"
+	"automatiza-go/internal/config"
+	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/text"
+	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
+	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/mercadolivre"
+	"automatiza-go/internal/services/shopee"
+
+	"github.com/getsentry/sentry-go"
+	"go.uber.org/zap"
+)
+
+// Service defines the offer generate service interface
+type Service interface {
+	ProcessIncomingMessage(ctx context.Context, msg *models.IncomingMessage) error
+}
+
+// CouponResult contains the result of applying a coupon to an offer.
+type CouponResult struct {
+	Applied         bool
+	CouponText      string
+	DiscountedPrice float64
+}
+
+// CouponApplier handles coupon loading and application.
+// This interface avoids an import cycle with the automation package.
+type CouponApplier interface {
+	LoadCouponOnce(ctx context.Context, automation *models.Automation) (*models.Coupon, string)
+	ApplyCouponWithPreloaded(coupon *models.Coupon, offerPrice float64, offerStore string) *CouponResult
+}
+
+type offerGenerateService struct {
+	automationRepo  repository.AutomationRepository
+	instanceRepo    repository.InstanceRepository
+	dispatchLogRepo repository.DispatchLogRepository
+	settingsRepo    repository.SettingsRepository
+	couponRepo      repository.CouponRepository
+	ctaRepo         repository.CTARepository
+
+	shopeeService shopee.Service
+	mlService     mercadolivre.Service
+	waProvider    whatsapp.WhatsAppProvider
+
+	couponHandler CouponApplier
+
+	cache  *cache.Cache
+	logger *zap.Logger
+}
+
+// NewOfferGenerateService creates a new offer generate service.
+func NewOfferGenerateService(
+	automationRepo repository.AutomationRepository,
+	instanceRepo repository.InstanceRepository,
+	dispatchLogRepo repository.DispatchLogRepository,
+	settingsRepo repository.SettingsRepository,
+	couponRepo repository.CouponRepository,
+	ctaRepo repository.CTARepository,
+	shopeeService shopee.Service,
+	mlService mercadolivre.Service,
+	waProvider whatsapp.WhatsAppProvider,
+	couponHandler CouponApplier,
+	cache *cache.Cache,
+	logger *zap.Logger,
+) Service {
+	return &offerGenerateService{
+		automationRepo:  automationRepo,
+		instanceRepo:    instanceRepo,
+		dispatchLogRepo: dispatchLogRepo,
+		settingsRepo:    settingsRepo,
+		couponRepo:      couponRepo,
+		ctaRepo:         ctaRepo,
+		shopeeService:   shopeeService,
+		mlService:       mlService,
+		waProvider:      waProvider,
+		couponHandler:   couponHandler,
+		cache:           cache,
+		logger:          logger.Named("offer-generate"),
+	}
+}
+
+func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *models.IncomingMessage) error {
+	// 1. Validate: group message, not fromMe
+	if !strings.HasSuffix(msg.RemoteJID, "@g.us") {
+		return nil
+	}
+	if msg.FromMe {
+		return nil
+	}
+
+	// 2. Extract links from message body
+	links := text.ExtractLinks(msg.Body)
+	if len(links) == 0 {
+		return nil
+	}
+
+	s.logger.Info("Processing incoming message for offer generation",
+		zap.String("instance", msg.InstanceName),
+		zap.String("group", msg.RemoteJID),
+		zap.Int("links", len(links)),
+		zap.String("bodyPreview", truncateStr(msg.Body, 100)))
+
+	// 3. Content fingerprint dedup (2 min window)
+	contentKey := s.buildContentKey(msg.InstanceName, msg.RemoteJID, msg.Body)
+	if s.isDuplicate(ctx, contentKey) {
+		s.logger.Debug("Offer generate: duplicate content, skipping")
+		return nil
+	}
+	s.markProcessed(ctx, contentKey, 2*time.Minute)
+
+	// 4. Message ID dedup (10 min window)
+	msgKey := fmt.Sprintf("og_msg_dedup:%s:%s:%s", msg.InstanceName, msg.RemoteJID, msg.MessageID)
+	if s.isDuplicate(ctx, msgKey) {
+		s.logger.Debug("Offer generate: duplicate message ID, skipping")
+		return nil
+	}
+	s.markProcessed(ctx, msgKey, 10*time.Minute)
+
+	// 5. Find matching offer_generate automations for this group
+	automations, err := s.automationRepo.GetOfferGenerateAutomationsForGroup(ctx, msg.RemoteJID)
+	if err != nil {
+		return err
+	}
+
+	// Filter to active only
+	var active []models.Automation
+	for _, a := range automations {
+		if a.IsActive() {
+			active = append(active, a)
+		}
+	}
+
+	if len(active) == 0 {
+		return nil
+	}
+
+	s.logger.Info("Found matching offer_generate automations",
+		zap.Int("count", len(active)),
+		zap.String("group", msg.RemoteJID))
+
+	// 6. Process each automation
+	for i := range active {
+		if err := s.processAutomation(ctx, &active[i], msg, links); err != nil {
+			s.logger.Warn("Failed to process offer_generate automation",
+				zap.String("automationID", active[i].ID),
+				zap.Error(err))
+		}
+	}
+
+	return nil
+}
+
+func (s *offerGenerateService) processAutomation(ctx context.Context, auto *models.Automation, msg *models.IncomingMessage, links []string) error {
+	// 1. Check time window
+	if auto.StartTime != nil && auto.EndTime != nil {
+		tw := &models.TimeWindow{
+			StartTime: *auto.StartTime,
+			EndTime:   *auto.EndTime,
+			Timezone:  "America/Sao_Paulo",
+		}
+		if auto.ScheduleDays != nil {
+			tw.Days = auto.ScheduleDays
+		}
+		if !tw.IsWithinWindow(time.Now()) {
+			s.logger.Info("Outside time window, skipping offer_generate",
+				zap.String("automationID", auto.ID))
+			return nil
+		}
+	}
+
+	// 2. Categorize links by store
+	var shopeeLinks, mlLinks []string
+	for _, link := range links {
+		if text.IsShopeeLink(link) {
+			shopeeLinks = append(shopeeLinks, link)
+		} else if text.IsMLLink(link) {
+			mlLinks = append(mlLinks, link)
+		}
+	}
+
+	// 3. Filter by configured stores
+	stores := auto.Stores
+	if len(stores) == 0 {
+		stores = []string{"shopee"}
+	}
+	storeSet := make(map[string]bool, len(stores))
+	for _, st := range stores {
+		storeSet[st] = true
+	}
+	if !storeSet["shopee"] {
+		shopeeLinks = nil
+	}
+	if !storeSet["mercadolivre"] {
+		mlLinks = nil
+	}
+
+	if len(shopeeLinks) == 0 && len(mlLinks) == 0 {
+		s.logger.Info("No links matching configured stores for offer_generate",
+			zap.String("automationID", auto.ID),
+			zap.Strings("stores", stores))
+		return nil
+	}
+
+	// 4. Parse discount tag from message body
+	discountTag := text.ParseDiscountTag(msg.Body)
+
+	// 5. Load dispatch template (required for offer_generate)
+	if auto.DispatchTextID == nil || *auto.DispatchTextID == "" {
+		s.logger.Warn("No dispatch text configured for offer_generate",
+			zap.String("automationID", auto.ID))
+		return nil
+	}
+
+	dispatchText, err := s.settingsRepo.GetActiveDispatchTextByID(ctx, *auto.DispatchTextID, auto.UserID)
+	if err != nil || dispatchText == nil {
+		s.logger.Warn("Failed to load dispatch text",
+			zap.String("automationID", auto.ID),
+			zap.Error(err))
+		return nil
+	}
+
+	// 6. Load CTA entities and pick a random one
+	ctaText := ""
+	if len(auto.CTAIDs) > 0 {
+		ctaEntities, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, auto.CTAIDs, auto.UserID)
+		if ctaErr == nil && len(ctaEntities) > 0 {
+			ctaText = ctaEntities[rand.IntN(len(ctaEntities))].Message
+		}
+	}
+
+	// 7. Preload coupon if configured
+	var preloadedCoupon *models.Coupon
+	if s.couponHandler != nil && auto.CouponID != nil && *auto.CouponID != "" {
+		preloadedCoupon, _ = s.couponHandler.LoadCouponOnce(ctx, auto)
+	}
+
+	// 8. Resolve sender session (automation owner's connected instance)
+	instances, err := s.instanceRepo.GetUserInstances(ctx, auto.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to get user instances: %w", err)
+	}
+	var senderSession string
+	for _, inst := range instances {
+		if inst.Status == "connected" {
+			senderSession = inst.InstanceID
+			break
+		}
+	}
+	if senderSession == "" {
+		s.logger.Warn("No connected WhatsApp instance for offer_generate",
+			zap.String("automationID", auto.ID),
+			zap.String("userID", auto.UserID))
+		return nil
+	}
+
+	// 9. Process the FIRST valid link
+	var renderedMessage string
+	var imageURL string
+	var canonicalKey string
+	var store string
+
+	if len(shopeeLinks) > 0 && s.shopeeService != nil {
+		link := shopeeLinks[0]
+		store = "shopee"
+
+		// Expand short URL if needed
+		expandedURL, expandErr := s.shopeeService.ExpandURL(ctx, link)
+		if expandErr == nil && expandedURL != "" {
+			link = expandedURL
+		}
+
+		// Extract product IDs and get product details
+		shopID, itemID, idErr := s.shopeeService.ExtractProductIDs(link)
+		if idErr != nil {
+			s.logger.Warn("Failed to extract Shopee product IDs",
+				zap.String("link", link), zap.Error(idErr))
+			return nil
+		}
+
+		product, prodErr := s.shopeeService.GetProduct(ctx, itemID, shopID, auto.UserID)
+		if prodErr != nil || product == nil {
+			s.logger.Warn("Failed to get Shopee product",
+				zap.Int64("itemID", itemID), zap.Int64("shopID", shopID), zap.Error(prodErr))
+			return nil
+		}
+
+		// Generate affiliate link
+		affLink, affErr := s.shopeeService.GenerateAffiliateLink(ctx, link, auto.UserID)
+		if affErr != nil {
+			if isCredentialError(affErr) {
+				s.pauseWithError(ctx, auto, "Credenciais Shopee inválidas - automação pausada")
+				return nil
+			}
+			s.logger.Warn("Failed to generate Shopee affiliate link",
+				zap.String("link", link), zap.Error(affErr))
+			return nil
+		}
+
+		affiliateURL := link
+		if affLink != nil && affLink.AffiliateLink != "" {
+			affiliateURL = affLink.AffiliateLink
+		}
+		if affLink != nil && affLink.ImageURL != "" {
+			imageURL = affLink.ImageURL
+		}
+
+		// Apply discount tag to price
+		offerPrice := product.Price
+		if discountTag != nil {
+			offerPrice = text.ApplyDiscountTag(offerPrice, discountTag)
+		}
+
+		// Apply coupon
+		couponBlock := ""
+		if s.couponHandler != nil && preloadedCoupon != nil {
+			couponResult := s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, store)
+			if couponResult.Applied {
+				couponBlock = couponResult.CouponText
+				if couponResult.DiscountedPrice > 0 {
+					offerPrice = couponResult.DiscountedPrice
+				}
+			}
+		}
+
+		canonicalKey = fmt.Sprintf("shopee:%d:%d", shopID, itemID)
+
+		// Render template
+		renderedMessage = text.RenderShopeeOfferTemplate(dispatchText.Body, text.ShopeeOfferVars{
+			Title:         product.Name,
+			Price:         offerPrice,
+			OriginalPrice: product.OriginalPrice,
+			Discount:      product.Discount,
+			Link:          link,
+			AffiliateLink: affiliateURL,
+			Image:         imageURL,
+			Category:      product.Category,
+			Store:         "Shopee",
+			CTA:           ctaText,
+			CouponBlock:   couponBlock,
+		})
+
+	} else if len(mlLinks) > 0 && s.mlService != nil {
+		link := mlLinks[0]
+		store = "mercadolivre"
+
+		// Get product preview
+		preview, prevErr := s.mlService.GetProductPreview(ctx, link, auto.UserID)
+		if prevErr != nil || preview == nil {
+			s.logger.Warn("Failed to get ML product preview",
+				zap.String("link", link), zap.Error(prevErr))
+			return nil
+		}
+
+		// Generate affiliate link
+		affLink, affErr := s.mlService.CreateAffiliateLink(ctx, link, auto.UserID)
+		if affErr != nil {
+			if isCredentialError(affErr) {
+				s.pauseWithError(ctx, auto, "Credenciais ML inválidas - automação pausada")
+				return nil
+			}
+			s.logger.Warn("Failed to generate ML affiliate link",
+				zap.String("link", link), zap.Error(affErr))
+			return nil
+		}
+
+		affiliateURL := link
+		if affLink != nil && affLink.AffiliateLink != "" {
+			affiliateURL = affLink.AffiliateLink
+		}
+		imageURL = preview.Image
+
+		// Apply discount tag to price
+		offerPrice := preview.Price
+		if discountTag != nil {
+			offerPrice = text.ApplyDiscountTag(offerPrice, discountTag)
+		}
+
+		// Apply coupon
+		couponBlock := ""
+		if s.couponHandler != nil && preloadedCoupon != nil {
+			couponResult := s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, store)
+			if couponResult.Applied {
+				couponBlock = couponResult.CouponText
+				if couponResult.DiscountedPrice > 0 {
+					offerPrice = couponResult.DiscountedPrice
+				}
+			}
+		}
+
+		// Canonical key from ML product ID
+		if preview.ItemID != nil {
+			canonicalKey = fmt.Sprintf("ml:%s", *preview.ItemID)
+		} else {
+			canonicalKey = fmt.Sprintf("ml:%s", hashStr(link))
+		}
+
+		// Build ML vars
+		originalPrice := offerPrice
+		if preview.OriginalPrice != nil {
+			originalPrice = *preview.OriginalPrice
+		}
+		var soldCount int
+		if preview.SoldCount != nil {
+			soldCount = *preview.SoldCount
+		}
+		var rating float64
+		if preview.Rating != nil {
+			rating = *preview.Rating
+		}
+		var reviewCount int
+		if preview.ReviewCount != nil {
+			reviewCount = *preview.ReviewCount
+		}
+		condition := ""
+		if preview.Condition != nil {
+			condition = *preview.Condition
+		}
+
+		renderedMessage = text.RenderMLOfferTemplate(dispatchText.Body, text.MLOfferVars{
+			Title:         preview.Title,
+			Price:         offerPrice,
+			OriginalPrice: originalPrice,
+			Discount:      preview.Discount,
+			Link:          link,
+			AffiliateLink: affiliateURL,
+			Image:         imageURL,
+			Condition:     condition,
+			SoldCount:     soldCount,
+			Rating:        rating,
+			ReviewCount:   reviewCount,
+			CTA:           ctaText,
+			CouponBlock:   couponBlock,
+		})
+	} else {
+		return nil
+	}
+
+	if renderedMessage == "" {
+		s.logger.Warn("Empty rendered message, skipping offer_generate",
+			zap.String("automationID", auto.ID))
+		return nil
+	}
+
+	// Normalize outgoing text
+	renderedMessage = text.NormalizeOutgoingWhatsAppText(renderedMessage)
+
+	// 10. Send to destination groups
+	destinationGroups := auto.SendGroups
+	if len(destinationGroups) == 0 {
+		destinationGroups = auto.GetTargetGroups()
+	}
+
+	dedupeHours := auto.GetDedupeHours()
+
+	for _, groupID := range destinationGroups {
+		// Skip source group
+		if groupID == msg.RemoteJID {
+			continue
+		}
+
+		// Dedup by (userID, groupID, canonicalKey)
+		if !s.claimProductSlot(ctx, auto.UserID, groupID, canonicalKey, dedupeHours) {
+			s.logger.Info("Product already sent (dedup), skipping",
+				zap.String("automationID", auto.ID),
+				zap.String("toGroup", groupID),
+				zap.String("canonicalKey", canonicalKey))
+			s.logDispatch(ctx, auto, groupID, links[0], "skipped", "dedupe", canonicalKey, store)
+			continue
+		}
+
+		// Apply delay
+		delay := 1 + rand.IntN(3)
+		if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
+			delay = *auto.DelaySeconds
+		}
+		time.Sleep(time.Duration(delay) * time.Second)
+
+		// Send via WhatsApp
+		sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		var sendErr error
+		if imageURL != "" {
+			_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
+				SessionName: senderSession,
+				ChatID:      groupID,
+				Caption:     renderedMessage,
+				ImageURL:    imageURL,
+			})
+		} else {
+			_, sendErr = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
+				SessionName: senderSession,
+				ChatID:      groupID,
+				Text:        renderedMessage,
+			})
+		}
+		sendCancel()
+
+		if sendErr != nil {
+			s.releaseProductSlot(ctx, auto.UserID, groupID, canonicalKey)
+			s.logDispatch(ctx, auto, groupID, links[0], "failed", sendErr.Error(), canonicalKey, store)
+			s.logger.Error("Failed to send offer",
+				zap.String("groupID", groupID),
+				zap.Error(sendErr))
+			continue
+		}
+
+		s.logDispatch(ctx, auto, groupID, links[0], "sent", "", canonicalKey, store)
+
+		s.logger.Info("Offer generated and sent successfully",
+			zap.String("fromGroup", msg.RemoteJID),
+			zap.String("toGroup", groupID),
+			zap.String("automationID", auto.ID),
+			zap.String("canonicalKey", canonicalKey))
+	}
+
+	return nil
+}
+
+// --- Helper methods ---
+
+func (s *offerGenerateService) buildContentKey(instance, group, body string) string {
+	h := sha256.Sum256([]byte(body))
+	return fmt.Sprintf("og_content:%s:%s:%s", instance, group, hex.EncodeToString(h[:8]))
+}
+
+func (s *offerGenerateService) isDuplicate(ctx context.Context, key string) bool {
+	if s.cache == nil {
+		return false
+	}
+	val, err := s.cache.Get(ctx, key)
+	if err != nil {
+		return false
+	}
+	return val != ""
+}
+
+func (s *offerGenerateService) markProcessed(ctx context.Context, key string, ttl time.Duration) {
+	if s.cache == nil {
+		return
+	}
+	if err := s.cache.Set(ctx, key, "1", ttl); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to set offer_generate dedup key", err, map[string]string{
+			"module": "offer_generate", "operation": "dedup_set",
+		})
+	}
+}
+
+func (s *offerGenerateService) claimProductSlot(ctx context.Context, userID, groupID, canonicalKey string, hours int) bool {
+	if canonicalKey == "" {
+		return true
+	}
+
+	cacheKey := fmt.Sprintf("og_prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
+	ttl := time.Duration(hours) * time.Hour
+
+	if s.cache != nil {
+		wasSet, err := s.cache.SetNX(ctx, cacheKey, "1", ttl)
+		if err == nil && !wasSet {
+			return false
+		}
+	}
+
+	// Check DB for historical dispatches
+	if s.dispatchLogRepo != nil {
+		log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, hours)
+		if err == nil && log != nil {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (s *offerGenerateService) releaseProductSlot(ctx context.Context, userID, groupID, canonicalKey string) {
+	if s.cache == nil || canonicalKey == "" {
+		return
+	}
+	cacheKey := fmt.Sprintf("og_prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
+	_ = s.cache.Delete(ctx, cacheKey)
+}
+
+func (s *offerGenerateService) logDispatch(ctx context.Context, auto *models.Automation, groupID, productURL, status, errorMsg, canonicalKey, store string) {
+	if s.dispatchLogRepo == nil {
+		return
+	}
+
+	featureFlags := config.GetFeatureFlags()
+	if !featureFlags.ShouldCreateDispatchLog() {
+		return
+	}
+
+	automationType := "offer_generate"
+	dispatchLog := &models.DispatchLog{
+		UserID:         auto.UserID,
+		AutomationID:   &auto.ID,
+		AutomationName: &auto.Name,
+		GroupID:         &groupID,
+		ProductURL:     &productURL,
+		Status:         status,
+		Type:           &automationType,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if canonicalKey != "" {
+		dispatchLog.CanonicalKey = &canonicalKey
+	}
+	if store != "" {
+		dispatchLog.Store = &store
+	}
+	if errorMsg != "" {
+		dispatchLog.Error = &errorMsg
+	}
+
+	if _, err := s.dispatchLogRepo.Create(ctx, dispatchLog); err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to create offer_generate dispatch log", err, map[string]string{
+			"module": "offer_generate", "operation": "dispatch_log_create",
+		})
+	}
+}
+
+func (s *offerGenerateService) pauseWithError(ctx context.Context, auto *models.Automation, errMsg string) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_ = s.automationRepo.UpdateAutomation(ctx, auto.ID, map[string]interface{}{
+		"status":        models.AutomationStatusPaused,
+		"last_error":    errMsg,
+		"last_error_at": now,
+	})
+	s.logger.Warn("Automation paused due to credential error",
+		zap.String("automationID", auto.ID),
+		zap.String("error", errMsg))
+}
+
+func isCredentialError(err error) bool {
+	errStr := err.Error()
+	return strings.Contains(errStr, "Invalid Signature") ||
+		strings.Contains(errStr, "credentials incomplete") ||
+		strings.Contains(errStr, "invalid_token")
+}
+
+func hashStr(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:8])
+}
+
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}

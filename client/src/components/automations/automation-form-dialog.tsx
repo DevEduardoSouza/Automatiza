@@ -203,7 +203,7 @@ export function AutomationFormDialog({
             <IntervalSelector formData={formData} setFormData={setFormData} />
           )}
 
-          {/* Delay (only for monitor mode) */}
+          {/* Delay (monitor mode) */}
           {formData.mode === 'monitor' && (
             <MonitorDelayInput
               monitorDelayUnit={monitorDelayUnit}
@@ -232,7 +232,7 @@ export function AutomationFormDialog({
             onToggleFavorite={onToggleFavorite}
           />
 
-          {/* Monitor Groups (only for monitor mode) */}
+          {/* Monitor Groups (monitor mode) */}
           {formData.mode === 'monitor' && (
             <MonitorGroupsSelector
               formData={formData}
@@ -271,7 +271,7 @@ export function AutomationFormDialog({
             </div>
           )}
 
-          {/* Coupon Selection (only for list mode) */}
+          {/* Coupon Selection (list mode) */}
           {formData.mode === 'list' && (
             <CouponSelector
               formData={formData}
@@ -281,7 +281,7 @@ export function AutomationFormDialog({
           )}
 
           {/* CTA Selection (search + list mode) */}
-          {formData.mode !== 'monitor' && (
+          {(formData.mode === 'search' || formData.mode === 'list') && (
             <CTASelector
               formData={formData}
               setFormData={setFormData}

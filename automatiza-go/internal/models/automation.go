@@ -78,9 +78,10 @@ const (
 
 // AutomationType constants
 const (
-	AutomationTypeSearch     = "search"
-	AutomationTypeMonitoring = "monitoring"
-	AutomationTypeList       = "list"
+	AutomationTypeSearch         = "search"
+	AutomationTypeMonitoring     = "monitoring"
+	AutomationTypeList           = "list"
+	AutomationTypeOfferGenerate  = "offer_generate"
 )
 
 // MonitoringTextRules defines text processing rules for monitoring
@@ -117,6 +118,11 @@ func (a *Automation) IsSearch() bool {
 // IsList returns true if this is a list automation
 func (a *Automation) IsList() bool {
 	return a.Type != nil && *a.Type == AutomationTypeList
+}
+
+// IsOfferGenerate returns true if this is an offer generate automation
+func (a *Automation) IsOfferGenerate() bool {
+	return a.Type != nil && *a.Type == AutomationTypeOfferGenerate
 }
 
 // GetDedupeHours returns the dedupe hours with a default value

@@ -18,6 +18,7 @@ import (
 
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/services/monitoring"
+	"automatiza-go/internal/services/offer_generate"
 
 	"go.uber.org/zap"
 )
@@ -31,22 +32,26 @@ import (
 //   - Delegates to MonitoringService for business logic
 //   - Processing is idempotent (monitoring service handles deduplication)
 type MonitoringMessageProcessor struct {
-	monitoringService monitoring.Service
-	logger            *zap.Logger
+	monitoringService     monitoring.Service
+	offerGenerateService  offer_generate.Service
+	logger                *zap.Logger
 }
 
 // NewMonitoringMessageProcessor creates a new monitoring message processor.
 //
 // Parameters:
 //   - monitoringService: The monitoring service for processing messages
+//   - offerGenerateService: The offer generate service for processing offer links (can be nil)
 //   - logger: Structured logger for logging
 func NewMonitoringMessageProcessor(
 	monitoringService monitoring.Service,
+	offerGenerateService offer_generate.Service,
 	logger *zap.Logger,
 ) *MonitoringMessageProcessor {
 	return &MonitoringMessageProcessor{
-		monitoringService: monitoringService,
-		logger:            logger.Named("monitoring-processor"),
+		monitoringService:    monitoringService,
+		offerGenerateService: offerGenerateService,
+		logger:               logger.Named("monitoring-processor"),
 	}
 }
 
@@ -124,6 +129,17 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 			zap.Error(err))
 		// Return error to trigger retry
 		return fmt.Errorf("monitoring service error: %w", err)
+	}
+
+	// Also process through the offer generate service (filters internally by automation type)
+	if p.offerGenerateService != nil {
+		if err := p.offerGenerateService.ProcessIncomingMessage(ctx, msg); err != nil {
+			p.logger.Error("Failed to process message for offer generation",
+				zap.String("session", sessionName),
+				zap.String("messageID", msg.MessageID),
+				zap.Error(err))
+			// Non-fatal: don't return error to avoid retrying monitoring
+		}
 	}
 
 	p.logger.Debug("Message processed successfully",

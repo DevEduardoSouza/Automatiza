@@ -146,7 +146,7 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     id: local.id,
     name: local.name,
     mode: local.mode,
-    type: local.mode === 'monitor' ? 'monitoring' : local.mode === 'list' ? 'list' : 'search',
+    type: local.mode === 'monitor' ? 'monitoring' : local.mode === 'list' ? 'list' : local.mode === 'offer_generate' ? 'offer_generate' : 'search',
     dispatch_text_id: local.dispatchTextId ?? null,
     monitoring_text_rules: local.monitoringTextRules
       ? {
@@ -264,7 +264,7 @@ export function useAutomations(): UseAutomationsReturn {
   const [automationsLoading, setAutomationsLoading] = useState(true);
 
   const automations: Automation[] = useMemo(
-    () => automationsData.map(fromLocalAutomation),
+    () => automationsData.filter((a) => a.mode !== 'offer_generate').map(fromLocalAutomation),
     [automationsData]
   );
 
@@ -548,6 +548,8 @@ export function useAutomations(): UseAutomationsReturn {
           ? clampIntervalMinutes(formData.interval_minutes)
           : (formData.interval_minutes ?? 30);
 
+      const isEventDriven = mode === 'monitor';
+
       // Handle categories based on mode
       let categories: string[] = [];
       if (mode === 'search') {
@@ -588,7 +590,7 @@ export function useAutomations(): UseAutomationsReturn {
           endTime: formData.end_time,
           intervalMinutes,
           sendGroups: formData.send_groups,
-          monitorGroupIds: mode === 'monitor' ? formData.monitor_groups : [],
+          monitorGroupIds: isEventDriven ? formData.monitor_groups : [],
           stores,
           categories,
           priority: mode === 'search' ? formData.priority : 'discount',
@@ -597,10 +599,10 @@ export function useAutomations(): UseAutomationsReturn {
           minPrice: mode === 'search' ? (formData.min_price ?? undefined) : undefined,
           maxPrice: mode === 'search' ? (formData.max_price ?? undefined) : undefined,
           texts,
-          ctas: mode === 'monitor' ? [] : formData.ctas,
-          ctaIds: mode === 'monitor' ? [] : formData.cta_ids || [],
+          ctas: isEventDriven ? [] : formData.ctas,
+          ctaIds: isEventDriven ? [] : formData.cta_ids || [],
           status: formData.status,
-          delaySeconds: mode === 'monitor' ? formData.delay_seconds : undefined,
+          delaySeconds: isEventDriven ? formData.delay_seconds : undefined,
           couponId: formData.coupon_id || undefined,
           mlLinkListId,
           listItemsPerRun:
@@ -637,7 +639,7 @@ export function useAutomations(): UseAutomationsReturn {
           endTime: formData.end_time || '23:59',
           intervalMinutes,
           sendGroups: formData.send_groups || [],
-          monitorGroupIds: mode === 'monitor' ? formData.monitor_groups : [],
+          monitorGroupIds: isEventDriven ? formData.monitor_groups : [],
           stores,
           categories,
           priority: mode === 'search' ? formData.priority || 'discount' : 'discount',
@@ -646,10 +648,10 @@ export function useAutomations(): UseAutomationsReturn {
           minPrice: mode === 'search' ? (formData.min_price ?? undefined) : undefined,
           maxPrice: mode === 'search' ? (formData.max_price ?? undefined) : undefined,
           texts,
-          ctas: mode === 'monitor' ? [] : formData.ctas || [],
-          ctaIds: mode === 'monitor' ? [] : formData.cta_ids || [],
+          ctas: isEventDriven ? [] : formData.ctas || [],
+          ctaIds: isEventDriven ? [] : formData.cta_ids || [],
           status: formData.status || 'active',
-          delaySeconds: mode === 'monitor' ? formData.delay_seconds : undefined,
+          delaySeconds: isEventDriven ? formData.delay_seconds : undefined,
           couponId: formData.coupon_id || undefined,
           mlLinkListId,
           listItemsPerRun:

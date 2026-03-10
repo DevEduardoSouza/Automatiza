@@ -110,6 +110,7 @@ type AutomationRepository interface {
 	UpdateAutomation(ctx context.Context, automationID string, updates map[string]interface{}) error
 	DeleteAutomation(ctx context.Context, automationID, userID string) error
 	GetMonitoringAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error)
+	GetOfferGenerateAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error)
 	UpdateLastRunAt(ctx context.Context, automationID string) error
 	UpdateNextRunAt(ctx context.Context, automationID string, nextRun time.Time) error
 	// Admin-specific methods for bulk operations

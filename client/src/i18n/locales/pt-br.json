@@ -1434,17 +1434,17 @@
     },
     "ctas": {
       "title": "CTAs",
-      "subtitle": "Gerencie suas chamadas para ação (CTAs) que serão anexadas às mensagens",
+      "subtitle": "Gerencie seus textos de chamada para ação",
       "newCTA": "Novo CTA",
       "editTitle": "Editar CTA",
       "createTitle": "Novo CTA",
       "form": {
+        "message": "Mensagem",
+        "messagePlaceholder": "Digite o texto do CTA...",
         "platform": "Plataforma",
-        "ctaType": "Tipo",
+        "ctaType": "Tipo de CTA",
         "active": "Ativo",
-        "activeHint": "CTAs inativos não serão usados nas mensagens",
-        "message": "Mensagem do CTA",
-        "messagePlaceholder": "Ex: Aproveite essa oferta incrível! Clique no link acima para garantir o seu."
+        "activeHint": "CTAs inativos não serão usados nas automações"
       },
       "platforms": {
         "all": "Todas",
@@ -1461,36 +1461,34 @@
         "type": "Tipo",
         "status": "Status"
       },
-      "status": {
-        "all": "Todos",
-        "active": "Ativos",
-        "inactive": "Inativos"
-      },
       "table": {
-        "title": "Seus CTAs",
-        "description": "CTAs cadastrados para uso nas automações"
+        "title": "Meus CTAs",
+        "description": "Gerencie seus textos de chamada para ação"
       },
       "preview": {
-        "title": "Pré-visualização",
-        "empty": "Digite uma mensagem para ver a pré-visualização"
+        "title": "Preview WhatsApp",
+        "empty": "Digite uma mensagem para visualizar o preview..."
       },
-      "empty": "Nenhum CTA encontrado. Crie seu primeiro CTA!",
+      "empty": "Você ainda não criou nenhum CTA.",
       "confirmDeleteTitle": "Excluir CTA",
       "confirmDeleteDescription": "Tem certeza que deseja excluir este CTA? Esta ação não pode ser desfeita.",
       "howItWorks": {
-        "title": "Como funciona?",
-        "description": "CTAs são mensagens adicionadas ao final de cada oferta enviada. Quando a automação roda, um CTA é sorteado aleatoriamente entre os selecionados.",
-        "platforms": "Use filtro por plataforma para direcionar CTAs por loja (Shopee, Mercado Livre ou todas)",
-        "types": "Tipos permitem separar CTAs normais dos voltados para ofertas com desconto",
-        "automations": "Selecione os CTAs desejados na configuração de cada automação"
+        "title": "Como funciona",
+        "description": "CTAs (Call-to-Action) são textos de chamada para ação usados nas automações para engajar os usuários.",
+        "platforms": "Defina CTAs específicos para cada plataforma (Shopee, Mercado Livre) ou para todas.",
+        "types": "Separe CTAs normais dos CTAs com desconto para enviar a mensagem certa em cada situação.",
+        "automations": "Vincule CTAs às automações para que sejam selecionados automaticamente no envio."
       },
       "success": {
-        "created": "CTA criado com sucesso!",
-        "updated": "CTA atualizado com sucesso!",
-        "deleted": "CTA excluído com sucesso!"
+        "created": "CTA criado com sucesso",
+        "updated": "CTA atualizado com sucesso",
+        "deleted": "CTA excluído com sucesso"
       },
       "errors": {
-        "messageRequired": "A mensagem do CTA é obrigatória"
+        "notFound": "CTA não encontrado.",
+        "createFailed": "Erro ao criar CTA.",
+        "updateFailed": "Erro ao atualizar CTA.",
+        "messageRequired": "A mensagem do CTA é obrigatória."
       }
     },
     "coupons": {
@@ -1583,65 +1581,6 @@
         "codeRequired": "O código do cupom é obrigatório.",
         "titleRequired": "A descrição do cupom é obrigatória.",
         "storeRequired": "Selecione uma loja."
-      }
-    },
-    "ctas": {
-      "title": "CTAs",
-      "subtitle": "Gerencie seus textos de chamada para ação",
-      "newCTA": "Novo CTA",
-      "editTitle": "Editar CTA",
-      "createTitle": "Novo CTA",
-      "form": {
-        "message": "Mensagem",
-        "messagePlaceholder": "Digite o texto do CTA...",
-        "platform": "Plataforma",
-        "ctaType": "Tipo de CTA",
-        "active": "Ativo",
-        "activeHint": "CTAs inativos não serão usados nas automações"
-      },
-      "platforms": {
-        "all": "Todas",
-        "shopee": "Shopee",
-        "ml": "Mercado Livre"
-      },
-      "types": {
-        "all": "Todos",
-        "normal": "Normal",
-        "discount": "Com desconto"
-      },
-      "filters": {
-        "platform": "Plataforma",
-        "type": "Tipo",
-        "status": "Status"
-      },
-      "table": {
-        "title": "Meus CTAs",
-        "description": "Gerencie seus textos de chamada para ação"
-      },
-      "preview": {
-        "title": "Preview WhatsApp",
-        "empty": "Digite uma mensagem para visualizar o preview..."
-      },
-      "empty": "Você ainda não criou nenhum CTA.",
-      "confirmDeleteTitle": "Excluir CTA",
-      "confirmDeleteDescription": "Tem certeza que deseja excluir este CTA? Esta ação não pode ser desfeita.",
-      "howItWorks": {
-        "title": "Como funciona",
-        "description": "CTAs (Call-to-Action) são textos de chamada para ação usados nas automações para engajar os usuários.",
-        "platforms": "Defina CTAs específicos para cada plataforma (Shopee, Mercado Livre) ou para todas.",
-        "types": "Separe CTAs normais dos CTAs com desconto para enviar a mensagem certa em cada situação.",
-        "automations": "Vincule CTAs às automações para que sejam selecionados automaticamente no envio."
-      },
-      "success": {
-        "created": "CTA criado com sucesso",
-        "updated": "CTA atualizado com sucesso",
-        "deleted": "CTA excluído com sucesso"
-      },
-      "errors": {
-        "notFound": "CTA não encontrado.",
-        "createFailed": "Erro ao criar CTA.",
-        "updateFailed": "Erro ao atualizar CTA.",
-        "messageRequired": "A mensagem do CTA é obrigatória."
       }
     },
     "contactExtractor": {
@@ -2173,7 +2112,8 @@
       "modes": {
         "search": "Busca de Promoções",
         "monitor": "Monitoramento",
-        "list": "Lista de links"
+        "list": "Lista de links",
+        "offer_generate": "Gerar Oferta"
       },
       "newAutomation": "Nova Automação",
       "editTitle": "Editar Automação",
@@ -2219,7 +2159,7 @@
         "couponHint": "Selecione um cupom para incluir nas ofertas enviadas",
         "couponActive": "O cupom será incluído automaticamente nas mensagens de ofertas",
         "noCoupon": "Nenhum cupom",
-        "ctas": "CTAs - Chamadas para Ação (Opcional)",
+        "ctas": "CTAs (chamadas para ação)",
         "ctasHint": "Selecione os CTAs que serão usados nas mensagens desta automação",
         "ctasSelected": "{{count}} CTA(s) selecionado(s)",
         "active": "Ativa",
@@ -2229,7 +2169,6 @@
         "textPlaceholder": "Ex: 🔥 Oferta imperdível!",
         "generating": "Gerando...",
         "suggestWithAI": "✨ Sugerir com IA",
-        "ctas": "CTAs (chamadas para ação)",
         "listLinks": "Lista de links",
         "linkList": "Lista de links *",
         "selectList": "Selecione uma lista",
@@ -2396,6 +2335,102 @@
         "adjustFilters": "Ajuste os filtros e tente novamente.",
         "noOffersFound": "Nenhuma oferta encontrada",
         "suggestTexts": "Erro ao sugerir textos"
+      }
+    },
+    "offerGenerate": {
+      "title": "Gerar Oferta",
+      "subtitle": "Configure a geração automática de ofertas a partir de mensagens recebidas no WhatsApp",
+      "notConfigured": "Nenhuma configuração encontrada",
+      "notConfiguredDescription": "Configure o grupo de origem, grupos de destino e lojas para começar a gerar ofertas automaticamente.",
+      "configureNow": "Configurar agora",
+      "whatsappDisconnected": "WhatsApp desconectado. Conecte o WhatsApp para que as ofertas sejam geradas automaticamente.",
+      "config": {
+        "title": "Configuração",
+        "sourceGroup": "Grupo de Origem",
+        "sourceGroupDescription": "Grupo de onde as mensagens serão monitoradas (máximo 1)",
+        "destinationGroups": "Grupos de Destino",
+        "stores": "Lojas",
+        "dispatchText": "Texto de Divulgação",
+        "coupon": "Cupom (opcional)",
+        "cta": "CTA (opcional)",
+        "delay": "Delay entre envios",
+        "timeWindow": "Horário de funcionamento",
+        "name": "Nome da configuração",
+        "namePlaceholder": "Ex: Gerar Oferta - Shopee"
+      },
+      "status": {
+        "active": "Ativo",
+        "paused": "Pausado",
+        "label": "Status"
+      },
+      "tabs": {
+        "all": "Todas",
+        "sent": "Enviadas",
+        "failed": "Falhas",
+        "skipped": "Ignoradas"
+      },
+      "logs": {
+        "title": "Produtos Enviados",
+        "noLogs": "Nenhum produto enviado ainda",
+        "noLogsDescription": "Os produtos aparecerão aqui quando a geração de ofertas estiver ativa e processando mensagens.",
+        "filters": {
+          "store": "Loja",
+          "status": "Status",
+          "allStores": "Todas as lojas",
+          "allStatuses": "Todos os status"
+        },
+        "stats": {
+          "sent": "Enviados",
+          "failed": "Falhas",
+          "skipped": "Ignorados",
+          "total": "Total"
+        },
+        "table": {
+          "product": "Produto",
+          "store": "Loja",
+          "group": "Grupo",
+          "status": "Status",
+          "date": "Data",
+          "price": "Preço",
+          "coupon": "Cupom"
+        },
+        "status": {
+          "sent": "Enviado",
+          "failed": "Falha",
+          "skipped": "Ignorado",
+          "queued": "Na fila",
+          "error": "Erro"
+        }
+      },
+      "actions": {
+        "save": "Salvar configuração",
+        "saving": "Salvando...",
+        "delete": "Excluir configuração",
+        "activate": "Ativar",
+        "pause": "Pausar"
+      },
+      "confirm": {
+        "deleteTitle": "Excluir configuração",
+        "deleteDescription": "Tem certeza que deseja excluir esta configuração? A geração automática de ofertas será interrompida."
+      },
+      "success": {
+        "saved": "Configuração salva com sucesso",
+        "deleted": "Configuração excluída",
+        "activated": "Geração de ofertas ativada",
+        "paused": "Geração de ofertas pausada"
+      },
+      "errors": {
+        "loadFailed": "Falha ao carregar configuração",
+        "saveFailed": "Falha ao salvar configuração",
+        "deleteFailed": "Falha ao excluir configuração",
+        "toggleFailed": "Falha ao alterar status"
+      },
+      "validation": {
+        "nameRequired": "Informe um nome para a configuração",
+        "sourceGroupRequired": "Selecione um grupo de origem",
+        "destinationGroupsRequired": "Selecione ao menos um grupo de destino",
+        "storesRequired": "Selecione ao menos uma loja",
+        "conflictingGroups": "O grupo de origem não pode ser igual a um grupo de destino"
       }
     }
   },
@@ -3569,6 +3604,7 @@
     "contacts": "Extrator de Contatos",
     "aiTools": "Ferramentas de IA",
     "offerAutomations": "Divulgações de IA",
+    "offerGenerate": "Gerar Oferta",
     "linkLists": "Listas de links",
     "dispatchTexts": "Textos de Disparo",
     "affiliatePrograms": "Programas de Afiliado",

@@ -43,6 +43,7 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/middleware"
+	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/repository/postgres"
@@ -59,6 +60,7 @@ import (
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/mllinklists"
 	"automatiza-go/internal/services/monitoring"
+	"automatiza-go/internal/services/offer_generate"
 	"automatiza-go/internal/services/reconciliation"
 	"automatiza-go/internal/services/redirect"
 	"automatiza-go/internal/services/shopee"
@@ -487,6 +489,27 @@ func main() {
 		config.NewModuleLogger(logger, "monitoring"),
 	)
 
+	var ogCouponHandler offer_generate.CouponApplier
+	if couponRepo != nil {
+		ogCouponHandler = &couponHandlerAdapter{
+			handler: automation.NewCouponHandler(couponRepo, logger),
+		}
+	}
+	offerGenerateService := offer_generate.NewOfferGenerateService(
+		automationRepo,
+		instanceRepo,
+		dispatchLogRepo,
+		settingsRepo,
+		couponRepo,
+		ctaRepo,
+		shopeeService,
+		mlService,
+		wahaAdapter,
+		ogCouponHandler,
+		cacheClient,
+		config.NewModuleLogger(logger, "offer-generate"),
+	)
+
 	dashboardService := dashboard.NewDashboardService(
 		repos.Dashboard,
 		config.NewModuleLogger(logger, "dashboard"),
@@ -527,7 +550,7 @@ func main() {
 		if redisClient != nil {
 			redisClientForWorker = redisClient.Client
 		}
-		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, logger)
+		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, offerGenerateService, logger)
 		return
 	}
 
@@ -1036,6 +1059,25 @@ func main() {
 	logger.Info("Server exited")
 }
 
+// couponHandlerAdapter adapts automation.CouponHandler to offer_generate.CouponApplier
+// to break the import cycle between the automation and offer_generate packages.
+type couponHandlerAdapter struct {
+	handler *automation.CouponHandler
+}
+
+func (a *couponHandlerAdapter) LoadCouponOnce(ctx context.Context, auto *models.Automation) (*models.Coupon, string) {
+	return a.handler.LoadCouponOnce(ctx, auto)
+}
+
+func (a *couponHandlerAdapter) ApplyCouponWithPreloaded(coupon *models.Coupon, offerPrice float64, offerStore string) *offer_generate.CouponResult {
+	result := a.handler.ApplyCouponWithPreloaded(coupon, offerPrice, offerStore)
+	return &offer_generate.CouponResult{
+		Applied:         result.Applied,
+		CouponText:      result.CouponText,
+		DiscountedPrice: result.DiscountedPrice,
+	}
+}
+
 // queueEnqueuerAdapter adapts *workers.QueueClient to startup.ReconcileEnqueuer.
 type queueEnqueuerAdapter struct {
 	client *workers.QueueClient
@@ -1065,6 +1107,7 @@ func runWorker(
 	queueClient *workers.QueueClient,
 	redisClientForSSE *redis.Client,
 	monitoringService monitoring.Service,
+	offerGenerateService offer_generate.Service,
 	logger *zap.Logger,
 ) {
 	logger.Info("Starting worker mode",
@@ -1132,6 +1175,7 @@ func runWorker(
 	if monitoringService != nil {
 		messageProcessor = workers.NewMonitoringMessageProcessor(
 			monitoringService,
+			offerGenerateService,
 			config.NewModuleLogger(logger, "monitoring-processor"),
 		)
 	}
