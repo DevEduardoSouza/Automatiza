@@ -54,6 +54,9 @@ func (m *mockSchedulerAutomationRepo) DeleteAutomation(ctx context.Context, auto
 func (m *mockSchedulerAutomationRepo) GetMonitoringAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error) {
 	return nil, nil
 }
+func (m *mockSchedulerAutomationRepo) GetOfferGenerateAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error) {
+	return nil, nil
+}
 func (m *mockSchedulerAutomationRepo) UpdateLastRunAt(ctx context.Context, automationID string) error {
 	return nil
 }

@@ -49,6 +49,7 @@ type offerGenerateService struct {
 	settingsRepo    repository.SettingsRepository
 	couponRepo      repository.CouponRepository
 	ctaRepo         repository.CTARepository
+	affiliateRepo   repository.AffiliateCredentialsRepository
 
 	shopeeService shopee.Service
 	mlService     mercadolivre.Service
@@ -68,6 +69,7 @@ func NewOfferGenerateService(
 	settingsRepo repository.SettingsRepository,
 	couponRepo repository.CouponRepository,
 	ctaRepo repository.CTARepository,
+	affiliateRepo repository.AffiliateCredentialsRepository,
 	shopeeService shopee.Service,
 	mlService mercadolivre.Service,
 	waProvider whatsapp.WhatsAppProvider,
@@ -82,6 +84,7 @@ func NewOfferGenerateService(
 		settingsRepo:    settingsRepo,
 		couponRepo:      couponRepo,
 		ctaRepo:         ctaRepo,
+		affiliateRepo:   affiliateRepo,
 		shopeeService:   shopeeService,
 		mlService:       mlService,
 		waProvider:      waProvider,
@@ -190,8 +193,17 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		}
 	}
 
-	// 3. Filter by configured stores
+	// 3. Filter by configured stores (fallback to user's active affiliate stores)
 	stores := auto.Stores
+	if len(stores) == 0 || (len(stores) == 1 && stores[0] == "shopee") {
+		// If only default "shopee" or empty, check if user has more active stores
+		if s.affiliateRepo != nil {
+			activeStores, err := s.affiliateRepo.GetActiveStores(ctx, auto.UserID)
+			if err == nil && len(activeStores) > 0 {
+				stores = activeStores
+			}
+		}
+	}
 	if len(stores) == 0 {
 		stores = []string{"shopee"}
 	}
@@ -202,7 +214,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 	if !storeSet["shopee"] {
 		shopeeLinks = nil
 	}
-	if !storeSet["mercadolivre"] {
+	if !storeSet["mercadolivre"] && !storeSet["mercado_livre"] && !storeSet["ml"] {
 		mlLinks = nil
 	}
 
@@ -240,10 +252,19 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		}
 	}
 
-	// 7. Preload coupon if configured
+	// 7. Preload coupon: from automation config OR from discount tag coupon code
 	var preloadedCoupon *models.Coupon
 	if s.couponHandler != nil && auto.CouponID != nil && *auto.CouponID != "" {
 		preloadedCoupon, _ = s.couponHandler.LoadCouponOnce(ctx, auto)
+	}
+	if preloadedCoupon == nil && discountTag != nil && discountTag.CouponCode != "" && s.couponRepo != nil {
+		tagCoupon, err := s.couponRepo.GetCouponByCode(ctx, auto.UserID, discountTag.CouponCode)
+		if err == nil && tagCoupon != nil && tagCoupon.IsActive {
+			preloadedCoupon = tagCoupon
+			s.logger.Debug("Coupon loaded from discount tag",
+				zap.String("couponCode", discountTag.CouponCode),
+				zap.String("automationID", auto.ID))
+		}
 	}
 
 	// 8. Resolve sender session (automation owner's connected instance)

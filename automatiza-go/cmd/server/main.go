@@ -502,6 +502,7 @@ func main() {
 		settingsRepo,
 		couponRepo,
 		ctaRepo,
+		affiliateRepo,
 		shopeeService,
 		mlService,
 		wahaAdapter,

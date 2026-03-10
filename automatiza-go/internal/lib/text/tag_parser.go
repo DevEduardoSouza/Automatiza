@@ -12,15 +12,19 @@ type DiscountTag struct {
 	Percent    float64 // Percentage discount (e.g., 25 means 25%)
 	FixedValue float64 // Fixed value discount in BRL
 	MaxValue   float64 // Maximum discount value in BRL (only with percent)
+	CouponCode string  // Optional coupon code (e.g., desc[10:EXEMPLO10])
 }
 
 var discountTagRegex = regexp.MustCompile(`desc\[([^\]]+)\]`)
 
 // ParseDiscountTag extracts a discount tag from the message body.
 // Supported formats:
-//   - desc[25%|10] → 25% off, max R$10
-//   - desc[25%]    → 25% off
-//   - desc[10]     → R$10 fixed off
+//   - desc[25%|10]        → 25% off, max R$10
+//   - desc[25%]           → 25% off
+//   - desc[10]            → R$10 fixed off
+//   - desc[10:CUPOM10]    → R$10 fixed off + coupon code CUPOM10
+//   - desc[25%|10:CUPOM]  → 25% off, max R$10 + coupon code CUPOM
+//   - desc[25%:CUPOM]     → 25% off + coupon code CUPOM
 //
 // Returns nil if no tag is found.
 func ParseDiscountTag(body string) *DiscountTag {
@@ -32,7 +36,17 @@ func ParseDiscountTag(body string) *DiscountTag {
 	inner := strings.TrimSpace(match[1])
 	tag := &DiscountTag{}
 
-	parts := strings.SplitN(inner, "|", 2)
+	// Extract coupon code after ":"
+	discountPart := inner
+	if idx := strings.LastIndex(inner, ":"); idx >= 0 {
+		code := strings.TrimSpace(inner[idx+1:])
+		if code != "" {
+			tag.CouponCode = code
+		}
+		discountPart = strings.TrimSpace(inner[:idx])
+	}
+
+	parts := strings.SplitN(discountPart, "|", 2)
 
 	first := strings.TrimSpace(parts[0])
 	if strings.HasSuffix(first, "%") {

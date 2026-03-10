@@ -12,6 +12,7 @@ func TestParseDiscountTag(t *testing.T) {
 		wantPct    float64
 		wantFixed  float64
 		wantMax    float64
+		wantCode   string
 	}{
 		{
 			name:    "percent with max",
@@ -58,6 +59,21 @@ func TestParseDiscountTag(t *testing.T) {
 			body:    "desc[10.5%|5.50]",
 			wantPct: 10.5, wantMax: 5.50,
 		},
+		{
+			name:      "fixed with coupon code",
+			body:      "https://shopee.com.br/abc desc[10:EXEMPLO10]",
+			wantFixed: 10, wantCode: "EXEMPLO10",
+		},
+		{
+			name:    "percent with coupon code",
+			body:    "desc[25%:CUPOM25]",
+			wantPct: 25, wantCode: "CUPOM25",
+		},
+		{
+			name:    "percent with max and coupon code",
+			body:    "desc[25%|10:MEGA]",
+			wantPct: 25, wantMax: 10, wantCode: "MEGA",
+		},
 	}
 
 	for _, tt := range tests {
@@ -80,6 +96,9 @@ func TestParseDiscountTag(t *testing.T) {
 			}
 			if tag.MaxValue != tt.wantMax {
 				t.Errorf("MaxValue = %v, want %v", tag.MaxValue, tt.wantMax)
+			}
+			if tag.CouponCode != tt.wantCode {
+				t.Errorf("CouponCode = %q, want %q", tag.CouponCode, tt.wantCode)
 			}
 		})
 	}

@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"automatiza-go/internal/models"
@@ -114,7 +115,7 @@ func (h *CouponHandler) ApplyCoupon(
 
 	// Check if coupon store matches offer store (if coupon has store restriction)
 	if coupon.Store != "" && offerStore != "" {
-		if coupon.Store != offerStore {
+		if normalizeStoreName(coupon.Store) != normalizeStoreName(offerStore) {
 			result.SkipReason = fmt.Sprintf("coupon is for store %s (offer is from %s)", coupon.Store, offerStore)
 			return result, nil
 		}
@@ -265,7 +266,7 @@ func (h *CouponHandler) ApplyCouponWithPreloaded(
 
 	// Check store match
 	if coupon.Store != "" && offerStore != "" {
-		if coupon.Store != offerStore {
+		if normalizeStoreName(coupon.Store) != normalizeStoreName(offerStore) {
 			result.SkipReason = fmt.Sprintf("coupon is for store %s (offer is from %s)", coupon.Store, offerStore)
 			return result
 		}
@@ -286,6 +287,28 @@ func (h *CouponHandler) ApplyCouponWithPreloaded(
 	result.DiscountedPrice = CalculateDiscountedPrice(offerPrice, coupon)
 
 	return result
+}
+
+// normalizeStoreName maps store name variants to a canonical form for comparison.
+func normalizeStoreName(store string) string {
+	switch strings.ToLower(strings.TrimSpace(store)) {
+	case "ml", "mercadolivre", "mercado_livre":
+		return "mercadolivre"
+	case "shopee":
+		return "shopee"
+	case "amazon":
+		return "amazon"
+	case "magalu":
+		return "magalu"
+	case "shein":
+		return "shein"
+	case "aliexpress":
+		return "aliexpress"
+	case "awin":
+		return "awin"
+	default:
+		return strings.ToLower(store)
+	}
 }
 
 // CalculateDiscountedPrice calculates the price after applying a coupon discount.

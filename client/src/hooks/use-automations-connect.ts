@@ -360,7 +360,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     maxPrice: automation.maxPrice,
     texts: [...automation.texts],
     ctas: [...automation.ctas],
-    ctaIds: [...automation.ctaIds],
+    ctaIds: [...(automation.ctaIds ?? [])],
     lastRunAt: automation.lastRunAt,
     nextRunAt: automation.nextRunAt,
     status: fromProtoStatus(automation.status),
