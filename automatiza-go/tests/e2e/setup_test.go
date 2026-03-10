@@ -813,6 +813,10 @@ func (m *mockAutomationRepo) BulkUpdateNextRunAts(ctx context.Context, automatio
 	return nil
 }
 
+func (m *mockAutomationRepo) GetOfferGenerateAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error) {
+	return nil, nil
+}
+
 func (m *mockAutomationRepo) AddAutomation(auto *models.Automation) {
 	m.automations[auto.ID] = auto
 	m.byUserID[auto.UserID] = append(m.byUserID[auto.UserID], *auto)
