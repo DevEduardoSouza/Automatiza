@@ -105,6 +105,14 @@ func (m *MockAutomationRepository) BulkUpdateNextRunAts(ctx context.Context, aut
 	return args.Error(0)
 }
 
+func (m *MockAutomationRepository) GetOfferGenerateAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error) {
+	args := m.Called(ctx, waGroupID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.Automation), args.Error(1)
+}
+
 // MockAutomationRunRepository implements repository.AutomationRunRepository
 type MockAutomationRunRepository struct {
 	mock.Mock

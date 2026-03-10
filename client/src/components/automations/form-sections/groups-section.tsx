@@ -163,6 +163,8 @@ interface MonitorGroupsSelectorProps {
   setFormData: React.Dispatch<React.SetStateAction<Partial<Automation>>>;
   allGroups: AutomationGroup[];
   onToggleFavorite: (groupId: string) => Promise<void>;
+  maxGroups?: number;
+  hideLabel?: boolean;
 }
 
 export function MonitorGroupsSelector({
@@ -170,6 +172,8 @@ export function MonitorGroupsSelector({
   setFormData,
   allGroups,
   onToggleFavorite,
+  maxGroups = MAX_MONITOR_GROUPS,
+  hideLabel = false,
 }: MonitorGroupsSelectorProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -178,7 +182,7 @@ export function MonitorGroupsSelector({
     setFormData((prev) => {
       const current = prev.monitor_groups || [];
       const isSelected = current.includes(waGroupId);
-      if (checked && !isSelected && current.length >= MAX_MONITOR_GROUPS) {
+      if (checked && !isSelected && current.length >= maxGroups) {
         toast({
           title: t('pages.offerAutomations.validation.maxMonitorGroups'),
           description: t('pages.offerAutomations.validation.maxMonitorGroupsMessage'),
@@ -195,18 +199,20 @@ export function MonitorGroupsSelector({
 
   return (
     <div className="space-y-1.5 xs:space-y-2">
-      <Label className="cursor-pointer">
-        {t('pages.offerAutomations.form.monitorGroups')}{' '}
-        <span className="text-xs text-muted-foreground">
-          ({selectedCount}/{MAX_MONITOR_GROUPS} {t('pages.offerAutomations.form.groupsSelected')})
-        </span>
-      </Label>
+      {!hideLabel && (
+        <Label className="cursor-pointer">
+          {t('pages.offerAutomations.form.monitorGroups')}{' '}
+          <span className="text-xs text-muted-foreground">
+            ({selectedCount}/{maxGroups} {t('pages.offerAutomations.form.groupsSelected')})
+          </span>
+        </Label>
+      )}
       <GroupsListCheckbox
         groups={allGroups}
         selectedIds={formData.monitor_groups || []}
         onToggle={handleToggle}
         onToggleFavorite={onToggleFavorite}
-        maxGroups={MAX_MONITOR_GROUPS}
+        maxGroups={maxGroups}
         showSearch
       />
     </div>

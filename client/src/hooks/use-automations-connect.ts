@@ -43,7 +43,7 @@ import { useToast } from './use-toast';
 // ============================================================
 
 export type LocalStoreKey = 'shopee' | 'amazon' | 'magalu' | 'ml' | 'shein' | 'aliexpress' | 'awin';
-export type LocalAutomationMode = 'search' | 'monitor' | 'list';
+export type LocalAutomationMode = 'search' | 'monitor' | 'list' | 'offer_generate';
 export type LocalPriorityType = 'discount' | 'price' | 'commission';
 export type LocalFilterType = 'light' | 'heavy';
 export type LocalAutomationStatus = 'active' | 'paused';
@@ -239,6 +239,7 @@ function toProtoMode(mode: LocalAutomationMode): AutomationMode {
     search: AutomationMode.SEARCH,
     monitor: AutomationMode.MONITOR,
     list: AutomationMode.LIST,
+    offer_generate: AutomationMode.OFFER_GENERATE,
   };
   return map[mode] ?? AutomationMode.UNSPECIFIED;
 }
@@ -249,6 +250,7 @@ function fromProtoMode(mode: AutomationMode): LocalAutomationMode {
     [AutomationMode.SEARCH]: 'search',
     [AutomationMode.MONITOR]: 'monitor',
     [AutomationMode.LIST]: 'list',
+    [AutomationMode.OFFER_GENERATE]: 'offer_generate',
   };
   return map[mode] ?? 'search';
 }
@@ -358,7 +360,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     maxPrice: automation.maxPrice,
     texts: [...automation.texts],
     ctas: [...automation.ctas],
-    ctaIds: [...automation.ctaIds],
+    ctaIds: [...(automation.ctaIds ?? [])],
     lastRunAt: automation.lastRunAt,
     nextRunAt: automation.nextRunAt,
     status: fromProtoStatus(automation.status),

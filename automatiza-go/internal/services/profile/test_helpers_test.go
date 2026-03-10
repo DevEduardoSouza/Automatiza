@@ -292,6 +292,10 @@ func (m *enhancedMockAutomationRepo) BulkUpdateNextRunAts(ctx context.Context, a
 	return nil
 }
 
+func (m *enhancedMockAutomationRepo) GetOfferGenerateAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error) {
+	return nil, nil
+}
+
 // ============================================================
 // Enhanced Mock Instance Repository
 // ============================================================

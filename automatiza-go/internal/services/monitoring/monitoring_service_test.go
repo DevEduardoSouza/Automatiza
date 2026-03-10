@@ -119,6 +119,10 @@ func (m *mockAutomationRepo) BulkUpdateNextRunAts(ctx context.Context, automatio
 	return nil
 }
 
+func (m *mockAutomationRepo) GetOfferGenerateAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error) {
+	return nil, nil
+}
+
 type mockInstanceRepo struct {
 	GetUserInstancesFn          func(ctx context.Context, userID string) ([]models.Instance, error)
 	GetInstanceByIDFn           func(ctx context.Context, instanceID int) (*models.Instance, error)

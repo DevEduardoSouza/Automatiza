@@ -135,6 +135,10 @@ func (m *MockAutomationRepository) BulkUpdateNextRunAts(ctx context.Context, aut
 	return nil
 }
 
+func (m *MockAutomationRepository) GetOfferGenerateAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error) {
+	return nil, nil
+}
+
 // Compile-time interface verification
 var _ repository.AutomationRepository = (*MockAutomationRepository)(nil)
 

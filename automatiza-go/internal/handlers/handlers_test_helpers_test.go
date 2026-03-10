@@ -437,6 +437,9 @@ func (m *mockAutomationRepo) BulkUpdateStatusByUserID(ctx context.Context, userI
 func (m *mockAutomationRepo) BulkUpdateNextRunAts(ctx context.Context, automationIDs []string, nextRunAts []time.Time) error {
 	return nil
 }
+func (m *mockAutomationRepo) GetOfferGenerateAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error) {
+	return nil, nil
+}
 
 // ---------------------------------------------------------------------------
 // Mock: ActionHistoryRepository

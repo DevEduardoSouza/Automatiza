@@ -302,6 +302,34 @@ func (r *automationRepository) GetMonitoringAutomationsForGroup(ctx context.Cont
 	return r.scanAutomations(rows)
 }
 
+func (r *automationRepository) GetOfferGenerateAutomationsForGroup(ctx context.Context, waGroupID string) ([]models.Automation, error) {
+	query := `
+		SELECT id, user_id, name, type, status, mode, shopee_link, keyword,
+		       group_ids, send_groups, monitor_group_ids, monitoring_text_rules,
+		       categories, stores, min_price, max_price, min_discount, priority,
+		       custom_message, include_image, dispatch_text_id, filter_type,
+		       schedule_time, schedule_days, start_time, end_time, interval_minutes,
+		       delay_seconds, dedupe_hours, last_run_at, next_run_at,
+		       coupon_id, created_at, updated_at,
+		       texts, ctas, cta_ids, last_error, last_error_at,
+		       ml_link_list_id, list_items_per_run, list_include_image, priority_type
+		FROM automations
+		WHERE status = 'active'
+		  AND type = 'offer_generate'
+		  AND monitor_group_ids @> $1::jsonb
+	`
+
+	groupIDJSON := marshalJSONField(r.logger, []string{waGroupID}, "monitor_group_filter", []byte(`[""]`))
+
+	rows, err := r.db.Query(ctx, query, string(groupIDJSON))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return r.scanAutomations(rows)
+}
+
 // Helper functions
 
 func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, error) {

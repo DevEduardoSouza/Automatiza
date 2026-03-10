@@ -1434,159 +1434,6 @@
     },
     "ctas": {
       "title": "CTAs",
-      "subtitle": "Gerencie suas chamadas para ação (CTAs) que serão anexadas às mensagens",
-      "newCTA": "Novo CTA",
-      "editTitle": "Editar CTA",
-      "createTitle": "Novo CTA",
-      "form": {
-        "platform": "Plataforma",
-        "ctaType": "Tipo",
-        "active": "Ativo",
-        "activeHint": "CTAs inativos não serão usados nas mensagens",
-        "message": "Mensagem do CTA",
-        "messagePlaceholder": "Ex: Aproveite essa oferta incrível! Clique no link acima para garantir o seu."
-      },
-      "platforms": {
-        "all": "Todas",
-        "shopee": "Shopee",
-        "ml": "Mercado Livre"
-      },
-      "types": {
-        "all": "Todos",
-        "normal": "Normal",
-        "discount": "Com desconto"
-      },
-      "filters": {
-        "platform": "Plataforma",
-        "type": "Tipo",
-        "status": "Status"
-      },
-      "status": {
-        "all": "Todos",
-        "active": "Ativos",
-        "inactive": "Inativos"
-      },
-      "table": {
-        "title": "Seus CTAs",
-        "description": "CTAs cadastrados para uso nas automações"
-      },
-      "preview": {
-        "title": "Pré-visualização",
-        "empty": "Digite uma mensagem para ver a pré-visualização"
-      },
-      "empty": "Nenhum CTA encontrado. Crie seu primeiro CTA!",
-      "confirmDeleteTitle": "Excluir CTA",
-      "confirmDeleteDescription": "Tem certeza que deseja excluir este CTA? Esta ação não pode ser desfeita.",
-      "howItWorks": {
-        "title": "Como funciona?",
-        "description": "CTAs são mensagens adicionadas ao final de cada oferta enviada. Quando a automação roda, um CTA é sorteado aleatoriamente entre os selecionados.",
-        "platforms": "Use filtro por plataforma para direcionar CTAs por loja (Shopee, Mercado Livre ou todas)",
-        "types": "Tipos permitem separar CTAs normais dos voltados para ofertas com desconto",
-        "automations": "Selecione os CTAs desejados na configuração de cada automação"
-      },
-      "success": {
-        "created": "CTA criado com sucesso!",
-        "updated": "CTA atualizado com sucesso!",
-        "deleted": "CTA excluído com sucesso!"
-      },
-      "errors": {
-        "messageRequired": "A mensagem do CTA é obrigatória"
-      }
-    },
-    "coupons": {
-      "title": "Cupons",
-      "subtitle": "Gerencie seus cupons de desconto",
-      "newCoupon": "Novo cupom",
-      "editTitle": "Editar Cupom",
-      "editDescription": "Edite as informações do cupom de desconto.",
-      "createTitle": "Novo Cupom",
-      "createDescription": "Preencha as informações do novo cupom de desconto.",
-      "form": {
-        "code": "Código",
-        "codePlaceholder": "Ex: DESCONTO10",
-        "discount": "Desconto",
-        "discountPlaceholder": "10",
-        "type": "Tipo",
-        "typePercent": "Porcentagem",
-        "typeFixed": "Valor fixo",
-        "validUntil": "Válido até",
-        "titlePlaceholder": "R$ 20 OFF em compras acima de R$ 200",
-        "affiliateLinkPlaceholder": "https://s.shopee.com.br/...",
-        "store": "Loja",
-        "affiliateLink": "Link de afiliado",
-        "maxDiscount": "Desconto máximo",
-        "maxDiscountPlaceholder": "50",
-        "minProductPrice": "Valor mínimo do produto",
-        "minProductPricePlaceholder": "200",
-        "couponText": "Texto do cupom",
-        "discountDescription": "Configure o tipo e valor do desconto"
-      },
-      "actions": {
-        "activate": "Ativar cupom",
-        "deactivate": "Desativar cupom",
-        "edit": "Editar cupom",
-        "delete": "Excluir cupom",
-        "copyCode": "Copiar código"
-      },
-      "confirmDelete": "Tem certeza que deseja excluir este cupom?",
-      "confirmActivate": "Tem certeza que deseja ativar este cupom?",
-      "confirmDeactivate": "Tem certeza que deseja desativar este cupom?",
-      "searchPlaceholder": "Buscar por código ou descrição...",
-      "stores": {
-        "shopee": "Shopee",
-        "amazon": "Amazon",
-        "magalu": "Magazine Luiza",
-        "ml": "Mercado Livre",
-        "shein": "Shein",
-        "aliexpress": "AliExpress",
-        "awin": "Awin",
-        "notConfigured": "não configurada"
-      },
-      "categories": {
-        "generalOffers": "Ofertas gerais",
-        "electronics": "Eletrônicos",
-        "fashion": "Moda",
-        "men": "Homens",
-        "homeDecor": "Casa e Decoração",
-        "beauty": "Beleza",
-        "sports": "Esportes",
-        "books": "Livros",
-        "toys": "Brinquedos",
-        "children": "Infantil",
-        "maternity": "Maternidade",
-        "food": "Alimentos",
-        "automotive": "Automotivo",
-        "pets": "Pets"
-      },
-      "table": {
-        "title": "Meus cupons",
-        "code": "Código",
-        "validUntil": "Válido até",
-        "status": "Status"
-      },
-      "empty": "Você ainda não criou nenhum cupom.",
-      "loading": "Carregando cupons...",
-      "filterDescription": "Busque e filtre seus cupons",
-      "success": {
-        "created": "Cupom criado",
-        "updated": "Cupom atualizado",
-        "deleted": "Cupom excluído",
-        "copied": "Código copiado"
-      },
-      "errors": {
-        "load": "Erro ao carregar cupons",
-        "save": "Erro ao salvar cupom",
-        "delete": "Erro ao excluir cupom",
-        "duplicateCode": "Já existe um cupom com este código. Use um código diferente.",
-        "notFound": "Cupom não encontrado.",
-        "invalidData": "Dados inválidos. Verifique os campos.",
-        "codeRequired": "O código do cupom é obrigatório.",
-        "titleRequired": "A descrição do cupom é obrigatória.",
-        "storeRequired": "Selecione uma loja."
-      }
-    },
-    "ctas": {
-      "title": "CTAs",
       "subtitle": "Gerencie seus textos de chamada para ação",
       "newCTA": "Novo CTA",
       "editTitle": "Editar CTA",
@@ -1642,6 +1489,100 @@
         "createFailed": "Erro ao criar CTA.",
         "updateFailed": "Erro ao atualizar CTA.",
         "messageRequired": "A mensagem do CTA é obrigatória."
+      }
+    },
+    "coupons": {
+      "title": "Cupons",
+      "subtitle": "Gerencie seus cupons de desconto",
+      "newCoupon": "Novo cupom",
+      "editTitle": "Editar Cupom",
+      "editDescription": "Edite as informações do cupom de desconto.",
+      "createTitle": "Novo Cupom",
+      "createDescription": "Preencha as informações do novo cupom de desconto.",
+      "form": {
+        "code": "Código",
+        "codePlaceholder": "Ex: DESCONTO10",
+        "discount": "Desconto",
+        "discountPlaceholder": "10",
+        "type": "Tipo",
+        "typePercent": "Porcentagem",
+        "typeFixed": "Valor fixo",
+        "validUntil": "Válido até",
+        "titlePlaceholder": "R$ 20 OFF em compras acima de R$ 200",
+        "affiliateLinkPlaceholder": "https://s.shopee.com.br/...",
+        "store": "Loja",
+        "affiliateLink": "Link de afiliado",
+        "maxDiscount": "Desconto máximo",
+        "maxDiscountPlaceholder": "50",
+        "minProductPrice": "Valor mínimo do produto",
+        "minProductPricePlaceholder": "200",
+        "couponText": "Texto do cupom",
+        "discountDescription": "Configure o tipo e valor do desconto"
+      },
+      "actions": {
+        "activate": "Ativar cupom",
+        "deactivate": "Desativar cupom",
+        "edit": "Editar cupom",
+        "delete": "Excluir cupom",
+        "copyCode": "Copiar código",
+        "copyTag": "Copiar Tag"
+      },
+      "confirmDelete": "Tem certeza que deseja excluir este cupom?",
+      "confirmActivate": "Tem certeza que deseja ativar este cupom?",
+      "confirmDeactivate": "Tem certeza que deseja desativar este cupom?",
+      "searchPlaceholder": "Buscar por código ou descrição...",
+      "stores": {
+        "shopee": "Shopee",
+        "amazon": "Amazon",
+        "magalu": "Magazine Luiza",
+        "ml": "Mercado Livre",
+        "shein": "Shein",
+        "aliexpress": "AliExpress",
+        "awin": "Awin",
+        "notConfigured": "não configurada"
+      },
+      "categories": {
+        "generalOffers": "Ofertas gerais",
+        "electronics": "Eletrônicos",
+        "fashion": "Moda",
+        "men": "Homens",
+        "homeDecor": "Casa e Decoração",
+        "beauty": "Beleza",
+        "sports": "Esportes",
+        "books": "Livros",
+        "toys": "Brinquedos",
+        "children": "Infantil",
+        "maternity": "Maternidade",
+        "food": "Alimentos",
+        "automotive": "Automotivo",
+        "pets": "Pets"
+      },
+      "table": {
+        "title": "Meus cupons",
+        "code": "Código",
+        "validUntil": "Válido até",
+        "status": "Status"
+      },
+      "empty": "Você ainda não criou nenhum cupom.",
+      "loading": "Carregando cupons...",
+      "filterDescription": "Busque e filtre seus cupons",
+      "success": {
+        "created": "Cupom criado",
+        "updated": "Cupom atualizado",
+        "deleted": "Cupom excluído",
+        "copied": "Código copiado",
+        "tagCopied": "Tag copiada"
+      },
+      "errors": {
+        "load": "Erro ao carregar cupons",
+        "save": "Erro ao salvar cupom",
+        "delete": "Erro ao excluir cupom",
+        "duplicateCode": "Já existe um cupom com este código. Use um código diferente.",
+        "notFound": "Cupom não encontrado.",
+        "invalidData": "Dados inválidos. Verifique os campos.",
+        "codeRequired": "O código do cupom é obrigatório.",
+        "titleRequired": "A descrição do cupom é obrigatória.",
+        "storeRequired": "Selecione uma loja."
       }
     },
     "contactExtractor": {
@@ -2173,7 +2114,8 @@
       "modes": {
         "search": "Busca de Promoções",
         "monitor": "Monitoramento",
-        "list": "Lista de links"
+        "list": "Lista de links",
+        "offer_generate": "Gerar Oferta"
       },
       "newAutomation": "Nova Automação",
       "editTitle": "Editar Automação",
@@ -2219,7 +2161,7 @@
         "couponHint": "Selecione um cupom para incluir nas ofertas enviadas",
         "couponActive": "O cupom será incluído automaticamente nas mensagens de ofertas",
         "noCoupon": "Nenhum cupom",
-        "ctas": "CTAs - Chamadas para Ação (Opcional)",
+        "ctas": "CTAs (chamadas para ação)",
         "ctasHint": "Selecione os CTAs que serão usados nas mensagens desta automação",
         "ctasSelected": "{{count}} CTA(s) selecionado(s)",
         "active": "Ativa",
@@ -2229,7 +2171,6 @@
         "textPlaceholder": "Ex: 🔥 Oferta imperdível!",
         "generating": "Gerando...",
         "suggestWithAI": "✨ Sugerir com IA",
-        "ctas": "CTAs (chamadas para ação)",
         "listLinks": "Lista de links",
         "linkList": "Lista de links *",
         "selectList": "Selecione uma lista",
@@ -2396,6 +2337,102 @@
         "adjustFilters": "Ajuste os filtros e tente novamente.",
         "noOffersFound": "Nenhuma oferta encontrada",
         "suggestTexts": "Erro ao sugerir textos"
+      }
+    },
+    "offerGenerate": {
+      "title": "Gerar Oferta",
+      "subtitle": "Configure a geração automática de ofertas a partir de mensagens recebidas no WhatsApp",
+      "notConfigured": "Nenhuma configuração encontrada",
+      "notConfiguredDescription": "Configure o grupo de origem, grupos de destino e lojas para começar a gerar ofertas automaticamente.",
+      "configureNow": "Configurar agora",
+      "whatsappDisconnected": "WhatsApp desconectado. Conecte o WhatsApp para que as ofertas sejam geradas automaticamente.",
+      "config": {
+        "title": "Configuração",
+        "sourceGroup": "Grupo de Origem",
+        "sourceGroupDescription": "Grupo de onde as mensagens serão monitoradas (máximo 1)",
+        "destinationGroups": "Grupos de Destino",
+        "stores": "Lojas",
+        "dispatchText": "Texto de Divulgação",
+        "coupon": "Cupom (opcional)",
+        "cta": "CTA (opcional)",
+        "delay": "Delay entre envios",
+        "timeWindow": "Horário de funcionamento",
+        "name": "Nome da configuração",
+        "namePlaceholder": "Ex: Gerar Oferta - Shopee"
+      },
+      "status": {
+        "active": "Ativo",
+        "paused": "Pausado",
+        "label": "Status"
+      },
+      "tabs": {
+        "all": "Todas",
+        "sent": "Enviadas",
+        "failed": "Falhas",
+        "skipped": "Ignoradas"
+      },
+      "logs": {
+        "title": "Produtos Enviados",
+        "noLogs": "Nenhum produto enviado ainda",
+        "noLogsDescription": "Os produtos aparecerão aqui quando a geração de ofertas estiver ativa e processando mensagens.",
+        "filters": {
+          "store": "Loja",
+          "status": "Status",
+          "allStores": "Todas as lojas",
+          "allStatuses": "Todos os status"
+        },
+        "stats": {
+          "sent": "Enviados",
+          "failed": "Falhas",
+          "skipped": "Ignorados",
+          "total": "Total"
+        },
+        "table": {
+          "product": "Produto",
+          "store": "Loja",
+          "group": "Grupo",
+          "status": "Status",
+          "date": "Data",
+          "price": "Preço",
+          "coupon": "Cupom"
+        },
+        "status": {
+          "sent": "Enviado",
+          "failed": "Falha",
+          "skipped": "Ignorado",
+          "queued": "Na fila",
+          "error": "Erro"
+        }
+      },
+      "actions": {
+        "save": "Salvar configuração",
+        "saving": "Salvando...",
+        "delete": "Excluir configuração",
+        "activate": "Ativar",
+        "pause": "Pausar"
+      },
+      "confirm": {
+        "deleteTitle": "Excluir configuração",
+        "deleteDescription": "Tem certeza que deseja excluir esta configuração? A geração automática de ofertas será interrompida."
+      },
+      "success": {
+        "saved": "Configuração salva com sucesso",
+        "deleted": "Configuração excluída",
+        "activated": "Geração de ofertas ativada",
+        "paused": "Geração de ofertas pausada"
+      },
+      "errors": {
+        "loadFailed": "Falha ao carregar configuração",
+        "saveFailed": "Falha ao salvar configuração",
+        "deleteFailed": "Falha ao excluir configuração",
+        "toggleFailed": "Falha ao alterar status"
+      },
+      "validation": {
+        "nameRequired": "Informe um nome para a configuração",
+        "sourceGroupRequired": "Selecione um grupo de origem",
+        "destinationGroupsRequired": "Selecione ao menos um grupo de destino",
+        "storesRequired": "Selecione ao menos uma loja",
+        "conflictingGroups": "O grupo de origem não pode ser igual a um grupo de destino"
       }
     }
   },
@@ -3569,6 +3606,7 @@
     "contacts": "Extrator de Contatos",
     "aiTools": "Ferramentas de IA",
     "offerAutomations": "Divulgações de IA",
+    "offerGenerate": "Gerar Oferta",
     "linkLists": "Listas de links",
     "dispatchTexts": "Textos de Disparo",
     "affiliatePrograms": "Programas de Afiliado",

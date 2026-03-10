@@ -569,6 +569,39 @@ export function useCoupons(): UseCouponsConnectReturn {
     [toast, t]
   );
 
+  const buildDiscountTag = useCallback((coupon: LocalCoupon): string | null => {
+    if (!coupon.discount_type || !coupon.discount_value) return null;
+    const code = coupon.code;
+    if (coupon.discount_type === 'percent') {
+      const base = coupon.max_discount
+        ? `desc[${coupon.discount_value}%|${coupon.max_discount}:${code}]`
+        : `desc[${coupon.discount_value}%:${code}]`;
+      return base;
+    }
+    return `desc[${coupon.discount_value}:${code}]`;
+  }, []);
+
+  const handleCopyTag = useCallback(
+    async (coupon: LocalCoupon) => {
+      const tag = buildDiscountTag(coupon);
+      if (!tag) return;
+      const success = await safeClipboard(tag);
+      if (success) {
+        toast({
+          title: t('pages.coupons.success.tagCopied'),
+          description: tag,
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: t('common.error'),
+          description: t('common.clipboardUnavailable'),
+        });
+      }
+    },
+    [buildDiscountTag, toast, t]
+  );
+
   const isExpired = useCallback((coupon: LocalCoupon): boolean => {
     if (!coupon.expires_at) return false;
     return new Date(coupon.expires_at) < new Date();
@@ -617,6 +650,8 @@ export function useCoupons(): UseCouponsConnectReturn {
     handleDelete,
     handleToggleActive,
     handleCopyCode,
+    handleCopyTag,
+    buildDiscountTag,
     isExpired,
   };
 }

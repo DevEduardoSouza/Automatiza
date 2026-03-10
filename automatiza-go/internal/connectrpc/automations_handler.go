@@ -474,6 +474,8 @@ func modelModeToProto(mode string) automationsv1.AutomationMode {
 		return automationsv1.AutomationMode_AUTOMATION_MODE_MONITOR
 	case models.AutomationTypeList:
 		return automationsv1.AutomationMode_AUTOMATION_MODE_LIST
+	case models.AutomationTypeOfferGenerate:
+		return automationsv1.AutomationMode_AUTOMATION_MODE_OFFER_GENERATE
 	default:
 		return automationsv1.AutomationMode_AUTOMATION_MODE_SEARCH
 	}
@@ -487,6 +489,8 @@ func protoModeToModel(mode automationsv1.AutomationMode) string {
 		return models.AutomationTypeMonitoring
 	case automationsv1.AutomationMode_AUTOMATION_MODE_LIST:
 		return models.AutomationTypeList
+	case automationsv1.AutomationMode_AUTOMATION_MODE_OFFER_GENERATE:
+		return models.AutomationTypeOfferGenerate
 	default:
 		return models.AutomationTypeSearch
 	}
