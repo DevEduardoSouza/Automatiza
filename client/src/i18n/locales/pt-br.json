@@ -1524,7 +1524,8 @@
         "deactivate": "Desativar cupom",
         "edit": "Editar cupom",
         "delete": "Excluir cupom",
-        "copyCode": "Copiar código"
+        "copyCode": "Copiar código",
+        "copyTag": "Copiar Tag"
       },
       "confirmDelete": "Tem certeza que deseja excluir este cupom?",
       "confirmActivate": "Tem certeza que deseja ativar este cupom?",
@@ -1569,7 +1570,8 @@
         "created": "Cupom criado",
         "updated": "Cupom atualizado",
         "deleted": "Cupom excluído",
-        "copied": "Código copiado"
+        "copied": "Código copiado",
+        "tagCopied": "Tag copiada"
       },
       "errors": {
         "load": "Erro ao carregar cupons",

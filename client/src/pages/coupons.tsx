@@ -106,6 +106,8 @@ export default function Coupons() {
     handleDelete,
     handleToggleActive,
     handleCopyCode,
+    handleCopyTag,
+    buildDiscountTag,
     isExpired,
   } = useCoupons();
 
@@ -537,6 +539,16 @@ export default function Coupons() {
                                 >
                                   <Copy className="h-3 w-3" aria-hidden="true" />
                                 </button>
+                                {buildDiscountTag(coupon) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyTag(coupon)}
+                                    aria-label={t('pages.coupons.actions.copyTag')}
+                                    className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-accent"
+                                  >
+                                    <Tag className="h-3 w-3" aria-hidden="true" />
+                                  </button>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="max-w-xs xl:max-w-sm 2xl:max-w-md truncate">
@@ -642,6 +654,16 @@ export default function Coupons() {
                               >
                                 <Copy className="h-3 w-3" aria-hidden="true" />
                               </button>
+                              {buildDiscountTag(coupon) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyTag(coupon)}
+                                  aria-label={t('pages.coupons.actions.copyTag')}
+                                  className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-accent"
+                                >
+                                  <Tag className="h-3 w-3" aria-hidden="true" />
+                                </button>
+                              )}
                             </div>
                             <p
                               className="text-sm xs:text-base truncate mb-3"
