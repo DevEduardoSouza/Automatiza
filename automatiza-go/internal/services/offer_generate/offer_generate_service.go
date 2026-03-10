@@ -626,7 +626,7 @@ func (s *offerGenerateService) logDispatch(ctx context.Context, auto *models.Aut
 		UserID:         auto.UserID,
 		AutomationID:   &auto.ID,
 		AutomationName: &auto.Name,
-		GroupID:         &groupID,
+		GroupID:        &groupID,
 		ProductURL:     &productURL,
 		Status:         status,
 		Type:           &automationType,

@@ -32,9 +32,9 @@ import (
 //   - Delegates to MonitoringService for business logic
 //   - Processing is idempotent (monitoring service handles deduplication)
 type MonitoringMessageProcessor struct {
-	monitoringService     monitoring.Service
-	offerGenerateService  offer_generate.Service
-	logger                *zap.Logger
+	monitoringService    monitoring.Service
+	offerGenerateService offer_generate.Service
+	logger               *zap.Logger
 }
 
 // NewMonitoringMessageProcessor creates a new monitoring message processor.

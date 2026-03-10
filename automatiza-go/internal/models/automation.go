@@ -78,10 +78,10 @@ const (
 
 // AutomationType constants
 const (
-	AutomationTypeSearch         = "search"
-	AutomationTypeMonitoring     = "monitoring"
-	AutomationTypeList           = "list"
-	AutomationTypeOfferGenerate  = "offer_generate"
+	AutomationTypeSearch        = "search"
+	AutomationTypeMonitoring    = "monitoring"
+	AutomationTypeList          = "list"
+	AutomationTypeOfferGenerate = "offer_generate"
 )
 
 // MonitoringTextRules defines text processing rules for monitoring

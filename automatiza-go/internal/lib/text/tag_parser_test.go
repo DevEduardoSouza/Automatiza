@@ -6,13 +6,13 @@ import (
 
 func TestParseDiscountTag(t *testing.T) {
 	tests := []struct {
-		name       string
-		body       string
-		wantNil    bool
-		wantPct    float64
-		wantFixed  float64
-		wantMax    float64
-		wantCode   string
+		name      string
+		body      string
+		wantNil   bool
+		wantPct   float64
+		wantFixed float64
+		wantMax   float64
+		wantCode  string
 	}{
 		{
 			name:    "percent with max",
@@ -133,7 +133,7 @@ func TestApplyDiscountTag(t *testing.T) {
 		want  float64
 	}{
 		{
-			name: "nil tag",
+			name:  "nil tag",
 			price: 100, tag: nil, want: 100,
 		},
 		{
