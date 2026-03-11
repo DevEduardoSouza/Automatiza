@@ -468,6 +468,14 @@ func (p *MonitoringMessageProcessor) enrichWithLinkPreview(msg *models.IncomingM
 		msg.Body = strings.Join(parts, "\n\n")
 	}
 
+	// Propagate title and description for link custom preview in monitoring service
+	if title != "" {
+		msg.LinkPreviewTitle = title
+	}
+	if description != "" {
+		msg.LinkPreviewDescription = description
+	}
+
 	// Set thumbnail as inline image (avoids needing DownloadMedia).
 	// Always set when thumbnail is available — even if HasMedia is already true,
 	// since the original media.url may have expired (WAHA deletes files after WHATSAPP_FILES_LIFETIME).

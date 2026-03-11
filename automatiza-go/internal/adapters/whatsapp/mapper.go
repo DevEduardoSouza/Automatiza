@@ -427,6 +427,11 @@ func (m *Mapper) SendLinkPreviewToWaha(input *SendLinkPreviewInput) *wahaSendLin
 		req.Preview.Image = &wahaFile{
 			URL: input.ImageURL,
 		}
+	} else if input.ImageBase64 != "" {
+		req.Preview.Image = &wahaFile{
+			Data:     stripDataURIPrefix(input.ImageBase64),
+			Mimetype: input.Mimetype,
+		}
 	}
 
 	return req

@@ -16,8 +16,10 @@ type IncomingMessage struct {
 	MediaType    string         `json:"mediaType,omitempty"`
 	MediaURL     string         `json:"mediaUrl,omitempty"`
 	MediaBase64  string         `json:"mediaBase64,omitempty"`
-	MimeType     string         `json:"mimeType,omitempty"`
-	QuotedMsg    *QuotedMessage `json:"quotedMsg,omitempty"`
+	MimeType               string         `json:"mimeType,omitempty"`
+	LinkPreviewTitle       string         `json:"linkPreviewTitle,omitempty"`
+	LinkPreviewDescription string         `json:"linkPreviewDescription,omitempty"`
+	QuotedMsg              *QuotedMessage `json:"quotedMsg,omitempty"`
 }
 
 // GetTimestamp returns the timestamp as time.Time

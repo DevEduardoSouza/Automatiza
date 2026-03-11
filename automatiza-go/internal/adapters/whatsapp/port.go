@@ -566,6 +566,12 @@ type SendLinkPreviewInput struct {
 
 	// ImageURL is the image to display in the preview card.
 	ImageURL string
+
+	// ImageBase64 is the image as base64-encoded data (alternative to ImageURL).
+	ImageBase64 string
+
+	// Mimetype is the MIME type for the base64 image (e.g., "image/jpeg").
+	Mimetype string
 }
 
 // MessageResult contains the result of a sent message.
