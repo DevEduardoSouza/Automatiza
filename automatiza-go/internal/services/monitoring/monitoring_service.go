@@ -401,6 +401,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		return nil
 	}
 
+	// Extract first affiliate URL for link custom preview
+	var firstAffiliateURL string
+	for _, v := range affiliateLinks {
+		firstAffiliateURL = v
+		break
+	}
+
 	// 12. Get deduplication settings
 	dedupeHours := automation.GetDedupeHours()
 	canonicalKey := s.extractCanonicalKey(links)
@@ -432,9 +439,38 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		time.Sleep(time.Duration(delay) * time.Second)
 
 		// Send message via WhatsAppProvider using the automation owner's session
+		// Priority 1: Link custom preview (source had WhatsApp link preview)
+		// Priority 2: Image + caption (current behavior)
+		// Priority 3: Text only
 		sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		var err error
-		if imageURL != "" || imageBase64 != "" {
+		var sent bool
+
+		// Priority 1: Link custom preview (source had WhatsApp link preview)
+		if firstAffiliateURL != "" && msg.LinkPreviewTitle != "" {
+			_, err = s.waProvider.SendLinkCustomPreview(sendCtx, whatsapp.SendLinkPreviewInput{
+				SessionName: senderSession,
+				ChatID:      groupID,
+				Text:        processedText,
+				URL:         firstAffiliateURL,
+				Title:       msg.LinkPreviewTitle,
+				Description: msg.LinkPreviewDescription,
+				ImageURL:    imageURL,
+				ImageBase64: imageBase64,
+				Mimetype:    imageMimetype,
+			})
+			if err != nil {
+				s.logger.Warn("Link preview failed, falling back",
+					zap.String("groupID", groupID),
+					zap.Error(err))
+				err = nil
+			} else {
+				sent = true
+			}
+		}
+
+		// Priority 2: Image + caption
+		if !sent && (imageURL != "" || imageBase64 != "") {
 			_, err = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
 				SessionName: senderSession,
 				ChatID:      groupID,
@@ -443,7 +479,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				ImageBase64: imageBase64,
 				Mimetype:    imageMimetype,
 			})
-		} else {
+			if err == nil {
+				sent = true
+			}
+		}
+
+		// Priority 3: Text only
+		if !sent && err == nil {
 			_, err = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
 				SessionName: senderSession,
 				ChatID:      groupID,
