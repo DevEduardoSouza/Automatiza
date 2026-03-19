@@ -190,6 +190,10 @@ func createTestWorker(t *testing.T) (*WebhookConsumerWorker, *mockWebhookEventsR
 	instanceRepo := new(mockInstanceRepo)
 	logger := zap.NewNop()
 
+	// Default: ensureInstanceConnected returns nil (no instance found) for any session.
+	// Individual tests can override with more specific expectations.
+	instanceRepo.On("GetInstanceByName", mock.Anything, mock.Anything).Maybe().Return((*models.Instance)(nil), nil)
+
 	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
 		WebhookEventsRepo: webhookEventsRepo,
 		InstanceRepo:      instanceRepo,
@@ -946,6 +950,9 @@ func TestProcessTask_FullMessageFlow(t *testing.T) {
 	instanceRepo := new(mockInstanceRepo)
 	msgProcessor := new(mockMessageProcessor)
 	logger := zap.NewNop()
+
+	// Default for ensureInstanceConnected self-healing
+	instanceRepo.On("GetInstanceByName", mock.Anything, mock.Anything).Maybe().Return((*models.Instance)(nil), nil)
 
 	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
 		WebhookEventsRepo: webhookEventsRepo,

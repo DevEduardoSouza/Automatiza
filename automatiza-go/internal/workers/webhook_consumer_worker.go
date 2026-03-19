@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"automatiza-go/internal/metrics"
@@ -109,6 +110,11 @@ type WebhookConsumerWorker struct {
 	messageProcessor    MessageWebhookProcessor
 	statusProcessor     StatusWebhookProcessor
 	groupEventProcessor GroupEventWebhookProcessor
+
+	// connectedSessions caches sessions known to be connected to avoid
+	// redundant DB checks on every message event. Self-healing: if we
+	// receive messages from a session, it must be WORKING in WAHA.
+	connectedSessions sync.Map
 }
 
 // WebhookConsumerWorkerConfig holds configuration for creating a WebhookConsumerWorker.
@@ -333,7 +339,54 @@ func (w *WebhookConsumerWorker) handleMessageEvent(ctx context.Context, data *We
 		return nil
 	}
 
+	// Self-healing: receiving a message proves the session is WORKING.
+	// Update the DB if the instance status is stale (pending/disconnected).
+	w.ensureInstanceConnected(ctx, data.Session)
+
 	return w.messageProcessor.ProcessMessage(ctx, data.Session, data.Payload)
+}
+
+// ensureInstanceConnected checks if the instance for a session is marked as
+// connected in the database. If not, it updates the status. This self-heals
+// cases where session.status webhooks were lost or never enqueued.
+// Uses an in-memory cache to avoid DB lookups on every message.
+func (w *WebhookConsumerWorker) ensureInstanceConnected(ctx context.Context, sessionName string) {
+	// Fast path: already verified this session
+	if _, ok := w.connectedSessions.Load(sessionName); ok {
+		return
+	}
+
+	if w.instanceRepo == nil {
+		return
+	}
+
+	instance, err := w.instanceRepo.GetInstanceByName(ctx, sessionName)
+	if err != nil || instance == nil {
+		return
+	}
+
+	if instance.Status == models.InstanceStatusConnected {
+		// Already connected, cache it
+		w.connectedSessions.Store(sessionName, true)
+		return
+	}
+
+	// Instance is not connected but we're receiving messages — fix it
+	if err := w.instanceRepo.UpdateInstanceStatus(ctx, instance.ID, models.InstanceStatusConnected); err != nil {
+		w.logger.Warn("Failed to self-heal instance status",
+			zap.String("session", sessionName),
+			zap.Int("instanceID", instance.ID),
+			zap.String("oldStatus", instance.Status),
+			zap.Error(err))
+		return
+	}
+
+	w.logger.Info("Self-healed instance status to connected (receiving messages)",
+		zap.String("session", sessionName),
+		zap.Int("instanceID", instance.ID),
+		zap.String("oldStatus", instance.Status))
+
+	w.connectedSessions.Store(sessionName, true)
 }
 
 // handleSessionStatusEvent processes session status change events.
@@ -360,6 +413,12 @@ func (w *WebhookConsumerWorker) handleSessionStatusEvent(ctx context.Context, da
 				zap.Error(err))
 		} else if instance != nil {
 			dbStatus := mapWAHAStatusToDBStatus(status)
+
+			// Invalidate connected-sessions cache when status changes away from connected
+			if dbStatus != models.InstanceStatusConnected {
+				w.connectedSessions.Delete(data.Session)
+			}
+
 			if err := w.instanceRepo.UpdateInstanceStatus(ctx, instance.ID, dbStatus); err != nil {
 				w.logger.Error("Failed to update instance status",
 					zap.String("session", data.Session),
@@ -373,6 +432,11 @@ func (w *WebhookConsumerWorker) handleSessionStatusEvent(ctx context.Context, da
 				zap.String("session", data.Session),
 				zap.Int("instanceID", instance.ID),
 				zap.String("status", dbStatus))
+
+			// Update cache if connected
+			if dbStatus == models.InstanceStatusConnected {
+				w.connectedSessions.Store(data.Session, true)
+			}
 
 			// Auto-sync groups when session becomes connected
 			// This migrates groups from old disconnected instances to the new one
