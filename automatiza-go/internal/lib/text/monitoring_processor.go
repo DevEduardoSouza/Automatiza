@@ -64,17 +64,30 @@ func ProcessarMensagem(text string, rules *models.MonitoringTextRules) string {
 	return strings.TrimSpace(result)
 }
 
-// ExtractLinks extracts HTTP/HTTPS links from text
+// ExtractLinks extracts HTTP/HTTPS links from text.
+//
+// The regex accepts parentheses and WhatsApp formatting characters
+// (`*`, `_`, `~`, backtick) inside URLs because real-world product URLs
+// contain them heavily: Shopee slugs with model codes like "(LES11)",
+// Wikipedia-style slugs with underscores, query params like "display_model_id",
+// and so on. These characters are stripped from the trailing edge of the
+// captured URL instead — handling both WhatsApp formatting wrappers (e.g.
+// "_https://foo.com_" for italic) and markdown-wrap parens (e.g.
+// "(https://foo/bar)").
 func ExtractLinks(text string) []string {
-	linkRegex := regexp.MustCompile(`https?://[^\s\n\r*_~\x60<>"\[\]()]+`)
+	linkRegex := regexp.MustCompile(`https?://[^\s\n\r<>"\[\]]+`)
 	matches := linkRegex.FindAllString(text, -1)
 
 	// Deduplicate
 	seen := make(map[string]bool)
 	unique := make([]string, 0, len(matches))
 	for _, link := range matches {
-		// Clean trailing punctuation
-		link = strings.TrimRight(link, ".,;:!?")
+		// Strip trailing punctuation and WhatsApp formatting delimiters
+		// (`*`, `_`, `~`, backtick) so the captured URL does not leak the
+		// wrapper characters when a user writes something like
+		// "_https://example.com_" to italicize the link.
+		link = strings.TrimRight(link, ".,;:!?*_~\x60")
+		link = trimUnbalancedTrailingParens(link)
 		if !seen[link] {
 			seen[link] = true
 			unique = append(unique, link)
@@ -82,6 +95,22 @@ func ExtractLinks(text string) []string {
 	}
 
 	return unique
+}
+
+// trimUnbalancedTrailingParens strips trailing ")" characters that have no
+// matching "(" earlier in the string. This allows URLs with balanced parens
+// (e.g. "https://en.wikipedia.org/wiki/Foo_(bar)") to pass through unchanged
+// while removing the markdown-wrap ")" from patterns like "(https://foo/bar)".
+func trimUnbalancedTrailingParens(s string) string {
+	for strings.HasSuffix(s, ")") {
+		open := strings.Count(s, "(")
+		closeP := strings.Count(s, ")")
+		if closeP <= open {
+			break
+		}
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 // ExtractShopeeLinks extracts Shopee links from text

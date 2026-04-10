@@ -190,6 +190,31 @@ func TestExtractLinks(t *testing.T) {
 			text: "https://example.com/path?q=1&r=2",
 			want: []string{"https://example.com/path?q=1&r=2"},
 		},
+		{
+			name: "shopee url with parentheses in slug preserves shop/item IDs",
+			text: "https://shopee.com.br/M%C3%A1quina-de-Lavar-Electrolux-11kg-Branca-Essential-Care-com-Easy-Clean-e-Filtro-Fiapos-(LES11)-i.1526836548.23294017893?extraParams=%7B%22display_model_id%22%3A239422052096%7D desc",
+			want: []string{"https://shopee.com.br/M%C3%A1quina-de-Lavar-Electrolux-11kg-Branca-Essential-Care-com-Easy-Clean-e-Filtro-Fiapos-(LES11)-i.1526836548.23294017893?extraParams=%7B%22display_model_id%22%3A239422052096%7D"},
+		},
+		{
+			name: "markdown wrapped link strips trailing close paren",
+			text: "veja aqui (https://example.com/foo) e depois",
+			want: []string{"https://example.com/foo"},
+		},
+		{
+			name: "markdown wrap around url with balanced parens preserves inner pair",
+			text: "veja (https://en.wikipedia.org/wiki/Foo_(bar)) ok",
+			want: []string{"https://en.wikipedia.org/wiki/Foo_(bar)"},
+		},
+		{
+			name: "url with balanced parens and no wrap is preserved",
+			text: "visit https://en.wikipedia.org/wiki/Go_(programming_language) today",
+			want: []string{"https://en.wikipedia.org/wiki/Go_(programming_language)"},
+		},
+		{
+			name: "trailing period after close paren is cleaned",
+			text: "see (https://foo.com/bar).",
+			want: []string{"https://foo.com/bar"},
+		},
 	}
 
 	for _, tt := range tests {
