@@ -2182,6 +2182,8 @@
         "configureCredentials": "Configure credenciais para ativar",
         "itemsPerRun": "Itens por execução",
         "includeImage": "Incluir imagem",
+        "sendAsImage": "Enviar como imagem",
+        "sendAsImageHint": "Baixa a imagem do produto e envia como anexo com legenda (estilo modo Busca). Desative para usar o preview nativo do WhatsApp — mais leve, mas alguns clientes preferem a imagem.",
         "textProcessing": "Processamento de Texto (Monitoramento)",
         "textProcessingHint": "Personalize a mensagem original antes de enviar para os grupos de destino.",
         "prefix": "Prefixo (topo)",

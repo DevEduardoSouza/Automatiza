@@ -69,6 +69,7 @@ const DEFAULT_FORM_DATA: Partial<Automation> = {
   ml_link_list_id: null,
   list_items_per_run: 1,
   list_include_image: true,
+  list_send_as_image: false,
 };
 
 export interface RefinementState {
@@ -183,6 +184,7 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     ml_link_list_id: local.mlLinkListId ?? null,
     list_items_per_run: local.listItemsPerRun,
     list_include_image: local.listIncludeImage,
+    list_send_as_image: local.listSendAsImage,
   };
 }
 
@@ -611,6 +613,8 @@ export function useAutomations(): UseAutomationsReturn {
               : undefined,
           listIncludeImage:
             mode === 'list' ? Boolean(formData.list_include_image ?? true) : undefined,
+          listSendAsImage:
+            mode === 'list' ? Boolean(formData.list_send_as_image ?? false) : undefined,
         };
 
         await automationsConnect.updateAutomation(updateParams);
@@ -660,6 +664,8 @@ export function useAutomations(): UseAutomationsReturn {
               : undefined,
           listIncludeImage:
             mode === 'list' ? Boolean(formData.list_include_image ?? true) : undefined,
+          listSendAsImage:
+            mode === 'list' ? Boolean(formData.list_send_as_image ?? false) : undefined,
         };
 
         await automationsConnect.createAutomation(createParams);

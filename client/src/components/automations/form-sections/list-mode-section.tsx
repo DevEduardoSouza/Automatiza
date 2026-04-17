@@ -6,6 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import type { Automation, MlLinkList } from '@/types/automation';
 import { Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -74,6 +75,24 @@ export function ListModeConfig({
         <p className="text-xs text-muted-foreground">
           {t('pages.offerAutomations.form.linkListHint')}
         </p>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+        <div className="space-y-1">
+          <Label htmlFor="list-send-as-image" className="cursor-pointer">
+            {t('pages.offerAutomations.form.sendAsImage')}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {t('pages.offerAutomations.form.sendAsImageHint')}
+          </p>
+        </div>
+        <Switch
+          id="list-send-as-image"
+          checked={Boolean(formData.list_send_as_image ?? false)}
+          onCheckedChange={(v) =>
+            setFormData((prev) => ({ ...prev, list_send_as_image: Boolean(v) }))
+          }
+        />
       </div>
     </div>
   );

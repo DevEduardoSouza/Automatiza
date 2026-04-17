@@ -111,6 +111,13 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		includeImage = *automation.ListIncludeImage
 	}
 
+	// Send link as downloaded image + caption instead of native link preview card.
+	// Defaults to false (keep current behavior: native preview via /api/send/link-custom-preview).
+	sendAsImage := false
+	if automation.ListSendAsImage != nil {
+		sendAsImage = *automation.ListSendAsImage
+	}
+
 	// Get next unconsumed items from the list
 	items, err := s.mlLinkListItemRepo.GetNextUnconsumed(ctx, listID, itemsPerRun)
 	if err != nil {
@@ -278,47 +285,50 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			}
 		}
 
-		// Build custom link preview for ML items with preview data
+		// Build custom link preview for ML/Shopee items with preview data.
+		// Skipped when sendAsImage is true: worker falls back to SendImage using imageURL.
 		var linkPreview *workers.LinkPreviewData
-		if isML && preview != nil && preview.Title != "" {
-			desc := fmt.Sprintf("R$ %.2f", preview.Price)
-			if preview.OriginalPrice != nil {
-				desc = fmt.Sprintf("De R$ %.2f por R$ %.2f", *preview.OriginalPrice, preview.Price)
+		if !sendAsImage {
+			if isML && preview != nil && preview.Title != "" {
+				desc := fmt.Sprintf("R$ %.2f", preview.Price)
+				if preview.OriginalPrice != nil {
+					desc = fmt.Sprintf("De R$ %.2f por R$ %.2f", *preview.OriginalPrice, preview.Price)
+				}
+				if couponResult != nil && couponResult.Applied && couponResult.DiscountedPrice < preview.Price {
+					desc = fmt.Sprintf("De R$ %.2f por R$ %.2f com cupom", preview.Price, couponResult.DiscountedPrice)
+				}
+				imgURL := ""
+				if preview.Image != "" {
+					imgURL = strings.Replace(preview.Image, ".webp", ".jpg", 1)
+				}
+				linkPreview = &workers.LinkPreviewData{
+					URL:         affiliateURL,
+					Title:       preview.Title,
+					Description: desc,
+					ImageURL:    imgURL,
+				}
+				// Use link preview instead of image attachment
+				imageURL = nil
+			} else if isShopee && shopeeProduct != nil && shopeeProduct.Name != "" {
+				desc := fmt.Sprintf("R$ %.2f", shopeeProduct.Price)
+				if shopeeProduct.OriginalPrice > 0 && shopeeProduct.OriginalPrice > shopeeProduct.Price {
+					desc = fmt.Sprintf("De R$ %.2f por R$ %.2f", shopeeProduct.OriginalPrice, shopeeProduct.Price)
+				}
+				if couponResult != nil && couponResult.Applied && couponResult.DiscountedPrice < shopeeProduct.Price {
+					desc = fmt.Sprintf("De R$ %.2f por R$ %.2f com cupom", shopeeProduct.Price, couponResult.DiscountedPrice)
+				}
+				imgURL := shopeeImageURL
+				if imgURL == "" && shopeeProduct.Image != "" {
+					imgURL = shopeeProduct.Image
+				}
+				linkPreview = &workers.LinkPreviewData{
+					URL:         affiliateURL,
+					Title:       shopeeProduct.Name,
+					Description: desc,
+					ImageURL:    imgURL,
+				}
+				imageURL = nil
 			}
-			if couponResult != nil && couponResult.Applied && couponResult.DiscountedPrice < preview.Price {
-				desc = fmt.Sprintf("De R$ %.2f por R$ %.2f com cupom", preview.Price, couponResult.DiscountedPrice)
-			}
-			imgURL := ""
-			if preview.Image != "" {
-				imgURL = strings.Replace(preview.Image, ".webp", ".jpg", 1)
-			}
-			linkPreview = &workers.LinkPreviewData{
-				URL:         affiliateURL,
-				Title:       preview.Title,
-				Description: desc,
-				ImageURL:    imgURL,
-			}
-			// Use link preview instead of image attachment
-			imageURL = nil
-		} else if isShopee && shopeeProduct != nil && shopeeProduct.Name != "" {
-			desc := fmt.Sprintf("R$ %.2f", shopeeProduct.Price)
-			if shopeeProduct.OriginalPrice > 0 && shopeeProduct.OriginalPrice > shopeeProduct.Price {
-				desc = fmt.Sprintf("De R$ %.2f por R$ %.2f", shopeeProduct.OriginalPrice, shopeeProduct.Price)
-			}
-			if couponResult != nil && couponResult.Applied && couponResult.DiscountedPrice < shopeeProduct.Price {
-				desc = fmt.Sprintf("De R$ %.2f por R$ %.2f com cupom", shopeeProduct.Price, couponResult.DiscountedPrice)
-			}
-			imgURL := shopeeImageURL
-			if imgURL == "" && shopeeProduct.Image != "" {
-				imgURL = shopeeProduct.Image
-			}
-			linkPreview = &workers.LinkPreviewData{
-				URL:         affiliateURL,
-				Title:       shopeeProduct.Name,
-				Description: desc,
-				ImageURL:    imgURL,
-			}
-			imageURL = nil
 		}
 
 		// Send to each target group

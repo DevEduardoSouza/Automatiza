@@ -44,6 +44,7 @@ export function ModeSection({ formData, setFormData }: ModeSectionProps) {
                 list_items_per_run:
                   prev.list_items_per_run != null ? Number(prev.list_items_per_run) : 1,
                 list_include_image: prev.list_include_image ?? true,
+                list_send_as_image: prev.list_send_as_image ?? false,
               };
             }
             return { ...prev, mode: nextMode };
