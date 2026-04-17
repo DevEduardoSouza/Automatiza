@@ -273,11 +273,15 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		// Build message for this item
 		message := s.buildListModeMessage(automation, item, preview, shopeeProduct, affiliateURL, dispatchTemplate, isShopee, ctaEntities, couponResult)
 
-		// Get image URL if available and enabled
+		// Get image URL if available and enabled.
+		// ML delivers .webp which WhatsApp SendImage chokes on; the LinkPreview
+		// branch below already does this swap, apply it here too so the
+		// sendAsImage=true path gets a usable URL.
 		var imageURL *string
 		if includeImage {
 			if preview != nil && preview.Image != "" {
-				imageURL = &preview.Image
+				normalized := strings.Replace(preview.Image, ".webp", ".jpg", 1)
+				imageURL = &normalized
 			} else if shopeeImageURL != "" {
 				imageURL = &shopeeImageURL
 			} else if item.ProductImageURL != nil && *item.ProductImageURL != "" {
