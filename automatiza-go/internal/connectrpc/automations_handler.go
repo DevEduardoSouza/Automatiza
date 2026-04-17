@@ -452,6 +452,9 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 	if a.ListIncludeImage != nil {
 		proto.ListIncludeImage = a.ListIncludeImage
 	}
+	if a.ListSendAsImage != nil {
+		proto.ListSendAsImage = a.ListSendAsImage
+	}
 
 	// Convert stores
 	for _, store := range a.Stores {
@@ -746,6 +749,9 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 	if msg.ListIncludeImage != nil {
 		automation.ListIncludeImage = msg.ListIncludeImage
 	}
+	if msg.ListSendAsImage != nil {
+		automation.ListSendAsImage = msg.ListSendAsImage
+	}
 
 	// Convert stores
 	for _, store := range msg.GetStores() {
@@ -850,6 +856,9 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 	}
 	if msg.ListIncludeImage != nil {
 		updates["list_include_image"] = msg.GetListIncludeImage()
+	}
+	if msg.ListSendAsImage != nil {
+		updates["list_send_as_image"] = msg.GetListSendAsImage()
 	}
 
 	// Monitoring text rules

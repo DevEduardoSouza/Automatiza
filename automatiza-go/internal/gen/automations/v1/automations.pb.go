@@ -514,8 +514,10 @@ type Automation struct {
 	ListItemsPerRun *int32 `protobuf:"varint,27,opt,name=list_items_per_run,json=listItemsPerRun,proto3,oneof" json:"list_items_per_run,omitempty"`
 	// Whether to include product images (for list mode)
 	ListIncludeImage *bool `protobuf:"varint,28,opt,name=list_include_image,json=listIncludeImage,proto3,oneof" json:"list_include_image,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// LIST mode: send link as downloaded image + caption instead of native preview
+	ListSendAsImage *bool `protobuf:"varint,31,opt,name=list_send_as_image,json=listSendAsImage,proto3,oneof" json:"list_send_as_image,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Automation) Reset() {
@@ -754,6 +756,13 @@ func (x *Automation) GetListItemsPerRun() int32 {
 func (x *Automation) GetListIncludeImage() bool {
 	if x != nil && x.ListIncludeImage != nil {
 		return *x.ListIncludeImage
+	}
+	return false
+}
+
+func (x *Automation) GetListSendAsImage() bool {
+	if x != nil && x.ListSendAsImage != nil {
+		return *x.ListSendAsImage
 	}
 	return false
 }
@@ -1128,6 +1137,7 @@ type CreateAutomationRequest struct {
 	ListItemsPerRun     *int32                 `protobuf:"varint,23,opt,name=list_items_per_run,json=listItemsPerRun,proto3,oneof" json:"list_items_per_run,omitempty"`
 	ListIncludeImage    *bool                  `protobuf:"varint,24,opt,name=list_include_image,json=listIncludeImage,proto3,oneof" json:"list_include_image,omitempty"`
 	CtaIds              []string               `protobuf:"bytes,25,rep,name=cta_ids,json=ctaIds,proto3" json:"cta_ids,omitempty"`
+	ListSendAsImage     *bool                  `protobuf:"varint,26,opt,name=list_send_as_image,json=listSendAsImage,proto3,oneof" json:"list_send_as_image,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1337,6 +1347,13 @@ func (x *CreateAutomationRequest) GetCtaIds() []string {
 	return nil
 }
 
+func (x *CreateAutomationRequest) GetListSendAsImage() bool {
+	if x != nil && x.ListSendAsImage != nil {
+		return *x.ListSendAsImage
+	}
+	return false
+}
+
 type CreateAutomationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Automation    *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
@@ -1409,6 +1426,7 @@ type UpdateAutomationRequest struct {
 	ListItemsPerRun     *int32                 `protobuf:"varint,24,opt,name=list_items_per_run,json=listItemsPerRun,proto3,oneof" json:"list_items_per_run,omitempty"`
 	ListIncludeImage    *bool                  `protobuf:"varint,25,opt,name=list_include_image,json=listIncludeImage,proto3,oneof" json:"list_include_image,omitempty"`
 	CtaIds              []string               `protobuf:"bytes,26,rep,name=cta_ids,json=ctaIds,proto3" json:"cta_ids,omitempty"`
+	ListSendAsImage     *bool                  `protobuf:"varint,27,opt,name=list_send_as_image,json=listSendAsImage,proto3,oneof" json:"list_send_as_image,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1623,6 +1641,13 @@ func (x *UpdateAutomationRequest) GetCtaIds() []string {
 		return x.CtaIds
 	}
 	return nil
+}
+
+func (x *UpdateAutomationRequest) GetListSendAsImage() bool {
+	if x != nil && x.ListSendAsImage != nil {
+		return *x.ListSendAsImage
+	}
+	return false
 }
 
 type UpdateAutomationResponse struct {
@@ -2416,7 +2441,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x16\n" +
 	"\x06suffix\x18\x04 \x01(\tR\x06suffix\x12!\n" +
 	"\fclean_phones\x18\x05 \x01(\bR\vcleanPhones\x12%\n" +
-	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xe1\v\n" +
+	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xaa\f\n" +
 	"\n" +
 	"Automation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -2456,7 +2481,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"R\bcouponId\x88\x01\x01\x12*\n" +
 	"\x0fml_link_list_id\x18\x1a \x01(\tH\vR\fmlLinkListId\x88\x01\x01\x120\n" +
 	"\x12list_items_per_run\x18\x1b \x01(\x05H\fR\x0flistItemsPerRun\x88\x01\x01\x121\n" +
-	"\x12list_include_image\x18\x1c \x01(\bH\rR\x10listIncludeImage\x88\x01\x01B\x13\n" +
+	"\x12list_include_image\x18\x1c \x01(\bH\rR\x10listIncludeImage\x88\x01\x01\x120\n" +
+	"\x12list_send_as_image\x18\x1f \x01(\bH\x0eR\x0flistSendAsImage\x88\x01\x01B\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
 	"\x16_monitoring_text_rulesB\x0f\n" +
 	"\r_min_discountB\f\n" +
@@ -2473,7 +2499,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"_coupon_idB\x12\n" +
 	"\x10_ml_link_list_idB\x15\n" +
 	"\x13_list_items_per_runB\x15\n" +
-	"\x13_list_include_image\"w\n" +
+	"\x13_list_include_imageB\x15\n" +
+	"\x13_list_send_as_image\"w\n" +
 	"\x0eDiagnosticStep\x12\x12\n" +
 	"\x04step\x18\x01 \x01(\tR\x04step\x12\x0e\n" +
 	"\x02ok\x18\x02 \x01(\bR\x02ok\x12\x16\n" +
@@ -2502,7 +2529,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x15GetAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\x91\n" +
+	"automation\"\xda\n" +
 	"\n" +
 	"\x17CreateAutomationRequest\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
@@ -2536,7 +2563,9 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x0fml_link_list_id\x18\x16 \x01(\tH\aR\fmlLinkListId\x88\x01\x01\x120\n" +
 	"\x12list_items_per_run\x18\x17 \x01(\x05H\bR\x0flistItemsPerRun\x88\x01\x01\x121\n" +
 	"\x12list_include_image\x18\x18 \x01(\bH\tR\x10listIncludeImage\x88\x01\x01\x12\x17\n" +
-	"\acta_ids\x18\x19 \x03(\tR\x06ctaIdsB\x13\n" +
+	"\acta_ids\x18\x19 \x03(\tR\x06ctaIds\x120\n" +
+	"\x12list_send_as_image\x18\x1a \x01(\bH\n" +
+	"R\x0flistSendAsImage\x88\x01\x01B\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
 	"\x16_monitoring_text_rulesB\x0f\n" +
 	"\r_min_discountB\f\n" +
@@ -2549,11 +2578,12 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"_coupon_idB\x12\n" +
 	"\x10_ml_link_list_idB\x15\n" +
 	"\x13_list_items_per_runB\x15\n" +
-	"\x13_list_include_image\"V\n" +
+	"\x13_list_include_imageB\x15\n" +
+	"\x13_list_send_as_image\"V\n" +
 	"\x18CreateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xa0\v\n" +
+	"automation\"\xe9\v\n" +
 	"\x17UpdateAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
 	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x127\n" +
@@ -2587,7 +2617,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x0fml_link_list_id\x18\x17 \x01(\tH\x0fR\fmlLinkListId\x88\x01\x01\x120\n" +
 	"\x12list_items_per_run\x18\x18 \x01(\x05H\x10R\x0flistItemsPerRun\x88\x01\x01\x121\n" +
 	"\x12list_include_image\x18\x19 \x01(\bH\x11R\x10listIncludeImage\x88\x01\x01\x12\x17\n" +
-	"\acta_ids\x18\x1a \x03(\tR\x06ctaIdsB\a\n" +
+	"\acta_ids\x18\x1a \x03(\tR\x06ctaIds\x120\n" +
+	"\x12list_send_as_image\x18\x1b \x01(\bH\x12R\x0flistSendAsImage\x88\x01\x01B\a\n" +
 	"\x05_nameB\a\n" +
 	"\x05_modeB\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
@@ -2608,7 +2639,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"_coupon_idB\x12\n" +
 	"\x10_ml_link_list_idB\x15\n" +
 	"\x13_list_items_per_runB\x15\n" +
-	"\x13_list_include_image\"V\n" +
+	"\x13_list_include_imageB\x15\n" +
+	"\x13_list_send_as_image\"V\n" +
 	"\x18UpdateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +

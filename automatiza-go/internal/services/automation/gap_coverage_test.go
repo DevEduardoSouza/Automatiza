@@ -3388,6 +3388,88 @@ func TestProcessListMode_WithQueueClient(t *testing.T) {
 	assert.Equal(t, 1, result.MessagesSent)
 }
 
+// TestProcessListMode_SendAsImageTrue verifies the LIST mode runs end-to-end
+// when ListSendAsImage=true. With mlService/shopeeService nil in the fixture, the
+// preview branch (now gated by !sendAsImage) is additionally skipped; the test's
+// purpose is to ensure the new flag does not break the enqueue path.
+func TestProcessListMode_SendAsImageTrue(t *testing.T) {
+	svc, deps := newInternalTestService(t)
+
+	t.Setenv("FEATURE_USE_GO_DISPATCH_LOGS", "true")
+	config.ResetFeatureFlags()
+
+	logger := zaptest.NewLogger(t)
+
+	mr := miniredis.RunT(t)
+	qc := workers.NewQueueClient(mr.Addr(), logger)
+	t.Cleanup(func() { qc.Close() })
+	svc.queueClient = qc
+
+	listID := "list-1"
+	sendAsImage := true
+	automation := &models.Automation{
+		ID:              "auto-1",
+		UserID:          "user-1",
+		GroupIDs:        []string{"group@g.us"},
+		MlLinkListID:    &listID,
+		ListSendAsImage: &sendAsImage,
+	}
+
+	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
+		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+
+	items := []*models.MlLinkListItem{
+		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-9999"},
+	}
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
+
+	result, err := svc.processListMode(context.Background(), automation)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.MessagesSent)
+}
+
+// TestProcessListMode_SendAsImageFalse ensures the default/explicit-false path
+// still runs end-to-end (no regression in the preview branch).
+func TestProcessListMode_SendAsImageFalse(t *testing.T) {
+	svc, deps := newInternalTestService(t)
+
+	t.Setenv("FEATURE_USE_GO_DISPATCH_LOGS", "true")
+	config.ResetFeatureFlags()
+
+	logger := zaptest.NewLogger(t)
+
+	mr := miniredis.RunT(t)
+	qc := workers.NewQueueClient(mr.Addr(), logger)
+	t.Cleanup(func() { qc.Close() })
+	svc.queueClient = qc
+
+	listID := "list-1"
+	sendAsImage := false
+	automation := &models.Automation{
+		ID:              "auto-1",
+		UserID:          "user-1",
+		GroupIDs:        []string{"group@g.us"},
+		MlLinkListID:    &listID,
+		ListSendAsImage: &sendAsImage,
+	}
+
+	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
+		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+
+	items := []*models.MlLinkListItem{
+		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-8888"},
+	}
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
+
+	result, err := svc.processListMode(context.Background(), automation)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.MessagesSent)
+}
+
 func TestProcessListMode_WithBackpressureRecord(t *testing.T) {
 	// Not parallel: uses t.Setenv
 	svc, deps := newInternalTestService(t)

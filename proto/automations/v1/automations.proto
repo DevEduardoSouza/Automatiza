@@ -195,6 +195,9 @@ message Automation {
 
   // Whether to include product images (for list mode)
   optional bool list_include_image = 28;
+
+  // LIST mode: send link as downloaded image + caption instead of native preview
+  optional bool list_send_as_image = 31;
 }
 
 /**
@@ -292,6 +295,7 @@ message CreateAutomationRequest {
   optional int32 list_items_per_run = 23;
   optional bool list_include_image = 24;
   repeated string cta_ids = 25;
+  optional bool list_send_as_image = 26;
 }
 
 message CreateAutomationResponse {
@@ -329,6 +333,7 @@ message UpdateAutomationRequest {
   optional int32 list_items_per_run = 24;
   optional bool list_include_image = 25;
   repeated string cta_ids = 26;
+  optional bool list_send_as_image = 27;
 }
 
 message UpdateAutomationResponse {

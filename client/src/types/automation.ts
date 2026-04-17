@@ -61,6 +61,7 @@ export interface Automation {
   ml_link_list_id?: string | null;
   list_items_per_run?: number;
   list_include_image?: boolean;
+  list_send_as_image?: boolean;
 }
 
 export interface AutomationGroup {

@@ -92,6 +92,7 @@ export interface LocalAutomation {
   mlLinkListId?: string;
   listItemsPerRun?: number;
   listIncludeImage?: boolean;
+  listSendAsImage?: boolean;
 }
 
 export interface LocalDiagnosticStep {
@@ -137,6 +138,7 @@ export interface CreateAutomationParams {
   mlLinkListId?: string;
   listItemsPerRun?: number;
   listIncludeImage?: boolean;
+  listSendAsImage?: boolean;
 }
 
 export interface UpdateAutomationParams {
@@ -166,6 +168,7 @@ export interface UpdateAutomationParams {
   mlLinkListId?: string;
   listItemsPerRun?: number;
   listIncludeImage?: boolean;
+  listSendAsImage?: boolean;
 }
 
 export interface LocalRunAutomationResult {
@@ -370,6 +373,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     mlLinkListId: automation.mlLinkListId,
     listItemsPerRun: automation.listItemsPerRun,
     listIncludeImage: automation.listIncludeImage,
+    listSendAsImage: automation.listSendAsImage,
   };
 }
 
@@ -513,6 +517,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           mlLinkListId: params.mlLinkListId,
           listItemsPerRun: params.listItemsPerRun,
           listIncludeImage: params.listIncludeImage,
+          listSendAsImage: params.listSendAsImage,
         })
       );
 
@@ -580,6 +585,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           mlLinkListId: params.mlLinkListId,
           listItemsPerRun: params.listItemsPerRun,
           listIncludeImage: params.listIncludeImage,
+          listSendAsImage: params.listSendAsImage,
         })
       );
 

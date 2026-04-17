@@ -50,6 +50,7 @@ type Automation struct {
 	MlLinkListID     *string `json:"ml_link_list_id,omitempty" db:"ml_link_list_id"`
 	ListItemsPerRun  *int    `json:"list_items_per_run,omitempty" db:"list_items_per_run"`
 	ListIncludeImage *bool   `json:"list_include_image,omitempty" db:"list_include_image"`
+	ListSendAsImage  *bool   `json:"list_send_as_image,omitempty" db:"list_send_as_image"`
 
 	// Priority and filter settings
 	PriorityType *string `json:"priority_type,omitempty" db:"priority_type"` // "discount" | "price" | "commission"
