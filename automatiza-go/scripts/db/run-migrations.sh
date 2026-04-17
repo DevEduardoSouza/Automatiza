@@ -26,56 +26,24 @@ fi
 
 echo "=== Running database migrations ==="
 
-# Migration files in order
-# 000 is the consolidated init (creates all 33 tables for fresh databases)
-# 001-029 are incremental (idempotent, safe to run after 000)
-MIGRATION_FILES=(
-    "000_postgresql_init.sql"
-    "001_initial_schema.sql"
-    "002_dashboard_settings.sql"
-    "003_webhook_events.sql"
-    "004_reconciliation_checkpoints.sql"
-    "005_password_reset.sql"
-    "006_groups_favorites.sql"
-    "007_redirect_links_parity.sql"
-    "008_jobs_table.sql"
-    "009_ml_link_lists_parity.sql"
-    "010_add_lock_until_to_automation_runs.up.sql"
-    "011_ml_link_list_items_aliases.up.sql"
-    "012_ml_links_unconsumed_index.up.sql"
-    "013_automations_coupon_id.up.sql"
-    "014_affiliate_credentials_update.up.sql"
-    "015_plans_extended_fields.up.sql"
-    "016_sync_jobs.up.sql"
-    "017_sessions_schema_parity.up.sql"
-    "018_dispatch_logs_coupon_fields.up.sql"
-    "019_dispatch_logs_performance_indexes.up.sql"
-    "020_dispatch_texts_schema_parity.up.sql"
-    "021_jobs_retry.up.sql"
-    "022_ml_link_list_items_unique_constraint.up.sql"
-    "023_action_history_count_fields.up.sql"
-    "024_plans_features_to_text_array.up.sql"
-    "025_email_template_description.up.sql"
-    "026_admin_settings_seed.up.sql"
-    "027_rename_evolution_to_waha.up.sql"
-    "027_webhook_logs_kiwify_fields.up.sql"
-    "028_categories_table.up.sql"
-    "029_automations_offer_texts_columns.up.sql"
-    "030_fix_reconciliation_checkpoints.up.sql"
-    "031_fix_plans_kiwify_and_user_roles.up.sql"
-    "032_magic_link_tokens.up.sql"
-    "033_reset_placeholder_failed_attempts.up.sql"
-    "034_dispatch_logs_dedup_index.up.sql"
+# Discover migrations dynamically in numeric order.
+# Includes: NNN_name.sql (legacy) and NNN_name.up.sql (post-010).
+# Excludes: *.down.sql (rollbacks) and *_rollback.sql (legacy rollback variant).
+# All migrations are expected to be idempotent (IF NOT EXISTS, etc).
+mapfile -t MIGRATION_FILES < <(
+    find "$MIGRATIONS_DIR" -maxdepth 1 -type f -name "*.sql" \
+        ! -name "*.down.sql" ! -name "*_rollback.sql" \
+        -printf "%f\n" | sort
 )
+
+if [ "${#MIGRATION_FILES[@]}" -eq 0 ]; then
+    echo "  WARN: no migration files found in ${MIGRATIONS_DIR}"
+fi
 
 for migration in "${MIGRATION_FILES[@]}"; do
     filepath="${MIGRATIONS_DIR}/${migration}"
-    if [ -f "$filepath" ]; then
-        echo "  Applying: ${migration}"
-        $PSQL_CMD -f "$filepath" 2>&1 || true
-    else
-        echo "  SKIP: ${migration} (not found)"
-    fi
+    echo "  Applying: ${migration}"
+    $PSQL_CMD -f "$filepath" 2>&1 || true
 done
 
 echo "=== Migrations complete ==="
