@@ -134,8 +134,6 @@ function setFormState(
     payload?: string;
     pollQuestion?: string;
     pollOptions?: string[];
-    mlProductUrl?: string;
-    mlIncludeImage?: boolean;
     autoNumberGroups?: boolean;
   }
 ) {
@@ -146,8 +144,6 @@ function setFormState(
   if (overrides.payload !== undefined) result.current.setPayload(overrides.payload);
   if (overrides.pollQuestion !== undefined) result.current.setPollQuestion(overrides.pollQuestion);
   if (overrides.pollOptions !== undefined) result.current.setPollOptions(overrides.pollOptions);
-  if (overrides.mlProductUrl !== undefined) result.current.setMlProductUrl(overrides.mlProductUrl);
-  if (overrides.mlIncludeImage !== undefined) result.current.setMlIncludeImage(overrides.mlIncludeImage);
   if (overrides.autoNumberGroups !== undefined) result.current.setAutoNumberGroups(overrides.autoNumberGroups);
 }
 
@@ -192,8 +188,6 @@ describe('useJobs', () => {
       expect(result.current.scheduledDate).toBe('');
       expect(result.current.scheduledTime).toBe('');
       expect(result.current.payload).toBe('');
-      expect(result.current.mlProductUrl).toBe('');
-      expect(result.current.mlIncludeImage).toBe(true);
       expect(result.current.mediaFile).toBeNull();
       expect(result.current.selectedGroups).toEqual([]);
       expect(result.current.mentionOpen).toBe(false);
@@ -216,8 +210,6 @@ describe('useJobs', () => {
           selectedGroups: ['g1'],
           payload: 'Hello',
         });
-        result.current.setMlProductUrl('https://example.com');
-        result.current.setMlIncludeImage(false);
         result.current.setAutoNumberGroups(true);
         result.current.setSearchTerm('search');
         result.current.setPollQuestion('Q?');
@@ -233,8 +225,6 @@ describe('useJobs', () => {
       expect(result.current.scheduledDate).toBe('');
       expect(result.current.scheduledTime).toBe('');
       expect(result.current.payload).toBe('');
-      expect(result.current.mlProductUrl).toBe('');
-      expect(result.current.mlIncludeImage).toBe(true);
       expect(result.current.mediaFile).toBeNull();
       expect(result.current.selectedGroups).toEqual([]);
       expect(result.current.autoNumberGroups).toBe(false);
@@ -394,26 +384,6 @@ describe('useJobs', () => {
       expect(mockCreateJob).not.toHaveBeenCalled();
     });
 
-    it('should show toast when send_ml_offer has empty URL', async () => {
-      const { result } = renderJobs();
-
-      await act(async () => {
-        setFormState(result, {
-          actionType: 'send_ml_offer',
-          ...BASE_FORM,
-          mlProductUrl: '',
-        });
-      });
-
-      await act(async () => {
-        await result.current.handleScheduleJob();
-      });
-
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ variant: 'destructive', title: 'pages.jobs.errors.emptyUrl' })
-      );
-      expect(mockCreateJob).not.toHaveBeenCalled();
-    });
   });
 
   // ── 3. handleScheduleJob - Success create ────────────────────
@@ -469,37 +439,6 @@ describe('useJobs', () => {
       );
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'pages.jobs.success.scheduled' })
-      );
-      expect(result.current.dialogOpen).toBe(false);
-    });
-
-    it('should create send_ml_offer job with correct payload', async () => {
-      const { result } = renderJobs();
-
-      await act(async () => {
-        setFormState(result, {
-          actionType: 'send_ml_offer',
-          ...BASE_FORM,
-          mlProductUrl: 'https://produto.mercadolivre.com/123',
-          mlIncludeImage: false,
-          payload: 'Check this out',
-        });
-      });
-
-      await act(async () => {
-        await result.current.handleScheduleJob();
-      });
-
-      expect(mockCreateJob).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action_type: 'send_ml_offer',
-          payload: expect.objectContaining({
-            groups: ['g1'],
-            originUrl: 'https://produto.mercadolivre.com/123',
-            text: 'Check this out',
-            includeImage: false,
-          }),
-        })
       );
       expect(result.current.dialogOpen).toBe(false);
     });
@@ -889,25 +828,6 @@ describe('useJobs', () => {
       expect(result.current.dialogOpen).toBe(true);
     });
 
-    it('should populate form for send_ml_offer', async () => {
-      const { result } = renderJobs();
-
-      await act(async () => {
-        result.current.handleEditJob(
-          makeJob({
-            action_type: 'send_ml_offer',
-            payload: { groups: ['g2'], originUrl: 'https://ml.com/prod', includeImage: false, text: 'Offer' },
-          })
-        );
-      });
-
-      expect(result.current.actionType).toBe('send_ml_offer');
-      expect(result.current.mlProductUrl).toBe('https://ml.com/prod');
-      expect(result.current.mlIncludeImage).toBe(false);
-      expect(result.current.payload).toBe('Offer');
-      expect(result.current.dialogOpen).toBe(true);
-    });
-
     it('should populate form for update_description', async () => {
       const { result } = renderJobs();
 
@@ -1167,7 +1087,6 @@ describe('useJobs', () => {
     it.each([
       ['send_message', 'pages.jobs.actionTypes.sendMessage'],
       ['send_poll', 'pages.jobs.actionTypes.sendPoll'],
-      ['send_ml_offer', 'pages.jobs.actionTypes.sendMlOffer'],
       ['update_description', 'pages.jobs.actionTypes.updateDescription'],
       ['close_groups', 'pages.jobs.actionTypes.closeGroups'],
       ['open_groups', 'pages.jobs.actionTypes.openGroups'],

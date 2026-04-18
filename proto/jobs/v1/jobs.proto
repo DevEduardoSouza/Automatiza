@@ -15,7 +15,8 @@ enum JobActionType {
   JOB_ACTION_TYPE_UNSPECIFIED = 0;
   JOB_ACTION_TYPE_SEND_MESSAGE = 1;
   JOB_ACTION_TYPE_SEND_POLL = 2;
-  JOB_ACTION_TYPE_SEND_ML_OFFER = 3;
+  reserved 3;
+  reserved "JOB_ACTION_TYPE_SEND_ML_OFFER";
   JOB_ACTION_TYPE_UPDATE_DESCRIPTION = 4;
   JOB_ACTION_TYPE_CLOSE_GROUPS = 5;
   JOB_ACTION_TYPE_OPEN_GROUPS = 6;
@@ -52,10 +53,8 @@ message JobPayload {
   repeated string options = 9;
   optional int32 selectable_count = 10;
 
-  // send_ml_offer
-  optional string origin_url = 11;
-  optional string text = 12;
-  optional bool include_image = 13;
+  reserved 11, 12, 13;
+  reserved "origin_url", "text", "include_image";
 
   // update_description
   optional string description = 14;

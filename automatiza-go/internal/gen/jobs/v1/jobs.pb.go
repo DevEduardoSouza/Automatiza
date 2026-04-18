@@ -29,7 +29,6 @@ const (
 	JobActionType_JOB_ACTION_TYPE_UNSPECIFIED        JobActionType = 0
 	JobActionType_JOB_ACTION_TYPE_SEND_MESSAGE       JobActionType = 1
 	JobActionType_JOB_ACTION_TYPE_SEND_POLL          JobActionType = 2
-	JobActionType_JOB_ACTION_TYPE_SEND_ML_OFFER      JobActionType = 3
 	JobActionType_JOB_ACTION_TYPE_UPDATE_DESCRIPTION JobActionType = 4
 	JobActionType_JOB_ACTION_TYPE_CLOSE_GROUPS       JobActionType = 5
 	JobActionType_JOB_ACTION_TYPE_OPEN_GROUPS        JobActionType = 6
@@ -43,7 +42,6 @@ var (
 		0: "JOB_ACTION_TYPE_UNSPECIFIED",
 		1: "JOB_ACTION_TYPE_SEND_MESSAGE",
 		2: "JOB_ACTION_TYPE_SEND_POLL",
-		3: "JOB_ACTION_TYPE_SEND_ML_OFFER",
 		4: "JOB_ACTION_TYPE_UPDATE_DESCRIPTION",
 		5: "JOB_ACTION_TYPE_CLOSE_GROUPS",
 		6: "JOB_ACTION_TYPE_OPEN_GROUPS",
@@ -54,7 +52,6 @@ var (
 		"JOB_ACTION_TYPE_UNSPECIFIED":        0,
 		"JOB_ACTION_TYPE_SEND_MESSAGE":       1,
 		"JOB_ACTION_TYPE_SEND_POLL":          2,
-		"JOB_ACTION_TYPE_SEND_ML_OFFER":      3,
 		"JOB_ACTION_TYPE_UPDATE_DESCRIPTION": 4,
 		"JOB_ACTION_TYPE_CLOSE_GROUPS":       5,
 		"JOB_ACTION_TYPE_OPEN_GROUPS":        6,
@@ -162,10 +159,6 @@ type JobPayload struct {
 	Question        *string  `protobuf:"bytes,8,opt,name=question,proto3,oneof" json:"question,omitempty"`
 	Options         []string `protobuf:"bytes,9,rep,name=options,proto3" json:"options,omitempty"`
 	SelectableCount *int32   `protobuf:"varint,10,opt,name=selectable_count,json=selectableCount,proto3,oneof" json:"selectable_count,omitempty"`
-	// send_ml_offer
-	OriginUrl    *string `protobuf:"bytes,11,opt,name=origin_url,json=originUrl,proto3,oneof" json:"origin_url,omitempty"`
-	Text         *string `protobuf:"bytes,12,opt,name=text,proto3,oneof" json:"text,omitempty"`
-	IncludeImage *bool   `protobuf:"varint,13,opt,name=include_image,json=includeImage,proto3,oneof" json:"include_image,omitempty"`
 	// update_description
 	Description *string `protobuf:"bytes,14,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	// change_group_name
@@ -275,27 +268,6 @@ func (x *JobPayload) GetSelectableCount() int32 {
 		return *x.SelectableCount
 	}
 	return 0
-}
-
-func (x *JobPayload) GetOriginUrl() string {
-	if x != nil && x.OriginUrl != nil {
-		return *x.OriginUrl
-	}
-	return ""
-}
-
-func (x *JobPayload) GetText() string {
-	if x != nil && x.Text != nil {
-		return *x.Text
-	}
-	return ""
-}
-
-func (x *JobPayload) GetIncludeImage() bool {
-	if x != nil && x.IncludeImage != nil {
-		return *x.IncludeImage
-	}
-	return false
 }
 
 func (x *JobPayload) GetDescription() string {
@@ -1242,7 +1214,7 @@ var File_jobs_v1_jobs_proto protoreflect.FileDescriptor
 
 const file_jobs_v1_jobs_proto_rawDesc = "" +
 	"\n" +
-	"\x12jobs/v1/jobs.proto\x12\ajobs.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x85\x06\n" +
+	"\x12jobs/v1/jobs.proto\x12\ajobs.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa7\x05\n" +
 	"\n" +
 	"JobPayload\x12 \n" +
 	"\x06groups\x18\x01 \x03(\tB\b\xbaH\x05\x92\x01\x02\b\x01R\x06groups\x12\x1d\n" +
@@ -1256,17 +1228,13 @@ const file_jobs_v1_jobs_proto_rawDesc = "" +
 	"\bquestion\x18\b \x01(\tH\x06R\bquestion\x88\x01\x01\x12\x18\n" +
 	"\aoptions\x18\t \x03(\tR\aoptions\x12.\n" +
 	"\x10selectable_count\x18\n" +
-	" \x01(\x05H\aR\x0fselectableCount\x88\x01\x01\x12\"\n" +
-	"\n" +
-	"origin_url\x18\v \x01(\tH\bR\toriginUrl\x88\x01\x01\x12\x17\n" +
-	"\x04text\x18\f \x01(\tH\tR\x04text\x88\x01\x01\x12(\n" +
-	"\rinclude_image\x18\r \x01(\bH\n" +
-	"R\fincludeImage\x88\x01\x01\x12%\n" +
-	"\vdescription\x18\x0e \x01(\tH\vR\vdescription\x88\x01\x01\x12\x17\n" +
-	"\x04name\x18\x0f \x01(\tH\fR\x04name\x88\x01\x01\x12$\n" +
-	"\vauto_number\x18\x10 \x01(\bH\rR\n" +
+	" \x01(\x05H\aR\x0fselectableCount\x88\x01\x01\x12%\n" +
+	"\vdescription\x18\x0e \x01(\tH\bR\vdescription\x88\x01\x01\x12\x17\n" +
+	"\x04name\x18\x0f \x01(\tH\tR\x04name\x88\x01\x01\x12$\n" +
+	"\vauto_number\x18\x10 \x01(\bH\n" +
+	"R\n" +
 	"autoNumber\x88\x01\x01\x12\x19\n" +
-	"\x05image\x18\x11 \x01(\tH\x0eR\x05image\x88\x01\x01B\n" +
+	"\x05image\x18\x11 \x01(\tH\vR\x05image\x88\x01\x01B\n" +
 	"\n" +
 	"\b_messageB\b\n" +
 	"\x06_mediaB\r\n" +
@@ -1277,14 +1245,12 @@ const file_jobs_v1_jobs_proto_rawDesc = "" +
 	"_mime_typeB\a\n" +
 	"\x05_typeB\v\n" +
 	"\t_questionB\x13\n" +
-	"\x11_selectable_countB\r\n" +
-	"\v_origin_urlB\a\n" +
-	"\x05_textB\x10\n" +
-	"\x0e_include_imageB\x0e\n" +
+	"\x11_selectable_countB\x0e\n" +
 	"\f_descriptionB\a\n" +
 	"\x05_nameB\x0e\n" +
 	"\f_auto_numberB\b\n" +
-	"\x06_image\"\x9c\x03\n" +
+	"\x06_imageJ\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eR\n" +
+	"origin_urlR\x04textR\rinclude_image\"\x9c\x03\n" +
 	"\x03Job\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x127\n" +
 	"\vaction_type\x18\x02 \x01(\x0e2\x16.jobs.v1.JobActionTypeR\n" +
@@ -1353,17 +1319,16 @@ const file_jobs_v1_jobs_proto_rawDesc = "" +
 	"\x05queue\x18\x01 \x01(\v2\x15.jobs.v1.QueueMetricsR\x05queue\x122\n" +
 	"\bsettings\x18\x02 \x01(\v2\x16.jobs.v1.QueueSettingsR\bsettings\x120\n" +
 	"\x11estimated_minutes\x18\x03 \x01(\x01H\x00R\x10estimatedMinutes\x88\x01\x01B\x14\n" +
-	"\x12_estimated_minutes*\xce\x02\n" +
+	"\x12_estimated_minutes*\xd0\x02\n" +
 	"\rJobActionType\x12\x1f\n" +
 	"\x1bJOB_ACTION_TYPE_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cJOB_ACTION_TYPE_SEND_MESSAGE\x10\x01\x12\x1d\n" +
-	"\x19JOB_ACTION_TYPE_SEND_POLL\x10\x02\x12!\n" +
-	"\x1dJOB_ACTION_TYPE_SEND_ML_OFFER\x10\x03\x12&\n" +
+	"\x19JOB_ACTION_TYPE_SEND_POLL\x10\x02\x12&\n" +
 	"\"JOB_ACTION_TYPE_UPDATE_DESCRIPTION\x10\x04\x12 \n" +
 	"\x1cJOB_ACTION_TYPE_CLOSE_GROUPS\x10\x05\x12\x1f\n" +
 	"\x1bJOB_ACTION_TYPE_OPEN_GROUPS\x10\x06\x12%\n" +
 	"!JOB_ACTION_TYPE_CHANGE_GROUP_NAME\x10\a\x12&\n" +
-	"\"JOB_ACTION_TYPE_CHANGE_GROUP_PHOTO\x10\b*\x9d\x01\n" +
+	"\"JOB_ACTION_TYPE_CHANGE_GROUP_PHOTO\x10\b\"\x04\b\x03\x10\x03*\x1dJOB_ACTION_TYPE_SEND_ML_OFFER*\x9d\x01\n" +
 	"\tJobStatus\x12\x1a\n" +
 	"\x16JOB_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12JOB_STATUS_PENDING\x10\x01\x12\x16\n" +

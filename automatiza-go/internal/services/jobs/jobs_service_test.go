@@ -333,7 +333,7 @@ func newTestService(t *testing.T) (jobs.Service, *MockJobRepository, *MockInstan
 	waProvider := whatsapp.NewFakeAdapter()
 	mlService := new(MockMLService)
 
-	svc := jobs.NewService(jobRepo, instanceRepo, groupRepo, waProvider, mlService, nil, nil, nil, logger)
+	svc := jobs.NewService(jobRepo, instanceRepo, groupRepo, waProvider, nil, nil, nil, logger)
 
 	return svc, jobRepo, instanceRepo, groupRepo, waProvider, mlService
 }
@@ -550,53 +550,6 @@ func TestCreateJob_SendPoll_NoQuestion_Error(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "pergunta")
-}
-
-func TestCreateJob_SendMLOffer_Success(t *testing.T) {
-	svc, jobRepo, _, _, _, _ := newTestService(t)
-	ctx := context.Background()
-
-	job := &models.StandaloneJob{
-		ActionType:   models.JobActionSendMLOffer,
-		ScheduledFor: time.Now().Add(time.Hour),
-		Payload: models.JobPayload{
-			Groups:    []string{"group1@g.us"},
-			OriginURL: "https://produto.mercadolivre.com.br/MLB-123456",
-			Text:      "Confira!",
-		},
-	}
-
-	createdJob := *job
-	createdJob.ID = "job-ml"
-	createdJob.UserID = "user-1"
-
-	jobRepo.On("Create", ctx, mock.AnythingOfType("*models.StandaloneJob")).Return(&createdJob, nil)
-
-	result, err := svc.CreateJob(ctx, "user-1", job)
-
-	require.NoError(t, err)
-	assert.Equal(t, "job-ml", result.ID)
-	jobRepo.AssertExpectations(t)
-}
-
-func TestCreateJob_SendMLOffer_NoURL_Error(t *testing.T) {
-	svc, _, _, _, _, _ := newTestService(t)
-	ctx := context.Background()
-
-	job := &models.StandaloneJob{
-		ActionType:   models.JobActionSendMLOffer,
-		ScheduledFor: time.Now().Add(time.Hour),
-		Payload: models.JobPayload{
-			Groups:    []string{"group1@g.us"},
-			OriginURL: "",
-		},
-	}
-
-	result, err := svc.CreateJob(ctx, "user-1", job)
-
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "URL")
 }
 
 func TestCreateJob_ChangeGroupPhoto_Success(t *testing.T) {
@@ -1179,15 +1132,6 @@ func TestCreateJob_AllActionTypes(t *testing.T) {
 				Groups:   []string{"group1@g.us"},
 				Question: "Pergunta?",
 				Options:  []string{"A", "B", "C"},
-			},
-			wantErr: false,
-		},
-		{
-			name:       "send_ml_offer success",
-			actionType: models.JobActionSendMLOffer,
-			payload: models.JobPayload{
-				Groups:    []string{"group1@g.us"},
-				OriginURL: "https://mercadolivre.com.br/item/123",
 			},
 			wantErr: false,
 		},

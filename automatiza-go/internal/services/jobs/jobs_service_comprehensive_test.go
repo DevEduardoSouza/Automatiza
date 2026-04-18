@@ -170,7 +170,8 @@ func newFullTestService(t *testing.T) (
 	historyRepo := new(MockActionHistoryRepository)
 	historyNotifier := new(MockHistoryNotifier)
 
-	svc := jobs.NewService(jobRepo, instanceRepo, groupRepo, waProvider, mlService, notifier, historyRepo, historyNotifier, logger)
+	_ = mlService // kept for return signature compatibility with older tests
+	svc := jobs.NewService(jobRepo, instanceRepo, groupRepo, waProvider, notifier, historyRepo, historyNotifier, logger)
 
 	return svc, jobRepo, instanceRepo, groupRepo, waProvider, mlService, notifier, historyRepo, historyNotifier
 }
@@ -1065,47 +1066,6 @@ func TestProcessScheduledJobs_AllActionTypes(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// ProcessScheduledJobs — SendMLOffer Integration
-// =============================================================================
-
-func TestProcessScheduledJobs_SendMLOffer(t *testing.T) {
-	svc, jobRepo, instanceRepo, groupRepo, waProvider, mlService := newTestService(t)
-	ctx := context.Background()
-
-	pendingJobs := []models.StandaloneJob{
-		{
-			ID:         "job-1",
-			UserID:     "user-1",
-			ActionType: models.JobActionSendMLOffer,
-			MaxRetries: 3,
-			Payload: models.JobPayload{
-				Groups:    []string{"db-1"},
-				OriginURL: "https://mercadolivre.com.br/MLB-123",
-				Text:      "Oferta!",
-			},
-		},
-	}
-
-	resolvedGroups := []models.Group{
-		{ID: "db-1", WAGroupID: "group1@g.us", IsAdmin: true},
-	}
-
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", ctx, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
-	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
-	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
-	mlService.On("CreateAffiliateLink", ctx, "https://mercadolivre.com.br/MLB-123", "user-1").
-		Return(&models.MLAffiliateLink{AffiliateLink: "https://aff.ml.com/123"}, nil)
-	jobRepo.On("UpdateStatus", ctx, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
-
-	result, err := svc.ProcessScheduledJobs(ctx)
-
-	require.NoError(t, err)
-	assert.Equal(t, 1, result.Processed)
-	assert.Equal(t, 1, waProvider.CallCount("SendText"))
-	mlService.AssertExpectations(t)
-}
 
 // =============================================================================
 // Multiple Jobs in Single Batch
@@ -2340,48 +2300,6 @@ func TestProcessScheduledJobs_ScheduleRetryAndUpdateStatusBothFail(t *testing.T)
 	assert.Equal(t, 1, result.Failed)
 }
 
-// =============================================================================
-// ProcessScheduledJobs — SendMLOffer with History (covers mapJobActionToHistoryType)
-// =============================================================================
-
-func TestProcessScheduledJobs_SendMLOffer_WithHistory(t *testing.T) {
-	svc, jobRepo, instanceRepo, groupRepo, waProvider, mlService, notifier, historyRepo, historyNotifier := newFullTestService(t)
-	ctx := context.Background()
-
-	pendingJobs := []models.StandaloneJob{
-		{
-			ID: "job-1", UserID: "user-1", ActionType: models.JobActionSendMLOffer, MaxRetries: 3,
-			Payload: models.JobPayload{Groups: []string{"db-1"}, OriginURL: "https://mercadolivre.com.br/MLB-123", Text: "Oferta!"},
-		},
-	}
-
-	resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
-
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", ctx, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
-	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
-	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
-	mlService.On("CreateAffiliateLink", ctx, "https://mercadolivre.com.br/MLB-123", "user-1").
-		Return(&models.MLAffiliateLink{AffiliateLink: "https://aff.ml.com/123"}, nil)
-	jobRepo.On("UpdateStatus", ctx, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
-
-	notifier.On("PublishJobStatus", "user-1", "job-1", mock.AnythingOfType("string"), mock.Anything).Return()
-
-	// History for SendMLOffer maps to "send_campaign"
-	historyRepo.On("Create", ctx, "user-1", "send_campaign", mock.AnythingOfType("string"), mock.Anything).
-		Return(&models.ActionHistory{ID: "hist-1"}, nil)
-	historyRepo.On("Update", ctx, "hist-1", mock.Anything).Return(nil)
-	historyRepo.On("UpdateCounts", ctx, "hist-1", mock.AnythingOfType("int32"), mock.AnythingOfType("int32")).Return(nil)
-	historyRepo.On("UpdateStatus", ctx, "hist-1", mock.AnythingOfType("string"), mock.AnythingOfType("string")).Return(nil)
-	historyNotifier.On("PublishHistoryChange", "user-1", "hist-1", mock.AnythingOfType("string")).Return()
-
-	result, err := svc.ProcessScheduledJobs(ctx)
-
-	require.NoError(t, err)
-	assert.Equal(t, 1, result.Processed)
-	assert.Equal(t, 1, waProvider.CallCount("SendText"))
-	historyRepo.AssertExpectations(t)
-}
 
 // =============================================================================
 // ProcessScheduledJobs — Unknown Action Type with History (covers default branch)

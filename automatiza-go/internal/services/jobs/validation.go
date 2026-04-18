@@ -61,11 +61,3 @@ func ValidateMessage(message string) error {
 	return nil
 }
 
-// ValidateMLURL validates the Mercado Livre URL.
-func ValidateMLURL(url string) error {
-	if url == "" {
-		return fmt.Errorf("URL do produto é obrigatória")
-	}
-	// Basic check - detailed validation is in ML service
-	return nil
-}

@@ -21,7 +21,6 @@ import { useTranslation } from 'react-i18next';
 import { GroupNameForm } from './group-name-form';
 import { GroupSelector } from './group-selector';
 import { MessageForm } from './message-form';
-import { MlOfferForm } from './ml-offer-form';
 import { PollOptionsForm } from './poll-options-form';
 
 interface Group {
@@ -38,8 +37,6 @@ interface JobFormDialogProps {
   scheduledDate: string;
   scheduledTime: string;
   payload: string;
-  mlProductUrl: string;
-  mlIncludeImage: boolean;
   mediaFile: File | null;
   isEnhancing: boolean;
   selectedGroups: string[];
@@ -56,8 +53,6 @@ interface JobFormDialogProps {
   onScheduledDateChange: (value: string) => void;
   onScheduledTimeChange: (value: string) => void;
   onPayloadChange: (value: string) => void;
-  onMlProductUrlChange: (value: string) => void;
-  onMlIncludeImageChange: (value: boolean) => void;
   onMediaFileChange: (file: File | null) => void;
   onMentionOpenChange: (open: boolean) => void;
   onAutoNumberGroupsChange: (value: boolean) => void;
@@ -82,8 +77,6 @@ export function JobFormDialog({
   scheduledDate,
   scheduledTime,
   payload,
-  mlProductUrl,
-  mlIncludeImage,
   mediaFile,
   isEnhancing,
   selectedGroups,
@@ -100,8 +93,6 @@ export function JobFormDialog({
   onScheduledDateChange,
   onScheduledTimeChange,
   onPayloadChange,
-  onMlProductUrlChange,
-  onMlIncludeImageChange,
   onMediaFileChange,
   onMentionOpenChange,
   onAutoNumberGroupsChange,
@@ -160,9 +151,6 @@ export function JobFormDialog({
                 </SelectItem>
                 <SelectItem value="send_poll" className="cursor-pointer">
                   {t('pages.jobs.actionTypes.sendPoll')}
-                </SelectItem>
-                <SelectItem value="send_ml_offer" className="cursor-pointer">
-                  {t('pages.jobs.actionTypes.sendMlOffer')}
                 </SelectItem>
                 <SelectItem value="update_description" className="cursor-pointer">
                   {t('pages.jobs.actionTypes.updateDescription')}
@@ -241,17 +229,6 @@ export function JobFormDialog({
               onMentionOpenChange={onMentionOpenChange}
               onInsertMention={onInsertMention}
               onEnhanceMessage={onEnhanceMessage}
-            />
-          )}
-
-          {actionType === 'send_ml_offer' && (
-            <MlOfferForm
-              mlProductUrl={mlProductUrl}
-              mlIncludeImage={mlIncludeImage}
-              payload={payload}
-              onUrlChange={onMlProductUrlChange}
-              onIncludeImageChange={onMlIncludeImageChange}
-              onPayloadChange={onPayloadChange}
             />
           )}
 

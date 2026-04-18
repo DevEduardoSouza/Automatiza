@@ -89,8 +89,6 @@ export default function JobsPage() {
                   scheduledDate={jobs.scheduledDate}
                   scheduledTime={jobs.scheduledTime}
                   payload={jobs.payload}
-                  mlProductUrl={jobs.mlProductUrl}
-                  mlIncludeImage={jobs.mlIncludeImage}
                   mediaFile={jobs.mediaFile}
                   isEnhancing={jobs.isEnhancing}
                   selectedGroups={jobs.selectedGroups}
@@ -107,8 +105,6 @@ export default function JobsPage() {
                   onScheduledDateChange={jobs.setScheduledDate}
                   onScheduledTimeChange={jobs.setScheduledTime}
                   onPayloadChange={jobs.setPayload}
-                  onMlProductUrlChange={jobs.setMlProductUrl}
-                  onMlIncludeImageChange={jobs.setMlIncludeImage}
                   onMediaFileChange={jobs.setMediaFile}
                   onMentionOpenChange={jobs.setMentionOpen}
                   onAutoNumberGroupsChange={jobs.setAutoNumberGroups}

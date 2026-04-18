@@ -10,7 +10,6 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
-	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/workers"
 
 	"github.com/getsentry/sentry-go"
@@ -73,7 +72,6 @@ type standaloneJobsService struct {
 	groupRepo       repository.GroupRepository
 	historyRepo     repository.ActionHistoryRepository
 	waProvider      whatsapp.WhatsAppProvider
-	mlService       mercadolivre.Service
 	notifier        JobStatusNotifier
 	historyNotifier HistoryNotifier
 	logger          *zap.Logger
@@ -89,7 +87,6 @@ func NewService(
 	instanceRepo repository.InstanceRepository,
 	groupRepo repository.GroupRepository,
 	waProvider whatsapp.WhatsAppProvider,
-	mlService mercadolivre.Service,
 	notifier JobStatusNotifier,
 	historyRepo repository.ActionHistoryRepository,
 	historyNotifier HistoryNotifier,
@@ -101,7 +98,6 @@ func NewService(
 		groupRepo:       groupRepo,
 		historyRepo:     historyRepo,
 		waProvider:      waProvider,
-		mlService:       mlService,
 		notifier:        notifier,
 		historyNotifier: historyNotifier,
 		logger:          logger,
@@ -129,8 +125,6 @@ func mapJobActionToHistoryType(actionType models.JobActionType) string {
 		return models.ActionTypeSendMessage
 	case models.JobActionSendPoll:
 		return models.ActionTypeSendMessage
-	case models.JobActionSendMLOffer:
-		return models.ActionTypeSendCampaign
 	case models.JobActionUpdateDescription:
 		return models.ActionTypeChangeDescription
 	case models.JobActionCloseGroups:
@@ -153,8 +147,6 @@ func descriptionForAction(actionType models.JobActionType, groupCount int) strin
 		return fmt.Sprintf("Enviar mensagem para %d grupo(s)", groupCount)
 	case models.JobActionSendPoll:
 		return fmt.Sprintf("Enviar enquete para %d grupo(s)", groupCount)
-	case models.JobActionSendMLOffer:
-		return fmt.Sprintf("Enviar oferta ML para %d grupo(s)", groupCount)
 	case models.JobActionUpdateDescription:
 		return fmt.Sprintf("Alterar descricao de %d grupo(s)", groupCount)
 	case models.JobActionCloseGroups:
@@ -351,10 +343,6 @@ func (s *standaloneJobsService) CreateJob(ctx context.Context, userID string, jo
 		}
 		if job.Payload.Question == "" {
 			return nil, fmt.Errorf("pergunta da enquete e obrigatoria")
-		}
-	case models.JobActionSendMLOffer:
-		if err := ValidateMLURL(job.Payload.OriginURL); err != nil {
-			return nil, err
 		}
 	case models.JobActionChangeGroupPhoto:
 		if job.Payload.Image == "" {
@@ -608,8 +596,6 @@ func (s *standaloneJobsService) executeJob(ctx context.Context, job *models.Stan
 		executorResults = ExecuteSendMessage(ctx, s.waProvider, sessionName, &resolvedJob, s.logger)
 	case models.JobActionSendPoll:
 		executorResults = ExecuteSendPoll(ctx, s.waProvider, sessionName, &resolvedJob, s.logger)
-	case models.JobActionSendMLOffer:
-		executorResults = ExecuteSendMLOffer(ctx, s.waProvider, s.mlService, sessionName, job.UserID, &resolvedJob, s.logger)
 	case models.JobActionUpdateDescription:
 		executorResults = ExecuteUpdateDescription(ctx, s.waProvider, sessionName, &resolvedJob, s.logger)
 	case models.JobActionCloseGroups:

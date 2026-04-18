@@ -245,51 +245,6 @@ func TestValidateMessage(t *testing.T) {
 }
 
 // =============================================================================
-// ValidateMLURL Tests
-// =============================================================================
-
-func TestValidateMLURL(t *testing.T) {
-	tests := []struct {
-		name    string
-		url     string
-		wantErr bool
-	}{
-		{
-			name:    "valid ML URL",
-			url:     "https://produto.mercadolivre.com.br/MLB-123456",
-			wantErr: false,
-		},
-		{
-			name:    "valid ML short URL",
-			url:     "https://mercadolivre.com.br/p/MLB123",
-			wantErr: false,
-		},
-		{
-			name:    "valid any URL",
-			url:     "https://example.com/product",
-			wantErr: false,
-		},
-		{
-			name:    "empty URL",
-			url:     "",
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateMLURL(tt.url)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), "URL")
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-// =============================================================================
 // ValidateAdminRequired Tests
 // =============================================================================
 
@@ -316,12 +271,6 @@ func TestValidateAdminRequired(t *testing.T) {
 		{
 			name:       "send_poll as non-admin",
 			actionType: models.JobActionSendPoll,
-			isAdmin:    false,
-			wantErr:    false,
-		},
-		{
-			name:       "send_ml_offer as non-admin",
-			actionType: models.JobActionSendMLOffer,
 			isAdmin:    false,
 			wantErr:    false,
 		},
@@ -557,7 +506,6 @@ func TestStandaloneJob_IsAdminOnlyAction(t *testing.T) {
 	nonAdminActions := []models.JobActionType{
 		models.JobActionSendMessage,
 		models.JobActionSendPoll,
-		models.JobActionSendMLOffer,
 	}
 
 	for _, action := range adminOnlyActions {
