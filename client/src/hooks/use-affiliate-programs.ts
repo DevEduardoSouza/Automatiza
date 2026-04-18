@@ -115,18 +115,6 @@ const STORE_CONFIGS: StoreConfig[] = [
     ],
   },
   {
-    key: 'ml',
-    name: 'Mercado Livre',
-    fields: [
-      {
-        key: 'tag',
-        label: 'Tag (etiqueta)',
-        type: 'text',
-        placeholder: 'soed324928',
-      },
-    ],
-  },
-  {
     key: 'shein',
     name: 'Shein',
     fields: [
@@ -171,7 +159,9 @@ const STORE_CONFIGS: StoreConfig[] = [
   },
 ];
 
-const ENABLED_STORES: StoreKey[] = ['shopee', 'ml'];
+// ML removed from enabled stores: users now paste their pre-generated
+// affiliate links into LIST automations. No credential flow needed.
+const ENABLED_STORES: StoreKey[] = ['shopee'];
 
 function base64UrlDecode(input: string): string {
   const s = input.replace(/-/g, '+').replace(/_/g, '/');
