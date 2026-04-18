@@ -3714,65 +3714,6 @@ func TestDiagnoseAutomation_NilServicesStoreErrors(t *testing.T) {
 		assert.True(t, foundError, "expected BUSCA_STORE error check")
 	})
 
-	t.Run("ML service connected", func(t *testing.T) {
-		t.Parallel()
-		svc, deps := newInternalTestService(t)
-		mlSvc := new(mockMLService)
-		svc.mlService = mlSvc
-
-		searchType := "search"
-		automation := &models.Automation{
-			ID:       "auto-1",
-			UserID:   "user-1",
-			Name:     "Test Auto",
-			Type:     &searchType,
-			GroupIDs: []string{"group@g.us"},
-			Stores:   []string{"mercadolivre"},
-		}
-
-		deps.automationRepo.On("GetAutomationByIDAndUser", mock.Anything, "auto-1", "user-1").Return(automation, nil)
-		deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
-			Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-		mlSvc.On("IsConnected", mock.Anything, "user-1").Return(true, nil)
-
-		result, err := svc.DiagnoseAutomation(context.Background(), "auto-1", "user-1")
-		require.NoError(t, err)
-		assert.NotNil(t, result)
-	})
-
-	t.Run("ML service not connected", func(t *testing.T) {
-		t.Parallel()
-		svc, deps := newInternalTestService(t)
-		mlSvc := new(mockMLService)
-		svc.mlService = mlSvc
-
-		searchType := "search"
-		automation := &models.Automation{
-			ID:       "auto-1",
-			UserID:   "user-1",
-			Name:     "Test Auto",
-			Type:     &searchType,
-			GroupIDs: []string{"group@g.us"},
-			Stores:   []string{"mercadolivre"},
-		}
-
-		deps.automationRepo.On("GetAutomationByIDAndUser", mock.Anything, "auto-1", "user-1").Return(automation, nil)
-		deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
-			Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-		mlSvc.On("IsConnected", mock.Anything, "user-1").Return(false, nil)
-
-		result, err := svc.DiagnoseAutomation(context.Background(), "auto-1", "user-1")
-		require.NoError(t, err)
-
-		// Should have warning about ML not connected
-		foundWarning := false
-		for _, w := range result.Warnings {
-			if fmt.Sprintf("%v", w) == "Mercado Livre: nao conectado" {
-				foundWarning = true
-			}
-		}
-		assert.True(t, foundWarning, "expected ML not connected warning")
-	})
 }
 
 // =============================================================================

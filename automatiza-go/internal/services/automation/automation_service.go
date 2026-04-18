@@ -233,15 +233,6 @@ func (s *automationService) DiagnoseAutomation(ctx context.Context, automationID
 				} else {
 					storeErrors = append(storeErrors, "Shopee: servico nao configurado")
 				}
-			case "mercadolivre":
-				if s.mlService != nil {
-					connected, _ := s.mlService.IsConnected(ctx, userID)
-					if !connected {
-						storeErrors = append(storeErrors, "Mercado Livre: nao conectado")
-					}
-				} else {
-					storeErrors = append(storeErrors, "Mercado Livre: servico nao configurado")
-				}
 			}
 		}
 
@@ -695,9 +686,6 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 						}
 					}
 				}
-			case "mercadolivre":
-				// ML search would go here
-				// For now, ML is mainly used for affiliate link generation
 			}
 		}
 

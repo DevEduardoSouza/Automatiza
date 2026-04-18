@@ -1416,45 +1416,6 @@ func TestDiagnoseAutomation_ShopeeAPIError(t *testing.T) {
 	assert.Contains(t, buscaCheck.Message, "Shopee")
 }
 
-func TestDiagnoseAutomation_MLNotConnected(t *testing.T) {
-	t.Parallel()
-	svc, deps := newTestService(t)
-	ctx := context.Background()
-
-	searchType := "search"
-	automation := &models.Automation{
-		ID:       "auto-123",
-		UserID:   "user-1",
-		Name:     "Test Automation",
-		Status:   models.AutomationStatusActive,
-		Type:     &searchType,
-		GroupIDs: []string{"group1@g.us"},
-		Stores:   []string{"mercadolivre"},
-	}
-
-	connectedInstances := []models.Instance{
-		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
-	}
-
-	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
-	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
-	deps.mlService.On("IsConnected", ctx, "user-1").Return(false, nil)
-
-	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
-	require.NoError(t, err)
-
-	var buscaCheck *models.DiagnoseCheck
-	for _, c := range result.Checks {
-		if c.Name == "BUSCA_STORE" {
-			buscaCheck = &c
-			break
-		}
-	}
-	require.NotNil(t, buscaCheck)
-	assert.Equal(t, "error", buscaCheck.Status)
-	assert.Contains(t, buscaCheck.Message, "Mercado Livre")
-}
-
 func TestDiagnoseAutomation_NoCacheConfigured(t *testing.T) {
 	t.Parallel()
 	svc, deps := newTestService(t)
