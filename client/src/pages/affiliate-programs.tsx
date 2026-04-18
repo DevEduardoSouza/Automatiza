@@ -1,4 +1,9 @@
-import { AffiliateHowItWorks, ComingSoonCard, StoreCard } from '@/components/affiliate-programs';
+import {
+  AffiliateHowItWorks,
+  ComingSoonCard,
+  MlRedirectCard,
+  StoreCard,
+} from '@/components/affiliate-programs';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useAffiliatePrograms } from '@/hooks';
 import { useToast } from '@/hooks/use-toast';
@@ -170,6 +175,7 @@ export default function AffiliatePrograms() {
                 </div>
               </div>
               <div className="grid gap-4 xs:gap-5 sm:gap-6 lg:gap-8 md:grid-cols-2">
+                <MlRedirectCard />
                 {storeConfigs.map((config) => {
                   const isEnabled = enabledStores.includes(config.key);
 
