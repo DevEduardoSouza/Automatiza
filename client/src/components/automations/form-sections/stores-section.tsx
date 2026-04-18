@@ -18,12 +18,16 @@ export function StoresSelector({ formData, setFormData, activeStores }: StoresSe
   const { t } = useTranslation();
   const { toast } = useToast();
 
+  const visibleStores = STORES.filter(
+    (store) => !(formData.mode === 'search' && store.value === 'ml'),
+  );
+
   return (
     <div className="space-y-1.5 xs:space-y-2">
       <div className="flex items-start gap-2">
         <Label className="cursor-pointer">{t('pages.offerAutomations.form.stores')} *</Label>
       </div>
-      {formData.mode === 'search' && activeStores.length < STORES.length && (
+      {formData.mode === 'search' && activeStores.length < visibleStores.length && (
         <div
           className="rounded-xl border px-4 py-3 text-sm"
           style={{
@@ -67,7 +71,7 @@ export function StoresSelector({ formData, setFormData, activeStores }: StoresSe
       )}
       <Card>
         <CardContent className="pt-4 grid grid-cols-2 gap-3 lg:gap-4">
-          {STORES.map((store) => {
+          {visibleStores.map((store) => {
             const isActive = activeStores.includes(store.value);
             const isMonitoring = formData.mode === 'monitor';
             const isShopee = store.value === 'shopee';
