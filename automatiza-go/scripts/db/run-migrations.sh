@@ -30,14 +30,29 @@ echo "=== Running database migrations ==="
 # Includes: NNN_name.sql (legacy) and NNN_name.up.sql (post-010).
 # Excludes: *.down.sql (rollbacks) and *_rollback.sql (legacy rollback variant).
 # All migrations are expected to be idempotent (IF NOT EXISTS, etc).
-mapfile -t MIGRATION_FILES < <(
-    find "$MIGRATIONS_DIR" -maxdepth 1 -type f -name "*.sql" \
-        ! -name "*.down.sql" ! -name "*_rollback.sql" \
-        -printf "%f\n" | sort
-)
+#
+# Uses a bash glob instead of `find -printf` because this script runs inside
+# the backend image (Alpine + BusyBox find), and BusyBox find does NOT
+# support -printf. Under BusyBox the flag fails silently, leaving the array
+# empty and skipping ALL migrations — exactly what happened between
+# 2026-04-17 (PR #57) and this fix.
+shopt -s nullglob
+MIGRATION_FILES=()
+for filepath in "$MIGRATIONS_DIR"/*.sql; do
+    name="${filepath##*/}"
+    case "$name" in
+        *.down.sql|*_rollback.sql) continue ;;
+    esac
+    MIGRATION_FILES+=("$name")
+done
+shopt -u nullglob
+
+# Bash glob already sorts alphabetically; with zero-padded NNN_ prefixes
+# this is equivalent to numeric order.
 
 if [ "${#MIGRATION_FILES[@]}" -eq 0 ]; then
-    echo "  WARN: no migration files found in ${MIGRATIONS_DIR}"
+    echo "  ERROR: no migration files found in ${MIGRATIONS_DIR}" >&2
+    exit 1
 fi
 
 for migration in "${MIGRATION_FILES[@]}"; do
