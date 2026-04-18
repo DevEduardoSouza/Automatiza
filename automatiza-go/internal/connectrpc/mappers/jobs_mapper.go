@@ -78,8 +78,6 @@ func ActionTypeToProto(at models.JobActionType) jobsv1.JobActionType {
 		return jobsv1.JobActionType_JOB_ACTION_TYPE_SEND_MESSAGE
 	case models.JobActionSendPoll:
 		return jobsv1.JobActionType_JOB_ACTION_TYPE_SEND_POLL
-	case models.JobActionSendMLOffer:
-		return jobsv1.JobActionType_JOB_ACTION_TYPE_SEND_ML_OFFER
 	case models.JobActionUpdateDescription:
 		return jobsv1.JobActionType_JOB_ACTION_TYPE_UPDATE_DESCRIPTION
 	case models.JobActionCloseGroups:
@@ -102,8 +100,6 @@ func ProtoToActionType(at jobsv1.JobActionType) models.JobActionType {
 		return models.JobActionSendMessage
 	case jobsv1.JobActionType_JOB_ACTION_TYPE_SEND_POLL:
 		return models.JobActionSendPoll
-	case jobsv1.JobActionType_JOB_ACTION_TYPE_SEND_ML_OFFER:
-		return models.JobActionSendMLOffer
 	case jobsv1.JobActionType_JOB_ACTION_TYPE_UPDATE_DESCRIPTION:
 		return models.JobActionUpdateDescription
 	case jobsv1.JobActionType_JOB_ACTION_TYPE_CLOSE_GROUPS:
@@ -192,15 +188,6 @@ func PayloadToProto(p *models.JobPayload) *jobsv1.JobPayload {
 		sc := int32(p.SelectableCount)
 		pb.SelectableCount = &sc
 	}
-	if p.OriginURL != "" {
-		pb.OriginUrl = &p.OriginURL
-	}
-	if p.Text != "" {
-		pb.Text = &p.Text
-	}
-	if p.IncludeImage != nil {
-		pb.IncludeImage = p.IncludeImage
-	}
 	if p.Description != "" {
 		pb.Description = &p.Description
 	}
@@ -251,15 +238,6 @@ func ProtoToPayload(pb *jobsv1.JobPayload) *models.JobPayload {
 	}
 	if pb.SelectableCount != nil {
 		p.SelectableCount = int(*pb.SelectableCount)
-	}
-	if pb.OriginUrl != nil {
-		p.OriginURL = *pb.OriginUrl
-	}
-	if pb.Text != nil {
-		p.Text = *pb.Text
-	}
-	if pb.IncludeImage != nil {
-		p.IncludeImage = pb.IncludeImage
 	}
 	if pb.Description != nil {
 		p.Description = *pb.Description

@@ -29,7 +29,6 @@ import { useToast } from './use-toast';
 export type LocalJobActionType =
   | 'send_message'
   | 'send_poll'
-  | 'send_ml_offer'
   | 'update_description'
   | 'close_groups'
   | 'open_groups'
@@ -49,9 +48,6 @@ export interface LocalJobPayload {
   question?: string;
   options?: string[];
   selectableCount?: number;
-  originUrl?: string;
-  text?: string;
-  includeImage?: boolean;
   description?: string;
   name?: string;
   autoNumber?: boolean;
@@ -145,7 +141,6 @@ interface UseJobsConnectReturn {
 const ACTION_TYPE_TO_PROTO: Record<LocalJobActionType, JobActionType> = {
   send_message: JobActionType.SEND_MESSAGE,
   send_poll: JobActionType.SEND_POLL,
-  send_ml_offer: JobActionType.SEND_ML_OFFER,
   update_description: JobActionType.UPDATE_DESCRIPTION,
   close_groups: JobActionType.CLOSE_GROUPS,
   open_groups: JobActionType.OPEN_GROUPS,
@@ -157,7 +152,6 @@ const PROTO_TO_ACTION_TYPE: Record<JobActionType, LocalJobActionType> = {
   [JobActionType.UNSPECIFIED]: 'send_message',
   [JobActionType.SEND_MESSAGE]: 'send_message',
   [JobActionType.SEND_POLL]: 'send_poll',
-  [JobActionType.SEND_ML_OFFER]: 'send_ml_offer',
   [JobActionType.UPDATE_DESCRIPTION]: 'update_description',
   [JobActionType.CLOSE_GROUPS]: 'close_groups',
   [JobActionType.OPEN_GROUPS]: 'open_groups',
@@ -197,9 +191,6 @@ function fromProtoJob(job: Job): LocalJob {
       question: job.payload?.question,
       options: job.payload?.options,
       selectableCount: job.payload?.selectableCount,
-      originUrl: job.payload?.originUrl,
-      text: job.payload?.text,
-      includeImage: job.payload?.includeImage,
       description: job.payload?.description,
       name: job.payload?.name,
       autoNumber: job.payload?.autoNumber,
@@ -223,9 +214,6 @@ function toProtoPayload(payload: LocalJobPayload): JobPayload {
     question: payload.question,
     options: payload.options || [],
     selectableCount: payload.selectableCount,
-    originUrl: payload.originUrl,
-    text: payload.text,
-    includeImage: payload.includeImage,
     description: payload.description,
     name: payload.name,
     autoNumber: payload.autoNumber,

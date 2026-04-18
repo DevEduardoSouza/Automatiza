@@ -1884,7 +1884,6 @@
       "actionTypes": {
         "sendMessage": "Enviar Mensagem",
         "sendPoll": "Enviar Enquete",
-        "sendMlOffer": "Mercado Livre (Afiliado)",
         "updateDescription": "Alterar Descrição",
         "closeGroups": "Fechar Grupos",
         "openGroups": "Abrir Grupos",
@@ -1947,8 +1946,6 @@
         "noGroupsMessage": "Selecione pelo menos um grupo",
         "emptyMessage": "Mensagem vazia",
         "emptyMessageMessage": "Digite uma mensagem para enviar",
-        "emptyUrl": "URL obrigatória",
-        "emptyUrlMessage": "Cole a URL do produto do Mercado Livre",
         "emptyPollQuestion": "Pergunta obrigatória",
         "emptyPollQuestionMessage": "Digite a pergunta da enquete",
         "insufficientOptions": "Opções insuficientes",

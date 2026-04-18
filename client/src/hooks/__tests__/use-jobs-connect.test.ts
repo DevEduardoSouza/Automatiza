@@ -163,7 +163,6 @@ vi.mock('@/gen/jobs/v1/jobs_pb', () => ({
     UNSPECIFIED: 0,
     SEND_MESSAGE: 1,
     SEND_POLL: 2,
-    SEND_ML_OFFER: 3,
     UPDATE_DESCRIPTION: 4,
     CLOSE_GROUPS: 5,
     OPEN_GROUPS: 6,
@@ -183,7 +182,6 @@ const ACTION = {
   UNSPECIFIED: 0,
   SEND_MESSAGE: 1,
   SEND_POLL: 2,
-  SEND_ML_OFFER: 3,
   UPDATE_DESCRIPTION: 4,
   CLOSE_GROUPS: 5,
   OPEN_GROUPS: 6,
@@ -286,17 +284,6 @@ describe('useJobsConnect', () => {
 
       const { result } = renderJobsConnect();
       expect(result.current.jobs[0].action_type).toBe('send_poll');
-    });
-
-    it('should map SEND_ML_OFFER action type correctly', () => {
-      mockJobsDataRef.current = {
-        jobs: [makeProtoJob({ actionType: ACTION.SEND_ML_OFFER })],
-        nextPageToken: '',
-        totalCount: 1,
-      };
-
-      const { result } = renderJobsConnect();
-      expect(result.current.jobs[0].action_type).toBe('send_ml_offer');
     });
 
     it('should map UPDATE_DESCRIPTION action type correctly', () => {
@@ -778,7 +765,6 @@ describe('useJobsConnect', () => {
         const actionMap: Record<string, number> = {
           send_message: ACTION.SEND_MESSAGE,
           send_poll: ACTION.SEND_POLL,
-          send_ml_offer: ACTION.SEND_ML_OFFER,
           update_description: ACTION.UPDATE_DESCRIPTION,
           close_groups: ACTION.CLOSE_GROUPS,
           open_groups: ACTION.OPEN_GROUPS,

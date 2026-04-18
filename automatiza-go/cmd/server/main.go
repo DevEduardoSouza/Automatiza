@@ -399,7 +399,6 @@ func main() {
 		instanceRepo,
 		groupRepo,
 		wahaAdapter,
-		mlService,
 		sseHub,
 		actionHistoryRepo,
 		sseHub, // historyNotifier: publishes history.change SSE events

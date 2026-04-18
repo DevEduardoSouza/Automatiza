@@ -25,7 +25,6 @@ type JobActionType string
 const (
 	JobActionSendMessage       JobActionType = "send_message"
 	JobActionSendPoll          JobActionType = "send_poll"
-	JobActionSendMLOffer       JobActionType = "send_ml_offer"
 	JobActionUpdateDescription JobActionType = "update_description"
 	JobActionCloseGroups       JobActionType = "close_groups"
 	JobActionOpenGroups        JobActionType = "open_groups"
@@ -79,11 +78,6 @@ type JobPayload struct {
 	Question        string   `json:"question,omitempty"`
 	Options         []string `json:"options,omitempty"`
 	SelectableCount int      `json:"selectableCount,omitempty"`
-
-	// send_ml_offer
-	OriginURL    string `json:"originUrl,omitempty"`
-	Text         string `json:"text,omitempty"`
-	IncludeImage *bool  `json:"includeImage,omitempty"`
 
 	// update_description
 	Description string `json:"description,omitempty"`

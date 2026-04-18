@@ -64,7 +64,7 @@ func TestStandaloneJob_IsPoll(t *testing.T) {
 		{"send_message with poll type", JobActionSendMessage, "poll", true},
 		{"send_message without poll type", JobActionSendMessage, "", false},
 		{"send_poll with poll type", JobActionSendPoll, "poll", false},
-		{"other action type", JobActionSendMLOffer, "poll", false},
+		{"other action type", JobActionUpdateDescription, "poll", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -93,7 +93,6 @@ func TestStandaloneJob_IsAdminOnlyAction(t *testing.T) {
 		{"change_group_photo is admin", JobActionChangeGroupPhoto, true},
 		{"send_message is not admin", JobActionSendMessage, false},
 		{"send_poll is not admin", JobActionSendPoll, false},
-		{"send_ml_offer is not admin", JobActionSendMLOffer, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

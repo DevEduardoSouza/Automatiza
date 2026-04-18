@@ -41,8 +41,6 @@ interface UseJobsReturn {
   scheduledDate: string;
   scheduledTime: string;
   payload: string;
-  mlProductUrl: string;
-  mlIncludeImage: boolean;
   mediaFile: File | null;
   isEnhancing: boolean;
   selectedGroups: string[];
@@ -58,8 +56,6 @@ interface UseJobsReturn {
   setScheduledDate: (value: string) => void;
   setScheduledTime: (value: string) => void;
   setPayload: (value: string) => void;
-  setMlProductUrl: (value: string) => void;
-  setMlIncludeImage: (value: boolean) => void;
   setMediaFile: (file: File | null) => void;
   setSelectedGroups: React.Dispatch<React.SetStateAction<string[]>>;
   setMentionOpen: (value: boolean) => void;
@@ -126,8 +122,6 @@ export function useJobs(): UseJobsReturn {
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
   const [payload, setPayload] = useState('');
-  const [mlProductUrl, setMlProductUrl] = useState('');
-  const [mlIncludeImage, setMlIncludeImage] = useState(true);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -151,8 +145,6 @@ export function useJobs(): UseJobsReturn {
     setScheduledDate('');
     setScheduledTime('');
     setPayload('');
-    setMlProductUrl('');
-    setMlIncludeImage(true);
     setMediaFile(null);
     setSelectedGroups([]);
     setAutoNumberGroups(false);
@@ -187,10 +179,6 @@ export function useJobs(): UseJobsReturn {
       setAutoNumberGroups(job.payload.autoNumber || false);
     } else if (job.action_type === 'change_group_photo') {
       setPayload(job.payload.image || '');
-    } else if (job.action_type === 'send_ml_offer') {
-      setMlProductUrl(job.payload.originUrl || '');
-      setMlIncludeImage(Boolean(job.payload.includeImage ?? true));
-      setPayload(job.payload.text || '');
     }
 
     const scheduledDate = new Date(job.scheduled_for);
@@ -309,18 +297,6 @@ export function useJobs(): UseJobsReturn {
           return;
         }
       }
-    } else if (actionType === 'send_ml_offer') {
-      if (!mlProductUrl.trim()) {
-        toast({
-          variant: 'destructive',
-          title: t('pages.jobs.errors.emptyUrl'),
-          description: t('pages.jobs.errors.emptyUrlMessage'),
-        });
-        return;
-      }
-      jobPayload.originUrl = mlProductUrl.trim();
-      jobPayload.text = payload.trim() || '';
-      jobPayload.includeImage = Boolean(mlIncludeImage);
     } else if (actionType === 'send_poll') {
       if (!pollQuestion.trim()) {
         toast({
@@ -399,8 +375,6 @@ export function useJobs(): UseJobsReturn {
     selectedGroups,
     payload,
     mediaFile,
-    mlProductUrl,
-    mlIncludeImage,
     pollQuestion,
     pollOptions,
     autoNumberGroups,
@@ -494,7 +468,6 @@ export function useJobs(): UseJobsReturn {
       const labels: Record<string, string> = {
         send_message: t('pages.jobs.actionTypes.sendMessage'),
         send_poll: t('pages.jobs.actionTypes.sendPoll'),
-        send_ml_offer: t('pages.jobs.actionTypes.sendMlOffer'),
         update_description: t('pages.jobs.actionTypes.updateDescription'),
         close_groups: t('pages.jobs.actionTypes.closeGroups'),
         open_groups: t('pages.jobs.actionTypes.openGroups'),
@@ -518,8 +491,6 @@ export function useJobs(): UseJobsReturn {
     scheduledDate,
     scheduledTime,
     payload,
-    mlProductUrl,
-    mlIncludeImage,
     mediaFile,
     isEnhancing: isEnhancingApi,
     selectedGroups,
@@ -535,8 +506,6 @@ export function useJobs(): UseJobsReturn {
     setScheduledDate,
     setScheduledTime,
     setPayload,
-    setMlProductUrl,
-    setMlIncludeImage,
     setMediaFile,
     setSelectedGroups,
     setMentionOpen,
