@@ -202,24 +202,24 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		var shopeeImageURL string
 		affiliateURL := originURL
 
-		if isML && s.mlService != nil {
-			// ML: get preview + affiliate link
-			p, err := s.mlService.GetProductPreview(ctx, originURL, automation.UserID)
-			if err != nil {
-				s.logger.Warn("Failed to get ML product preview",
-					zap.String("originURL", originURL),
-					zap.Error(err))
-			} else {
+		if isML {
+			// ML: the item already holds an affiliate URL the user pasted and
+			// (optionally) the product metadata they entered. We do not call
+			// the ML API here — no credentials flow, no affiliate generation
+			// server-side. OriginURL is sent as-is; ProductTitle/Price/Image
+			// populate the synthetic preview used for message + link preview.
+			if item.ProductTitle != nil || item.ProductPrice != nil || item.ProductImageURL != nil {
+				p := &models.MLProductPreview{}
+				if item.ProductTitle != nil {
+					p.Title = *item.ProductTitle
+				}
+				if item.ProductPrice != nil {
+					p.Price = *item.ProductPrice
+				}
+				if item.ProductImageURL != nil {
+					p.Image = *item.ProductImageURL
+				}
 				preview = p
-			}
-
-			link, err := s.mlService.CreateAffiliateLink(ctx, originURL, automation.UserID)
-			if err != nil {
-				s.logger.Warn("Failed to create ML affiliate link, using origin URL",
-					zap.String("originURL", originURL),
-					zap.Error(err))
-			} else if link != nil && link.AffiliateLink != "" {
-				affiliateURL = link.AffiliateLink
 			}
 		} else if isShopee && s.shopeeService != nil {
 			// Shopee: generate affiliate link + fetch product details
