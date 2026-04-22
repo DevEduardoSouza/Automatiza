@@ -676,6 +676,14 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		Categories:      msg.GetCategories(),
 	}
 
+	// Monitoring channels tend to repost the same product many times per day;
+	// the historical 168h default caused clients to think the automation had
+	// stopped working. See .claude/rules/known-issues.md.
+	if mode == models.AutomationTypeMonitoring {
+		one := 1
+		automation.DedupeHours = &one
+	}
+
 	if msg.DispatchTextId != nil {
 		automation.DispatchTextID = msg.DispatchTextId
 	}
