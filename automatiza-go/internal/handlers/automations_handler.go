@@ -99,6 +99,14 @@ func (h *AutomationsHandler) Create(c *gin.Context) {
 		IntervalMinutes: req.IntervalMinutes,
 	}
 
+	// Monitoring channels tend to repost the same product many times per day;
+	// the historical 168h default caused clients to think the automation had
+	// stopped working. See .claude/rules/known-issues.md.
+	if automationType == models.AutomationTypeMonitoring && automation.DedupeHours == nil {
+		one := 1
+		automation.DedupeHours = &one
+	}
+
 	result, err := h.deps.AutomationRepo.CreateAutomation(c.Request.Context(), user.ID, automation)
 	if err != nil {
 		middleware.RespondError(c, http.StatusInternalServerError, "Falha ao criar automação")
