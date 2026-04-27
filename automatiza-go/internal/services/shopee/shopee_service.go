@@ -469,14 +469,18 @@ func isShopeeShortURL(rawURL string) bool {
 }
 
 // isNonProductShopeeURL detects Shopee URLs that are not product pages
-// (e.g., coupon pages, campaign pages) and cannot have affiliate links generated.
+// (e.g., coupon pages, campaign pages, voucher wallets, store profiles)
+// and must be regenerated through generateShortLink with the user's credentials
+// rather than productOfferV2.
 func isNonProductShopeeURL(expandedURL string) bool {
 	lower := strings.ToLower(expandedURL)
 	return strings.Contains(lower, "shopee.com.br/m/") ||
 		strings.Contains(lower, "shopee.com.br/mall/") ||
 		strings.Contains(lower, "shopee.com.br/flash_sale") ||
 		strings.Contains(lower, "shopee.com.br/daily_discover") ||
-		strings.Contains(lower, "shopee.com.br/voucher")
+		strings.Contains(lower, "shopee.com.br/voucher") ||
+		strings.Contains(lower, "shopee.com.br/user/") ||
+		strings.Contains(lower, "shopee.com.br/oficial")
 }
 
 // generateNonProductAffiliateLink converts non-product Shopee URLs (coupons, campaigns)
