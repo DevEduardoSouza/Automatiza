@@ -405,11 +405,15 @@ func TestIsNonProductShopeeURL(t *testing.T) {
 		{name: "mall page", url: "https://shopee.com.br/mall/some-store", want: true},
 		{name: "flash sale", url: "https://shopee.com.br/flash_sale", want: true},
 		{name: "daily discover", url: "https://shopee.com.br/daily_discover", want: true},
+		{name: "voucher wallet", url: "https://shopee.com.br/user/voucher-wallet?mmp_pid=an_123", want: true},
+		{name: "user profile path", url: "https://shopee.com.br/user/12345", want: true},
+		{name: "lojas oficiais landing", url: "https://shopee.com.br/oficial", want: true},
 		{name: "product page opaanlp", url: "https://shopee.com.br/opaanlp/123/456", want: false},
 		{name: "product page with dot IDs", url: "https://shopee.com.br/product-name.123.456", want: false},
 		{name: "product page /product/ path", url: "https://shopee.com.br/product/123/456", want: false},
 		{name: "search page", url: "https://shopee.com.br/search?q=fone", want: false},
 		{name: "case insensitive", url: "https://Shopee.com.br/M/Cupom", want: true},
+		{name: "case insensitive voucher wallet", url: "https://Shopee.com.br/User/Voucher-Wallet", want: true},
 	}
 
 	for _, tt := range tests {
