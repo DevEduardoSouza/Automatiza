@@ -288,6 +288,26 @@ describe('useMlLinkLists', () => {
       expect(result.current.singleUrl).toBe('');
     });
 
+    it('should accept meli.la short link', async () => {
+      mockLists.push(createMockList({ id: 'list-001' }));
+      const { result } = renderHook(() => useMlLinkLists());
+
+      await waitFor(() => expect(result.current.selectedListId).toBe('list-001'));
+
+      act(() => result.current.setSingleUrl('https://meli.la/28fhqrh'));
+
+      await act(async () => {
+        await result.current.addOneLink();
+      });
+
+      expect(mockFunctions.createMlLinkListItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          list_id: 'list-001',
+          origin_url: 'https://meli.la/28fhqrh',
+        })
+      );
+    });
+
     it('should reject invalid URL', async () => {
       mockLists.push(createMockList({ id: 'list-001' }));
       const { result } = renderHook(() => useMlLinkLists());

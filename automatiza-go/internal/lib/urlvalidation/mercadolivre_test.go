@@ -378,6 +378,11 @@ func TestValidateAndNormalizeURL(t *testing.T) {
 			want: "https://www.mercadolivre.com.br/p/MLB1?v=2",
 		},
 		{
+			name: "meli.la short link is accepted",
+			url:  "https://meli.la/28fhqrh",
+			want: "https://meli.la/28fhqrh",
+		},
+		{
 			name:    "invalid domain returns validation error",
 			url:     "https://www.amazon.com.br/dp/B123",
 			want:    "",
