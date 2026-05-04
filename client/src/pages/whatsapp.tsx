@@ -2,6 +2,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { InstancesList } from '@/components/whatsapp/instances-list';
 import { useToast } from '@/hooks/use-toast';
 import { useWhatsApp } from '@/hooks/use-whatsapp';
 import * as Sentry from '@sentry/react';
@@ -230,6 +231,9 @@ export default function WhatsApp() {
               {t('pages.whatsapp.warning.message')}
             </p>
           </div>
+
+          {/* Existing instances list (renders only when the user has at least one chip) */}
+          <InstancesList />
 
           {/* Connection Card */}
           <div className="flex justify-center mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
