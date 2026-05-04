@@ -69,6 +69,9 @@ export interface AutomationGroup {
   name: string;
   wa_group_id: string;
   is_favorite: boolean;
+  // Database id of the WhatsApp instance that owns this group. Used by the
+  // form to enforce the per-chip 20-groups cap before submit.
+  instance_id?: string;
 }
 
 export interface PreviewOffer {

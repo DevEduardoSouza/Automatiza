@@ -298,6 +298,7 @@ export function useAutomations(): UseAutomationsReturn {
           name: g.name,
           wa_group_id: g.wa_group_id,
           is_favorite: g.is_favorite,
+          instance_id: g.instance_id,
         }))
         .sort((a, b) => {
           if (a.is_favorite && !b.is_favorite) return -1;
@@ -316,6 +317,7 @@ export function useAutomations(): UseAutomationsReturn {
           name: g.name,
           wa_group_id: g.wa_group_id,
           is_favorite: g.is_favorite,
+          instance_id: g.instance_id,
         }))
         .sort((a, b) => {
           if (a.is_favorite && !b.is_favorite) return -1;
