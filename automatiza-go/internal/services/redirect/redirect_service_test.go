@@ -101,6 +101,7 @@ type mockGroupRepo struct {
 	BulkUpdateGroupsFn       func(ctx context.Context, userID string, groupIDs []string, updates map[string]interface{}) (int64, error)
 	CountAllFn               func(ctx context.Context) (int64, error)
 	CountGroupsByInstanceFn  func(ctx context.Context, userID string, instanceID int) (int, error)
+	GetInstancesForGroupsFn  func(ctx context.Context, userID string, waGroupIDs []string) (map[string]*models.Instance, error)
 }
 
 func (m *mockGroupRepo) GetUserGroups(ctx context.Context, userID string, adminOnly bool) ([]models.Group, error) {
@@ -204,6 +205,12 @@ func (m *mockGroupRepo) CountGroupsByInstance(ctx context.Context, userID string
 		return m.CountGroupsByInstanceFn(ctx, userID, instanceID)
 	}
 	return 0, nil
+}
+func (m *mockGroupRepo) GetInstancesForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string]*models.Instance, error) {
+	if m.GetInstancesForGroupsFn != nil {
+		return m.GetInstancesForGroupsFn(ctx, userID, waGroupIDs)
+	}
+	return map[string]*models.Instance{}, nil
 }
 
 var _ repository.GroupRepository = (*mockGroupRepo)(nil)

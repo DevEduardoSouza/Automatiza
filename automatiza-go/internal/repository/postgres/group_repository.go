@@ -453,6 +453,51 @@ func (r *groupRepository) CountGroupsByInstance(ctx context.Context, userID stri
 	return count, nil
 }
 
+func (r *groupRepository) GetInstancesForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string]*models.Instance, error) {
+	result := make(map[string]*models.Instance)
+	if len(waGroupIDs) == 0 {
+		return result, nil
+	}
+
+	query := `
+		SELECT g.wa_group_id,
+		       i.id, i.user_id, i.instance_id, i.friendly_name, i.status, i.qr_code, i.is_default,
+		       i.created_at, i.updated_at
+		FROM groups g
+		JOIN instances i ON i.id = g.instance_id
+		WHERE g.user_id = $1 AND g.wa_group_id = ANY($2::text[])
+	`
+
+	rows, err := r.db.Query(ctx, query, userID, waGroupIDs)
+	if err != nil {
+		r.logger.Error("Failed to query instances for groups",
+			zap.String("userID", userID),
+			zap.Int("groupCount", len(waGroupIDs)),
+			zap.Error(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var waGroupID string
+		var inst models.Instance
+		var createdAt, updatedAt time.Time
+		if err := rows.Scan(
+			&waGroupID,
+			&inst.ID, &inst.UserID, &inst.InstanceID, &inst.FriendlyName, &inst.Status, &inst.QRCode, &inst.IsDefault,
+			&createdAt, &updatedAt,
+		); err != nil {
+			return nil, err
+		}
+		inst.CreatedAt = createdAt.Format(time.RFC3339)
+		inst.UpdatedAt = updatedAt.Format(time.RFC3339)
+		copied := inst
+		result[waGroupID] = &copied
+	}
+
+	return result, rows.Err()
+}
+
 // Helper functions
 
 func (r *groupRepository) scanGroup(row pgx.Row) (*models.Group, error) {

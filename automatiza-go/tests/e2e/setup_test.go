@@ -715,6 +715,10 @@ func (m *mockGroupRepo) CountGroupsByInstance(ctx context.Context, userID string
 	return 0, nil
 }
 
+func (m *mockGroupRepo) GetInstancesForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string]*models.Instance, error) {
+	return map[string]*models.Instance{}, nil
+}
+
 func (m *mockGroupRepo) AddGroup(group *models.Group) {
 	m.groups[group.ID] = group
 	m.byUserID[group.UserID] = append(m.byUserID[group.UserID], *group)

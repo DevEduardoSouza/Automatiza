@@ -477,6 +477,44 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 	return result, nil
 }
 
+// resolveSenderForGroup returns the WAHA session name to use when dispatching
+// to waGroupID. When multi-instance dispatch is enabled and the group's owning
+// chip is connected, that chip's session is returned. Otherwise the caller's
+// fallback (typically the user's first connected instance) is used.
+//
+// When groupInstances is nil or the flag is off, this collapses to fallback —
+// i.e. legacy behaviour where every message goes through the same chip.
+func (s *automationService) resolveSenderForGroup(fallback *models.Instance, groupInstances map[string]*models.Instance, waGroupID string) string {
+	if config.GetFeatureFlags().UseMultiInstanceDispatch && groupInstances != nil {
+		if inst, ok := groupInstances[waGroupID]; ok && inst != nil && inst.IsConnected() {
+			return inst.InstanceID
+		}
+	}
+	if fallback != nil {
+		return fallback.InstanceID
+	}
+	return ""
+}
+
+// fetchGroupInstancesIfEnabled returns the per-group instance map when the
+// multi-instance dispatch flag is on; otherwise returns nil so callers
+// short-circuit to the fallback path with zero overhead. Errors are logged
+// and swallowed: the caller falls back to the singleton instance, which is
+// always at least as available as the per-group lookup.
+func (s *automationService) fetchGroupInstancesIfEnabled(ctx context.Context, userID string, waGroupIDs []string) map[string]*models.Instance {
+	if !config.GetFeatureFlags().UseMultiInstanceDispatch {
+		return nil
+	}
+	groupInstances, err := s.groupRepo.GetInstancesForGroups(ctx, userID, waGroupIDs)
+	if err != nil {
+		s.logger.Warn("Failed to load per-group instances; falling back to singleton routing",
+			zap.String("userID", userID),
+			zap.Error(err))
+		return nil
+	}
+	return groupInstances
+}
+
 func (s *automationService) executeSearchAutomation(ctx context.Context, automation *models.Automation, historyID string) (*models.RunAutomationResult, error) {
 	// Get target groups
 	targetGroups := automation.GetTargetGroups()
@@ -500,6 +538,11 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 	if connectedInstance == nil {
 		return nil, fmt.Errorf("no connected WhatsApp instance")
 	}
+
+	// Resolve per-group instances when multi-instance dispatch is enabled.
+	// Returns nil when flag is off, so the inner loop transparently uses
+	// connectedInstance as the sender.
+	groupInstances := s.fetchGroupInstancesIfEnabled(ctx, automation.UserID, targetGroups)
 
 	// Determine stores to search
 	stores := automation.Stores
@@ -861,8 +904,17 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					imageURL = &offer.Image
 				}
 
+				senderSession := s.resolveSenderForGroup(connectedInstance, groupInstances, groupID)
+				if senderSession == "" {
+					s.logger.Warn("No connected chip for group, skipping dispatch",
+						zap.String("automationID", automation.ID),
+						zap.String("groupID", groupID))
+					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "instance disconnected", withCanonicalKey(canonicalKey, store))
+					continue
+				}
+
 				jobData := &workers.MessageJobData{
-					InstanceName: connectedInstance.InstanceID,
+					InstanceName: senderSession,
 					GroupID:      groupID,
 					Message:      message,
 					ImageURL:     imageURL,

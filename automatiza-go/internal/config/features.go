@@ -25,6 +25,17 @@ type FeatureFlags struct {
 	// When false, reconciliation dispatch log creation is skipped.
 	// Environment variable: FEATURE_USE_GO_RECONCILIATION
 	UseGoReconciliation bool
+
+	// UseMultiInstanceDispatch controls per-group routing in the dispatch layer.
+	// When true, each message is sent through the WhatsApp instance that owns the
+	// destination group (groups.instance_id), falling back to the user's first
+	// connected instance only when the group's own chip is disconnected.
+	// When false (default), legacy behavior is preserved: every message goes
+	// through the user's first connected instance regardless of group ownership.
+	// Defaulting to false provides a rollback path during the multi-instance
+	// rollout.
+	// Environment variable: FEATURE_USE_MULTI_INSTANCE_DISPATCH
+	UseMultiInstanceDispatch bool
 }
 
 var (
@@ -46,15 +57,17 @@ func SetFeatureFlagsLogger(logger *zap.Logger) {
 func LoadFeatureFlags() *FeatureFlags {
 	featureFlagsOnce.Do(func() {
 		globalFeatureFlags = &FeatureFlags{
-			UseGoDispatchLogs:   getEnvBool("FEATURE_USE_GO_DISPATCH_LOGS", true),
-			UseGoReconciliation: getEnvBool("FEATURE_USE_GO_RECONCILIATION", true),
+			UseGoDispatchLogs:        getEnvBool("FEATURE_USE_GO_DISPATCH_LOGS", true),
+			UseGoReconciliation:      getEnvBool("FEATURE_USE_GO_RECONCILIATION", true),
+			UseMultiInstanceDispatch: getEnvBool("FEATURE_USE_MULTI_INSTANCE_DISPATCH", false),
 		}
 
 		// Log feature flag values on load
 		if featureFlagsLogger != nil {
 			featureFlagsLogger.Info("Feature flags loaded",
 				zap.Bool("useGoDispatchLogs", globalFeatureFlags.UseGoDispatchLogs),
-				zap.Bool("useGoReconciliation", globalFeatureFlags.UseGoReconciliation))
+				zap.Bool("useGoReconciliation", globalFeatureFlags.UseGoReconciliation),
+				zap.Bool("useMultiInstanceDispatch", globalFeatureFlags.UseMultiInstanceDispatch))
 		}
 	})
 

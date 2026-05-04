@@ -33,6 +33,7 @@ type Service interface {
 type monitoringService struct {
 	automationRepo  repository.AutomationRepository
 	instanceRepo    repository.InstanceRepository
+	groupRepo       repository.GroupRepository
 	dispatchLogRepo repository.DispatchLogRepository
 
 	shopeeService shopee.Service
@@ -45,9 +46,12 @@ type monitoringService struct {
 
 // NewMonitoringService creates a new monitoring service.
 // IMPORTANT: This now requires a WhatsAppProvider instead of waha.Service.
+// groupRepo is optional: passing nil disables per-group dispatch routing
+// (the service falls back to the user's first connected instance).
 func NewMonitoringService(
 	automationRepo repository.AutomationRepository,
 	instanceRepo repository.InstanceRepository,
+	groupRepo repository.GroupRepository,
 	dispatchLogRepo repository.DispatchLogRepository,
 	shopeeService shopee.Service,
 	mlService mercadolivre.Service,
@@ -58,6 +62,7 @@ func NewMonitoringService(
 	return &monitoringService{
 		automationRepo:  automationRepo,
 		instanceRepo:    instanceRepo,
+		groupRepo:       groupRepo,
 		dispatchLogRepo: dispatchLogRepo,
 		shopeeService:   shopeeService,
 		mlService:       mlService,
@@ -375,14 +380,14 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	if err != nil {
 		return fmt.Errorf("failed to get user instances: %w", err)
 	}
-	var senderSession string
-	for _, inst := range instances {
-		if inst.Status == "connected" {
-			senderSession = inst.InstanceID
+	var fallbackInstance *models.Instance
+	for i := range instances {
+		if instances[i].Status == "connected" {
+			fallbackInstance = &instances[i]
 			break
 		}
 	}
-	if senderSession == "" {
+	if fallbackInstance == nil {
 		s.logger.Warn("No connected WhatsApp instance for automation owner, skipping",
 			zap.String("automationID", automation.ID),
 			zap.String("userID", automation.UserID))
@@ -399,6 +404,21 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		s.logger.Warn("No destination groups configured",
 			zap.String("automationID", automation.ID))
 		return nil
+	}
+
+	// Per-group instance lookup. Returns nil when the flag is off or the
+	// repo is unavailable; in that case dispatchSenderForGroup collapses to
+	// the legacy fallback path (single chip handles every group).
+	var groupInstances map[string]*models.Instance
+	if config.GetFeatureFlags().UseMultiInstanceDispatch && s.groupRepo != nil {
+		gi, gErr := s.groupRepo.GetInstancesForGroups(ctx, automation.UserID, destinationGroups)
+		if gErr != nil {
+			s.logger.Warn("Failed to load per-group instances; falling back to singleton routing",
+				zap.String("userID", automation.UserID),
+				zap.Error(gErr))
+		} else {
+			groupInstances = gi
+		}
 	}
 
 	// Extract first affiliate URL for link custom preview
@@ -418,6 +438,15 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// Skip if same group
 		if groupID == msg.RemoteJID {
 			continue
+		}
+
+		// Resolve sender per group: prefer the group's owning chip when
+		// connected, otherwise fall back to the user's first connected chip.
+		senderSession := fallbackInstance.InstanceID
+		if config.GetFeatureFlags().UseMultiInstanceDispatch && groupInstances != nil {
+			if owner, ok := groupInstances[groupID]; ok && owner != nil && owner.IsConnected() {
+				senderSession = owner.InstanceID
+			}
 		}
 
 		// Atomic dedup claim: SetNX + DB fallback (prevents race conditions)
