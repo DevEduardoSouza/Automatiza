@@ -45,6 +45,10 @@ message Instance {
 
   // Last update timestamp (ISO 8601)
   string updated_at = 6;
+
+  // True when this is the user's default chip. Exactly one instance per user
+  // is the default; the backend enforces uniqueness via a partial unique index.
+  bool is_default = 7;
 }
 
 // ============================================================
@@ -134,6 +138,20 @@ message CheckInstanceStatusResponse {
 }
 
 // ============================================================
+// Set Default Instance
+// ============================================================
+
+message SetDefaultInstanceRequest {
+  // Database ID of the instance to promote to default. The instance must
+  // belong to the authenticated user.
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message SetDefaultInstanceResponse {
+  Instance instance = 1;
+}
+
+// ============================================================
 // Reconnect Instance (WAHA)
 // ============================================================
 
@@ -178,6 +196,10 @@ service InstancesService {
 
   // Deletes a specific instance.
   rpc DeleteInstance(DeleteInstanceRequest) returns (DeleteInstanceResponse);
+
+  // Promotes the given instance to default for the authenticated user.
+  // Atomically clears the previous default in the same transaction.
+  rpc SetDefaultInstance(SetDefaultInstanceRequest) returns (SetDefaultInstanceResponse);
 
   // Checks the status of a WhatsApp instance connection via WAHA.
   rpc CheckInstanceStatus(CheckInstanceStatusRequest) returns (CheckInstanceStatusResponse);
