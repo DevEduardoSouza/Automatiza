@@ -72,3 +72,18 @@ func CheckCanAddGroups(ctx context.Context, repo GroupCounter, userID string, in
 	}
 	return nil
 }
+
+// CheckAutomationGroupsPerInstance enforces the per-chip cap inside a single
+// automation: no chip may host more than MaxGroupsPerInstance groups within
+// the automation's send/monitor list. Caller resolves groups → instance IDs
+// and passes a count map; the helper just enforces the threshold so the
+// quota package stays free of repository/model imports.
+func CheckAutomationGroupsPerInstance(countByInstance map[int]int) error {
+	for instanceID, count := range countByInstance {
+		if count > MaxGroupsPerInstance {
+			return fmt.Errorf("%w: chip id=%d has %d groups in automation, limit is %d",
+				ErrGroupQuotaExceeded, instanceID, count, MaxGroupsPerInstance)
+		}
+	}
+	return nil
+}
