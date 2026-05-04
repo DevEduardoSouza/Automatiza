@@ -351,6 +351,14 @@ func (m *enhancedMockInstanceRepo) DeleteInstance(ctx context.Context, instanceI
 	return nil
 }
 
+func (m *enhancedMockInstanceRepo) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
+	return nil
+}
+
+func (m *enhancedMockInstanceRepo) CountUserInstances(ctx context.Context, userID string) (int, error) {
+	return 0, nil
+}
+
 // ============================================================
 // Enhanced Mock User Role Repository
 // ============================================================

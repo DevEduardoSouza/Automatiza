@@ -8,6 +8,7 @@ type Instance struct {
 	FriendlyName *string `json:"friendly_name,omitempty" db:"friendly_name"`
 	Status       string  `json:"status" db:"status"` // connected|disconnected|pending
 	QRCode       *string `json:"qr_code,omitempty" db:"qr_code"`
+	IsDefault    bool    `json:"is_default" db:"is_default"`
 	CreatedAt    string  `json:"created_at" db:"created_at"`
 	UpdatedAt    string  `json:"updated_at" db:"updated_at"`
 }

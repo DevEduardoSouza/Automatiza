@@ -135,6 +135,11 @@ func (m *mockGroupRepo) CountAll(ctx context.Context) (int64, error) {
 	return args.Get(0).(int64), args.Error(1)
 }
 
+func (m *mockGroupRepo) CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error) {
+	args := m.Called(ctx, userID, instanceID)
+	return args.Int(0), args.Error(1)
+}
+
 // mockInstanceRepoForSync implements repository.InstanceRepository for testing.
 type mockInstanceRepoForSync struct {
 	mock.Mock
@@ -196,6 +201,16 @@ func (m *mockInstanceRepoForSync) UpdateInstanceStatus(ctx context.Context, inst
 func (m *mockInstanceRepoForSync) DeleteInstance(ctx context.Context, instanceID int) error {
 	args := m.Called(ctx, instanceID)
 	return args.Error(0)
+}
+
+func (m *mockInstanceRepoForSync) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
+	args := m.Called(ctx, userID, instanceID)
+	return args.Error(0)
+}
+
+func (m *mockInstanceRepoForSync) CountUserInstances(ctx context.Context, userID string) (int, error) {
+	args := m.Called(ctx, userID)
+	return args.Int(0), args.Error(1)
 }
 
 // mockProgressPub implements workers.JobProgressPublisher for testing.

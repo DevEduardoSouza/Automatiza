@@ -258,6 +258,8 @@ type mockInstanceRepo struct {
 	UpsertInstanceFunc          func(ctx context.Context, userID string, data *models.Instance) (*models.Instance, error)
 	UpdateInstanceStatusFunc    func(ctx context.Context, instanceID int, status string) error
 	DeleteInstanceFunc          func(ctx context.Context, instanceID int) error
+	SetDefaultInstanceFunc      func(ctx context.Context, userID string, instanceID int) error
+	CountUserInstancesFunc      func(ctx context.Context, userID string) (int, error)
 }
 
 func (m *mockInstanceRepo) GetUserInstances(ctx context.Context, userID string) ([]models.Instance, error) {
@@ -303,15 +305,28 @@ func (m *mockInstanceRepo) DeleteInstance(ctx context.Context, instanceID int) e
 	}
 	return nil
 }
+func (m *mockInstanceRepo) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
+	if m.SetDefaultInstanceFunc != nil {
+		return m.SetDefaultInstanceFunc(ctx, userID, instanceID)
+	}
+	return nil
+}
+func (m *mockInstanceRepo) CountUserInstances(ctx context.Context, userID string) (int, error) {
+	if m.CountUserInstancesFunc != nil {
+		return m.CountUserInstancesFunc(ctx, userID)
+	}
+	return 0, nil
+}
 
 // ---------------------------------------------------------------------------
 // Mock: GroupRepository
 // ---------------------------------------------------------------------------
 
 type mockGroupRepo struct {
-	GetUserGroupsFunc  func(ctx context.Context, userID string, adminOnly bool) ([]models.Group, error)
-	GetGroupByIDFunc   func(ctx context.Context, groupID string) (*models.Group, error)
-	DeleteByInstanceFn func(ctx context.Context, userID string, instanceID int) error
+	GetUserGroupsFunc          func(ctx context.Context, userID string, adminOnly bool) ([]models.Group, error)
+	GetGroupByIDFunc           func(ctx context.Context, groupID string) (*models.Group, error)
+	DeleteByInstanceFn         func(ctx context.Context, userID string, instanceID int) error
+	CountGroupsByInstanceFunc  func(ctx context.Context, userID string, instanceID int) (int, error)
 }
 
 func (m *mockGroupRepo) GetUserGroups(ctx context.Context, userID string, adminOnly bool) ([]models.Group, error) {
@@ -369,6 +384,12 @@ func (m *mockGroupRepo) BulkUpdateGroups(ctx context.Context, userID string, gro
 	return 0, nil
 }
 func (m *mockGroupRepo) CountAll(ctx context.Context) (int64, error) {
+	return 0, nil
+}
+func (m *mockGroupRepo) CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error) {
+	if m.CountGroupsByInstanceFunc != nil {
+		return m.CountGroupsByInstanceFunc(ctx, userID, instanceID)
+	}
 	return 0, nil
 }
 

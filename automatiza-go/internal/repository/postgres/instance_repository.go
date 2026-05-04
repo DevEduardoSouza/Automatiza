@@ -5,6 +5,7 @@ import (
 	"automatiza-go/internal/repository"
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -24,13 +25,27 @@ func NewInstanceRepository(db *DB, logger *zap.Logger) repository.InstanceReposi
 	}
 }
 
+const instanceColumns = `id, user_id, instance_id, friendly_name, status, qr_code, is_default, created_at, updated_at`
+
+func scanInstance(row pgx.Row, i *models.Instance) error {
+	var createdAt, updatedAt time.Time
+	err := row.Scan(
+		&i.ID, &i.UserID, &i.InstanceID, &i.FriendlyName, &i.Status, &i.QRCode, &i.IsDefault,
+		&createdAt, &updatedAt,
+	)
+	if err != nil {
+		return err
+	}
+	i.CreatedAt = createdAt.Format(time.RFC3339)
+	i.UpdatedAt = updatedAt.Format(time.RFC3339)
+	return nil
+}
+
 func (r *instanceRepository) GetUserInstances(ctx context.Context, userID string) ([]models.Instance, error) {
-	query := `
-		SELECT id, user_id, instance_id, friendly_name, status, qr_code, created_at, updated_at
+	query := `SELECT ` + instanceColumns + `
 		FROM instances
 		WHERE user_id = $1
-		ORDER BY created_at DESC
-	`
+		ORDER BY created_at DESC`
 
 	rows, err := r.db.Query(ctx, query, userID)
 	if err != nil {
@@ -41,16 +56,9 @@ func (r *instanceRepository) GetUserInstances(ctx context.Context, userID string
 	var instances []models.Instance
 	for rows.Next() {
 		var i models.Instance
-		var createdAt, updatedAt time.Time
-		err := rows.Scan(
-			&i.ID, &i.UserID, &i.InstanceID, &i.FriendlyName, &i.Status, &i.QRCode,
-			&createdAt, &updatedAt,
-		)
-		if err != nil {
+		if err := scanInstance(rows, &i); err != nil {
 			return nil, err
 		}
-		i.CreatedAt = createdAt.Format(time.RFC3339)
-		i.UpdatedAt = updatedAt.Format(time.RFC3339)
 		instances = append(instances, i)
 	}
 
@@ -58,87 +66,49 @@ func (r *instanceRepository) GetUserInstances(ctx context.Context, userID string
 }
 
 func (r *instanceRepository) GetInstanceByID(ctx context.Context, instanceID int) (*models.Instance, error) {
-	query := `
-		SELECT id, user_id, instance_id, friendly_name, status, qr_code, created_at, updated_at
-		FROM instances
-		WHERE id = $1
-	`
+	query := `SELECT ` + instanceColumns + ` FROM instances WHERE id = $1`
 
 	var i models.Instance
-	var createdAt, updatedAt time.Time
-	err := r.db.QueryRow(ctx, query, instanceID).Scan(
-		&i.ID, &i.UserID, &i.InstanceID, &i.FriendlyName, &i.Status, &i.QRCode,
-		&createdAt, &updatedAt,
-	)
-	if err != nil {
+	if err := scanInstance(r.db.QueryRow(ctx, query, instanceID), &i); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-
-	i.CreatedAt = createdAt.Format(time.RFC3339)
-	i.UpdatedAt = updatedAt.Format(time.RFC3339)
 	return &i, nil
 }
 
 func (r *instanceRepository) GetInstanceByName(ctx context.Context, instanceName string) (*models.Instance, error) {
-	query := `
-		SELECT id, user_id, instance_id, friendly_name, status, qr_code, created_at, updated_at
-		FROM instances
-		WHERE instance_id = $1
-	`
+	query := `SELECT ` + instanceColumns + ` FROM instances WHERE instance_id = $1`
 
 	var i models.Instance
-	var createdAt, updatedAt time.Time
-	err := r.db.QueryRow(ctx, query, instanceName).Scan(
-		&i.ID, &i.UserID, &i.InstanceID, &i.FriendlyName, &i.Status, &i.QRCode,
-		&createdAt, &updatedAt,
-	)
-	if err != nil {
+	if err := scanInstance(r.db.QueryRow(ctx, query, instanceName), &i); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-
-	i.CreatedAt = createdAt.Format(time.RFC3339)
-	i.UpdatedAt = updatedAt.Format(time.RFC3339)
 	return &i, nil
 }
 
 func (r *instanceRepository) GetInstanceByUserAndName(ctx context.Context, userID, instanceName string) (*models.Instance, error) {
-	query := `
-		SELECT id, user_id, instance_id, friendly_name, status, qr_code, created_at, updated_at
-		FROM instances
-		WHERE user_id = $1 AND instance_id = $2
-	`
+	query := `SELECT ` + instanceColumns + ` FROM instances WHERE user_id = $1 AND instance_id = $2`
 
 	var i models.Instance
-	var createdAt, updatedAt time.Time
-	err := r.db.QueryRow(ctx, query, userID, instanceName).Scan(
-		&i.ID, &i.UserID, &i.InstanceID, &i.FriendlyName, &i.Status, &i.QRCode,
-		&createdAt, &updatedAt,
-	)
-	if err != nil {
+	if err := scanInstance(r.db.QueryRow(ctx, query, userID, instanceName), &i); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
-
-	i.CreatedAt = createdAt.Format(time.RFC3339)
-	i.UpdatedAt = updatedAt.Format(time.RFC3339)
 	return &i, nil
 }
 
 func (r *instanceRepository) GetAllConnectedInstances(ctx context.Context) ([]models.Instance, error) {
-	query := `
-		SELECT id, user_id, instance_id, friendly_name, status, qr_code, created_at, updated_at
+	query := `SELECT ` + instanceColumns + `
 		FROM instances
 		WHERE status IN ('connected', 'open')
-		ORDER BY created_at DESC
-	`
+		ORDER BY created_at DESC`
 
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
@@ -149,16 +119,9 @@ func (r *instanceRepository) GetAllConnectedInstances(ctx context.Context) ([]mo
 	var instances []models.Instance
 	for rows.Next() {
 		var i models.Instance
-		var createdAt, updatedAt time.Time
-		err := rows.Scan(
-			&i.ID, &i.UserID, &i.InstanceID, &i.FriendlyName, &i.Status, &i.QRCode,
-			&createdAt, &updatedAt,
-		)
-		if err != nil {
+		if err := scanInstance(rows, &i); err != nil {
 			return nil, err
 		}
-		i.CreatedAt = createdAt.Format(time.RFC3339)
-		i.UpdatedAt = updatedAt.Format(time.RFC3339)
 		instances = append(instances, i)
 	}
 
@@ -167,6 +130,9 @@ func (r *instanceRepository) GetAllConnectedInstances(ctx context.Context) ([]mo
 
 func (r *instanceRepository) UpsertInstance(ctx context.Context, userID string, data *models.Instance) (*models.Instance, error) {
 	now := time.Now().UTC()
+	// is_default is intentionally not set here: on INSERT it defaults to FALSE
+	// (a fresh chip is never automatically promoted to default), and on UPDATE
+	// the existing flag is preserved by omitting it from the SET clause.
 	query := `
 		INSERT INTO instances (user_id, instance_id, friendly_name, status, qr_code, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -175,18 +141,12 @@ func (r *instanceRepository) UpsertInstance(ctx context.Context, userID string, 
 			status = EXCLUDED.status,
 			qr_code = EXCLUDED.qr_code,
 			updated_at = EXCLUDED.updated_at
-		RETURNING id, user_id, instance_id, friendly_name, status, qr_code, created_at, updated_at
-	`
+		RETURNING ` + instanceColumns
 
 	var i models.Instance
-	var createdAt, updatedAt time.Time
-	err := r.db.QueryRow(ctx, query,
+	if err := scanInstance(r.db.QueryRow(ctx, query,
 		userID, data.InstanceID, data.FriendlyName, data.Status, data.QRCode, now, now,
-	).Scan(
-		&i.ID, &i.UserID, &i.InstanceID, &i.FriendlyName, &i.Status, &i.QRCode,
-		&createdAt, &updatedAt,
-	)
-	if err != nil {
+	), &i); err != nil {
 		r.logger.Error("Failed to upsert instance",
 			zap.String("userID", userID),
 			zap.String("instanceID", data.InstanceID),
@@ -194,8 +154,6 @@ func (r *instanceRepository) UpsertInstance(ctx context.Context, userID string, 
 		return nil, err
 	}
 
-	i.CreatedAt = createdAt.Format(time.RFC3339)
-	i.UpdatedAt = updatedAt.Format(time.RFC3339)
 	return &i, nil
 }
 
@@ -254,4 +212,47 @@ func (r *instanceRepository) ClearInstanceQRCode(ctx context.Context, instanceID
 
 	_, err := r.db.pool.Exec(ctx, query, time.Now().UTC(), instanceID)
 	return err
+}
+
+func (r *instanceRepository) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
+	tx, err := r.db.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	now := time.Now().UTC()
+
+	// Clear any existing default for this user. Cheap when no row matches.
+	if _, err := tx.Exec(ctx,
+		`UPDATE instances SET is_default = FALSE, updated_at = $1 WHERE user_id = $2 AND is_default = TRUE`,
+		now, userID,
+	); err != nil {
+		return err
+	}
+
+	// Promote the requested instance. Ownership check is enforced inline.
+	res, err := tx.Exec(ctx,
+		`UPDATE instances SET is_default = TRUE, updated_at = $1 WHERE id = $2 AND user_id = $3`,
+		now, instanceID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return fmt.Errorf("instance %d not found or not owned by user %s", instanceID, userID)
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (r *instanceRepository) CountUserInstances(ctx context.Context, userID string) (int, error) {
+	var count int
+	err := r.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM instances WHERE user_id = $1`, userID,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }

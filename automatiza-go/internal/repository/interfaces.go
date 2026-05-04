@@ -56,6 +56,13 @@ type InstanceRepository interface {
 	UpsertInstance(ctx context.Context, userID string, data *models.Instance) (*models.Instance, error)
 	UpdateInstanceStatus(ctx context.Context, instanceID int, status string) error
 	DeleteInstance(ctx context.Context, instanceID int) error
+	// SetDefaultInstance marks the given instance as the user's default chip.
+	// Atomically clears any prior default for the user, so the partial unique
+	// index uniq_instances_user_default is preserved.
+	SetDefaultInstance(ctx context.Context, userID string, instanceID int) error
+	// CountUserInstances returns the number of instances owned by a user.
+	// Used for quota enforcement before creating a new instance.
+	CountUserInstances(ctx context.Context, userID string) (int, error)
 }
 
 // GroupPaginatedResult holds paginated groups result
@@ -86,6 +93,9 @@ type GroupRepository interface {
 	DeleteGroupsByInstance(ctx context.Context, userID string, instanceID int) error
 	BulkUpdateGroups(ctx context.Context, userID string, groupIDs []string, updates map[string]interface{}) (int64, error)
 	CountAll(ctx context.Context) (int64, error)
+	// CountGroupsByInstance returns the number of groups bound to an instance for a user.
+	// Used for quota enforcement (MaxGroupsPerInstance).
+	CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error)
 }
 
 // SyncOptions represents options for group syncing

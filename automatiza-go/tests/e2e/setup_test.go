@@ -578,6 +578,14 @@ func (m *mockInstanceRepo) DeleteInstance(ctx context.Context, instanceID int) e
 	return nil
 }
 
+func (m *mockInstanceRepo) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
+	return nil
+}
+
+func (m *mockInstanceRepo) CountUserInstances(ctx context.Context, userID string) (int, error) {
+	return len(m.byUserID[userID]), nil
+}
+
 func (m *mockInstanceRepo) AddInstance(instance *models.Instance) {
 	m.instances[instance.ID] = instance
 	m.byUserID[instance.UserID] = append(m.byUserID[instance.UserID], *instance)
@@ -700,6 +708,10 @@ func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID strin
 }
 
 func (m *mockGroupRepo) CountAll(ctx context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockGroupRepo) CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error) {
 	return 0, nil
 }
 

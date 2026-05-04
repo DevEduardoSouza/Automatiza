@@ -204,6 +204,11 @@ func (m *MockGroupRepository) GetUserGroupsPaginated(ctx context.Context, userID
 	return args.Get(0).(*repository.GroupPaginatedResult), args.Error(1)
 }
 
+func (m *MockGroupRepository) CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error) {
+	args := m.Called(ctx, userID, instanceID)
+	return args.Int(0), args.Error(1)
+}
+
 // MockInstanceRepository implements repository.InstanceRepository for testing
 type MockInstanceRepository struct {
 	mock.Mock
@@ -265,6 +270,16 @@ func (m *MockInstanceRepository) UpdateInstanceStatus(ctx context.Context, insta
 func (m *MockInstanceRepository) DeleteInstance(ctx context.Context, instanceID int) error {
 	args := m.Called(ctx, instanceID)
 	return args.Error(0)
+}
+
+func (m *MockInstanceRepository) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
+	args := m.Called(ctx, userID, instanceID)
+	return args.Error(0)
+}
+
+func (m *MockInstanceRepository) CountUserInstances(ctx context.Context, userID string) (int, error) {
+	args := m.Called(ctx, userID)
+	return args.Int(0), args.Error(1)
 }
 
 // MockMLService implements mercadolivre.Service for testing

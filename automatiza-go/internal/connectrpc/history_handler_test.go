@@ -308,6 +308,11 @@ func (m *mockGroupRepoForHistory) CountAll(ctx context.Context) (int64, error) {
 	return args.Get(0).(int64), args.Error(1)
 }
 
+func (m *mockGroupRepoForHistory) CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error) {
+	args := m.Called(ctx, userID, instanceID)
+	return args.Int(0), args.Error(1)
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================

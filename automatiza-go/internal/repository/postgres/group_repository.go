@@ -437,6 +437,22 @@ func (r *groupRepository) CountAll(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
+func (r *groupRepository) CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error) {
+	var count int
+	err := r.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM groups WHERE user_id = $1 AND instance_id = $2`,
+		userID, instanceID,
+	).Scan(&count)
+	if err != nil {
+		r.logger.Error("Failed to count groups by instance",
+			zap.String("userID", userID),
+			zap.Int("instanceID", instanceID),
+			zap.Error(err))
+		return 0, err
+	}
+	return count, nil
+}
+
 // Helper functions
 
 func (r *groupRepository) scanGroup(row pgx.Row) (*models.Group, error) {

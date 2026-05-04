@@ -117,6 +117,14 @@ func (m *stubInstanceRepo) DeleteInstance(ctx context.Context, instanceID int) e
 	return nil
 }
 
+func (m *stubInstanceRepo) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
+	return nil
+}
+
+func (m *stubInstanceRepo) CountUserInstances(ctx context.Context, userID string) (int, error) {
+	return 0, nil
+}
+
 func TestDispatchLogProcessor_ProcessMessage(t *testing.T) {
 	logger := zap.NewNop()
 

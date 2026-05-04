@@ -133,6 +133,11 @@ func (m *mockGroupRepo) CountAll(ctx context.Context) (int64, error) {
 	return args.Get(0).(int64), args.Error(1)
 }
 
+func (m *mockGroupRepo) CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error) {
+	args := m.Called(ctx, userID, instanceID)
+	return args.Int(0), args.Error(1)
+}
+
 // mockInstanceRepo implements repository.InstanceRepository for testing.
 type mockInstanceRepo struct {
 	mock.Mock
@@ -194,6 +199,16 @@ func (m *mockInstanceRepo) UpdateInstanceStatus(ctx context.Context, instanceID 
 func (m *mockInstanceRepo) DeleteInstance(ctx context.Context, instanceID int) error {
 	args := m.Called(ctx, instanceID)
 	return args.Error(0)
+}
+
+func (m *mockInstanceRepo) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
+	args := m.Called(ctx, userID, instanceID)
+	return args.Error(0)
+}
+
+func (m *mockInstanceRepo) CountUserInstances(ctx context.Context, userID string) (int, error) {
+	args := m.Called(ctx, userID)
+	return args.Int(0), args.Error(1)
 }
 
 // mockQueueClient provides a mock queue client for testing.
