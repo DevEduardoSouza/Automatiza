@@ -313,6 +313,14 @@ func (m *mockGroupRepoForHistory) CountGroupsByInstance(ctx context.Context, use
 	return args.Int(0), args.Error(1)
 }
 
+func (m *mockGroupRepoForHistory) GetInstancesForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string]*models.Instance, error) {
+	args := m.Called(ctx, userID, waGroupIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string]*models.Instance), args.Error(1)
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================

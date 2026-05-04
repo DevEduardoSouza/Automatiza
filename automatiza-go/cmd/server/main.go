@@ -480,6 +480,7 @@ func main() {
 	monitoringService := monitoring.NewMonitoringService(
 		automationRepo,
 		instanceRepo,
+		groupRepo,
 		dispatchLogRepo,
 		shopeeService,
 		mlService,

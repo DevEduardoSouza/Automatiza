@@ -140,6 +140,14 @@ func (m *mockGroupRepo) CountGroupsByInstance(ctx context.Context, userID string
 	return args.Int(0), args.Error(1)
 }
 
+func (m *mockGroupRepo) GetInstancesForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string]*models.Instance, error) {
+	args := m.Called(ctx, userID, waGroupIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string]*models.Instance), args.Error(1)
+}
+
 // mockInstanceRepoForSync implements repository.InstanceRepository for testing.
 type mockInstanceRepoForSync struct {
 	mock.Mock

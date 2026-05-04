@@ -96,6 +96,11 @@ type GroupRepository interface {
 	// CountGroupsByInstance returns the number of groups bound to an instance for a user.
 	// Used for quota enforcement (MaxGroupsPerInstance).
 	CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error)
+	// GetInstancesForGroups returns a map keyed by wa_group_id of the instance that
+	// owns each group, joining groups.instance_id -> instances. Used by the dispatch
+	// router to send messages through the chip that owns the group instead of the
+	// user's first connected instance. Missing groups are simply absent from the map.
+	GetInstancesForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string]*models.Instance, error)
 }
 
 // SyncOptions represents options for group syncing

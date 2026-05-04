@@ -95,6 +95,11 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		}, nil
 	}
 
+	// Resolve per-group instances when multi-instance dispatch is enabled.
+	// Returns nil when flag is off, so the inner loop transparently uses
+	// connectedInstance as the sender.
+	groupInstances := s.fetchGroupInstancesIfEnabled(ctx, automation.UserID, validGroups)
+
 	// Get items per run (defaults to 1 for LIST mode per Node.js parity)
 	// Clamped to 1-20 range to match frontend validation
 	itemsPerRun := 1
@@ -382,9 +387,17 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				}
 			}
 
+			senderSession := s.resolveSenderForGroup(connectedInstance, groupInstances, groupID)
+			if senderSession == "" {
+				s.logger.Warn("No connected chip for group, skipping LIST dispatch",
+					zap.String("automationID", automation.ID),
+					zap.String("groupID", groupID))
+				continue
+			}
+
 			// Enqueue message for sending
 			jobData := &workers.MessageJobData{
-				InstanceName:  connectedInstance.InstanceID,
+				InstanceName:  senderSession,
 				GroupID:       groupID,
 				Message:       message,
 				ImageURL:      imageURL,

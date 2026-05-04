@@ -1133,6 +1133,7 @@ func TestNewMonitoringService(t *testing.T) {
 	svc := NewMonitoringService(
 		&mockAutomationRepo{},
 		&mockInstanceRepo{},
+		nil, // groupRepo: per-group routing disabled (tests don't exercise multi-instance path)
 		&mockDispatchLogRepo{},
 		&mockShopeeService{},
 		&mockMLService{},
