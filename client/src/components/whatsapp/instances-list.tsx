@@ -1,0 +1,202 @@
+import type { LocalInstance } from '@/hooks/use-instances-connect';
+import { useInstancesConnect } from '@/hooks/use-instances-connect';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2, Star, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+
+const MAX_INSTANCES_PER_USER = 10;
+
+const colors = {
+  wine: '#8D2D53',
+  wineBg: 'rgba(141, 45, 83, 0.08)',
+  wineBorder: 'rgba(141, 45, 83, 0.2)',
+  wineTextMuted: 'rgba(141, 45, 83, 0.6)',
+  defaultBadgeBg: 'rgba(212, 175, 55, 0.15)',
+  defaultBadgeBorder: 'rgba(212, 175, 55, 0.4)',
+  defaultBadgeText: '#a78920',
+  connectedDot: '#22c55e',
+  disconnectedDot: '#ef4444',
+  pendingDot: '#f59e0b',
+};
+
+function statusDot(status: LocalInstance['status']): string {
+  if (status === 'connected') return colors.connectedDot;
+  if (status === 'disconnected') return colors.disconnectedDot;
+  return colors.pendingDot;
+}
+
+interface InstanceRowProps {
+  instance: LocalInstance;
+  onSetDefault: (id: string) => void;
+  onDelete: (id: string, name: string) => void;
+  busy: boolean;
+}
+
+function InstanceRow({ instance, onSetDefault, onDelete, busy }: InstanceRowProps) {
+  const { t } = useTranslation();
+  const statusLabel =
+    instance.status === 'connected'
+      ? t('pages.whatsapp.instancesList.statusConnected', 'Conectado')
+      : instance.status === 'disconnected'
+        ? t('pages.whatsapp.instancesList.statusDisconnected', 'Desconectado')
+        : t('pages.whatsapp.instancesList.statusPending', 'Pendente');
+
+  return (
+    <div
+      className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border p-3 sm:p-4"
+      style={{ backgroundColor: '#ffffff', borderColor: colors.wineBorder }}
+    >
+      <div className="flex items-start gap-3 min-w-0 flex-1">
+        <div
+          className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: statusDot(instance.status) }}
+          aria-label={statusLabel}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-medium text-sm truncate" style={{ color: '#18181b' }}>
+              {instance.instance_id}
+            </p>
+            {instance.is_default && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: colors.defaultBadgeBg,
+                  borderColor: colors.defaultBadgeBorder,
+                  color: colors.defaultBadgeText,
+                }}
+              >
+                <Star className="h-3 w-3 fill-current" />
+                {t('pages.whatsapp.instancesList.defaultBadge', 'Padrão')}
+              </span>
+            )}
+          </div>
+          <p className="text-xs mt-0.5" style={{ color: colors.wineTextMuted }}>
+            {statusLabel}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex gap-2 self-stretch sm:self-auto">
+        {!instance.is_default && (
+          <button
+            type="button"
+            onClick={() => onSetDefault(instance.id)}
+            disabled={busy}
+            className="inline-flex items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Star className="h-3.5 w-3.5" />
+            {t('pages.whatsapp.instancesList.setDefault', 'Tornar padrão')}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onDelete(instance.id, instance.instance_id)}
+          disabled={busy}
+          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm transition-all hover:-translate-y-0.5 hover:border-red-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          {t('pages.whatsapp.instancesList.remove', 'Remover')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Lists all WhatsApp instances belonging to the current user with per-instance
+ * actions (set as default, remove). Renders nothing when the user has zero
+ * instances — the existing connection card handles the "first connect" flow.
+ *
+ * Multi-instance support is the goal of Fase 3; this component is the
+ * surfaced UI for the backend already deployed in Fases 0-2.
+ */
+export function InstancesList() {
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const {
+    instances,
+    loading,
+    setDefaultInstance,
+    deleteInstance,
+    isSettingDefault,
+    isDeletingInstance,
+  } = useInstancesConnect();
+
+  if (loading && instances.length === 0) {
+    return null;
+  }
+
+  if (instances.length === 0) {
+    return null;
+  }
+
+  const busy = isSettingDefault || isDeletingInstance;
+
+  const handleSetDefault = async (id: string) => {
+    try {
+      await setDefaultInstance(id);
+      toast({
+        title: t('pages.whatsapp.instancesList.defaultSet', 'Chip padrão atualizado'),
+      });
+    } catch {
+      // Hook already shows error toast via getErrorInfo.
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    const confirmed = window.confirm(
+      t('pages.whatsapp.instancesList.confirmDelete', {
+        name,
+        defaultValue: 'Remover o chip "{{name}}"? Grupos vinculados a ele perderão o vínculo.',
+      })
+    );
+    if (!confirmed) return;
+    try {
+      await deleteInstance(id);
+      toast({
+        title: t('pages.whatsapp.instancesList.removed', 'Chip removido'),
+      });
+    } catch {
+      // Hook already shows error toast.
+    }
+  };
+
+  return (
+    <div
+      className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 mb-5 xs:mb-6 sm:mb-8 lg:mb-10"
+      style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3
+            className="text-base xs:text-lg font-semibold tracking-tight"
+            style={{ color: '#18181b' }}
+          >
+            {t('pages.whatsapp.instancesList.title', 'Meus chips')}
+          </h3>
+          <p className="text-xs xs:text-sm tracking-tight" style={{ color: colors.wineTextMuted }}>
+            {t('pages.whatsapp.instancesList.subtitle', {
+              count: instances.length,
+              max: MAX_INSTANCES_PER_USER,
+              defaultValue: '{{count}} de {{max}} conectados',
+            })}
+          </p>
+        </div>
+        {busy && <Loader2 className="h-4 w-4 animate-spin" style={{ color: colors.wine }} />}
+      </div>
+
+      <div className="space-y-2 xs:space-y-3">
+        {instances.map((inst) => (
+          <InstanceRow
+            key={inst.id}
+            instance={inst}
+            onSetDefault={handleSetDefault}
+            onDelete={handleDelete}
+            busy={busy}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}

@@ -16,6 +16,8 @@ import {
   type ListUserInstancesResponse,
   ReconnectInstanceRequestSchema,
   type ReconnectInstanceResponse,
+  SetDefaultInstanceRequestSchema,
+  type SetDefaultInstanceResponse,
   UpsertInstanceStatusRequestSchema,
   type UpsertInstanceStatusResponse,
 } from '@/gen/instances/v1/instances_pb';
@@ -39,6 +41,7 @@ export interface LocalInstance {
   user_id: string;
   instance_id: string;
   status: LocalInstanceStatus;
+  is_default: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -71,6 +74,7 @@ interface UseInstancesConnectReturn {
   cleanupInvalidInstances: () => Promise<number>;
   deleteDisconnectedInstances: () => Promise<number>;
   deleteInstance: (id: string) => Promise<void>;
+  setDefaultInstance: (id: string) => Promise<LocalInstance>;
   checkInstanceStatus: (instanceName: string) => Promise<CheckInstanceStatusResult>;
   reconnectInstance: (instanceName: string) => Promise<ReconnectInstanceResult>;
 
@@ -80,6 +84,7 @@ interface UseInstancesConnectReturn {
   isCleaning: boolean;
   isDeletingDisconnected: boolean;
   isDeletingInstance: boolean;
+  isSettingDefault: boolean;
   isCheckingStatus: boolean;
   isReconnecting: boolean;
 }
@@ -113,6 +118,7 @@ function fromProtoInstance(instance: Instance): LocalInstance {
     user_id: instance.userId,
     instance_id: instance.instanceId,
     status: fromProtoStatus(instance.status),
+    is_default: instance.isDefault ?? false,
     created_at: instance.createdAt,
     updated_at: instance.updatedAt,
   };
@@ -387,6 +393,40 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
   });
 
   // ============================================================
+  // Set Default Instance
+  // ============================================================
+
+  const setDefaultMutation = useMutation({
+    mutationFn: async (id: string): Promise<LocalInstance> => {
+      if (!user?.id) {
+        throw new Error(t('common.errors.notAuthenticated'));
+      }
+
+      const client = createClient(InstancesService, transport);
+      const response: SetDefaultInstanceResponse = await client.setDefaultInstance(
+        create(SetDefaultInstanceRequestSchema, { id })
+      );
+
+      if (!response.instance) {
+        throw new Error(t('pages.whatsapp.errors.upsertFailed'));
+      }
+
+      return fromProtoInstance(response.instance);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['instances'] });
+    },
+    onError: (error: unknown) => {
+      const errorInfo = getErrorInfo(error);
+      toast({
+        variant: 'destructive',
+        title: t('common.error'),
+        description: errorInfo.userMessage,
+      });
+    },
+  });
+
+  // ============================================================
   // Check Instance Status (WAHA)
   // ============================================================
 
@@ -485,6 +525,13 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
     [deleteInstanceMutation]
   );
 
+  const setDefaultInstance = useCallback(
+    async (id: string): Promise<LocalInstance> => {
+      return setDefaultMutation.mutateAsync(id);
+    },
+    [setDefaultMutation]
+  );
+
   const checkInstanceStatus = useCallback(
     async (instanceName: string): Promise<CheckInstanceStatusResult> => {
       return checkStatusMutation.mutateAsync(instanceName);
@@ -511,6 +558,7 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
     cleanupInvalidInstances,
     deleteDisconnectedInstances,
     deleteInstance,
+    setDefaultInstance,
     checkInstanceStatus,
     reconnectInstance,
 
@@ -520,6 +568,7 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
     isCleaning: cleanupMutation.isPending,
     isDeletingDisconnected: deleteDisconnectedMutation.isPending,
     isDeletingInstance: deleteInstanceMutation.isPending,
+    isSettingDefault: setDefaultMutation.isPending,
     isCheckingStatus: checkStatusMutation.isPending,
     isReconnecting: reconnectMutation.isPending,
   };
