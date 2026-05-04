@@ -238,6 +238,16 @@ func (m *MockInstanceRepository) DeleteInstance(ctx context.Context, instanceID 
 	return args.Error(0)
 }
 
+func (m *MockInstanceRepository) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
+	args := m.Called(ctx, userID, instanceID)
+	return args.Error(0)
+}
+
+func (m *MockInstanceRepository) CountUserInstances(ctx context.Context, userID string) (int, error) {
+	args := m.Called(ctx, userID)
+	return args.Int(0), args.Error(1)
+}
+
 // MockGroupRepository implements repository.GroupRepository
 type MockGroupRepository struct {
 	mock.Mock
@@ -345,6 +355,11 @@ func (m *MockGroupRepository) BulkUpdateGroups(ctx context.Context, userID strin
 func (m *MockGroupRepository) CountAll(ctx context.Context) (int64, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockGroupRepository) CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error) {
+	args := m.Called(ctx, userID, instanceID)
+	return args.Int(0), args.Error(1)
 }
 
 // MockDispatchLogRepository implements repository.DispatchLogRepository

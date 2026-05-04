@@ -148,6 +148,16 @@ func (m *mockInstanceRepo) DeleteInstance(ctx context.Context, id int) error {
 	return args.Error(0)
 }
 
+func (m *mockInstanceRepo) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
+	args := m.Called(ctx, userID, instanceID)
+	return args.Error(0)
+}
+
+func (m *mockInstanceRepo) CountUserInstances(ctx context.Context, userID string) (int, error) {
+	args := m.Called(ctx, userID)
+	return args.Int(0), args.Error(1)
+}
+
 // mockMessageProcessor implements MessageWebhookProcessor for testing.
 type mockMessageProcessor struct {
 	mock.Mock
