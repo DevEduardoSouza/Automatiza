@@ -432,6 +432,11 @@ func TestIsMLLink(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "meli.la short link",
+			url:  "https://meli.la/28fhqrh",
+			want: true,
+		},
+		{
 			name: "case insensitive ML",
 			url:  "https://MERCADOLIVRE.COM.BR/item",
 			want: true,

@@ -26,7 +26,12 @@ function isSupportedProductUrl(raw: string): boolean {
     const u = new URL(String(raw || '').trim());
     const host = u.hostname.toLowerCase();
 
-    // Mercado Livre
+    // Mercado Livre official short link — destination only known after redirect
+    if (host === 'meli.la') {
+      return true;
+    }
+
+    // Mercado Livre full domain
     if (host.includes('mercadolivre.') || host.includes('mercadolibre.')) {
       const path = u.pathname.toLowerCase();
       const full = u.href.toLowerCase();

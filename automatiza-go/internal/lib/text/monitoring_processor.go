@@ -149,12 +149,14 @@ func IsShopeeLink(url string) bool {
 		strings.Contains(lowerURL, "shp.ee")
 }
 
-// IsMLLink checks if a URL is a Mercado Livre link
+// IsMLLink checks if a URL is a Mercado Livre link, including the
+// official short-link domain meli.la.
 func IsMLLink(url string) bool {
 	lowerURL := strings.ToLower(url)
 	return strings.Contains(lowerURL, "mercadolivre.com.br") ||
 		strings.Contains(lowerURL, "mercadolibre.com") ||
-		strings.Contains(lowerURL, "ml.com.br")
+		strings.Contains(lowerURL, "ml.com.br") ||
+		strings.Contains(lowerURL, "meli.la")
 }
 
 // ReplaceLinksInText replaces links in text with new links

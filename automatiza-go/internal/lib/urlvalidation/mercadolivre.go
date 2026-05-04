@@ -93,8 +93,9 @@ func ValidateProductURL(rawURL string) error {
 
 	host := strings.ToLower(u.Hostname())
 
-	// Check Mercado Livre
-	isML := strings.Contains(host, "mercadolivre.") || strings.Contains(host, "mercadolibre.")
+	// Check Mercado Livre (full domain or official short link "meli.la")
+	isMLShort := host == "meli.la"
+	isML := isMLShort || strings.Contains(host, "mercadolivre.") || strings.Contains(host, "mercadolibre.")
 	// Check Shopee
 	isShopee := strings.Contains(host, "shopee.com") || strings.Contains(host, "shp.ee")
 
@@ -107,7 +108,9 @@ func ValidateProductURL(rawURL string) error {
 		)
 	}
 
-	if isML {
+	// Short links (meli.la) and Shopee URLs skip the product-path check —
+	// the destination is only known after following the redirect.
+	if isML && !isMLShort {
 		path := strings.ToLower(u.Path)
 		fullURL := strings.ToLower(rawURL)
 		hasProductPath := strings.Contains(path, "/p/")
@@ -121,8 +124,6 @@ func ValidateProductURL(rawURL string) error {
 			)
 		}
 	}
-
-	// Shopee URLs don't need additional path validation for MVP
 
 	return nil
 }
