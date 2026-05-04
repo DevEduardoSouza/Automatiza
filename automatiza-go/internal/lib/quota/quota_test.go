@@ -134,3 +134,33 @@ func TestQuotaConstants(t *testing.T) {
 		t.Errorf("MaxGroupsPerInstance = %d, want 20", quota.MaxGroupsPerInstance)
 	}
 }
+
+func TestCheckAutomationGroupsPerInstance(t *testing.T) {
+	tests := []struct {
+		name             string
+		countByInstance  map[int]int
+		wantErr          error
+	}{
+		{name: "empty map ok", countByInstance: map[int]int{}, wantErr: nil},
+		{name: "single chip below cap", countByInstance: map[int]int{1: 5}, wantErr: nil},
+		{name: "single chip at cap", countByInstance: map[int]int{1: quota.MaxGroupsPerInstance}, wantErr: nil},
+		{name: "single chip over cap", countByInstance: map[int]int{1: quota.MaxGroupsPerInstance + 1}, wantErr: quota.ErrGroupQuotaExceeded},
+		{name: "two chips both ok", countByInstance: map[int]int{1: 15, 2: 10}, wantErr: nil},
+		{name: "two chips one over", countByInstance: map[int]int{1: 15, 2: 25}, wantErr: quota.ErrGroupQuotaExceeded},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := quota.CheckAutomationGroupsPerInstance(tt.countByInstance)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("expected nil, got %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("expected %v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}

@@ -2,12 +2,14 @@ package connectrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	automationsv1 "automatiza-go/internal/gen/automations/v1"
+	"automatiza-go/internal/lib/quota"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
@@ -25,15 +27,19 @@ import (
 type AutomationsHandler struct {
 	automationRepo    repository.AutomationRepository
 	dispatchLogRepo   repository.DispatchLogRepository
+	groupRepo         repository.GroupRepository
 	automationService automation.Service
 	jobsService       jobs.Service
 	logger            *zap.Logger
 }
 
 // NewAutomationsHandler creates a new automations handler.
+// groupRepo is optional: when nil, the per-chip group quota check is skipped
+// (callers like older test setups can opt out without touching every fixture).
 func NewAutomationsHandler(
 	automationRepo repository.AutomationRepository,
 	dispatchLogRepo repository.DispatchLogRepository,
+	groupRepo repository.GroupRepository,
 	automationService automation.Service,
 	jobsService jobs.Service,
 	logger *zap.Logger,
@@ -41,10 +47,32 @@ func NewAutomationsHandler(
 	return &AutomationsHandler{
 		automationRepo:    automationRepo,
 		dispatchLogRepo:   dispatchLogRepo,
+		groupRepo:         groupRepo,
 		automationService: automationService,
 		jobsService:       jobsService,
 		logger:            logger,
 	}
+}
+
+// validateAutomationGroupQuota looks up which chip owns each waGroupID and
+// returns ErrGroupQuotaExceeded when any chip would host more than 20 of
+// the automation's groups. Returns nil when the repo is unavailable, the
+// list is empty, or no chip exceeds the cap.
+func (h *AutomationsHandler) validateAutomationGroupQuota(ctx context.Context, userID string, waGroupIDs []string, label string) error {
+	if h.groupRepo == nil || len(waGroupIDs) == 0 {
+		return nil
+	}
+	instMap, err := h.groupRepo.GetInstancesForGroups(ctx, userID, waGroupIDs)
+	if err != nil {
+		return fmt.Errorf("resolve %s instances: %w", label, err)
+	}
+	countByInstance := map[int]int{}
+	for _, gid := range waGroupIDs {
+		if inst, ok := instMap[gid]; ok && inst != nil {
+			countByInstance[inst.ID]++
+		}
+	}
+	return quota.CheckAutomationGroupsPerInstance(countByInstance)
 }
 
 // ListAutomations returns all automations for the authenticated user.
@@ -119,6 +147,25 @@ func (h *AutomationsHandler) CreateAutomation(
 	}
 
 	automation := protoToAutomationCreate(req.Msg)
+
+	// Reject when the automation would route more than MaxGroupsPerInstance
+	// groups through a single chip — the user's chip would face a fan-out
+	// that risks WhatsApp banning the number.
+	if err := h.validateAutomationGroupQuota(ctx, user.ID, automation.SendGroups, "send_groups"); err != nil {
+		if errors.Is(err, quota.ErrGroupQuotaExceeded) {
+			return nil, connect.NewError(connect.CodeResourceExhausted,
+				fmt.Errorf("Limite de %d grupos por chip atingido nesta automação. Distribua os grupos entre mais chips ou remova alguns", quota.MaxGroupsPerInstance))
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if err := h.validateAutomationGroupQuota(ctx, user.ID, automation.MonitorGroupIDs, "monitor_group_ids"); err != nil {
+		if errors.Is(err, quota.ErrGroupQuotaExceeded) {
+			return nil, connect.NewError(connect.CodeResourceExhausted,
+				fmt.Errorf("Limite de %d grupos por chip atingido no monitoramento. Distribua os grupos entre mais chips", quota.MaxGroupsPerInstance))
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
 	created, err := h.automationRepo.CreateAutomation(ctx, user.ID, automation)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create automation: %w", err))
@@ -149,6 +196,29 @@ func (h *AutomationsHandler) UpdateAutomation(
 	}
 
 	updates := protoToAutomationUpdate(req.Msg)
+
+	// Re-validate per-chip quota only when the relevant list is being changed.
+	// When the field stays untouched we trust the existing record (which was
+	// validated on its own create/update path).
+	if newSend, ok := updates["send_groups"].([]string); ok {
+		if err := h.validateAutomationGroupQuota(ctx, user.ID, newSend, "send_groups"); err != nil {
+			if errors.Is(err, quota.ErrGroupQuotaExceeded) {
+				return nil, connect.NewError(connect.CodeResourceExhausted,
+					fmt.Errorf("Limite de %d grupos por chip atingido nesta automação. Distribua os grupos entre mais chips ou remova alguns", quota.MaxGroupsPerInstance))
+			}
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+	}
+	if newMonitor, ok := updates["monitor_group_ids"].([]string); ok {
+		if err := h.validateAutomationGroupQuota(ctx, user.ID, newMonitor, "monitor_group_ids"); err != nil {
+			if errors.Is(err, quota.ErrGroupQuotaExceeded) {
+				return nil, connect.NewError(connect.CodeResourceExhausted,
+					fmt.Errorf("Limite de %d grupos por chip atingido no monitoramento. Distribua os grupos entre mais chips", quota.MaxGroupsPerInstance))
+			}
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+	}
+
 	if len(updates) > 0 {
 		if err := h.automationRepo.UpdateAutomation(ctx, req.Msg.GetId(), updates); err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update automation: %w", err))

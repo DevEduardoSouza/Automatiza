@@ -110,9 +110,10 @@ func createTestUserContextForAutomations(userID string) context.Context {
 }
 
 // createTestAutomationsHandler creates an AutomationsHandler with the mock repo and a no-op logger.
-// Only dispatchLogRepo is needed for ListDispatchLogs tests; other dependencies are nil.
+// Only dispatchLogRepo is needed for ListDispatchLogs tests; other dependencies are nil
+// (groupRepo is nil so the per-chip quota check short-circuits).
 func createTestAutomationsHandler(dispatchLogRepo repository.DispatchLogRepository) *AutomationsHandler {
-	return NewAutomationsHandler(nil, dispatchLogRepo, nil, nil, zap.NewNop())
+	return NewAutomationsHandler(nil, dispatchLogRepo, nil, nil, nil, zap.NewNop())
 }
 
 // autoTestStr returns a pointer to the given string.
