@@ -120,6 +120,51 @@ func TestWhatsAppHandler_CreateInstance_CreateSessionError(t *testing.T) {
 	}
 }
 
+func TestWhatsAppHandler_CreateInstance_QuotaExceeded(t *testing.T) {
+	t.Parallel()
+	deps, mocks := newTestDeps()
+	handler := NewWhatsAppHandler(deps)
+
+	called := false
+	mocks.InstanceRepo.CountUserInstancesFunc = func(ctx context.Context, userID string) (int, error) {
+		return 10, nil // at the cap
+	}
+	mocks.WhatsAppProvider.CreateSessionFunc = func(ctx context.Context, input whatsapp.CreateSessionInput) (*whatsapp.SessionInfo, error) {
+		called = true
+		return &whatsapp.SessionInfo{Name: input.SessionName}, nil
+	}
+
+	w, c := newAuthContext(http.MethodPost, "/api/v1/whatsapp/create-instance", `{"instanceName":"inst-11"}`)
+	handler.CreateInstance(c)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", w.Code, w.Body.String())
+	}
+	if called {
+		t.Error("CreateSession should not be called when quota is exceeded")
+	}
+}
+
+func TestWhatsAppHandler_CreateInstance_BelowQuota_Allowed(t *testing.T) {
+	t.Parallel()
+	deps, mocks := newTestDeps()
+	handler := NewWhatsAppHandler(deps)
+
+	mocks.InstanceRepo.CountUserInstancesFunc = func(ctx context.Context, userID string) (int, error) {
+		return 9, nil // one slot left
+	}
+	mocks.WhatsAppProvider.CreateSessionFunc = func(ctx context.Context, input whatsapp.CreateSessionInput) (*whatsapp.SessionInfo, error) {
+		return &whatsapp.SessionInfo{Name: input.SessionName, Status: whatsapp.SessionStatusScanQR}, nil
+	}
+
+	w, c := newAuthContext(http.MethodPost, "/api/v1/whatsapp/create-instance", `{"instanceName":"inst-10"}`)
+	handler.CreateInstance(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // ---------------------------------------------------------------------------
 // DeleteInstance
 // ---------------------------------------------------------------------------
