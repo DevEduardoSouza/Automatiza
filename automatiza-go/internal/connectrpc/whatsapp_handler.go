@@ -8,6 +8,7 @@ import (
 
 	"automatiza-go/internal/adapters/whatsapp"
 	whatsappv1 "automatiza-go/internal/gen/whatsapp/v1"
+	"automatiza-go/internal/lib/quota"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/workers"
@@ -55,6 +56,16 @@ func (h *WhatsAppHandler) CreateInstance(
 
 	if h.waProvider == nil {
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("WhatsApp provider not configured"))
+	}
+
+	if h.instanceRepo != nil {
+		if err := quota.CheckCanCreateInstance(ctx, h.instanceRepo, user.ID); err != nil {
+			if errors.Is(err, quota.ErrInstanceQuotaExceeded) {
+				return nil, connect.NewError(connect.CodeResourceExhausted,
+					fmt.Errorf("limite de %d instâncias atingido. Remova um chip antes de adicionar outro", quota.MaxInstancesPerUser))
+			}
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check instance quota: %w", err))
+		}
 	}
 
 	sessionInfo, err := h.waProvider.CreateSession(ctx, whatsapp.CreateSessionInput{

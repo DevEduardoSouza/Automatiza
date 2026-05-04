@@ -51,6 +51,9 @@ const (
 	// InstancesServiceDeleteInstanceProcedure is the fully-qualified name of the InstancesService's
 	// DeleteInstance RPC.
 	InstancesServiceDeleteInstanceProcedure = "/instances.v1.InstancesService/DeleteInstance"
+	// InstancesServiceSetDefaultInstanceProcedure is the fully-qualified name of the InstancesService's
+	// SetDefaultInstance RPC.
+	InstancesServiceSetDefaultInstanceProcedure = "/instances.v1.InstancesService/SetDefaultInstance"
 	// InstancesServiceCheckInstanceStatusProcedure is the fully-qualified name of the
 	// InstancesService's CheckInstanceStatus RPC.
 	InstancesServiceCheckInstanceStatusProcedure = "/instances.v1.InstancesService/CheckInstanceStatus"
@@ -73,6 +76,9 @@ type InstancesServiceClient interface {
 	DeleteDisconnectedInstances(context.Context, *connect.Request[v1.DeleteDisconnectedInstancesRequest]) (*connect.Response[v1.DeleteDisconnectedInstancesResponse], error)
 	// Deletes a specific instance.
 	DeleteInstance(context.Context, *connect.Request[v1.DeleteInstanceRequest]) (*connect.Response[v1.DeleteInstanceResponse], error)
+	// Promotes the given instance to default for the authenticated user.
+	// Atomically clears the previous default in the same transaction.
+	SetDefaultInstance(context.Context, *connect.Request[v1.SetDefaultInstanceRequest]) (*connect.Response[v1.SetDefaultInstanceResponse], error)
 	// Checks the status of a WhatsApp instance connection via WAHA.
 	CheckInstanceStatus(context.Context, *connect.Request[v1.CheckInstanceStatusRequest]) (*connect.Response[v1.CheckInstanceStatusResponse], error)
 	// Reconnects a WhatsApp instance, returning QR code if needed.
@@ -126,6 +132,12 @@ func NewInstancesServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(instancesServiceMethods.ByName("DeleteInstance")),
 			connect.WithClientOptions(opts...),
 		),
+		setDefaultInstance: connect.NewClient[v1.SetDefaultInstanceRequest, v1.SetDefaultInstanceResponse](
+			httpClient,
+			baseURL+InstancesServiceSetDefaultInstanceProcedure,
+			connect.WithSchema(instancesServiceMethods.ByName("SetDefaultInstance")),
+			connect.WithClientOptions(opts...),
+		),
 		checkInstanceStatus: connect.NewClient[v1.CheckInstanceStatusRequest, v1.CheckInstanceStatusResponse](
 			httpClient,
 			baseURL+InstancesServiceCheckInstanceStatusProcedure,
@@ -149,6 +161,7 @@ type instancesServiceClient struct {
 	cleanupInvalidInstances     *connect.Client[v1.CleanupInvalidInstancesRequest, v1.CleanupInvalidInstancesResponse]
 	deleteDisconnectedInstances *connect.Client[v1.DeleteDisconnectedInstancesRequest, v1.DeleteDisconnectedInstancesResponse]
 	deleteInstance              *connect.Client[v1.DeleteInstanceRequest, v1.DeleteInstanceResponse]
+	setDefaultInstance          *connect.Client[v1.SetDefaultInstanceRequest, v1.SetDefaultInstanceResponse]
 	checkInstanceStatus         *connect.Client[v1.CheckInstanceStatusRequest, v1.CheckInstanceStatusResponse]
 	reconnectInstance           *connect.Client[v1.ReconnectInstanceRequest, v1.ReconnectInstanceResponse]
 }
@@ -183,6 +196,11 @@ func (c *instancesServiceClient) DeleteInstance(ctx context.Context, req *connec
 	return c.deleteInstance.CallUnary(ctx, req)
 }
 
+// SetDefaultInstance calls instances.v1.InstancesService.SetDefaultInstance.
+func (c *instancesServiceClient) SetDefaultInstance(ctx context.Context, req *connect.Request[v1.SetDefaultInstanceRequest]) (*connect.Response[v1.SetDefaultInstanceResponse], error) {
+	return c.setDefaultInstance.CallUnary(ctx, req)
+}
+
 // CheckInstanceStatus calls instances.v1.InstancesService.CheckInstanceStatus.
 func (c *instancesServiceClient) CheckInstanceStatus(ctx context.Context, req *connect.Request[v1.CheckInstanceStatusRequest]) (*connect.Response[v1.CheckInstanceStatusResponse], error) {
 	return c.checkInstanceStatus.CallUnary(ctx, req)
@@ -207,6 +225,9 @@ type InstancesServiceHandler interface {
 	DeleteDisconnectedInstances(context.Context, *connect.Request[v1.DeleteDisconnectedInstancesRequest]) (*connect.Response[v1.DeleteDisconnectedInstancesResponse], error)
 	// Deletes a specific instance.
 	DeleteInstance(context.Context, *connect.Request[v1.DeleteInstanceRequest]) (*connect.Response[v1.DeleteInstanceResponse], error)
+	// Promotes the given instance to default for the authenticated user.
+	// Atomically clears the previous default in the same transaction.
+	SetDefaultInstance(context.Context, *connect.Request[v1.SetDefaultInstanceRequest]) (*connect.Response[v1.SetDefaultInstanceResponse], error)
 	// Checks the status of a WhatsApp instance connection via WAHA.
 	CheckInstanceStatus(context.Context, *connect.Request[v1.CheckInstanceStatusRequest]) (*connect.Response[v1.CheckInstanceStatusResponse], error)
 	// Reconnects a WhatsApp instance, returning QR code if needed.
@@ -256,6 +277,12 @@ func NewInstancesServiceHandler(svc InstancesServiceHandler, opts ...connect.Han
 		connect.WithSchema(instancesServiceMethods.ByName("DeleteInstance")),
 		connect.WithHandlerOptions(opts...),
 	)
+	instancesServiceSetDefaultInstanceHandler := connect.NewUnaryHandler(
+		InstancesServiceSetDefaultInstanceProcedure,
+		svc.SetDefaultInstance,
+		connect.WithSchema(instancesServiceMethods.ByName("SetDefaultInstance")),
+		connect.WithHandlerOptions(opts...),
+	)
 	instancesServiceCheckInstanceStatusHandler := connect.NewUnaryHandler(
 		InstancesServiceCheckInstanceStatusProcedure,
 		svc.CheckInstanceStatus,
@@ -282,6 +309,8 @@ func NewInstancesServiceHandler(svc InstancesServiceHandler, opts ...connect.Han
 			instancesServiceDeleteDisconnectedInstancesHandler.ServeHTTP(w, r)
 		case InstancesServiceDeleteInstanceProcedure:
 			instancesServiceDeleteInstanceHandler.ServeHTTP(w, r)
+		case InstancesServiceSetDefaultInstanceProcedure:
+			instancesServiceSetDefaultInstanceHandler.ServeHTTP(w, r)
 		case InstancesServiceCheckInstanceStatusProcedure:
 			instancesServiceCheckInstanceStatusHandler.ServeHTTP(w, r)
 		case InstancesServiceReconnectInstanceProcedure:
@@ -317,6 +346,10 @@ func (UnimplementedInstancesServiceHandler) DeleteDisconnectedInstances(context.
 
 func (UnimplementedInstancesServiceHandler) DeleteInstance(context.Context, *connect.Request[v1.DeleteInstanceRequest]) (*connect.Response[v1.DeleteInstanceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instances.v1.InstancesService.DeleteInstance is not implemented"))
+}
+
+func (UnimplementedInstancesServiceHandler) SetDefaultInstance(context.Context, *connect.Request[v1.SetDefaultInstanceRequest]) (*connect.Response[v1.SetDefaultInstanceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instances.v1.InstancesService.SetDefaultInstance is not implemented"))
 }
 
 func (UnimplementedInstancesServiceHandler) CheckInstanceStatus(context.Context, *connect.Request[v1.CheckInstanceStatusRequest]) (*connect.Response[v1.CheckInstanceStatusResponse], error) {

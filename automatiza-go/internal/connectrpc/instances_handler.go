@@ -209,6 +209,46 @@ func (h *InstancesHandler) DeleteInstance(
 	return connect.NewResponse(&instancesv1.DeleteInstanceResponse{}), nil
 }
 
+// SetDefaultInstance promotes the given instance to default for the user.
+func (h *InstancesHandler) SetDefaultInstance(
+	ctx context.Context,
+	req *connect.Request[instancesv1.SetDefaultInstanceRequest],
+) (*connect.Response[instancesv1.SetDefaultInstanceResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	instanceID, err := strconv.Atoi(req.Msg.GetId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid instance ID"))
+	}
+
+	// Verify ownership before mutating. SetDefaultInstance also enforces
+	// ownership at the SQL level, but checking here returns a clean
+	// CodeNotFound instead of a generic CodeInternal on cross-user attempts.
+	instance, err := h.instanceRepo.GetInstanceByID(ctx, instanceID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get instance: %w", err))
+	}
+	if instance == nil || instance.UserID != user.ID {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("instance not found"))
+	}
+
+	if err := h.instanceRepo.SetDefaultInstance(ctx, user.ID, instanceID); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to set default: %w", err))
+	}
+
+	updated, err := h.instanceRepo.GetInstanceByID(ctx, instanceID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch updated instance: %w", err))
+	}
+
+	return connect.NewResponse(&instancesv1.SetDefaultInstanceResponse{
+		Instance: instanceToProto(updated),
+	}), nil
+}
+
 // Helper functions
 
 func instanceToProto(i *models.Instance) *instancesv1.Instance {
@@ -223,6 +263,7 @@ func instanceToProto(i *models.Instance) *instancesv1.Instance {
 		Status:     instanceStatusToProto(i.Status),
 		CreatedAt:  i.CreatedAt,
 		UpdatedAt:  i.UpdatedAt,
+		IsDefault:  i.IsDefault,
 	}
 }
 

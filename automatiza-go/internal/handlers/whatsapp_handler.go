@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"automatiza-go/internal/adapters/whatsapp"
+	"automatiza-go/internal/lib/quota"
 	"automatiza-go/internal/middleware"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/workers"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -39,6 +41,20 @@ func (h *WhatsAppHandler) CreateInstance(c *gin.Context) {
 	if h.deps.WhatsAppProvider == nil {
 		middleware.RespondError(c, http.StatusServiceUnavailable, "WhatsApp provider não configurado")
 		return
+	}
+
+	if h.deps.InstanceRepo != nil {
+		if err := quota.CheckCanCreateInstance(c.Request.Context(), h.deps.InstanceRepo, user.ID); err != nil {
+			if errors.Is(err, quota.ErrInstanceQuotaExceeded) {
+				middleware.RespondError(c, http.StatusUnprocessableEntity,
+					fmt.Sprintf("Limite de %d instâncias atingido. Remova um chip antes de adicionar outro.", quota.MaxInstancesPerUser))
+				return
+			}
+			h.deps.Logger.Error("Failed to check instance quota",
+				zap.String("userID", user.ID), zap.Error(err))
+			middleware.RespondError(c, http.StatusInternalServerError, "Falha ao verificar limite de instâncias")
+			return
+		}
 	}
 
 	// Generate instance name if not provided
