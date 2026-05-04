@@ -1,8 +1,10 @@
 import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Star, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Star, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AddChipModal } from './add-chip-modal';
 
 const MAX_INSTANCES_PER_USER = 10;
 
@@ -123,6 +125,8 @@ export function InstancesList() {
     isDeletingInstance,
   } = useInstancesConnect();
 
+  const [addModalOpen, setAddModalOpen] = useState(false);
+
   if (loading && instances.length === 0) {
     return null;
   }
@@ -132,6 +136,7 @@ export function InstancesList() {
   }
 
   const busy = isSettingDefault || isDeletingInstance;
+  const canAddMore = instances.length < MAX_INSTANCES_PER_USER;
 
   const handleSetDefault = async (id: string) => {
     try {
@@ -167,7 +172,7 @@ export function InstancesList() {
       className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6 mb-5 xs:mb-6 sm:mb-8 lg:mb-10"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div>
           <h3
             className="text-base xs:text-lg font-semibold tracking-tight"
@@ -183,7 +188,26 @@ export function InstancesList() {
             })}
           </p>
         </div>
-        {busy && <Loader2 className="h-4 w-4 animate-spin" style={{ color: colors.wine }} />}
+        <div className="flex items-center gap-2">
+          {busy && <Loader2 className="h-4 w-4 animate-spin" style={{ color: colors.wine }} />}
+          <button
+            type="button"
+            onClick={() => setAddModalOpen(true)}
+            disabled={!canAddMore}
+            title={
+              !canAddMore
+                ? t('pages.whatsapp.instancesList.atCapTooltip', {
+                    max: MAX_INSTANCES_PER_USER,
+                    defaultValue: 'Limite de {{max}} chips atingido',
+                  })
+                : undefined
+            }
+            className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#8D2D53] px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#732242] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('pages.whatsapp.instancesList.addChip', 'Adicionar chip')}
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2 xs:space-y-3">
@@ -197,6 +221,8 @@ export function InstancesList() {
           />
         ))}
       </div>
+
+      <AddChipModal open={addModalOpen} onClose={() => setAddModalOpen(false)} />
     </div>
   );
 }
