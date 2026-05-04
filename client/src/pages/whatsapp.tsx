@@ -3,11 +3,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { InstancesList } from '@/components/whatsapp/instances-list';
+import {
+  hasSeenRecommendations,
+  markRecommendationsSeen,
+  RecommendationsModal,
+} from '@/components/whatsapp/recommendations-modal';
 import { useToast } from '@/hooks/use-toast';
 import { useWhatsApp } from '@/hooks/use-whatsapp';
 import * as Sentry from '@sentry/react';
 import {
   AlertCircle,
+  HelpCircle,
   Loader2,
   RefreshCw,
   Trash2,
@@ -16,6 +22,7 @@ import {
   WifiOff,
   XCircle,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 const ConnectedIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
   <svg
@@ -151,6 +158,20 @@ export default function WhatsApp() {
     });
   };
 
+  // Auto-open the recommendations modal on first visit. After the user
+  // dismisses it once, subsequent visits keep it closed (unless they click
+  // the "Recomendações" button).
+  const [recommendationsOpen, setRecommendationsOpen] = useState(false);
+  useEffect(() => {
+    if (!hasSeenRecommendations()) {
+      setRecommendationsOpen(true);
+    }
+  }, []);
+  const closeRecommendations = () => {
+    markRecommendationsSeen();
+    setRecommendationsOpen(false);
+  };
+
   return (
     <ErrorBoundary
       fallback={
@@ -170,7 +191,7 @@ export default function WhatsApp() {
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
           {/* Header */}
-          <div className="flex items-center mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
+          <div className="flex items-center justify-between gap-3 mb-5 xs:mb-6 sm:mb-8 lg:mb-10 flex-wrap">
             <div className="flex items-center gap-2 xs:gap-3">
               <div
                 className="p-1.5 xs:p-2 rounded-lg xs:rounded-xl border"
@@ -193,6 +214,14 @@ export default function WhatsApp() {
                 </p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setRecommendationsOpen(true)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+              {t('pages.whatsapp.recommendations.button', 'Recomendações')}
+            </button>
           </div>
 
           {/* Warning Alert */}
@@ -258,6 +287,7 @@ export default function WhatsApp() {
           {/* How It Works */}
           <HowItWorksCard />
         </div>
+        <RecommendationsModal open={recommendationsOpen} onClose={closeRecommendations} />
       </div>
     </ErrorBoundary>
   );
