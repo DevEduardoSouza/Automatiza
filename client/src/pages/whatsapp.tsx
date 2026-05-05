@@ -8,6 +8,7 @@ import {
   markRecommendationsSeen,
   RecommendationsModal,
 } from '@/components/whatsapp/recommendations-modal';
+import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
 import { useWhatsApp } from '@/hooks/use-whatsapp';
 import * as Sentry from '@sentry/react';
@@ -134,6 +135,15 @@ export default function WhatsApp() {
     disconnectInstance,
     refreshQrCode,
   } = useWhatsApp();
+
+  // The legacy "Conectar WhatsApp" card is the only entry point for users
+  // with zero chips (the singleton useWhatsApp hook drives it). Once the
+  // user has any instance, the InstancesList + AddChipModal own management,
+  // and showing the legacy card would surface a misleading "Desconectado"
+  // banner whenever the most-recently-updated chip happens to not be the
+  // connected one (singleton picks latestInstance, not is_default).
+  const { instances } = useInstancesConnect();
+  const hasInstances = instances.length > 0;
 
   const getConnectionState = (): ConnectionState => {
     if (disconnecting) return 'disconnecting';
@@ -264,25 +274,28 @@ export default function WhatsApp() {
           {/* Existing instances list (renders only when the user has at least one chip) */}
           <InstancesList />
 
-          {/* Connection Card */}
-          <div className="flex justify-center mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
-            <ConnectionCard
-              state={connectionState}
-              qrCode={qrCode}
-              qrCountdown={qrCountdown}
-              importing={importing}
-              importProgress={importProgress}
-              importedGroups={importedGroups}
-              autoSync={autoSync}
-              lastSync={lastSync}
-              onConnect={handleConnect}
-              onDisconnect={disconnectInstance}
-              onReconnect={refreshQrCode}
-              onRefreshQr={refreshQrCode}
-              onImportGroups={() => handleImportGroups(false)}
-              onAutoSyncToggle={handleAutoSyncToggle}
-            />
-          </div>
+          {/* Connection Card — only shown to users with zero chips. Existing
+              users manage everything via InstancesList + AddChipModal above. */}
+          {!hasInstances && (
+            <div className="flex justify-center mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
+              <ConnectionCard
+                state={connectionState}
+                qrCode={qrCode}
+                qrCountdown={qrCountdown}
+                importing={importing}
+                importProgress={importProgress}
+                importedGroups={importedGroups}
+                autoSync={autoSync}
+                lastSync={lastSync}
+                onConnect={handleConnect}
+                onDisconnect={disconnectInstance}
+                onReconnect={refreshQrCode}
+                onRefreshQr={refreshQrCode}
+                onImportGroups={() => handleImportGroups(false)}
+                onAutoSyncToggle={handleAutoSyncToggle}
+              />
+            </div>
+          )}
 
           {/* How It Works */}
           <HowItWorksCard />
