@@ -363,6 +363,10 @@ func (m *enhancedMockInstanceRepo) UpdateInstanceLabel(ctx context.Context, user
 	return nil
 }
 
+func (m *enhancedMockInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error {
+	return nil
+}
+
 // ============================================================
 // Enhanced Mock User Role Repository
 // ============================================================

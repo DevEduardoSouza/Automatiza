@@ -226,6 +226,11 @@ func (m *mockInstanceRepoForSync) UpdateInstanceLabel(ctx context.Context, userI
 	return args.Error(0)
 }
 
+func (m *mockInstanceRepoForSync) UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error {
+	args := m.Called(ctx, instanceID, phoneNumber)
+	return args.Error(0)
+}
+
 // mockProgressPub implements workers.JobProgressPublisher for testing.
 type mockProgressPub struct {
 	mock.Mock

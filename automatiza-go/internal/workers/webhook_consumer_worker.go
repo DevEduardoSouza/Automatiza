@@ -438,6 +438,22 @@ func (w *WebhookConsumerWorker) handleSessionStatusEvent(ctx context.Context, da
 				w.connectedSessions.Store(data.Session, true)
 			}
 
+			// Harvest phone_number from the WAHA payload's me.id when the
+			// session reports connected. WAHA emits status events with the
+			// shape { status, me: { id: "557498137258@c.us", ... } } once
+			// the chip pairs; without this write the UI can never display
+			// the phone next to the chip name.
+			if dbStatus == models.InstanceStatusConnected {
+				if phone := extractPhoneFromMe(data.Payload); phone != "" {
+					if err := w.instanceRepo.UpdateInstancePhoneNumber(ctx, instance.ID, phone); err != nil {
+						w.logger.Warn("Failed to update instance phone number",
+							zap.String("session", data.Session),
+							zap.Int("instanceID", instance.ID),
+							zap.Error(err))
+					}
+				}
+			}
+
 			// Auto-sync groups when session becomes connected
 			// This migrates groups from old disconnected instances to the new one
 			if dbStatus == "connected" && w.queueClient != nil {
@@ -768,6 +784,42 @@ func mapWAHAStatusToDBStatus(wahaStatus string) string {
 	default:
 		return "disconnected"
 	}
+}
+
+// extractPhoneFromMe pulls the WhatsApp phone number out of WAHA's
+// session.status payload. WAHA shapes the field as `me.id` with a JID
+// suffix (e.g. "557498137258@c.us"); we strip the suffix and any
+// non-digit characters to land on the bare international number.
+// Returns "" when the payload does not carry an authenticated user yet.
+func extractPhoneFromMe(payload map[string]interface{}) string {
+	if payload == nil {
+		return ""
+	}
+	me, ok := payload["me"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	id, _ := me["id"].(string)
+	if id == "" {
+		return ""
+	}
+	// Strip "@c.us" / "@s.whatsapp.net" suffix.
+	if idx := strings.Index(id, "@"); idx >= 0 {
+		id = id[:idx]
+	}
+	// Keep only digits — WAHA can occasionally include other characters.
+	var b strings.Builder
+	for _, r := range id {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	digits := b.String()
+	// Sanity floor: a real phone has at least 10 digits (CC + DDD + number).
+	if len(digits) < 10 {
+		return ""
+	}
+	return digits
 }
 
 // extractString safely extracts a string from a map.

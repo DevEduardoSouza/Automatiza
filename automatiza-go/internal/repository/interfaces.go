@@ -63,6 +63,10 @@ type InstanceRepository interface {
 	// UpdateInstanceLabel sets the friendly_name on an instance owned by userID.
 	// Pass empty string to clear (NULL) the label so the UI falls back to instance_id.
 	UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error
+	// UpdateInstancePhoneNumber records the phone number harvested from WAHA's
+	// `me.id` once a session reaches WORKING. Idempotent: skips the write when
+	// the value already matches so the row does not churn updated_at.
+	UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error
 	// CountUserInstances returns the number of instances owned by a user.
 	// Used for quota enforcement before creating a new instance.
 	CountUserInstances(ctx context.Context, userID string) (int, error)

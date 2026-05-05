@@ -295,6 +295,11 @@ func (m *MockInstanceRepository) UpdateInstanceLabel(ctx context.Context, userID
 	return args.Error(0)
 }
 
+func (m *MockInstanceRepository) UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error {
+	args := m.Called(ctx, instanceID, phoneNumber)
+	return args.Error(0)
+}
+
 // MockMLService implements mercadolivre.Service for testing
 type MockMLService struct {
 	mock.Mock

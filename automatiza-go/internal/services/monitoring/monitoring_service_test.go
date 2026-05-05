@@ -135,6 +135,7 @@ type mockInstanceRepo struct {
 	SetDefaultInstanceFn        func(ctx context.Context, userID string, instanceID int) error
 	CountUserInstancesFn        func(ctx context.Context, userID string) (int, error)
 	UpdateInstanceLabelFn       func(ctx context.Context, userID string, instanceID int, friendlyName string) error
+	UpdateInstancePhoneNumberFn func(ctx context.Context, instanceID int, phoneNumber string) error
 }
 
 func (m *mockInstanceRepo) GetUserInstances(ctx context.Context, userID string) ([]models.Instance, error) {
@@ -210,6 +211,13 @@ func (m *mockInstanceRepo) CountUserInstances(ctx context.Context, userID string
 func (m *mockInstanceRepo) UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error {
 	if m.UpdateInstanceLabelFn != nil {
 		return m.UpdateInstanceLabelFn(ctx, userID, instanceID, friendlyName)
+	}
+	return nil
+}
+
+func (m *mockInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error {
+	if m.UpdateInstancePhoneNumberFn != nil {
+		return m.UpdateInstancePhoneNumberFn(ctx, instanceID, phoneNumber)
 	}
 	return nil
 }
