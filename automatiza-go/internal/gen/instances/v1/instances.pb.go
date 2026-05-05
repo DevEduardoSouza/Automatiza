@@ -98,7 +98,11 @@ type Instance struct {
 	// Optional human-readable label set by the user (or auto-derived from the
 	// first session created). Used by the frontend to show "chip Vendas"
 	// instead of the opaque WAHA session id.
-	FriendlyName  *string `protobuf:"bytes,8,opt,name=friendly_name,json=friendlyName,proto3,oneof" json:"friendly_name,omitempty"`
+	FriendlyName *string `protobuf:"bytes,8,opt,name=friendly_name,json=friendlyName,proto3,oneof" json:"friendly_name,omitempty"`
+	// Phone number in international format without leading "+", e.g.
+	// "557498137258". Empty when the chip has not paired yet — populated by
+	// the backend after WAHA reports the session as WORKING with me.id.
+	PhoneNumber   *string `protobuf:"bytes,9,opt,name=phone_number,json=phoneNumber,proto3,oneof" json:"phone_number,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -185,6 +189,13 @@ func (x *Instance) GetIsDefault() bool {
 func (x *Instance) GetFriendlyName() string {
 	if x != nil && x.FriendlyName != nil {
 		return *x.FriendlyName
+	}
+	return ""
+}
+
+func (x *Instance) GetPhoneNumber() string {
+	if x != nil && x.PhoneNumber != nil {
+		return *x.PhoneNumber
 	}
 	return ""
 }
@@ -1103,7 +1114,7 @@ var File_instances_v1_instances_proto protoreflect.FileDescriptor
 
 const file_instances_v1_instances_proto_rawDesc = "" +
 	"\n" +
-	"\x1cinstances/v1/instances.proto\x12\finstances.v1\x1a\x1bbuf/validate/validate.proto\"\xa3\x02\n" +
+	"\x1cinstances/v1/instances.proto\x12\finstances.v1\x1a\x1bbuf/validate/validate.proto\"\xdc\x02\n" +
 	"\bInstance\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1f\n" +
@@ -1116,8 +1127,10 @@ const file_instances_v1_instances_proto_rawDesc = "" +
 	"updated_at\x18\x06 \x01(\tR\tupdatedAt\x12\x1d\n" +
 	"\n" +
 	"is_default\x18\a \x01(\bR\tisDefault\x12(\n" +
-	"\rfriendly_name\x18\b \x01(\tH\x00R\ffriendlyName\x88\x01\x01B\x10\n" +
-	"\x0e_friendly_name\"\x1a\n" +
+	"\rfriendly_name\x18\b \x01(\tH\x00R\ffriendlyName\x88\x01\x01\x12&\n" +
+	"\fphone_number\x18\t \x01(\tH\x01R\vphoneNumber\x88\x01\x01B\x10\n" +
+	"\x0e_friendly_nameB\x0f\n" +
+	"\r_phone_number\"\x1a\n" +
 	"\x18GetLatestInstanceRequest\"a\n" +
 	"\x19GetLatestInstanceResponse\x127\n" +
 	"\binstance\x18\x01 \x01(\v2\x16.instances.v1.InstanceH\x00R\binstance\x88\x01\x01B\v\n" +

@@ -306,6 +306,7 @@ func instanceToProto(i *models.Instance) *instancesv1.Instance {
 		UpdatedAt:    i.UpdatedAt,
 		IsDefault:    i.IsDefault,
 		FriendlyName: i.FriendlyName,
+		PhoneNumber:  i.PhoneNumber,
 	}
 }
 

@@ -26,12 +26,12 @@ func NewInstanceRepository(db *DB, logger *zap.Logger) repository.InstanceReposi
 	}
 }
 
-const instanceColumns = `id, user_id, instance_id, friendly_name, status, qr_code, is_default, created_at, updated_at`
+const instanceColumns = `id, user_id, instance_id, friendly_name, status, qr_code, is_default, phone_number, created_at, updated_at`
 
 func scanInstance(row pgx.Row, i *models.Instance) error {
 	var createdAt, updatedAt time.Time
 	err := row.Scan(
-		&i.ID, &i.UserID, &i.InstanceID, &i.FriendlyName, &i.Status, &i.QRCode, &i.IsDefault,
+		&i.ID, &i.UserID, &i.InstanceID, &i.FriendlyName, &i.Status, &i.QRCode, &i.IsDefault, &i.PhoneNumber,
 		&createdAt, &updatedAt,
 	)
 	if err != nil {

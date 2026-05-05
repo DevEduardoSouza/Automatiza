@@ -54,6 +54,11 @@ message Instance {
   // first session created). Used by the frontend to show "chip Vendas"
   // instead of the opaque WAHA session id.
   optional string friendly_name = 8;
+
+  // Phone number in international format without leading "+", e.g.
+  // "557498137258". Empty when the chip has not paired yet — populated by
+  // the backend after WAHA reports the session as WORKING with me.id.
+  optional string phone_number = 9;
 }
 
 // ============================================================

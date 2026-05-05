@@ -27,6 +27,30 @@ function statusDot(status: LocalInstance['status']): string {
   return colors.pendingDot;
 }
 
+/**
+ * Formats a WhatsApp phone number for display. Brazilian numbers are split
+ * as +55 DD 9xxxx-xxxx; everything else just gets a leading "+" so the user
+ * sees a recognisable international number. Returns null when input is empty.
+ */
+function formatPhone(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 0) return null;
+  // Brazilian: 55 + DDD (2) + 9-digit mobile or 8-digit landline.
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    const cc = digits.slice(0, 2);
+    const ddd = digits.slice(2, 4);
+    const rest = digits.slice(4);
+    if (rest.length === 9) {
+      return `+${cc} ${ddd} ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    }
+    if (rest.length === 8) {
+      return `+${cc} ${ddd} ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    }
+  }
+  return `+${digits}`;
+}
+
 interface InstanceRowProps {
   instance: LocalInstance;
   onSetDefault: (id: string) => void;
@@ -126,6 +150,18 @@ function InstanceRow({ instance, onSetDefault, onDelete, onRename, busy }: Insta
               <p className="font-medium text-sm truncate" style={{ color: '#18181b' }}>
                 {instance.friendly_name?.trim() || instance.instance_id}
               </p>
+              {(() => {
+                const phone = formatPhone(instance.phone_number);
+                return phone ? (
+                  <span
+                    className="text-xs font-mono tracking-tight"
+                    style={{ color: colors.wineTextMuted }}
+                    title={t('pages.whatsapp.instancesList.phoneTooltip', 'Número do chip')}
+                  >
+                    {phone}
+                  </span>
+                ) : null;
+              })()}
               <button
                 type="button"
                 onClick={startEdit}

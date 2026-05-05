@@ -462,7 +462,7 @@ func (r *groupRepository) GetInstancesForGroups(ctx context.Context, userID stri
 	query := `
 		SELECT g.wa_group_id,
 		       i.id, i.user_id, i.instance_id, i.friendly_name, i.status, i.qr_code, i.is_default,
-		       i.created_at, i.updated_at
+		       i.phone_number, i.created_at, i.updated_at
 		FROM groups g
 		JOIN instances i ON i.id = g.instance_id
 		WHERE g.user_id = $1 AND g.wa_group_id = ANY($2::text[])
@@ -485,7 +485,7 @@ func (r *groupRepository) GetInstancesForGroups(ctx context.Context, userID stri
 		if err := rows.Scan(
 			&waGroupID,
 			&inst.ID, &inst.UserID, &inst.InstanceID, &inst.FriendlyName, &inst.Status, &inst.QRCode, &inst.IsDefault,
-			&createdAt, &updatedAt,
+			&inst.PhoneNumber, &createdAt, &updatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -46,6 +46,9 @@ export interface LocalInstance {
   is_default: boolean;
   // Optional human-readable label. Falls back to instance_id when absent.
   friendly_name?: string;
+  // Phone number in international format without leading "+" (e.g. 557498137258).
+  // Empty when the chip has not paired yet.
+  phone_number?: string;
   created_at: string;
   updated_at: string;
 }
@@ -126,6 +129,7 @@ function fromProtoInstance(instance: Instance): LocalInstance {
     status: fromProtoStatus(instance.status),
     is_default: instance.isDefault ?? false,
     friendly_name: instance.friendlyName ?? undefined,
+    phone_number: instance.phoneNumber ?? undefined,
     created_at: instance.createdAt,
     updated_at: instance.updatedAt,
   };
