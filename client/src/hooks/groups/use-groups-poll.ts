@@ -25,7 +25,7 @@ export function useGroupsPoll({
   const { t } = useTranslation();
   const { toast } = useToast();
   const { sendGroupPoll } = useGroupsConnect();
-  const { latestInstance } = useInstancesConnect();
+  const { primaryInstance } = useInstancesConnect();
 
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
@@ -96,11 +96,11 @@ export function useGroupsPoll({
     setSendingPoll(true);
     try {
       // Get instance from ConnectRPC hook
-      if (!latestInstance || latestInstance.status !== 'connected') {
+      if (!primaryInstance || primaryInstance.status !== 'connected') {
         throw new Error(t('pages.groups.errors.noInstance'));
       }
 
-      const pollInstanceName = latestInstance.instance_id;
+      const pollInstanceName = primaryInstance.instance_id;
       const selectedGroupsData = groups.filter((g) => selectedGroups.includes(g.id));
 
       let successCount = 0;
@@ -170,7 +170,7 @@ export function useGroupsPoll({
     t,
     clearSelection,
     sendGroupPoll,
-    latestInstance,
+    primaryInstance,
   ]);
 
   return {
