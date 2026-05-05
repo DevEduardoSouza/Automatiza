@@ -1,7 +1,7 @@
 import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
-import { Check, Loader2, Pencil, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
+import { Check, Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AddChipModal } from './add-chip-modal';
@@ -14,9 +14,6 @@ const colors = {
   wineBg: 'rgba(141, 45, 83, 0.08)',
   wineBorder: 'rgba(141, 45, 83, 0.2)',
   wineTextMuted: 'rgba(141, 45, 83, 0.6)',
-  defaultBadgeBg: 'rgba(212, 175, 55, 0.15)',
-  defaultBadgeBorder: 'rgba(212, 175, 55, 0.4)',
-  defaultBadgeText: '#a78920',
   connectedDot: '#22c55e',
   disconnectedDot: '#ef4444',
   pendingDot: '#f59e0b',
@@ -54,7 +51,6 @@ function formatPhone(raw: string | undefined): string | null {
 
 interface InstanceRowProps {
   instance: LocalInstance;
-  onSetDefault: (id: string) => void;
   onDelete: (id: string, name: string) => void;
   onRename: (id: string, friendlyName: string) => Promise<void>;
   onReconnect: (instance: LocalInstance) => void;
@@ -63,7 +59,6 @@ interface InstanceRowProps {
 
 function InstanceRow({
   instance,
-  onSetDefault,
   onDelete,
   onRename,
   onReconnect,
@@ -180,19 +175,6 @@ function InstanceRow({
               >
                 <Pencil className="h-3 w-3" />
               </button>
-              {instance.is_default && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
-                  style={{
-                    backgroundColor: colors.defaultBadgeBg,
-                    borderColor: colors.defaultBadgeBorder,
-                    color: colors.defaultBadgeText,
-                  }}
-                >
-                  <Star className="h-3 w-3 fill-current" />
-                  {t('pages.whatsapp.instancesList.defaultBadge', 'Padrão')}
-                </span>
-              )}
             </div>
           )}
           <p className="text-xs mt-0.5" style={{ color: colors.wineTextMuted }}>
@@ -213,17 +195,6 @@ function InstanceRow({
             {t('pages.whatsapp.instancesList.reconnect', 'Reconectar')}
           </button>
         )}
-        {!instance.is_default && (
-          <button
-            type="button"
-            onClick={() => onSetDefault(instance.id)}
-            disabled={busy}
-            className="inline-flex items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Star className="h-3.5 w-3.5" />
-            {t('pages.whatsapp.instancesList.setDefault', 'Tornar padrão')}
-          </button>
-        )}
         <button
           type="button"
           onClick={() => onDelete(instance.id, instance.instance_id)}
@@ -240,11 +211,12 @@ function InstanceRow({
 
 /**
  * Lists all WhatsApp instances belonging to the current user with per-instance
- * actions (set as default, remove). Renders nothing when the user has zero
+ * actions (rename, reconnect, remove). Renders nothing when the user has zero
  * instances — the existing connection card handles the "first connect" flow.
  *
- * Multi-instance support is the goal of Fase 3; this component is the
- * surfaced UI for the backend already deployed in Fases 0-2.
+ * The is_default flag is now managed entirely by the backend (auto-promote
+ * on first chip / on default-delete) so this component does not expose any
+ * "Tornar padrão" affordance.
  */
 export function InstancesList() {
   const { t } = useTranslation();
@@ -252,10 +224,8 @@ export function InstancesList() {
   const {
     instances,
     loading,
-    setDefaultInstance,
     deleteInstance,
     updateInstanceLabel,
-    isSettingDefault,
     isDeletingInstance,
     isUpdatingLabel,
   } = useInstancesConnect();
@@ -271,19 +241,8 @@ export function InstancesList() {
     return null;
   }
 
-  const busy = isSettingDefault || isDeletingInstance || isUpdatingLabel;
+  const busy = isDeletingInstance || isUpdatingLabel;
   const canAddMore = instances.length < MAX_INSTANCES_PER_USER;
-
-  const handleSetDefault = async (id: string) => {
-    try {
-      await setDefaultInstance(id);
-      toast({
-        title: t('pages.whatsapp.instancesList.defaultSet', 'Número padrão atualizado'),
-      });
-    } catch {
-      // Hook already shows error toast via getErrorInfo.
-    }
-  };
 
   const handleRename = async (id: string, friendlyName: string) => {
     try {
@@ -362,7 +321,6 @@ export function InstancesList() {
           <InstanceRow
             key={inst.id}
             instance={inst}
-            onSetDefault={handleSetDefault}
             onDelete={handleDelete}
             onRename={handleRename}
             onReconnect={setReconnectTarget}

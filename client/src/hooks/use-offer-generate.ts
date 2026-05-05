@@ -75,11 +75,18 @@ export function useOfferGenerate() {
     status: (logFilterStatus as DispatchLogStatus) || undefined,
   });
 
-  // Groups for send selection (admin groups, sorted by favorite)
+  // Groups for send selection (admin groups, sorted by favorite). instance_id
+  // is preserved so the page can filter by the user's selected chip.
   const groups: AutomationGroup[] = useMemo(
     () =>
       groupsConnect.groups
-        .map((g) => ({ id: g.id, name: g.name, wa_group_id: g.wa_group_id, is_favorite: g.is_favorite }))
+        .map((g) => ({
+          id: g.id,
+          name: g.name,
+          wa_group_id: g.wa_group_id,
+          is_favorite: g.is_favorite,
+          instance_id: g.instance_id,
+        }))
         .sort((a, b) => {
           if (a.is_favorite && !b.is_favorite) return -1;
           if (!a.is_favorite && b.is_favorite) return 1;
@@ -92,7 +99,13 @@ export function useOfferGenerate() {
   const allGroups: AutomationGroup[] = useMemo(
     () =>
       groupsConnect.allGroups
-        .map((g) => ({ id: g.id, name: g.name, wa_group_id: g.wa_group_id, is_favorite: g.is_favorite }))
+        .map((g) => ({
+          id: g.id,
+          name: g.name,
+          wa_group_id: g.wa_group_id,
+          is_favorite: g.is_favorite,
+          instance_id: g.instance_id,
+        }))
         .sort((a, b) => {
           if (a.is_favorite && !b.is_favorite) return -1;
           if (!a.is_favorite && b.is_favorite) return 1;
@@ -107,10 +120,17 @@ export function useOfferGenerate() {
     [affiliateCredentialsConnect.activeStores],
   );
 
+  // Use primaryInstance (default+connected → connected → any) instead of
+  // latestInstance — the latter returns whichever chip was most recently
+  // updated, which can be a disconnected secondary chip and would falsely
+  // flag whatsappConnected=false when the user has a connected default.
   const whatsappConnected = useMemo(
-    () => instancesConnect.latestInstance?.status === 'connected',
-    [instancesConnect.latestInstance?.status],
+    () => instancesConnect.primaryInstance?.status === 'connected',
+    [instancesConnect.primaryInstance?.status],
   );
+
+  // Expose the instances list so the page can render a chip selector.
+  const instances = instancesConnect.instances;
 
   const dispatchTexts = useMemo(
     () => dispatchTextsConnect.dispatchTexts.filter((dt) => dt.is_active),
@@ -321,6 +341,7 @@ export function useOfferGenerate() {
     setFormData,
     groups,
     allGroups,
+    instances,
     whatsappConnected,
     logs: DEV_MOCK ? filteredMockLogs : logsConnect.logs,
     logsLoading: DEV_MOCK ? false : logsConnect.isLoading,

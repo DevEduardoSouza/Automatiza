@@ -130,11 +130,18 @@ func (r *instanceRepository) GetAllConnectedInstances(ctx context.Context) ([]mo
 }
 
 func (r *instanceRepository) UpsertInstance(ctx context.Context, userID string, data *models.Instance) (*models.Instance, error) {
+	tx, err := r.db.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	now := time.Now().UTC()
-	// is_default is intentionally not set here: on INSERT it defaults to FALSE
-	// (a fresh chip is never automatically promoted to default), and on UPDATE
-	// the existing flag is preserved by omitting it from the SET clause.
-	query := `
+	// is_default is intentionally not set on the upsert itself: on INSERT it
+	// defaults to FALSE and on UPDATE the existing flag is preserved by
+	// omitting it from SET. Auto-promotion to default happens below in the
+	// same transaction so a fresh user never ends up with zero defaults.
+	upsertQuery := `
 		INSERT INTO instances (user_id, instance_id, friendly_name, status, qr_code, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (user_id, instance_id) DO UPDATE SET
@@ -145,7 +152,7 @@ func (r *instanceRepository) UpsertInstance(ctx context.Context, userID string, 
 		RETURNING ` + instanceColumns
 
 	var i models.Instance
-	if err := scanInstance(r.db.QueryRow(ctx, query,
+	if err := scanInstance(tx.QueryRow(ctx, upsertQuery,
 		userID, data.InstanceID, data.FriendlyName, data.Status, data.QRCode, now, now,
 	), &i); err != nil {
 		r.logger.Error("Failed to upsert instance",
@@ -155,6 +162,32 @@ func (r *instanceRepository) UpsertInstance(ctx context.Context, userID string, 
 		return nil, err
 	}
 
+	// Auto-promote: if the user has no default chip after this upsert,
+	// mark this row as default. Idempotent — re-running on a user that
+	// already has a default is a no-op. The unique partial index on
+	// (user_id) WHERE is_default keeps concurrent racers honest.
+	if !i.IsDefault {
+		var hasDefault bool
+		if err := tx.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM instances WHERE user_id = $1 AND is_default = TRUE)`,
+			userID,
+		).Scan(&hasDefault); err != nil {
+			return nil, err
+		}
+		if !hasDefault {
+			if _, err := tx.Exec(ctx,
+				`UPDATE instances SET is_default = TRUE, updated_at = $1 WHERE id = $2`,
+				now, i.ID,
+			); err != nil {
+				return nil, err
+			}
+			i.IsDefault = true
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
 	return &i, nil
 }
 
@@ -178,17 +211,60 @@ func (r *instanceRepository) UpdateInstanceStatus(ctx context.Context, instanceI
 }
 
 func (r *instanceRepository) DeleteInstance(ctx context.Context, instanceID int) error {
-	query := `DELETE FROM instances WHERE id = $1`
-
-	_, err := r.db.pool.Exec(ctx, query, instanceID)
+	tx, err := r.db.pool.Begin(ctx)
 	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Lock the row and capture whether it was the default and which user
+	// owned it, so we can pick a successor in the same transaction.
+	var userID string
+	var wasDefault bool
+	err = tx.QueryRow(ctx,
+		`SELECT user_id, is_default FROM instances WHERE id = $1 FOR UPDATE`,
+		instanceID,
+	).Scan(&userID, &wasDefault)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Already gone — treat as success so idempotent retries don't error.
+		return tx.Commit(ctx)
+	}
+	if err != nil {
+		r.logger.Error("Failed to load instance for delete",
+			zap.Int("instanceID", instanceID),
+			zap.Error(err))
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM instances WHERE id = $1`, instanceID); err != nil {
 		r.logger.Error("Failed to delete instance",
 			zap.Int("instanceID", instanceID),
 			zap.Error(err))
 		return err
 	}
 
-	return nil
+	// Promote a successor when the deleted row was the user's default.
+	// Prefer a connected chip; fall back to the oldest remaining row.
+	// If the user has no chips left this is a no-op.
+	if wasDefault {
+		if _, err := tx.Exec(ctx,
+			`UPDATE instances SET is_default = TRUE, updated_at = $1
+			 WHERE id = (
+				SELECT id FROM instances
+				WHERE user_id = $2
+				ORDER BY (status = 'connected') DESC, created_at ASC
+				LIMIT 1
+			 )`,
+			time.Now().UTC(), userID,
+		); err != nil {
+			r.logger.Error("Failed to promote successor default",
+				zap.String("userID", userID),
+				zap.Error(err))
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
 }
 
 // UpdateInstanceQRCode updates only the QR code for an instance
