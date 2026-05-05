@@ -1996,7 +1996,7 @@
       "mlRedirect": {
         "title": "Mercado Livre",
         "subtitle": "Use seus próprios links afiliados",
-        "message": "O Mercado Livre agora funciona direto pela Lista de Links: cole seus links afiliados já prontos e a automação envia exatamente a URL que você cadastrou, sem gerar nada server-side.",
+        "message": "O Mercado Livre agora funciona direto pela Lista de Links: cole seus links afiliados já prontos e a automação envia exatamente a URL que você cadastrou, sem geração automática.",
         "cta": "Ir para Listas de Links"
       },
       "status": {
