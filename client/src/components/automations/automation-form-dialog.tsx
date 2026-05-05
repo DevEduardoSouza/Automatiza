@@ -9,8 +9,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ChipSelector } from '@/components/whatsapp/chip-selector';
 import type { RefinementState } from '@/hooks/use-automations';
 import type { CTA } from '@/entities/cta';
+import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import type {
   Automation,
   AutomationCoupon,
@@ -20,6 +22,7 @@ import type {
   StoreKey,
 } from '@/types/automation';
 import { AlertCircle, Info, Plus, Save } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -96,6 +99,59 @@ export function AutomationFormDialog({
   onLimitReachedToast,
 }: AutomationFormDialogProps) {
   const { t } = useTranslation();
+  const { instances } = useInstancesConnect();
+
+  // Pick which chip this automation runs on. State lives in the dialog so
+  // it resets every open/close cycle. Default-chip resolution:
+  //  - on CREATE: the user's is_default instance (or the first instance)
+  //  - on EDIT:   the chip that owns the first existing send_group, so the
+  //               user sees their saved selection right away
+  // Switching chips clears send_groups/monitor_groups (selections from the
+  // old chip wouldn't match the new chip's groups anyway).
+  const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-resolve on open or initial editing target
+  useEffect(() => {
+    if (!open) return;
+    if (instances.length === 0) {
+      setSelectedChipId(null);
+      return;
+    }
+    const firstSendGroup = formData.send_groups?.[0];
+    const fromExisting = firstSendGroup
+      ? groups.find((g) => g.wa_group_id === firstSendGroup)?.instance_id
+      : undefined;
+    if (fromExisting) {
+      setSelectedChipId(fromExisting);
+      return;
+    }
+    const defaultInstance = instances.find((i) => i.is_default) ?? instances[0];
+    setSelectedChipId(defaultInstance?.id ?? null);
+  }, [open, editingId]);
+
+  // Groups/allGroups filtered to the selected chip — what the user actually
+  // sees in the SendGroupsSelector / MonitorGroupsSelector.
+  const filteredGroups = useMemo(() => {
+    if (!selectedChipId) return groups;
+    return groups.filter((g) => g.instance_id === selectedChipId);
+  }, [groups, selectedChipId]);
+
+  const filteredAllGroups = useMemo(() => {
+    if (!selectedChipId) return allGroups;
+    return allGroups.filter((g) => g.instance_id === selectedChipId);
+  }, [allGroups, selectedChipId]);
+
+  const handleChipChange = (id: string | null) => {
+    if (id === selectedChipId) return;
+    setSelectedChipId(id);
+    // Clear selections so the user does not accidentally save references
+    // to groups owned by a chip they are no longer targeting.
+    setFormData((prev) => ({
+      ...prev,
+      send_groups: [],
+      monitor_groups: [],
+    }));
+  };
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen && limitReached && !editingId) {
@@ -224,11 +280,32 @@ export function AutomationFormDialog({
             />
           )}
 
+          {/* Chip selector — picks which WhatsApp number this automation
+              uses. Filters the group lists below to that chip's groups. */}
+          {instances.length > 0 && (
+            <div className="space-y-1.5 xs:space-y-2">
+              <Label>
+                {t('pages.offerAutomations.form.chip', 'Número')} *{' '}
+                <span className="text-xs text-muted-foreground">
+                  {t(
+                    'pages.offerAutomations.form.chipHint',
+                    'Os grupos abaixo são deste número. Trocar limpa a seleção.'
+                  )}
+                </span>
+              </Label>
+              <ChipSelector
+                value={selectedChipId}
+                onChange={handleChipChange}
+                instances={instances}
+              />
+            </div>
+          )}
+
           {/* Send Groups */}
           <SendGroupsSelector
             formData={formData}
             setFormData={setFormData}
-            groups={groups}
+            groups={filteredGroups}
             onToggleFavorite={onToggleFavorite}
           />
 
@@ -237,7 +314,7 @@ export function AutomationFormDialog({
             <MonitorGroupsSelector
               formData={formData}
               setFormData={setFormData}
-              allGroups={allGroups}
+              allGroups={filteredAllGroups}
               onToggleFavorite={onToggleFavorite}
             />
           )}
