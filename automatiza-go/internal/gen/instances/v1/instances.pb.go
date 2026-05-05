@@ -22,7 +22,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// *
+//*
 // Status of a WhatsApp instance.
 type InstanceStatus int32
 
@@ -76,7 +76,7 @@ func (InstanceStatus) EnumDescriptor() ([]byte, []int) {
 	return file_instances_v1_instances_proto_rawDescGZIP(), []int{0}
 }
 
-// *
+//*
 // Represents a WhatsApp instance connection.
 type Instance struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -94,7 +94,11 @@ type Instance struct {
 	UpdatedAt string `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	// True when this is the user's default chip. Exactly one instance per user
 	// is the default; the backend enforces uniqueness via a partial unique index.
-	IsDefault     bool `protobuf:"varint,7,opt,name=is_default,json=isDefault,proto3" json:"is_default,omitempty"`
+	IsDefault bool `protobuf:"varint,7,opt,name=is_default,json=isDefault,proto3" json:"is_default,omitempty"`
+	// Optional human-readable label set by the user (or auto-derived from the
+	// first session created). Used by the frontend to show "chip Vendas"
+	// instead of the opaque WAHA session id.
+	FriendlyName  *string `protobuf:"bytes,8,opt,name=friendly_name,json=friendlyName,proto3,oneof" json:"friendly_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -176,6 +180,13 @@ func (x *Instance) GetIsDefault() bool {
 		return x.IsDefault
 	}
 	return false
+}
+
+func (x *Instance) GetFriendlyName() string {
+	if x != nil && x.FriendlyName != nil {
+		return *x.FriendlyName
+	}
+	return ""
 }
 
 type GetLatestInstanceRequest struct {
@@ -993,7 +1004,7 @@ var File_instances_v1_instances_proto protoreflect.FileDescriptor
 
 const file_instances_v1_instances_proto_rawDesc = "" +
 	"\n" +
-	"\x1cinstances/v1/instances.proto\x12\finstances.v1\x1a\x1bbuf/validate/validate.proto\"\xe7\x01\n" +
+	"\x1cinstances/v1/instances.proto\x12\finstances.v1\x1a\x1bbuf/validate/validate.proto\"\xa3\x02\n" +
 	"\bInstance\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1f\n" +
@@ -1005,7 +1016,9 @@ const file_instances_v1_instances_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x06 \x01(\tR\tupdatedAt\x12\x1d\n" +
 	"\n" +
-	"is_default\x18\a \x01(\bR\tisDefault\"\x1a\n" +
+	"is_default\x18\a \x01(\bR\tisDefault\x12(\n" +
+	"\rfriendly_name\x18\b \x01(\tH\x00R\ffriendlyName\x88\x01\x01B\x10\n" +
+	"\x0e_friendly_name\"\x1a\n" +
 	"\x18GetLatestInstanceRequest\"a\n" +
 	"\x19GetLatestInstanceResponse\x127\n" +
 	"\binstance\x18\x01 \x01(\v2\x16.instances.v1.InstanceH\x00R\binstance\x88\x01\x01B\v\n" +
@@ -1139,6 +1152,7 @@ func file_instances_v1_instances_proto_init() {
 	if File_instances_v1_instances_proto != nil {
 		return
 	}
+	file_instances_v1_instances_proto_msgTypes[0].OneofWrappers = []any{}
 	file_instances_v1_instances_proto_msgTypes[2].OneofWrappers = []any{}
 	file_instances_v1_instances_proto_msgTypes[3].OneofWrappers = []any{}
 	file_instances_v1_instances_proto_msgTypes[18].OneofWrappers = []any{}

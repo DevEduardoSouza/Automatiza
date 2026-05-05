@@ -3,6 +3,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MAX_SEND_GROUPS } from '@/config/automation-categories';
+import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
 import type { Automation, AutomationGroup } from '@/types/automation';
 import { Search, Star } from 'lucide-react';
@@ -155,6 +156,20 @@ interface PerChipBreakdownProps {
 
 function PerChipBreakdown({ countByInstance, cap }: PerChipBreakdownProps) {
   const { t } = useTranslation();
+  const { instances } = useInstancesConnect();
+
+  // Map db-id -> friendly_name || instance_id so badges show a recognizable
+  // label instead of just the database id integer. Falls back to "chip #id"
+  // when neither field is available (e.g. mismatch with stale cache).
+  const labelByInstance = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const inst of instances) {
+      const label = inst.friendly_name?.trim() || inst.instance_id || `chip #${inst.id}`;
+      map.set(inst.id, label);
+    }
+    return map;
+  }, [instances]);
+
   if (countByInstance.size === 0) return null;
 
   const entries = Array.from(countByInstance.entries()).sort((a, b) => b[1] - a[1]);
@@ -163,6 +178,7 @@ function PerChipBreakdown({ countByInstance, cap }: PerChipBreakdownProps) {
     <div className="flex flex-wrap gap-2 text-[11px] xs:text-xs mt-1">
       {entries.map(([instanceID, count]) => {
         const atCap = count >= cap;
+        const label = labelByInstance.get(instanceID) ?? `chip #${instanceID}`;
         return (
           <span
             key={instanceID}
@@ -175,7 +191,7 @@ function PerChipBreakdown({ countByInstance, cap }: PerChipBreakdownProps) {
               defaultValue: 'Grupos por chip nesta automação',
             })}
           >
-            chip #{instanceID}: {count}/{cap}
+            {label}: {count}/{cap}
           </span>
         );
       })}

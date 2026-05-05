@@ -57,7 +57,7 @@ function InstanceRow({ instance, onSetDefault, onDelete, busy }: InstanceRowProp
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-medium text-sm truncate" style={{ color: '#18181b' }}>
-              {instance.instance_id}
+              {instance.friendly_name?.trim() || instance.instance_id}
             </p>
             {instance.is_default && (
               <span
