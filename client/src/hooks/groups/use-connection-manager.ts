@@ -1,24 +1,43 @@
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
 import { captureHookError } from '@/lib/sentry';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ConnectionStatus, UseConnectionManagerReturn } from './types';
 
 /**
  * Hook for managing WhatsApp connection status and reconnection.
  * Fully migrated to ConnectRPC hooks.
+ *
+ * Multi-instance aware: connection status is "connected" when ANY of the
+ * user's instances reports connected. Reconnect targets the user's default
+ * instance (or any connected one as fallback) instead of the singleton
+ * "latestInstance", so a 2nd-chip-in-pending state does not flip /groups
+ * into "Desconectado".
  */
 export function useConnectionManager(loadGroups: () => Promise<void>): UseConnectionManagerReturn {
   const { t } = useTranslation();
   const { toast } = useToast();
   const {
-    latestInstance,
+    instances,
     upsertInstanceStatus,
     refetch: refetchInstances,
     checkInstanceStatus,
     reconnectInstance,
   } = useInstancesConnect();
+
+  // Pick the chip that best represents "the user's WhatsApp": prefer the
+  // default chip when connected, otherwise any connected chip, falling back
+  // to the default chip even if disconnected (so reconnect has a target).
+  const primaryInstance = useMemo(() => {
+    if (instances.length === 0) return null;
+    const defaultConnected = instances.find((i) => i.is_default && i.status === 'connected');
+    if (defaultConnected) return defaultConnected;
+    const anyConnected = instances.find((i) => i.status === 'connected');
+    if (anyConnected) return anyConnected;
+    const defaultInstance = instances.find((i) => i.is_default);
+    return defaultInstance ?? instances[0];
+  }, [instances]);
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking');
   const [instanceName, setInstanceName] = useState<string>('');
@@ -31,25 +50,19 @@ export function useConnectionManager(loadGroups: () => Promise<void>): UseConnec
 
   const checkConnectionStatus = useCallback(async () => {
     try {
-      // Use ConnectRPC hook data for instance status
-      if (!latestInstance) {
+      if (!primaryInstance) {
         setConnectionStatus('disconnected');
         setInstanceName('');
         return;
       }
 
-      if (latestInstance.status === 'connected') {
-        setInstanceName(latestInstance.instance_id);
-        setConnectionStatus('connected');
-      } else {
-        setConnectionStatus('disconnected');
-        setInstanceName(latestInstance.instance_id);
-      }
+      setInstanceName(primaryInstance.instance_id);
+      setConnectionStatus(primaryInstance.status === 'connected' ? 'connected' : 'disconnected');
     } catch (error: unknown) {
       captureHookError(error, 'useConnectionManager', 'checkConnectionStatus');
       setConnectionStatus('disconnected');
     }
-  }, [latestInstance]);
+  }, [primaryInstance]);
 
   const handleReconnect = useCallback(async () => {
     if (!instanceName) {

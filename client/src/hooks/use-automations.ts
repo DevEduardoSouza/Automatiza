@@ -367,10 +367,14 @@ export function useAutomations(): UseAutomationsReturn {
     return 10; // default
   }, [profilesConnect.limits?.max_automations]);
 
-  // WhatsApp connection status from ConnectRPC
+  // WhatsApp connection status from ConnectRPC.
+  // Multi-instance aware: any connected instance qualifies as "WhatsApp
+  // available". The legacy check on latestInstance flagged the user as
+  // disconnected whenever the most-recently-updated chip was the wrong one
+  // (e.g. they paired a 2nd chip and it later went into pending).
   const whatsappConnected = useMemo(() => {
-    return instancesConnect.latestInstance?.status === 'connected';
-  }, [instancesConnect.latestInstance?.status]);
+    return instancesConnect.instances.some((inst) => inst.status === 'connected');
+  }, [instancesConnect.instances]);
 
   // Active stores from ConnectRPC
   const activeStores: StoreKey[] = useMemo(
