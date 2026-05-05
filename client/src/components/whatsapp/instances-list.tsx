@@ -1,7 +1,7 @@
 import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, Star, Trash2 } from 'lucide-react';
+import { Check, Loader2, Pencil, Plus, Star, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AddChipModal } from './add-chip-modal';
@@ -31,17 +31,42 @@ interface InstanceRowProps {
   instance: LocalInstance;
   onSetDefault: (id: string) => void;
   onDelete: (id: string, name: string) => void;
+  onRename: (id: string, friendlyName: string) => Promise<void>;
   busy: boolean;
 }
 
-function InstanceRow({ instance, onSetDefault, onDelete, busy }: InstanceRowProps) {
+function InstanceRow({ instance, onSetDefault, onDelete, onRename, busy }: InstanceRowProps) {
   const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(instance.friendly_name?.trim() || '');
+
   const statusLabel =
     instance.status === 'connected'
       ? t('pages.whatsapp.instancesList.statusConnected', 'Conectado')
       : instance.status === 'disconnected'
         ? t('pages.whatsapp.instancesList.statusDisconnected', 'Desconectado')
         : t('pages.whatsapp.instancesList.statusPending', 'Pendente');
+
+  const startEdit = () => {
+    setDraft(instance.friendly_name?.trim() || '');
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setDraft(instance.friendly_name?.trim() || '');
+  };
+
+  const commitEdit = async () => {
+    const trimmed = draft.trim();
+    // Treat unchanged value as a no-op so we don't fire useless requests.
+    if (trimmed === (instance.friendly_name?.trim() || '')) {
+      setEditing(false);
+      return;
+    }
+    await onRename(instance.id, trimmed);
+    setEditing(false);
+  };
 
   return (
     <div
@@ -55,24 +80,76 @@ function InstanceRow({ instance, onSetDefault, onDelete, busy }: InstanceRowProp
           aria-label={statusLabel}
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-medium text-sm truncate" style={{ color: '#18181b' }}>
-              {instance.friendly_name?.trim() || instance.instance_id}
-            </p>
-            {instance.is_default && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
-                style={{
-                  backgroundColor: colors.defaultBadgeBg,
-                  borderColor: colors.defaultBadgeBorder,
-                  color: colors.defaultBadgeText,
+          {editing ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <input
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitEdit();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelEdit();
+                  }
                 }}
+                disabled={busy}
+                maxLength={255}
+                placeholder={instance.instance_id}
+                className="flex-1 min-w-0 rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#8D2D53]"
+                style={{ borderColor: colors.wineBorder }}
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={commitEdit}
+                disabled={busy}
+                className="inline-flex items-center justify-center rounded-full p-1 text-green-600 hover:bg-green-50 disabled:opacity-50"
+                title={t('common.save', 'Salvar')}
               >
-                <Star className="h-3 w-3 fill-current" />
-                {t('pages.whatsapp.instancesList.defaultBadge', 'Padrão')}
-              </span>
-            )}
-          </div>
+                <Check className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={busy}
+                className="inline-flex items-center justify-center rounded-full p-1 text-muted-foreground hover:bg-muted disabled:opacity-50"
+                title={t('common.cancel', 'Cancelar')}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-medium text-sm truncate" style={{ color: '#18181b' }}>
+                {instance.friendly_name?.trim() || instance.instance_id}
+              </p>
+              <button
+                type="button"
+                onClick={startEdit}
+                disabled={busy}
+                className="inline-flex items-center justify-center rounded p-0.5 text-muted-foreground transition-opacity opacity-50 hover:opacity-100 disabled:opacity-30"
+                title={t('pages.whatsapp.instancesList.renameTooltip', 'Renomear chip')}
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+              {instance.is_default && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                  style={{
+                    backgroundColor: colors.defaultBadgeBg,
+                    borderColor: colors.defaultBadgeBorder,
+                    color: colors.defaultBadgeText,
+                  }}
+                >
+                  <Star className="h-3 w-3 fill-current" />
+                  {t('pages.whatsapp.instancesList.defaultBadge', 'Padrão')}
+                </span>
+              )}
+            </div>
+          )}
           <p className="text-xs mt-0.5" style={{ color: colors.wineTextMuted }}>
             {statusLabel}
           </p>
@@ -121,8 +198,10 @@ export function InstancesList() {
     loading,
     setDefaultInstance,
     deleteInstance,
+    updateInstanceLabel,
     isSettingDefault,
     isDeletingInstance,
+    isUpdatingLabel,
   } = useInstancesConnect();
 
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -135,7 +214,7 @@ export function InstancesList() {
     return null;
   }
 
-  const busy = isSettingDefault || isDeletingInstance;
+  const busy = isSettingDefault || isDeletingInstance || isUpdatingLabel;
   const canAddMore = instances.length < MAX_INSTANCES_PER_USER;
 
   const handleSetDefault = async (id: string) => {
@@ -146,6 +225,17 @@ export function InstancesList() {
       });
     } catch {
       // Hook already shows error toast via getErrorInfo.
+    }
+  };
+
+  const handleRename = async (id: string, friendlyName: string) => {
+    try {
+      await updateInstanceLabel(id, friendlyName);
+      toast({
+        title: t('pages.whatsapp.instancesList.renamed', 'Chip renomeado'),
+      });
+    } catch {
+      // Hook already shows the error toast.
     }
   };
 
@@ -217,6 +307,7 @@ export function InstancesList() {
             instance={inst}
             onSetDefault={handleSetDefault}
             onDelete={handleDelete}
+            onRename={handleRename}
             busy={busy}
           />
         ))}

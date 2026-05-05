@@ -802,6 +802,105 @@ func (x *CheckInstanceStatusResponse) GetStatus() string {
 	return ""
 }
 
+type UpdateInstanceLabelRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Database id of the instance to rename. Must belong to the authenticated user.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// New human-readable label. Empty string clears it (UI then falls back to
+	// the WAHA session id). Trimmed server-side.
+	FriendlyName  string `protobuf:"bytes,2,opt,name=friendly_name,json=friendlyName,proto3" json:"friendly_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateInstanceLabelRequest) Reset() {
+	*x = UpdateInstanceLabelRequest{}
+	mi := &file_instances_v1_instances_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateInstanceLabelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateInstanceLabelRequest) ProtoMessage() {}
+
+func (x *UpdateInstanceLabelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_instances_v1_instances_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateInstanceLabelRequest.ProtoReflect.Descriptor instead.
+func (*UpdateInstanceLabelRequest) Descriptor() ([]byte, []int) {
+	return file_instances_v1_instances_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *UpdateInstanceLabelRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateInstanceLabelRequest) GetFriendlyName() string {
+	if x != nil {
+		return x.FriendlyName
+	}
+	return ""
+}
+
+type UpdateInstanceLabelResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Instance      *Instance              `protobuf:"bytes,1,opt,name=instance,proto3" json:"instance,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateInstanceLabelResponse) Reset() {
+	*x = UpdateInstanceLabelResponse{}
+	mi := &file_instances_v1_instances_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateInstanceLabelResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateInstanceLabelResponse) ProtoMessage() {}
+
+func (x *UpdateInstanceLabelResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_instances_v1_instances_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateInstanceLabelResponse.ProtoReflect.Descriptor instead.
+func (*UpdateInstanceLabelResponse) Descriptor() ([]byte, []int) {
+	return file_instances_v1_instances_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *UpdateInstanceLabelResponse) GetInstance() *Instance {
+	if x != nil {
+		return x.Instance
+	}
+	return nil
+}
+
 type SetDefaultInstanceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Database ID of the instance to promote to default. The instance must
@@ -813,7 +912,7 @@ type SetDefaultInstanceRequest struct {
 
 func (x *SetDefaultInstanceRequest) Reset() {
 	*x = SetDefaultInstanceRequest{}
-	mi := &file_instances_v1_instances_proto_msgTypes[15]
+	mi := &file_instances_v1_instances_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -825,7 +924,7 @@ func (x *SetDefaultInstanceRequest) String() string {
 func (*SetDefaultInstanceRequest) ProtoMessage() {}
 
 func (x *SetDefaultInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_instances_v1_instances_proto_msgTypes[15]
+	mi := &file_instances_v1_instances_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -838,7 +937,7 @@ func (x *SetDefaultInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetDefaultInstanceRequest.ProtoReflect.Descriptor instead.
 func (*SetDefaultInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_instances_v1_instances_proto_rawDescGZIP(), []int{15}
+	return file_instances_v1_instances_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SetDefaultInstanceRequest) GetId() string {
@@ -857,7 +956,7 @@ type SetDefaultInstanceResponse struct {
 
 func (x *SetDefaultInstanceResponse) Reset() {
 	*x = SetDefaultInstanceResponse{}
-	mi := &file_instances_v1_instances_proto_msgTypes[16]
+	mi := &file_instances_v1_instances_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -869,7 +968,7 @@ func (x *SetDefaultInstanceResponse) String() string {
 func (*SetDefaultInstanceResponse) ProtoMessage() {}
 
 func (x *SetDefaultInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_instances_v1_instances_proto_msgTypes[16]
+	mi := &file_instances_v1_instances_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -882,7 +981,7 @@ func (x *SetDefaultInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetDefaultInstanceResponse.ProtoReflect.Descriptor instead.
 func (*SetDefaultInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_instances_v1_instances_proto_rawDescGZIP(), []int{16}
+	return file_instances_v1_instances_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SetDefaultInstanceResponse) GetInstance() *Instance {
@@ -902,7 +1001,7 @@ type ReconnectInstanceRequest struct {
 
 func (x *ReconnectInstanceRequest) Reset() {
 	*x = ReconnectInstanceRequest{}
-	mi := &file_instances_v1_instances_proto_msgTypes[17]
+	mi := &file_instances_v1_instances_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -914,7 +1013,7 @@ func (x *ReconnectInstanceRequest) String() string {
 func (*ReconnectInstanceRequest) ProtoMessage() {}
 
 func (x *ReconnectInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_instances_v1_instances_proto_msgTypes[17]
+	mi := &file_instances_v1_instances_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -927,7 +1026,7 @@ func (x *ReconnectInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconnectInstanceRequest.ProtoReflect.Descriptor instead.
 func (*ReconnectInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_instances_v1_instances_proto_rawDescGZIP(), []int{17}
+	return file_instances_v1_instances_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ReconnectInstanceRequest) GetInstanceName() string {
@@ -951,7 +1050,7 @@ type ReconnectInstanceResponse struct {
 
 func (x *ReconnectInstanceResponse) Reset() {
 	*x = ReconnectInstanceResponse{}
-	mi := &file_instances_v1_instances_proto_msgTypes[18]
+	mi := &file_instances_v1_instances_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -963,7 +1062,7 @@ func (x *ReconnectInstanceResponse) String() string {
 func (*ReconnectInstanceResponse) ProtoMessage() {}
 
 func (x *ReconnectInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_instances_v1_instances_proto_msgTypes[18]
+	mi := &file_instances_v1_instances_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -976,7 +1075,7 @@ func (x *ReconnectInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconnectInstanceResponse.ProtoReflect.Descriptor instead.
 func (*ReconnectInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_instances_v1_instances_proto_rawDescGZIP(), []int{18}
+	return file_instances_v1_instances_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ReconnectInstanceResponse) GetSuccess() bool {
@@ -1048,7 +1147,12 @@ const file_instances_v1_instances_proto_rawDesc = "" +
 	"\x1bCheckInstanceStatusResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status\"4\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\"Z\n" +
+	"\x1aUpdateInstanceLabelRequest\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12#\n" +
+	"\rfriendly_name\x18\x02 \x01(\tR\ffriendlyName\"Q\n" +
+	"\x1bUpdateInstanceLabelResponse\x122\n" +
+	"\binstance\x18\x01 \x01(\v2\x16.instances.v1.InstanceR\binstance\"4\n" +
 	"\x19SetDefaultInstanceRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\"P\n" +
 	"\x1aSetDefaultInstanceResponse\x122\n" +
@@ -1065,14 +1169,15 @@ const file_instances_v1_instances_proto_rawDesc = "" +
 	"\x1bINSTANCE_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17INSTANCE_STATUS_PENDING\x10\x01\x12\x1d\n" +
 	"\x19INSTANCE_STATUS_CONNECTED\x10\x02\x12 \n" +
-	"\x1cINSTANCE_STATUS_DISCONNECTED\x10\x032\xe2\a\n" +
+	"\x1cINSTANCE_STATUS_DISCONNECTED\x10\x032\xce\b\n" +
 	"\x10InstancesService\x12d\n" +
 	"\x11GetLatestInstance\x12&.instances.v1.GetLatestInstanceRequest\x1a'.instances.v1.GetLatestInstanceResponse\x12d\n" +
 	"\x11ListUserInstances\x12&.instances.v1.ListUserInstancesRequest\x1a'.instances.v1.ListUserInstancesResponse\x12m\n" +
 	"\x14UpsertInstanceStatus\x12).instances.v1.UpsertInstanceStatusRequest\x1a*.instances.v1.UpsertInstanceStatusResponse\x12v\n" +
 	"\x17CleanupInvalidInstances\x12,.instances.v1.CleanupInvalidInstancesRequest\x1a-.instances.v1.CleanupInvalidInstancesResponse\x12\x82\x01\n" +
 	"\x1bDeleteDisconnectedInstances\x120.instances.v1.DeleteDisconnectedInstancesRequest\x1a1.instances.v1.DeleteDisconnectedInstancesResponse\x12[\n" +
-	"\x0eDeleteInstance\x12#.instances.v1.DeleteInstanceRequest\x1a$.instances.v1.DeleteInstanceResponse\x12g\n" +
+	"\x0eDeleteInstance\x12#.instances.v1.DeleteInstanceRequest\x1a$.instances.v1.DeleteInstanceResponse\x12j\n" +
+	"\x13UpdateInstanceLabel\x12(.instances.v1.UpdateInstanceLabelRequest\x1a).instances.v1.UpdateInstanceLabelResponse\x12g\n" +
 	"\x12SetDefaultInstance\x12'.instances.v1.SetDefaultInstanceRequest\x1a(.instances.v1.SetDefaultInstanceResponse\x12j\n" +
 	"\x13CheckInstanceStatus\x12(.instances.v1.CheckInstanceStatusRequest\x1a).instances.v1.CheckInstanceStatusResponse\x12d\n" +
 	"\x11ReconnectInstance\x12&.instances.v1.ReconnectInstanceRequest\x1a'.instances.v1.ReconnectInstanceResponseB\xa8\x01\n" +
@@ -1091,7 +1196,7 @@ func file_instances_v1_instances_proto_rawDescGZIP() []byte {
 }
 
 var file_instances_v1_instances_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_instances_v1_instances_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_instances_v1_instances_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_instances_v1_instances_proto_goTypes = []any{
 	(InstanceStatus)(0),                         // 0: instances.v1.InstanceStatus
 	(*Instance)(nil),                            // 1: instances.v1.Instance
@@ -1109,10 +1214,12 @@ var file_instances_v1_instances_proto_goTypes = []any{
 	(*DeleteInstanceResponse)(nil),              // 13: instances.v1.DeleteInstanceResponse
 	(*CheckInstanceStatusRequest)(nil),          // 14: instances.v1.CheckInstanceStatusRequest
 	(*CheckInstanceStatusResponse)(nil),         // 15: instances.v1.CheckInstanceStatusResponse
-	(*SetDefaultInstanceRequest)(nil),           // 16: instances.v1.SetDefaultInstanceRequest
-	(*SetDefaultInstanceResponse)(nil),          // 17: instances.v1.SetDefaultInstanceResponse
-	(*ReconnectInstanceRequest)(nil),            // 18: instances.v1.ReconnectInstanceRequest
-	(*ReconnectInstanceResponse)(nil),           // 19: instances.v1.ReconnectInstanceResponse
+	(*UpdateInstanceLabelRequest)(nil),          // 16: instances.v1.UpdateInstanceLabelRequest
+	(*UpdateInstanceLabelResponse)(nil),         // 17: instances.v1.UpdateInstanceLabelResponse
+	(*SetDefaultInstanceRequest)(nil),           // 18: instances.v1.SetDefaultInstanceRequest
+	(*SetDefaultInstanceResponse)(nil),          // 19: instances.v1.SetDefaultInstanceResponse
+	(*ReconnectInstanceRequest)(nil),            // 20: instances.v1.ReconnectInstanceRequest
+	(*ReconnectInstanceResponse)(nil),           // 21: instances.v1.ReconnectInstanceResponse
 }
 var file_instances_v1_instances_proto_depIdxs = []int32{
 	0,  // 0: instances.v1.Instance.status:type_name -> instances.v1.InstanceStatus
@@ -1121,30 +1228,33 @@ var file_instances_v1_instances_proto_depIdxs = []int32{
 	1,  // 3: instances.v1.ListUserInstancesResponse.instances:type_name -> instances.v1.Instance
 	0,  // 4: instances.v1.UpsertInstanceStatusRequest.status:type_name -> instances.v1.InstanceStatus
 	1,  // 5: instances.v1.UpsertInstanceStatusResponse.instance:type_name -> instances.v1.Instance
-	1,  // 6: instances.v1.SetDefaultInstanceResponse.instance:type_name -> instances.v1.Instance
-	2,  // 7: instances.v1.InstancesService.GetLatestInstance:input_type -> instances.v1.GetLatestInstanceRequest
-	4,  // 8: instances.v1.InstancesService.ListUserInstances:input_type -> instances.v1.ListUserInstancesRequest
-	6,  // 9: instances.v1.InstancesService.UpsertInstanceStatus:input_type -> instances.v1.UpsertInstanceStatusRequest
-	8,  // 10: instances.v1.InstancesService.CleanupInvalidInstances:input_type -> instances.v1.CleanupInvalidInstancesRequest
-	10, // 11: instances.v1.InstancesService.DeleteDisconnectedInstances:input_type -> instances.v1.DeleteDisconnectedInstancesRequest
-	12, // 12: instances.v1.InstancesService.DeleteInstance:input_type -> instances.v1.DeleteInstanceRequest
-	16, // 13: instances.v1.InstancesService.SetDefaultInstance:input_type -> instances.v1.SetDefaultInstanceRequest
-	14, // 14: instances.v1.InstancesService.CheckInstanceStatus:input_type -> instances.v1.CheckInstanceStatusRequest
-	18, // 15: instances.v1.InstancesService.ReconnectInstance:input_type -> instances.v1.ReconnectInstanceRequest
-	3,  // 16: instances.v1.InstancesService.GetLatestInstance:output_type -> instances.v1.GetLatestInstanceResponse
-	5,  // 17: instances.v1.InstancesService.ListUserInstances:output_type -> instances.v1.ListUserInstancesResponse
-	7,  // 18: instances.v1.InstancesService.UpsertInstanceStatus:output_type -> instances.v1.UpsertInstanceStatusResponse
-	9,  // 19: instances.v1.InstancesService.CleanupInvalidInstances:output_type -> instances.v1.CleanupInvalidInstancesResponse
-	11, // 20: instances.v1.InstancesService.DeleteDisconnectedInstances:output_type -> instances.v1.DeleteDisconnectedInstancesResponse
-	13, // 21: instances.v1.InstancesService.DeleteInstance:output_type -> instances.v1.DeleteInstanceResponse
-	17, // 22: instances.v1.InstancesService.SetDefaultInstance:output_type -> instances.v1.SetDefaultInstanceResponse
-	15, // 23: instances.v1.InstancesService.CheckInstanceStatus:output_type -> instances.v1.CheckInstanceStatusResponse
-	19, // 24: instances.v1.InstancesService.ReconnectInstance:output_type -> instances.v1.ReconnectInstanceResponse
-	16, // [16:25] is the sub-list for method output_type
-	7,  // [7:16] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	1,  // 6: instances.v1.UpdateInstanceLabelResponse.instance:type_name -> instances.v1.Instance
+	1,  // 7: instances.v1.SetDefaultInstanceResponse.instance:type_name -> instances.v1.Instance
+	2,  // 8: instances.v1.InstancesService.GetLatestInstance:input_type -> instances.v1.GetLatestInstanceRequest
+	4,  // 9: instances.v1.InstancesService.ListUserInstances:input_type -> instances.v1.ListUserInstancesRequest
+	6,  // 10: instances.v1.InstancesService.UpsertInstanceStatus:input_type -> instances.v1.UpsertInstanceStatusRequest
+	8,  // 11: instances.v1.InstancesService.CleanupInvalidInstances:input_type -> instances.v1.CleanupInvalidInstancesRequest
+	10, // 12: instances.v1.InstancesService.DeleteDisconnectedInstances:input_type -> instances.v1.DeleteDisconnectedInstancesRequest
+	12, // 13: instances.v1.InstancesService.DeleteInstance:input_type -> instances.v1.DeleteInstanceRequest
+	16, // 14: instances.v1.InstancesService.UpdateInstanceLabel:input_type -> instances.v1.UpdateInstanceLabelRequest
+	18, // 15: instances.v1.InstancesService.SetDefaultInstance:input_type -> instances.v1.SetDefaultInstanceRequest
+	14, // 16: instances.v1.InstancesService.CheckInstanceStatus:input_type -> instances.v1.CheckInstanceStatusRequest
+	20, // 17: instances.v1.InstancesService.ReconnectInstance:input_type -> instances.v1.ReconnectInstanceRequest
+	3,  // 18: instances.v1.InstancesService.GetLatestInstance:output_type -> instances.v1.GetLatestInstanceResponse
+	5,  // 19: instances.v1.InstancesService.ListUserInstances:output_type -> instances.v1.ListUserInstancesResponse
+	7,  // 20: instances.v1.InstancesService.UpsertInstanceStatus:output_type -> instances.v1.UpsertInstanceStatusResponse
+	9,  // 21: instances.v1.InstancesService.CleanupInvalidInstances:output_type -> instances.v1.CleanupInvalidInstancesResponse
+	11, // 22: instances.v1.InstancesService.DeleteDisconnectedInstances:output_type -> instances.v1.DeleteDisconnectedInstancesResponse
+	13, // 23: instances.v1.InstancesService.DeleteInstance:output_type -> instances.v1.DeleteInstanceResponse
+	17, // 24: instances.v1.InstancesService.UpdateInstanceLabel:output_type -> instances.v1.UpdateInstanceLabelResponse
+	19, // 25: instances.v1.InstancesService.SetDefaultInstance:output_type -> instances.v1.SetDefaultInstanceResponse
+	15, // 26: instances.v1.InstancesService.CheckInstanceStatus:output_type -> instances.v1.CheckInstanceStatusResponse
+	21, // 27: instances.v1.InstancesService.ReconnectInstance:output_type -> instances.v1.ReconnectInstanceResponse
+	18, // [18:28] is the sub-list for method output_type
+	8,  // [8:18] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_instances_v1_instances_proto_init() }
@@ -1155,14 +1265,14 @@ func file_instances_v1_instances_proto_init() {
 	file_instances_v1_instances_proto_msgTypes[0].OneofWrappers = []any{}
 	file_instances_v1_instances_proto_msgTypes[2].OneofWrappers = []any{}
 	file_instances_v1_instances_proto_msgTypes[3].OneofWrappers = []any{}
-	file_instances_v1_instances_proto_msgTypes[18].OneofWrappers = []any{}
+	file_instances_v1_instances_proto_msgTypes[20].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_instances_v1_instances_proto_rawDesc), len(file_instances_v1_instances_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   19,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

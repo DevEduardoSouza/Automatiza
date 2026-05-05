@@ -219,6 +219,11 @@ func (m *mockInstanceRepo) CountUserInstances(ctx context.Context, userID string
 	return args.Int(0), args.Error(1)
 }
 
+func (m *mockInstanceRepo) UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error {
+	args := m.Called(ctx, userID, instanceID, friendlyName)
+	return args.Error(0)
+}
+
 // mockQueueClient provides a mock queue client for testing.
 type mockQueueClient struct {
 	enqueueFunc func(ctx context.Context, data *workers.GroupsSyncJobData) (*asynq.TaskInfo, error)
