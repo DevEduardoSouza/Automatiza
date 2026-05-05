@@ -67,7 +67,7 @@ export function RecommendationsModal({ open, onClose }: RecommendationsModalProp
       bullets: [
         t(
           'pages.whatsapp.recommendations.archive.b1',
-          'Arquive todas as conversas do chip para reduzir o volume de mensagens carregadas e melhorar o desempenho'
+          'Arquive todas as conversas do número para reduzir o volume de mensagens carregadas e melhorar o desempenho'
         ),
         t(
           'pages.whatsapp.recommendations.archive.b2',
@@ -100,15 +100,15 @@ export function RecommendationsModal({ open, onClose }: RecommendationsModalProp
       bullets: [
         t(
           'pages.whatsapp.recommendations.structure.b1',
-          'Limite de 10 chips por conta. Distribua os grupos entre eles para evitar sobrecarga.'
+          'Limite de 10 números por conta. Distribua os grupos entre eles para evitar sobrecarga.'
         ),
         t(
           'pages.whatsapp.recommendations.structure.b2',
-          'Até 20 grupos por chip. Acima disso, o WhatsApp começa a interpretar como spam.'
+          'Até 20 grupos por número. Acima disso, o WhatsApp começa a interpretar como spam.'
         ),
         t(
           'pages.whatsapp.recommendations.structure.b3',
-          'Use chips dedicados para envio (não monitoramento) — números focados sofrem menos rate-limit'
+          'Use números dedicados para envio (não monitoramento) — números focados sofrem menos rate-limit'
         ),
       ],
     },
@@ -127,7 +127,7 @@ export function RecommendationsModal({ open, onClose }: RecommendationsModalProp
         ),
         t(
           'pages.whatsapp.recommendations.banRisk.b3',
-          'Use chip dedicado, não use seu número pessoal e respeite os limites recomendados'
+          'Use número dedicado, não use seu número pessoal e respeite os limites recomendados'
         ),
       ],
     },
@@ -153,7 +153,7 @@ export function RecommendationsModal({ open, onClose }: RecommendationsModalProp
             <DialogDescription className="mt-1 text-sm">
               {t(
                 'pages.whatsapp.recommendations.subtitle',
-                'Para evitar desconexões, sincronizações fora de hora e banimento dos chips, siga as orientações abaixo.'
+                'Para evitar desconexões, sincronizações fora de hora e banimento dos números, siga as orientações abaixo.'
               )}
             </DialogDescription>
           </div>

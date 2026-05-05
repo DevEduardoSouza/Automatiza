@@ -205,12 +205,12 @@ export function AddChipModal({ open, onClose }: AddChipModalProps) {
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent className="max-w-md">
         <DialogTitle>
-          {t('pages.whatsapp.addChipModal.title', 'Adicionar novo chip')}
+          {t('pages.whatsapp.addChipModal.title', 'Adicionar novo número')}
         </DialogTitle>
         <DialogDescription>
           {t(
             'pages.whatsapp.addChipModal.description',
-            'Escaneie o QR code com o WhatsApp do número que você quer adicionar. Os chips já conectados continuam funcionando normalmente.'
+            'Escaneie o QR code com o WhatsApp do número que você quer adicionar. Os números já conectados continuam funcionando normalmente.'
           )}
         </DialogDescription>
 

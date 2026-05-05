@@ -112,7 +112,7 @@ export function GroupsListCheckbox({
                       ? t('pages.offerAutomations.validation.chipFullTooltip', {
                           max: perChipCap,
                           defaultValue:
-                            'Este chip já tem {{max}} grupos selecionados nesta automação',
+                            'Este número já tem {{max}} grupos selecionados nesta automação',
                         })
                       : undefined
                   }
@@ -164,7 +164,7 @@ function PerChipBreakdown({ countByInstance, cap }: PerChipBreakdownProps) {
   const labelByInstance = useMemo(() => {
     const map = new Map<string, string>();
     for (const inst of instances) {
-      const label = inst.friendly_name?.trim() || inst.instance_id || `chip #${inst.id}`;
+      const label = inst.friendly_name?.trim() || inst.instance_id || `número #${inst.id}`;
       map.set(inst.id, label);
     }
     return map;
@@ -178,7 +178,7 @@ function PerChipBreakdown({ countByInstance, cap }: PerChipBreakdownProps) {
     <div className="flex flex-wrap gap-2 text-[11px] xs:text-xs mt-1">
       {entries.map(([instanceID, count]) => {
         const atCap = count >= cap;
-        const label = labelByInstance.get(instanceID) ?? `chip #${instanceID}`;
+        const label = labelByInstance.get(instanceID) ?? `número #${instanceID}`;
         return (
           <span
             key={instanceID}
@@ -188,7 +188,7 @@ function PerChipBreakdown({ countByInstance, cap }: PerChipBreakdownProps) {
                 : 'border-muted bg-muted/30 text-muted-foreground'
             }`}
             title={t('pages.offerAutomations.form.perChipBreakdownTitle', {
-              defaultValue: 'Grupos por chip nesta automação',
+              defaultValue: 'Grupos por número nesta automação',
             })}
           >
             {label}: {count}/{cap}
@@ -244,12 +244,12 @@ export function SendGroupsSelector({
           if (current >= MAX_GROUPS_PER_INSTANCE) {
             toast({
               title: t('pages.offerAutomations.validation.chipFull', {
-                defaultValue: 'Limite de grupos por chip atingido',
+                defaultValue: 'Limite de grupos por número atingido',
               }),
               description: t('pages.offerAutomations.validation.chipFullMessage', {
                 max: MAX_GROUPS_PER_INSTANCE,
                 defaultValue:
-                  'Cada chip aceita no máximo {{max}} grupos por automação. Distribua os grupos entre mais chips.',
+                  'Cada número aceita no máximo {{max}} grupos por automação. Distribua os grupos entre mais números.',
               }),
               variant: 'destructive',
             });
@@ -339,12 +339,12 @@ export function MonitorGroupsSelector({
           if (currentChipCount >= MAX_GROUPS_PER_INSTANCE) {
             toast({
               title: t('pages.offerAutomations.validation.chipFull', {
-                defaultValue: 'Limite de grupos por chip atingido',
+                defaultValue: 'Limite de grupos por número atingido',
               }),
               description: t('pages.offerAutomations.validation.chipFullMessage', {
                 max: MAX_GROUPS_PER_INSTANCE,
                 defaultValue:
-                  'Cada chip aceita no máximo {{max}} grupos por automação. Distribua os grupos entre mais chips.',
+                  'Cada número aceita no máximo {{max}} grupos por automação. Distribua os grupos entre mais números.',
               }),
               variant: 'destructive',
             });
