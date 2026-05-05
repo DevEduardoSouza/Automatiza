@@ -15,6 +15,8 @@ import {
   SendGroupsSelector,
 } from '@/components/automations/form-sections';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { Label } from '@/components/ui/label';
+import { ChipSelector } from '@/components/whatsapp/chip-selector';
 import { useOfferGenerate } from '@/hooks/use-offer-generate';
 import {
   ChevronDown,
@@ -26,7 +28,7 @@ import {
   WifiOff,
   Zap,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const colors = {
@@ -51,6 +53,7 @@ export default function OfferGenerate() {
     setFormData,
     groups,
     allGroups,
+    instances,
     whatsappConnected,
     logs,
     logsLoading,
@@ -68,6 +71,51 @@ export default function OfferGenerate() {
     setDeleteDialogOpen,
     confirmDelete,
   } = useOfferGenerate();
+
+  // Chip selection: which WhatsApp number this offer-generate config runs
+  // on. Default to the existing config's chip when editing; otherwise the
+  // user's default. The dispatch routing reads each saved group's chip,
+  // so this is purely a UI affordance to keep the group list focused.
+  const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
+  useEffect(() => {
+    if (instances.length === 0) {
+      setSelectedChipId(null);
+      return;
+    }
+    const firstSendGroup = formData.send_groups?.[0];
+    const fromExisting = firstSendGroup
+      ? groups.find((g) => g.wa_group_id === firstSendGroup)?.instance_id
+      : undefined;
+    if (fromExisting) {
+      setSelectedChipId(fromExisting);
+      return;
+    }
+    const defaultInstance = instances.find((i) => i.is_default) ?? instances[0];
+    setSelectedChipId((prev) => prev ?? defaultInstance?.id ?? null);
+    // Re-resolve only when the config row changes, not on every keystroke.
+  }, [config?.id, instances]);
+
+  const filteredGroups = useMemo(() => {
+    if (!selectedChipId) return groups;
+    return groups.filter((g) => g.instance_id === selectedChipId);
+  }, [groups, selectedChipId]);
+
+  const filteredAllGroups = useMemo(() => {
+    if (!selectedChipId) return allGroups;
+    return allGroups.filter((g) => g.instance_id === selectedChipId);
+  }, [allGroups, selectedChipId]);
+
+  const handleChipChange = (id: string | null) => {
+    if (id === selectedChipId) return;
+    setSelectedChipId(id);
+    // Clear selections so the user does not save group ids that belong to
+    // a chip they are no longer targeting.
+    setFormData((prev) => ({
+      ...prev,
+      send_groups: [],
+      monitor_groups: [],
+    }));
+  };
 
   const handleTabChange = (tab: StatusTab) => {
     setActiveTab(tab);
@@ -222,6 +270,28 @@ export default function OfferGenerate() {
               {/* Config body */}
               {showConfig && (
                 <div className="px-4 xs:px-5 pb-4 xs:pb-5 space-y-3 xs:space-y-4">
+                  {/* Chip selector — picks which WhatsApp number this
+                      offer-generate config runs on. Filters the group lists
+                      below to that chip's groups. */}
+                  {instances.length > 0 && (
+                    <div className="space-y-1.5 xs:space-y-2">
+                      <Label>
+                        {t('pages.offerGenerate.config.chip', 'Número')} *{' '}
+                        <span className="text-xs text-muted-foreground">
+                          {t(
+                            'pages.offerGenerate.config.chipHint',
+                            'Os grupos abaixo são deste número. Trocar limpa a seleção.'
+                          )}
+                        </span>
+                      </Label>
+                      <ChipSelector
+                        value={selectedChipId}
+                        onChange={handleChipChange}
+                        instances={instances}
+                      />
+                    </div>
+                  )}
+
                   {/* Source Group (Monitor / Router group) */}
                   <div className="space-y-1.5">
                     <p className="text-xs font-medium" style={{ color: colors.wineTextLight }}>
@@ -233,7 +303,7 @@ export default function OfferGenerate() {
                     <MonitorGroupsSelector
                       formData={formData}
                       setFormData={setFormData}
-                      allGroups={allGroups}
+                      allGroups={filteredAllGroups}
                       onToggleFavorite={toggleFavorite}
                       maxGroups={1}
                       hideLabel
@@ -244,7 +314,7 @@ export default function OfferGenerate() {
                   <SendGroupsSelector
                     formData={formData}
                     setFormData={setFormData}
-                    groups={groups}
+                    groups={filteredGroups}
                     onToggleFavorite={toggleFavorite}
                   />
 
