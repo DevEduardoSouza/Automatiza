@@ -9,6 +9,7 @@ import (
 	"automatiza-go/internal/adapters/whatsapp"
 	whatsappv1 "automatiza-go/internal/gen/whatsapp/v1"
 	"automatiza-go/internal/lib/quota"
+	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/workers"
@@ -84,6 +85,32 @@ func (h *WhatsAppHandler) CreateInstance(
 
 	instanceName := sessionInfo.Name
 	resp.InstanceName = &instanceName
+
+	// Persist the instance to the DB right after WAHA accepted it. Without
+	// this row, ListUserInstances will not return the new chip even after
+	// the user finishes pairing — the singleton useWhatsApp hook used to
+	// upsert later via UpsertInstanceStatus, but the AddChipModal (Fase 3.2)
+	// does not, so chips paired through that flow were going dangling on
+	// WAHA without ever appearing in "Meus chips".
+	if h.instanceRepo != nil {
+		friendlyName := sessionInfo.Name
+		if _, upsertErr := h.instanceRepo.UpsertInstance(ctx, user.ID, &models.Instance{
+			InstanceID:   sessionInfo.Name,
+			FriendlyName: &friendlyName,
+			Status:       models.InstanceStatusPending,
+		}); upsertErr != nil {
+			// Persistence failure is logged but not fatal: the WAHA session
+			// already exists, and the user can still pair. UpsertInstanceStatus
+			// from the polling/SSE flow will retry on the next status update.
+			observability.LogAndCapture(zap.L(), sentry.LevelWarning,
+				"failed to persist instance after CreateSession", upsertErr,
+				map[string]string{
+					"module":   "whatsapp-handler",
+					"operation": "create-persist",
+					"instance": sessionInfo.Name,
+				})
+		}
+	}
 
 	// After creation, WAHA may still be in STARTING status. Poll briefly
 	// until the session reaches SCAN_QR so we can return the QR code
