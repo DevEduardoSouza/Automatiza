@@ -163,6 +163,11 @@ func (m *mockInstanceRepo) UpdateInstanceLabel(ctx context.Context, userID strin
 	return args.Error(0)
 }
 
+func (m *mockInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error {
+	args := m.Called(ctx, instanceID, phoneNumber)
+	return args.Error(0)
+}
+
 // mockMessageProcessor implements MessageWebhookProcessor for testing.
 type mockMessageProcessor struct {
 	mock.Mock

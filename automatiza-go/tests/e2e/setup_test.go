@@ -590,6 +590,10 @@ func (m *mockInstanceRepo) UpdateInstanceLabel(ctx context.Context, userID strin
 	return nil
 }
 
+func (m *mockInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error {
+	return nil
+}
+
 func (m *mockInstanceRepo) AddInstance(instance *models.Instance) {
 	m.instances[instance.ID] = instance
 	m.byUserID[instance.UserID] = append(m.byUserID[instance.UserID], *instance)

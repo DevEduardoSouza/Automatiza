@@ -258,6 +258,28 @@ func (r *instanceRepository) CountUserInstances(ctx context.Context, userID stri
 	return count, nil
 }
 
+func (r *instanceRepository) UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error {
+	trimmed := strings.TrimSpace(phoneNumber)
+	if trimmed == "" {
+		return nil
+	}
+	// Only write when the value would actually change. Avoids churning
+	// updated_at on every webhook tick once the chip is connected.
+	_, err := r.db.pool.Exec(ctx,
+		`UPDATE instances
+		 SET phone_number = $1, updated_at = $2
+		 WHERE id = $3 AND (phone_number IS NULL OR phone_number <> $1)`,
+		trimmed, time.Now().UTC(), instanceID,
+	)
+	if err != nil {
+		r.logger.Error("Failed to update instance phone_number",
+			zap.Int("instanceID", instanceID),
+			zap.Error(err))
+		return err
+	}
+	return nil
+}
+
 func (r *instanceRepository) UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error {
 	// Treat empty/whitespace input as "clear" — store NULL so reads fall back
 	// to instance_id at the UI layer instead of showing an empty label.

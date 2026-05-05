@@ -53,6 +53,9 @@ func (m *mockInstanceRepo) CountUserInstances(context.Context, string) (int, err
 func (m *mockInstanceRepo) UpdateInstanceLabel(context.Context, string, int, string) error {
 	return nil
 }
+func (m *mockInstanceRepo) UpdateInstancePhoneNumber(context.Context, int, string) error {
+	return nil
+}
 
 // mockCheckpointRepo implements reconciliation.CheckpointRepository for testing.
 type mockCheckpointRepo struct {

@@ -129,6 +129,10 @@ func (m *stubInstanceRepo) UpdateInstanceLabel(ctx context.Context, userID strin
 	return nil
 }
 
+func (m *stubInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error {
+	return nil
+}
+
 func TestDispatchLogProcessor_ProcessMessage(t *testing.T) {
 	logger := zap.NewNop()
 
