@@ -1,7 +1,7 @@
 import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
-import { Check, Loader2, Pencil, Plus, QrCode, RefreshCw, Trash2, Wifi, X } from 'lucide-react';
+import { Check, Loader2, Pencil, QrCode, RefreshCw, Trash2, Wifi, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AddChipModal } from './add-chip-modal';
@@ -294,26 +294,7 @@ export function InstancesList() {
             })}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {busy && <Loader2 className="h-4 w-4 animate-spin" style={{ color: colors.wine }} />}
-          <button
-            type="button"
-            onClick={() => setAddModalOpen(true)}
-            disabled={!canAddMore}
-            title={
-              !canAddMore
-                ? t('pages.whatsapp.instancesList.atCapTooltip', {
-                    max: MAX_INSTANCES_PER_USER,
-                    defaultValue: 'Limite de {{max}} números atingido',
-                  })
-                : undefined
-            }
-            className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#8D2D53] px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#732242] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('pages.whatsapp.instancesList.addChip', 'Adicionar número')}
-          </button>
-        </div>
+        {busy && <Loader2 className="h-4 w-4 animate-spin" style={{ color: colors.wine }} />}
       </div>
 
       <div className="space-y-2 xs:space-y-3">
