@@ -49,6 +49,11 @@ message Instance {
   // True when this is the user's default chip. Exactly one instance per user
   // is the default; the backend enforces uniqueness via a partial unique index.
   bool is_default = 7;
+
+  // Optional human-readable label set by the user (or auto-derived from the
+  // first session created). Used by the frontend to show "chip Vendas"
+  // instead of the opaque WAHA session id.
+  optional string friendly_name = 8;
 }
 
 // ============================================================

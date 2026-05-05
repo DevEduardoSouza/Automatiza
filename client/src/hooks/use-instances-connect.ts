@@ -42,6 +42,8 @@ export interface LocalInstance {
   instance_id: string;
   status: LocalInstanceStatus;
   is_default: boolean;
+  // Optional human-readable label. Falls back to instance_id when absent.
+  friendly_name?: string;
   created_at: string;
   updated_at: string;
 }
@@ -119,6 +121,7 @@ function fromProtoInstance(instance: Instance): LocalInstance {
     instance_id: instance.instanceId,
     status: fromProtoStatus(instance.status),
     is_default: instance.isDefault ?? false,
+    friendly_name: instance.friendlyName ?? undefined,
     created_at: instance.createdAt,
     updated_at: instance.updatedAt,
   };

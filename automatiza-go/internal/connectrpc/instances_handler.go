@@ -257,13 +257,14 @@ func instanceToProto(i *models.Instance) *instancesv1.Instance {
 	}
 
 	return &instancesv1.Instance{
-		Id:         strconv.Itoa(i.ID),
-		UserId:     i.UserID,
-		InstanceId: i.InstanceID,
-		Status:     instanceStatusToProto(i.Status),
-		CreatedAt:  i.CreatedAt,
-		UpdatedAt:  i.UpdatedAt,
-		IsDefault:  i.IsDefault,
+		Id:           strconv.Itoa(i.ID),
+		UserId:       i.UserID,
+		InstanceId:   i.InstanceID,
+		Status:       instanceStatusToProto(i.Status),
+		CreatedAt:    i.CreatedAt,
+		UpdatedAt:    i.UpdatedAt,
+		IsDefault:    i.IsDefault,
+		FriendlyName: i.FriendlyName,
 	}
 }
 
