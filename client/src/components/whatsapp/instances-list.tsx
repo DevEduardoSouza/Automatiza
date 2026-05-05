@@ -1,7 +1,7 @@
 import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
-import { Check, Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { Check, Loader2, Pencil, Plus, QrCode, RefreshCw, Trash2, Wifi, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AddChipModal } from './add-chip-modal';
@@ -327,6 +327,98 @@ export function InstancesList() {
             busy={busy}
           />
         ))}
+      </div>
+
+      {/* QR-pairing card below the list — mirrors the legacy ConnectionCard
+          look (wine bg, header with QR icon, divider, primary glow button)
+          so the "add another number" CTA reads as the same first-class
+          action it was before multi-instance shipped. The small header
+          button stays as a quick-access shortcut. */}
+      <div
+        className="mt-4 xs:mt-5 sm:mt-6 rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+        style={{ backgroundColor: '#ffffff', borderColor: colors.wineBorder }}
+      >
+        <div className="flex items-center gap-3 xs:gap-4 mb-3 xs:mb-4">
+          <div
+            className="p-2 xs:p-2.5 rounded-lg xs:rounded-xl border"
+            style={{
+              backgroundColor: 'rgba(141, 45, 83, 0.08)',
+              borderColor: colors.wineBorder,
+            }}
+          >
+            <QrCode
+              className="h-6 w-6 xs:h-7 xs:w-7 sm:h-8 sm:w-8"
+              style={{ color: colors.wine }}
+            />
+          </div>
+          <div>
+            <div
+              className="text-base xs:text-lg font-semibold tracking-tight"
+              style={{ color: '#18181b' }}
+            >
+              {canAddMore
+                ? t('pages.whatsapp.instancesList.addAnother', 'Adicionar outro número')
+                : t('pages.whatsapp.instancesList.atCapTitle', 'Limite atingido')}
+            </div>
+            <div
+              className="text-xs xs:text-sm tracking-tight"
+              style={{ color: colors.wineTextMuted }}
+            >
+              {canAddMore
+                ? t(
+                    'pages.whatsapp.instancesList.addAnotherDescription',
+                    'Conecte mais um número escaneando o QR code com o WhatsApp.'
+                  )
+                : t('pages.whatsapp.instancesList.atCapHint', {
+                    max: MAX_INSTANCES_PER_USER,
+                    defaultValue: 'Você atingiu o limite de {{max}} números',
+                  })}
+            </div>
+          </div>
+        </div>
+
+        <div className="h-px mb-4 xs:mb-5" style={{ backgroundColor: colors.wineBorder }} />
+
+        <button
+          type="button"
+          onClick={() => canAddMore && setAddModalOpen(true)}
+          disabled={!canAddMore || busy}
+          title={
+            !canAddMore
+              ? t('pages.whatsapp.instancesList.atCapTooltip', {
+                  max: MAX_INSTANCES_PER_USER,
+                  defaultValue: 'Limite de {{max}} números atingido',
+                })
+              : undefined
+          }
+          className="auth-btn-glow relative inline-flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm lg:py-3 lg:text-base font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <div className="auth-btn-glow__loader absolute inset-0 z-[1] bg-transparent">
+            <div className="auth-btn-glow__glow absolute inset-0" />
+          </div>
+          <span className="relative z-[2] flex items-center gap-2 font-semibold select-none">
+            <Wifi className="h-4 w-4 xs:h-5 xs:w-5" />
+            {canAddMore
+              ? t('pages.whatsapp.instancesList.addAnotherCta', 'Conectar novo número')
+              : t(
+                  'pages.whatsapp.instancesList.atCapCta',
+                  `Limite de ${MAX_INSTANCES_PER_USER} atingido`
+                )}
+          </span>
+        </button>
+
+        {canAddMore && (
+          <p
+            className="text-[11px] xs:text-xs text-center mt-2 xs:mt-3"
+            style={{ color: colors.wineTextMuted }}
+          >
+            {t('pages.whatsapp.instancesList.addAnotherHint', {
+              remaining: MAX_INSTANCES_PER_USER - instances.length,
+              max: MAX_INSTANCES_PER_USER,
+              defaultValue: 'Você pode adicionar mais {{remaining}} (limite: {{max}})',
+            })}
+          </p>
+        )}
       </div>
 
       <AddChipModal open={addModalOpen} onClose={() => setAddModalOpen(false)} />
