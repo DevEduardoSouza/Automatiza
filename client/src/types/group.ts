@@ -11,6 +11,10 @@ export interface Group {
   invite_code: string | null;
   is_admin: boolean;
   is_favorite: boolean;
+  // Database id of the WhatsApp instance that owns this group (string form).
+  // Optional because not every code path that produces a Group fills it in;
+  // the chip filter UI degrades gracefully when missing (group never matches).
+  instance_id?: string;
 }
 
 /**

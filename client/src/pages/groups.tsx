@@ -8,11 +8,13 @@ import {
   GroupReconnectDialog,
 } from '@/components/groups';
 import { Input } from '@/components/ui/input';
+import { ChipSelector } from '@/components/whatsapp/chip-selector';
 import { useGroups } from '@/hooks/use-groups';
+import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { cn } from '@/lib/utils';
 import * as Sentry from '@sentry/react';
 import { AlertCircle, RefreshCw, Search, WifiOff } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const GroupsIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -149,6 +151,15 @@ export default function Groups() {
     handleSendPoll,
     members,
   } = useGroups();
+
+  // Chip filter (multi-instance): null = "Todos os números". Filters the
+  // groups table without changing useGroups' internal state.
+  const { instances } = useInstancesConnect();
+  const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
+  const displayedGroups = useMemo(() => {
+    if (!selectedChipId) return filteredGroups;
+    return filteredGroups.filter((g) => g.instance_id === selectedChipId);
+  }, [filteredGroups, selectedChipId]);
 
   useEffect(() => {
     if (error) {
@@ -386,28 +397,42 @@ export default function Groups() {
               onSendPollSubmit={handleSendPoll}
             />
 
-            {/* Search */}
-            <div className="relative max-w-full xs:max-w-sm sm:max-w-md lg:max-w-lg xl:max-w-xl 2xl:max-w-2xl">
-              <Search
-                className="absolute left-2.5 xs:left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 xs:h-4 xs:w-4"
-                style={{ color: colors.wineTextMuted }}
-                aria-hidden="true"
-              />
-              <Input
-                type="text"
-                placeholder={t('pages.groups.search.placeholder')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 xs:pl-10"
-                aria-label={t('pages.groups.search.label')}
-              />
+            {/* Search + chip filter */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="relative flex-1 max-w-full sm:max-w-md lg:max-w-lg xl:max-w-xl">
+                <Search
+                  className="absolute left-2.5 xs:left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 xs:h-4 xs:w-4"
+                  style={{ color: colors.wineTextMuted }}
+                  aria-hidden="true"
+                />
+                <Input
+                  type="text"
+                  placeholder={t('pages.groups.search.placeholder')}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 xs:pl-10"
+                  aria-label={t('pages.groups.search.label')}
+                />
+              </div>
+              {instances.length > 1 && (
+                <ChipSelector
+                  value={selectedChipId}
+                  onChange={setSelectedChipId}
+                  instances={instances}
+                  allowAll
+                  placeholder={t(
+                    'pages.groups.chipFilter.placeholder',
+                    'Filtrar por número'
+                  )}
+                />
+              )}
             </div>
 
             {/* Groups Table */}
             <ErrorBoundary>
             <GroupListTable
               groups={groups}
-              filteredGroups={filteredGroups}
+              filteredGroups={displayedGroups}
               selectedGroups={selectedGroups}
               searchQuery={searchQuery}
               onToggleGroup={toggleGroup}
