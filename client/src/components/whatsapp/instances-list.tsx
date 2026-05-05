@@ -156,7 +156,7 @@ function InstanceRow({ instance, onSetDefault, onDelete, onRename, busy }: Insta
                   <span
                     className="text-xs font-mono tracking-tight"
                     style={{ color: colors.wineTextMuted }}
-                    title={t('pages.whatsapp.instancesList.phoneTooltip', 'Número do chip')}
+                    title={t('pages.whatsapp.instancesList.phoneTooltip', 'Número de telefone')}
                   >
                     {phone}
                   </span>
@@ -167,7 +167,7 @@ function InstanceRow({ instance, onSetDefault, onDelete, onRename, busy }: Insta
                 onClick={startEdit}
                 disabled={busy}
                 className="inline-flex items-center justify-center rounded p-0.5 text-muted-foreground transition-opacity opacity-50 hover:opacity-100 disabled:opacity-30"
-                title={t('pages.whatsapp.instancesList.renameTooltip', 'Renomear chip')}
+                title={t('pages.whatsapp.instancesList.renameTooltip', 'Renomear número')}
               >
                 <Pencil className="h-3 w-3" />
               </button>
@@ -257,7 +257,7 @@ export function InstancesList() {
     try {
       await setDefaultInstance(id);
       toast({
-        title: t('pages.whatsapp.instancesList.defaultSet', 'Chip padrão atualizado'),
+        title: t('pages.whatsapp.instancesList.defaultSet', 'Número padrão atualizado'),
       });
     } catch {
       // Hook already shows error toast via getErrorInfo.
@@ -268,7 +268,7 @@ export function InstancesList() {
     try {
       await updateInstanceLabel(id, friendlyName);
       toast({
-        title: t('pages.whatsapp.instancesList.renamed', 'Chip renomeado'),
+        title: t('pages.whatsapp.instancesList.renamed', 'Número renomeado'),
       });
     } catch {
       // Hook already shows the error toast.
@@ -279,14 +279,14 @@ export function InstancesList() {
     const confirmed = window.confirm(
       t('pages.whatsapp.instancesList.confirmDelete', {
         name,
-        defaultValue: 'Remover o chip "{{name}}"? Grupos vinculados a ele perderão o vínculo.',
+        defaultValue: 'Remover o número "{{name}}"? Grupos vinculados a ele perderão o vínculo.',
       })
     );
     if (!confirmed) return;
     try {
       await deleteInstance(id);
       toast({
-        title: t('pages.whatsapp.instancesList.removed', 'Chip removido'),
+        title: t('pages.whatsapp.instancesList.removed', 'Número removido'),
       });
     } catch {
       // Hook already shows error toast.
@@ -304,7 +304,7 @@ export function InstancesList() {
             className="text-base xs:text-lg font-semibold tracking-tight"
             style={{ color: '#18181b' }}
           >
-            {t('pages.whatsapp.instancesList.title', 'Meus chips')}
+            {t('pages.whatsapp.instancesList.title', 'Meus números')}
           </h3>
           <p className="text-xs xs:text-sm tracking-tight" style={{ color: colors.wineTextMuted }}>
             {t('pages.whatsapp.instancesList.subtitle', {
@@ -324,14 +324,14 @@ export function InstancesList() {
               !canAddMore
                 ? t('pages.whatsapp.instancesList.atCapTooltip', {
                     max: MAX_INSTANCES_PER_USER,
-                    defaultValue: 'Limite de {{max}} chips atingido',
+                    defaultValue: 'Limite de {{max}} números atingido',
                   })
                 : undefined
             }
             className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#8D2D53] px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#732242] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus className="h-3.5 w-3.5" />
-            {t('pages.whatsapp.instancesList.addChip', 'Adicionar chip')}
+            {t('pages.whatsapp.instancesList.addChip', 'Adicionar número')}
           </button>
         </div>
       </div>
