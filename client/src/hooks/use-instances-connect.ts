@@ -18,6 +18,8 @@ import {
   type ReconnectInstanceResponse,
   SetDefaultInstanceRequestSchema,
   type SetDefaultInstanceResponse,
+  UpdateInstanceLabelRequestSchema,
+  type UpdateInstanceLabelResponse,
   UpsertInstanceStatusRequestSchema,
   type UpsertInstanceStatusResponse,
 } from '@/gen/instances/v1/instances_pb';
@@ -77,6 +79,7 @@ interface UseInstancesConnectReturn {
   deleteDisconnectedInstances: () => Promise<number>;
   deleteInstance: (id: string) => Promise<void>;
   setDefaultInstance: (id: string) => Promise<LocalInstance>;
+  updateInstanceLabel: (id: string, friendlyName: string) => Promise<LocalInstance>;
   checkInstanceStatus: (instanceName: string) => Promise<CheckInstanceStatusResult>;
   reconnectInstance: (instanceName: string) => Promise<ReconnectInstanceResult>;
 
@@ -87,6 +90,7 @@ interface UseInstancesConnectReturn {
   isDeletingDisconnected: boolean;
   isDeletingInstance: boolean;
   isSettingDefault: boolean;
+  isUpdatingLabel: boolean;
   isCheckingStatus: boolean;
   isReconnecting: boolean;
 }
@@ -430,6 +434,43 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
   });
 
   // ============================================================
+  // Update Instance Label
+  // ============================================================
+
+  const updateLabelMutation = useMutation({
+    mutationFn: async (params: { id: string; friendlyName: string }): Promise<LocalInstance> => {
+      if (!user?.id) {
+        throw new Error(t('common.errors.notAuthenticated'));
+      }
+
+      const client = createClient(InstancesService, transport);
+      const response: UpdateInstanceLabelResponse = await client.updateInstanceLabel(
+        create(UpdateInstanceLabelRequestSchema, {
+          id: params.id,
+          friendlyName: params.friendlyName,
+        })
+      );
+
+      if (!response.instance) {
+        throw new Error(t('pages.whatsapp.errors.upsertFailed'));
+      }
+
+      return fromProtoInstance(response.instance);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['instances'] });
+    },
+    onError: (error: unknown) => {
+      const errorInfo = getErrorInfo(error);
+      toast({
+        variant: 'destructive',
+        title: t('common.error'),
+        description: errorInfo.userMessage,
+      });
+    },
+  });
+
+  // ============================================================
   // Check Instance Status (WAHA)
   // ============================================================
 
@@ -535,6 +576,13 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
     [setDefaultMutation]
   );
 
+  const updateInstanceLabel = useCallback(
+    async (id: string, friendlyName: string): Promise<LocalInstance> => {
+      return updateLabelMutation.mutateAsync({ id, friendlyName });
+    },
+    [updateLabelMutation]
+  );
+
   const checkInstanceStatus = useCallback(
     async (instanceName: string): Promise<CheckInstanceStatusResult> => {
       return checkStatusMutation.mutateAsync(instanceName);
@@ -562,6 +610,7 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
     deleteDisconnectedInstances,
     deleteInstance,
     setDefaultInstance,
+    updateInstanceLabel,
     checkInstanceStatus,
     reconnectInstance,
 
@@ -572,6 +621,7 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
     isDeletingDisconnected: deleteDisconnectedMutation.isPending,
     isDeletingInstance: deleteInstanceMutation.isPending,
     isSettingDefault: setDefaultMutation.isPending,
+    isUpdatingLabel: updateLabelMutation.isPending,
     isCheckingStatus: checkStatusMutation.isPending,
     isReconnecting: reconnectMutation.isPending,
   };

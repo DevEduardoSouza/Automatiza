@@ -51,6 +51,9 @@ const (
 	// InstancesServiceDeleteInstanceProcedure is the fully-qualified name of the InstancesService's
 	// DeleteInstance RPC.
 	InstancesServiceDeleteInstanceProcedure = "/instances.v1.InstancesService/DeleteInstance"
+	// InstancesServiceUpdateInstanceLabelProcedure is the fully-qualified name of the
+	// InstancesService's UpdateInstanceLabel RPC.
+	InstancesServiceUpdateInstanceLabelProcedure = "/instances.v1.InstancesService/UpdateInstanceLabel"
 	// InstancesServiceSetDefaultInstanceProcedure is the fully-qualified name of the InstancesService's
 	// SetDefaultInstance RPC.
 	InstancesServiceSetDefaultInstanceProcedure = "/instances.v1.InstancesService/SetDefaultInstance"
@@ -76,6 +79,9 @@ type InstancesServiceClient interface {
 	DeleteDisconnectedInstances(context.Context, *connect.Request[v1.DeleteDisconnectedInstancesRequest]) (*connect.Response[v1.DeleteDisconnectedInstancesResponse], error)
 	// Deletes a specific instance.
 	DeleteInstance(context.Context, *connect.Request[v1.DeleteInstanceRequest]) (*connect.Response[v1.DeleteInstanceResponse], error)
+	// Updates the human-readable label of an instance owned by the user.
+	// Empty string clears the label (UI then shows the WAHA session id).
+	UpdateInstanceLabel(context.Context, *connect.Request[v1.UpdateInstanceLabelRequest]) (*connect.Response[v1.UpdateInstanceLabelResponse], error)
 	// Promotes the given instance to default for the authenticated user.
 	// Atomically clears the previous default in the same transaction.
 	SetDefaultInstance(context.Context, *connect.Request[v1.SetDefaultInstanceRequest]) (*connect.Response[v1.SetDefaultInstanceResponse], error)
@@ -132,6 +138,12 @@ func NewInstancesServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(instancesServiceMethods.ByName("DeleteInstance")),
 			connect.WithClientOptions(opts...),
 		),
+		updateInstanceLabel: connect.NewClient[v1.UpdateInstanceLabelRequest, v1.UpdateInstanceLabelResponse](
+			httpClient,
+			baseURL+InstancesServiceUpdateInstanceLabelProcedure,
+			connect.WithSchema(instancesServiceMethods.ByName("UpdateInstanceLabel")),
+			connect.WithClientOptions(opts...),
+		),
 		setDefaultInstance: connect.NewClient[v1.SetDefaultInstanceRequest, v1.SetDefaultInstanceResponse](
 			httpClient,
 			baseURL+InstancesServiceSetDefaultInstanceProcedure,
@@ -161,6 +173,7 @@ type instancesServiceClient struct {
 	cleanupInvalidInstances     *connect.Client[v1.CleanupInvalidInstancesRequest, v1.CleanupInvalidInstancesResponse]
 	deleteDisconnectedInstances *connect.Client[v1.DeleteDisconnectedInstancesRequest, v1.DeleteDisconnectedInstancesResponse]
 	deleteInstance              *connect.Client[v1.DeleteInstanceRequest, v1.DeleteInstanceResponse]
+	updateInstanceLabel         *connect.Client[v1.UpdateInstanceLabelRequest, v1.UpdateInstanceLabelResponse]
 	setDefaultInstance          *connect.Client[v1.SetDefaultInstanceRequest, v1.SetDefaultInstanceResponse]
 	checkInstanceStatus         *connect.Client[v1.CheckInstanceStatusRequest, v1.CheckInstanceStatusResponse]
 	reconnectInstance           *connect.Client[v1.ReconnectInstanceRequest, v1.ReconnectInstanceResponse]
@@ -196,6 +209,11 @@ func (c *instancesServiceClient) DeleteInstance(ctx context.Context, req *connec
 	return c.deleteInstance.CallUnary(ctx, req)
 }
 
+// UpdateInstanceLabel calls instances.v1.InstancesService.UpdateInstanceLabel.
+func (c *instancesServiceClient) UpdateInstanceLabel(ctx context.Context, req *connect.Request[v1.UpdateInstanceLabelRequest]) (*connect.Response[v1.UpdateInstanceLabelResponse], error) {
+	return c.updateInstanceLabel.CallUnary(ctx, req)
+}
+
 // SetDefaultInstance calls instances.v1.InstancesService.SetDefaultInstance.
 func (c *instancesServiceClient) SetDefaultInstance(ctx context.Context, req *connect.Request[v1.SetDefaultInstanceRequest]) (*connect.Response[v1.SetDefaultInstanceResponse], error) {
 	return c.setDefaultInstance.CallUnary(ctx, req)
@@ -225,6 +243,9 @@ type InstancesServiceHandler interface {
 	DeleteDisconnectedInstances(context.Context, *connect.Request[v1.DeleteDisconnectedInstancesRequest]) (*connect.Response[v1.DeleteDisconnectedInstancesResponse], error)
 	// Deletes a specific instance.
 	DeleteInstance(context.Context, *connect.Request[v1.DeleteInstanceRequest]) (*connect.Response[v1.DeleteInstanceResponse], error)
+	// Updates the human-readable label of an instance owned by the user.
+	// Empty string clears the label (UI then shows the WAHA session id).
+	UpdateInstanceLabel(context.Context, *connect.Request[v1.UpdateInstanceLabelRequest]) (*connect.Response[v1.UpdateInstanceLabelResponse], error)
 	// Promotes the given instance to default for the authenticated user.
 	// Atomically clears the previous default in the same transaction.
 	SetDefaultInstance(context.Context, *connect.Request[v1.SetDefaultInstanceRequest]) (*connect.Response[v1.SetDefaultInstanceResponse], error)
@@ -277,6 +298,12 @@ func NewInstancesServiceHandler(svc InstancesServiceHandler, opts ...connect.Han
 		connect.WithSchema(instancesServiceMethods.ByName("DeleteInstance")),
 		connect.WithHandlerOptions(opts...),
 	)
+	instancesServiceUpdateInstanceLabelHandler := connect.NewUnaryHandler(
+		InstancesServiceUpdateInstanceLabelProcedure,
+		svc.UpdateInstanceLabel,
+		connect.WithSchema(instancesServiceMethods.ByName("UpdateInstanceLabel")),
+		connect.WithHandlerOptions(opts...),
+	)
 	instancesServiceSetDefaultInstanceHandler := connect.NewUnaryHandler(
 		InstancesServiceSetDefaultInstanceProcedure,
 		svc.SetDefaultInstance,
@@ -309,6 +336,8 @@ func NewInstancesServiceHandler(svc InstancesServiceHandler, opts ...connect.Han
 			instancesServiceDeleteDisconnectedInstancesHandler.ServeHTTP(w, r)
 		case InstancesServiceDeleteInstanceProcedure:
 			instancesServiceDeleteInstanceHandler.ServeHTTP(w, r)
+		case InstancesServiceUpdateInstanceLabelProcedure:
+			instancesServiceUpdateInstanceLabelHandler.ServeHTTP(w, r)
 		case InstancesServiceSetDefaultInstanceProcedure:
 			instancesServiceSetDefaultInstanceHandler.ServeHTTP(w, r)
 		case InstancesServiceCheckInstanceStatusProcedure:
@@ -346,6 +375,10 @@ func (UnimplementedInstancesServiceHandler) DeleteDisconnectedInstances(context.
 
 func (UnimplementedInstancesServiceHandler) DeleteInstance(context.Context, *connect.Request[v1.DeleteInstanceRequest]) (*connect.Response[v1.DeleteInstanceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instances.v1.InstancesService.DeleteInstance is not implemented"))
+}
+
+func (UnimplementedInstancesServiceHandler) UpdateInstanceLabel(context.Context, *connect.Request[v1.UpdateInstanceLabelRequest]) (*connect.Response[v1.UpdateInstanceLabelResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instances.v1.InstancesService.UpdateInstanceLabel is not implemented"))
 }
 
 func (UnimplementedInstancesServiceHandler) SetDefaultInstance(context.Context, *connect.Request[v1.SetDefaultInstanceRequest]) (*connect.Response[v1.SetDefaultInstanceResponse], error) {

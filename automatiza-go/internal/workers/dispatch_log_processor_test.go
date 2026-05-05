@@ -125,6 +125,10 @@ func (m *stubInstanceRepo) CountUserInstances(ctx context.Context, userID string
 	return 0, nil
 }
 
+func (m *stubInstanceRepo) UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error {
+	return nil
+}
+
 func TestDispatchLogProcessor_ProcessMessage(t *testing.T) {
 	logger := zap.NewNop()
 

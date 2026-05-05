@@ -143,6 +143,23 @@ message CheckInstanceStatusResponse {
 }
 
 // ============================================================
+// Update Instance Label
+// ============================================================
+
+message UpdateInstanceLabelRequest {
+  // Database id of the instance to rename. Must belong to the authenticated user.
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+
+  // New human-readable label. Empty string clears it (UI then falls back to
+  // the WAHA session id). Trimmed server-side.
+  string friendly_name = 2;
+}
+
+message UpdateInstanceLabelResponse {
+  Instance instance = 1;
+}
+
+// ============================================================
 // Set Default Instance
 // ============================================================
 
@@ -201,6 +218,10 @@ service InstancesService {
 
   // Deletes a specific instance.
   rpc DeleteInstance(DeleteInstanceRequest) returns (DeleteInstanceResponse);
+
+  // Updates the human-readable label of an instance owned by the user.
+  // Empty string clears the label (UI then shows the WAHA session id).
+  rpc UpdateInstanceLabel(UpdateInstanceLabelRequest) returns (UpdateInstanceLabelResponse);
 
   // Promotes the given instance to default for the authenticated user.
   // Atomically clears the previous default in the same transaction.

@@ -209,6 +209,47 @@ func (h *InstancesHandler) DeleteInstance(
 	return connect.NewResponse(&instancesv1.DeleteInstanceResponse{}), nil
 }
 
+// UpdateInstanceLabel sets the human-readable friendly_name on an instance.
+// Empty value clears the label (the UI then falls back to the WAHA session id).
+func (h *InstancesHandler) UpdateInstanceLabel(
+	ctx context.Context,
+	req *connect.Request[instancesv1.UpdateInstanceLabelRequest],
+) (*connect.Response[instancesv1.UpdateInstanceLabelResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	instanceID, err := strconv.Atoi(req.Msg.GetId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid instance ID"))
+	}
+
+	// Ownership check before mutating, mirroring SetDefaultInstance: the SQL
+	// also enforces ownership but a 404-style error here is friendlier on
+	// cross-user attempts than a generic Internal.
+	instance, err := h.instanceRepo.GetInstanceByID(ctx, instanceID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get instance: %w", err))
+	}
+	if instance == nil || instance.UserID != user.ID {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("instance not found"))
+	}
+
+	if err := h.instanceRepo.UpdateInstanceLabel(ctx, user.ID, instanceID, req.Msg.GetFriendlyName()); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update label: %w", err))
+	}
+
+	updated, err := h.instanceRepo.GetInstanceByID(ctx, instanceID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch updated instance: %w", err))
+	}
+
+	return connect.NewResponse(&instancesv1.UpdateInstanceLabelResponse{
+		Instance: instanceToProto(updated),
+	}), nil
+}
+
 // SetDefaultInstance promotes the given instance to default for the user.
 func (h *InstancesHandler) SetDefaultInstance(
 	ctx context.Context,

@@ -149,6 +149,10 @@ func (m *mockInstanceRepo) CountUserInstances(ctx context.Context, userID string
 	return 0, nil
 }
 
+func (m *mockInstanceRepo) UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error {
+	return nil
+}
+
 // ============================================================
 // Mock User Role Repository
 // ============================================================

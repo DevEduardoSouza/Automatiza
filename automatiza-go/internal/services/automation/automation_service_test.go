@@ -248,6 +248,11 @@ func (m *MockInstanceRepository) CountUserInstances(ctx context.Context, userID 
 	return args.Int(0), args.Error(1)
 }
 
+func (m *MockInstanceRepository) UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error {
+	args := m.Called(ctx, userID, instanceID, friendlyName)
+	return args.Error(0)
+}
+
 // MockGroupRepository implements repository.GroupRepository
 type MockGroupRepository struct {
 	mock.Mock

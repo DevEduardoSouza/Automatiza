@@ -190,6 +190,11 @@ func (m *mockInstanceRepo) CountUserInstances(ctx context.Context, userID string
 	return args.Int(0), args.Error(1)
 }
 
+func (m *mockInstanceRepo) UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error {
+	args := m.Called(ctx, userID, instanceID, friendlyName)
+	return args.Error(0)
+}
+
 type mockDispatchLogRepo struct {
 	mock.Mock
 }

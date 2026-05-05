@@ -60,6 +60,9 @@ type InstanceRepository interface {
 	// Atomically clears any prior default for the user, so the partial unique
 	// index uniq_instances_user_default is preserved.
 	SetDefaultInstance(ctx context.Context, userID string, instanceID int) error
+	// UpdateInstanceLabel sets the friendly_name on an instance owned by userID.
+	// Pass empty string to clear (NULL) the label so the UI falls back to instance_id.
+	UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error
 	// CountUserInstances returns the number of instances owned by a user.
 	// Used for quota enforcement before creating a new instance.
 	CountUserInstances(ctx context.Context, userID string) (int, error)

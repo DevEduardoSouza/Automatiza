@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -255,4 +256,32 @@ func (r *instanceRepository) CountUserInstances(ctx context.Context, userID stri
 		return 0, err
 	}
 	return count, nil
+}
+
+func (r *instanceRepository) UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error {
+	// Treat empty/whitespace input as "clear" — store NULL so reads fall back
+	// to instance_id at the UI layer instead of showing an empty label.
+	var label any
+	trimmed := strings.TrimSpace(friendlyName)
+	if trimmed == "" {
+		label = nil
+	} else {
+		label = trimmed
+	}
+
+	res, err := r.db.pool.Exec(ctx,
+		`UPDATE instances SET friendly_name = $1, updated_at = $2 WHERE id = $3 AND user_id = $4`,
+		label, time.Now().UTC(), instanceID, userID,
+	)
+	if err != nil {
+		r.logger.Error("Failed to update instance label",
+			zap.String("userID", userID),
+			zap.Int("instanceID", instanceID),
+			zap.Error(err))
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return fmt.Errorf("instance %d not found or not owned by user %s", instanceID, userID)
+	}
+	return nil
 }
