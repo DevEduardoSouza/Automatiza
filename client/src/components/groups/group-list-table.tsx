@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { VirtualTable } from '@/components/ui/virtual-table';
+import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { cn } from '@/lib/utils';
 import type { Group } from '@/types/group';
 import {
@@ -37,6 +38,67 @@ type SortDirection = 'asc' | 'desc';
 /** Threshold for enabling virtualization */
 const VIRTUALIZATION_THRESHOLD = 50;
 
+const chipDotColors: Record<LocalInstance['status'], string> = {
+  connected: '#22c55e',
+  disconnected: '#ef4444',
+  pending: '#f59e0b',
+};
+
+function formatPhoneShort(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 0) return null;
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    const ddd = digits.slice(2, 4);
+    const rest = digits.slice(4);
+    if (rest.length === 9) return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    if (rest.length === 8) return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+  }
+  return digits;
+}
+
+interface ChipOwnerBadgeProps {
+  instance: LocalInstance;
+}
+
+/**
+ * Compact pill shown next to a group's name to identify which WhatsApp
+ * chip "owns" it (groups.instance_id). Only rendered when the user has
+ * more than one chip — single-chip accounts get no clutter.
+ *
+ * Label fallback: friendly_name → formatted phone → truncated session id.
+ * The raw session id reads as garbage to users, so we only use it as a
+ * last resort when the chip has no phone yet.
+ */
+function ChipOwnerBadge({ instance }: ChipOwnerBadgeProps) {
+  const friendly = instance.friendly_name?.trim();
+  const phone = formatPhoneShort(instance.phone_number);
+  const label =
+    friendly ||
+    phone ||
+    (instance.instance_id.length > 16
+      ? `${instance.instance_id.slice(0, 8)}…${instance.instance_id.slice(-4)}`
+      : instance.instance_id);
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+      style={{
+        backgroundColor: 'rgba(141, 45, 83, 0.06)',
+        borderColor: 'rgba(141, 45, 83, 0.2)',
+        color: 'rgba(141, 45, 83, 0.85)',
+      }}
+      title={label}
+    >
+      <span
+        className="inline-block h-1.5 w-1.5 rounded-full shrink-0"
+        style={{ backgroundColor: chipDotColors[instance.status] }}
+        aria-hidden="true"
+      />
+      <span className="truncate max-w-[140px]">{label}</span>
+    </span>
+  );
+}
+
 interface GroupListTableProps {
   groups: Group[];
   filteredGroups: Group[];
@@ -47,6 +109,10 @@ interface GroupListTableProps {
   onToggleFavorite: (groupId: string, currentFavorite: boolean) => void;
   onEditInviteCode: (group: Group) => void;
   onManageMembers: (group: { wa_group_id: string; name: string }) => void;
+  // Multi-chip ownership: when supplied with >1 entries, each row gets a
+  // ChipOwnerBadge so the user can tell which number a group came from
+  // (especially useful when "Todos os números" is selected in the filter).
+  instances?: LocalInstance[];
   // Pagination props (optional for backwards compatibility)
   usePagination?: boolean;
   currentPage?: number;
@@ -72,6 +138,7 @@ export function GroupListTable({
   onToggleFavorite,
   onEditInviteCode,
   onManageMembers,
+  instances,
   // Pagination props
   usePagination = false,
   currentPage = 1,
@@ -182,6 +249,13 @@ export function GroupListTable({
     [t]
   );
 
+  const showChipBadges = (instances?.length ?? 0) > 1;
+  const instanceById = useMemo(() => {
+    const map = new Map<string, LocalInstance>();
+    for (const inst of instances ?? []) map.set(inst.id, inst);
+    return map;
+  }, [instances]);
+
   const shouldVirtualize = sortedGroups.length > VIRTUALIZATION_THRESHOLD;
 
   // Calculate display range for pagination info
@@ -242,7 +316,16 @@ export function GroupListTable({
       {
         key: 'name',
         header: <SortableHeader columnKey="name" label={t('pages.groups.list.columns.name')} />,
-        render: (group: Group) => <span className="font-medium">{group.name}</span>,
+        render: (group: Group) => {
+          const owner =
+            showChipBadges && group.instance_id ? instanceById.get(group.instance_id) : undefined;
+          return (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium">{group.name}</span>
+              {owner && <ChipOwnerBadge instance={owner} />}
+            </div>
+          );
+        },
       },
       {
         key: 'members',
@@ -323,6 +406,8 @@ export function GroupListTable({
       onManageMembers,
       getStatusBadge,
       SortableHeader,
+      showChipBadges,
+      instanceById,
       t,
     ]
   );
@@ -396,7 +481,7 @@ export function GroupListTable({
               </tr>
             </thead>
             <tbody>
-              {sortedGroups.map((group, index) => (
+              {sortedGroups.map((group) => (
                 <tr
                   key={group.id}
                   className="border-b transition-colors hover:bg-[rgba(141,45,83,0.04)]"
@@ -404,7 +489,7 @@ export function GroupListTable({
                 >
                   {columns.map((col) => (
                     <td key={col.key} className="p-4 lg:p-5 xl:p-6 align-middle">
-                      {col.render(group, index)}
+                      {col.render(group)}
                     </td>
                   ))}
                 </tr>
@@ -421,7 +506,12 @@ export function GroupListTable({
             {searchQuery ? t('pages.groups.list.noSearchResults') : t('pages.groups.list.noGroups')}
           </div>
         ) : (
-          sortedGroups.map((group) => (
+          sortedGroups.map((group) => {
+            const owner =
+              showChipBadges && group.instance_id
+                ? instanceById.get(group.instance_id)
+                : undefined;
+            return (
             <div
               key={group.id}
               className="rounded-xl xs:rounded-2xl border p-3 xs:p-4 sm:p-5"
@@ -439,7 +529,7 @@ export function GroupListTable({
                       })}
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -464,6 +554,7 @@ export function GroupListTable({
                         <h3 className="font-semibold text-sm xs:text-base break-words">
                           {group.name}
                         </h3>
+                        {owner && <ChipOwnerBadge instance={owner} />}
                       </div>
                       <div
                         className="flex flex-wrap gap-2 text-xs"
@@ -520,7 +611,8 @@ export function GroupListTable({
                 </div>
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
 

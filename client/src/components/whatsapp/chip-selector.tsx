@@ -23,10 +23,16 @@ function formatPhoneShort(raw: string | undefined): string | null {
   if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
     const ddd = digits.slice(2, 4);
     const rest = digits.slice(4);
-    if (rest.length === 9) return `${ddd} ${rest.slice(0, 5)}-${rest.slice(5)}`;
-    if (rest.length === 8) return `${ddd} ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    if (rest.length === 9) return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    if (rest.length === 8) return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
   }
   return digits;
+}
+
+/** Truncated session id used as a last-resort label when no friendly_name and no phone. */
+function shortInstanceId(id: string): string {
+  if (id.length <= 16) return id;
+  return `${id.slice(0, 8)}…${id.slice(-4)}`;
 }
 
 interface ChipSelectorProps {
@@ -83,7 +89,7 @@ export function ChipSelector({
 
   return (
     <Select value={internalValue} onValueChange={handleChange} disabled={disabled}>
-      <SelectTrigger className="w-full sm:w-64">
+      <SelectTrigger className="w-full sm:w-72">
         <SelectValue
           placeholder={
             placeholder ?? t('components.chipSelector.placeholder', 'Selecione um número')
@@ -97,19 +103,27 @@ export function ChipSelector({
           </SelectItem>
         )}
         {visible.map((inst) => {
-          const label = inst.friendly_name?.trim() || inst.instance_id;
+          const friendly = inst.friendly_name?.trim();
           const phone = formatPhoneShort(inst.phone_number);
+          // Prefer the user-set friendly name; otherwise the phone reads
+          // far better than the raw session id, which is unreadable.
+          const primary = friendly || phone || shortInstanceId(inst.instance_id);
+          // Show phone as a secondary line only when it isn't already the
+          // primary (avoids duplication for un-named chips).
+          const secondary = friendly && phone ? phone : null;
           return (
             <SelectItem key={inst.id} value={inst.id}>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0 whitespace-nowrap">
                 <span
                   className="inline-block h-2 w-2 rounded-full shrink-0"
                   style={{ backgroundColor: dotColors[inst.status] }}
                   aria-hidden="true"
                 />
-                <span className="truncate">{label}</span>
-                {phone && (
-                  <span className="text-xs text-muted-foreground font-mono">{phone}</span>
+                <span className="truncate">{primary}</span>
+                {secondary && (
+                  <span className="text-xs text-muted-foreground font-mono shrink-0">
+                    {secondary}
+                  </span>
                 )}
               </div>
             </SelectItem>
