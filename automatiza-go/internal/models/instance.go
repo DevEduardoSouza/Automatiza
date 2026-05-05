@@ -9,8 +9,11 @@ type Instance struct {
 	Status       string  `json:"status" db:"status"` // connected|disconnected|pending
 	QRCode       *string `json:"qr_code,omitempty" db:"qr_code"`
 	IsDefault    bool    `json:"is_default" db:"is_default"`
-	CreatedAt    string  `json:"created_at" db:"created_at"`
-	UpdatedAt    string  `json:"updated_at" db:"updated_at"`
+	// Phone number in international format without the leading "+", e.g.
+	// "557498137258". Populated from WAHA's me.id once the chip pairs.
+	PhoneNumber *string `json:"phone_number,omitempty" db:"phone_number"`
+	CreatedAt   string  `json:"created_at" db:"created_at"`
+	UpdatedAt   string  `json:"updated_at" db:"updated_at"`
 }
 
 // WahaInstance represents instance info from the WAHA API
