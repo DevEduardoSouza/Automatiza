@@ -444,6 +444,7 @@ export default function Groups() {
                 setEditInviteCodeDialogOpen(true);
               }}
               onManageMembers={members.openMembersDialog}
+              instances={instances}
               // Pagination props
               usePagination={usePagination}
               currentPage={currentPage}
