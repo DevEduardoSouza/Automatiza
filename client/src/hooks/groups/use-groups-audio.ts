@@ -25,7 +25,7 @@ export function useGroupsAudio({
   const { t } = useTranslation();
   const { toast } = useToast();
   const { sendGroupAudio } = useGroupsConnect();
-  const { latestInstance } = useInstancesConnect();
+  const { primaryInstance } = useInstancesConnect();
 
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioPtt, setAudioPtt] = useState(true);
@@ -103,7 +103,7 @@ export function useGroupsAudio({
 
     try {
       // Get instance from ConnectRPC hook
-      if (!latestInstance || latestInstance.status !== 'connected') {
+      if (!primaryInstance || primaryInstance.status !== 'connected') {
         toast({
           variant: 'destructive',
           title: t('pages.groups.errors.noInstance'),
@@ -112,7 +112,7 @@ export function useGroupsAudio({
         return;
       }
 
-      const currentInstance = latestInstance.instance_id;
+      const currentInstance = primaryInstance.instance_id;
 
       // Get selected groups data
       const selectedGroupsData = groups
@@ -180,7 +180,7 @@ export function useGroupsAudio({
     t,
     clearSelection,
     sendGroupAudio,
-    latestInstance,
+    primaryInstance,
   ]);
 
   return {

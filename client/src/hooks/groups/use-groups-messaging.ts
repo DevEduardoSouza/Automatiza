@@ -27,7 +27,7 @@ export function useGroupsMessaging({
   const { t } = useTranslation();
   const { toast } = useToast();
   const { sendGroupMessage, sendGroupImage, getGroupParticipants } = useGroupsConnect();
-  const { latestInstance, checkInstanceStatus } = useInstancesConnect();
+  const { primaryInstance, checkInstanceStatus } = useInstancesConnect();
 
   const [message, setMessage] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
@@ -52,7 +52,7 @@ export function useGroupsMessaging({
   );
 
   const loadMentionParticipants = useCallback(async () => {
-    if (selectedGroups.length === 0 || !latestInstance || latestInstance.status !== 'connected') {
+    if (selectedGroups.length === 0 || !primaryInstance || primaryInstance.status !== 'connected') {
       setMentionParticipants([]);
       return;
     }
@@ -70,7 +70,7 @@ export function useGroupsMessaging({
       for (const group of groupsToFetch) {
         try {
           const participants = await getGroupParticipants({
-            instance_name: latestInstance.instance_id,
+            instance_name: primaryInstance.instance_id,
             group_id: group.wa_group_id,
           });
           for (const p of participants) {
@@ -102,7 +102,7 @@ export function useGroupsMessaging({
     } finally {
       setLoadingMentionParticipants(false);
     }
-  }, [selectedGroups, groups, latestInstance, getGroupParticipants]);
+  }, [selectedGroups, groups, primaryInstance, getGroupParticipants]);
 
   const handleMentionOpenChange = useCallback(
     (open: boolean) => {
@@ -182,7 +182,7 @@ export function useGroupsMessaging({
     }
 
     // Get instance from ConnectRPC hook
-    if (!latestInstance || latestInstance.status !== 'connected') {
+    if (!primaryInstance || primaryInstance.status !== 'connected') {
       toast({
         variant: 'destructive',
         title: t('pages.groups.errors.noInstance'),
@@ -191,7 +191,7 @@ export function useGroupsMessaging({
       return;
     }
 
-    const msgInstanceName = latestInstance.instance_id;
+    const msgInstanceName = primaryInstance.instance_id;
 
     try {
       // Check instance status via InstancesService gRPC
@@ -373,7 +373,7 @@ export function useGroupsMessaging({
     getGroupParticipants,
     sendGroupMessage,
     sendGroupImage,
-    latestInstance,
+    primaryInstance,
   ]);
 
   return {

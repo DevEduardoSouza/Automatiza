@@ -71,6 +71,14 @@ export interface ReconnectInstanceResult {
 
 interface UseInstancesConnectReturn {
   latestInstance: LocalInstance | null;
+  // primaryInstance picks the chip that best represents "the user's
+  // WhatsApp" for actions that don't target a specific group: prefer the
+  // default chip when connected, otherwise any connected chip, otherwise
+  // the default chip even if disconnected (so reconnect has a target),
+  // otherwise the first instance, otherwise null.
+  // Used by group-list actions (sync, send broadcast, etc.) to avoid the
+  // singleton bug where latestInstance picks a not-connected secondary chip.
+  primaryInstance: LocalInstance | null;
   instances: LocalInstance[];
   loading: boolean;
   refetch: () => Promise<void>;
@@ -198,6 +206,16 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
   const latestInstance = latestInstanceData ?? null;
   const instances = instancesData ?? [];
   const loading = loadingLatest || loadingInstances;
+
+  // Single source of truth for "which chip should I act on" when the action
+  // is not group-specific (sync, broadcast, etc.). Centralised here so the
+  // 4 hooks doing group actions don't each reinvent the priority logic.
+  const primaryInstance: LocalInstance | null =
+    instances.find((i) => i.is_default && i.status === 'connected') ??
+    instances.find((i) => i.status === 'connected') ??
+    instances.find((i) => i.is_default) ??
+    instances[0] ??
+    null;
 
   const refetch = useCallback(async () => {
     await Promise.all([refetchLatest(), refetchInstances()]);
@@ -603,6 +621,7 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
 
   return {
     latestInstance,
+    primaryInstance,
     instances,
     loading,
     refetch,

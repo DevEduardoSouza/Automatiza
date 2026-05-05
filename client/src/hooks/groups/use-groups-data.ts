@@ -27,7 +27,7 @@ export function useGroupsData(): UseGroupsDataReturn {
     syncGroups: syncGroupsRpc,
     getSyncStatus,
   } = useGroupsConnect();
-  const { latestInstance } = useInstancesConnect();
+  const { primaryInstance } = useInstancesConnect();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -235,12 +235,15 @@ export function useGroupsData(): UseGroupsDataReturn {
     setSyncing(true);
 
     try {
-      // Get instance from ConnectRPC hook
-      if (!latestInstance || latestInstance.status !== 'connected') {
+      // Use the user's primary connected chip (default first, else any
+      // connected). Replaces the legacy latestInstance check that flagged
+      // "no instance" when the most-recently-updated chip happened to be
+      // not connected (e.g. user added a 2nd chip then it went pending).
+      if (!primaryInstance || primaryInstance.status !== 'connected') {
         throw new Error(t('pages.groups.errors.noInstance'));
       }
 
-      const syncInstanceName = latestInstance.instance_id;
+      const syncInstanceName = primaryInstance.instance_id;
 
       const queued = await syncGroupsRpc(syncInstanceName);
       if (!queued?.success || !queued?.job_id) {
@@ -299,7 +302,7 @@ export function useGroupsData(): UseGroupsDataReturn {
     } finally {
       setSyncing(false);
     }
-  }, [syncing, toast, t, loadGroups, syncGroupsRpc, getSyncStatus, latestInstance]);
+  }, [syncing, toast, t, loadGroups, syncGroupsRpc, getSyncStatus, primaryInstance]);
 
   return {
     groups,
