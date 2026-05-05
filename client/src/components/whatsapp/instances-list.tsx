@@ -1,10 +1,11 @@
 import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
-import { Check, Loader2, Pencil, Plus, Star, Trash2, X } from 'lucide-react';
+import { Check, Loader2, Pencil, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AddChipModal } from './add-chip-modal';
+import { ReconnectChipModal } from './reconnect-chip-modal';
 
 const MAX_INSTANCES_PER_USER = 10;
 
@@ -56,10 +57,18 @@ interface InstanceRowProps {
   onSetDefault: (id: string) => void;
   onDelete: (id: string, name: string) => void;
   onRename: (id: string, friendlyName: string) => Promise<void>;
+  onReconnect: (instance: LocalInstance) => void;
   busy: boolean;
 }
 
-function InstanceRow({ instance, onSetDefault, onDelete, onRename, busy }: InstanceRowProps) {
+function InstanceRow({
+  instance,
+  onSetDefault,
+  onDelete,
+  onRename,
+  onReconnect,
+  busy,
+}: InstanceRowProps) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(instance.friendly_name?.trim() || '');
@@ -193,6 +202,17 @@ function InstanceRow({ instance, onSetDefault, onDelete, onRename, busy }: Insta
       </div>
 
       <div className="flex gap-2 self-stretch sm:self-auto">
+        {instance.status === 'disconnected' && (
+          <button
+            type="button"
+            onClick={() => onReconnect(instance)}
+            disabled={busy}
+            className="inline-flex items-center justify-center gap-1.5 rounded-full border border-green-200 bg-white px-3 py-1.5 text-xs font-medium text-green-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-green-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {t('pages.whatsapp.instancesList.reconnect', 'Reconectar')}
+          </button>
+        )}
         {!instance.is_default && (
           <button
             type="button"
@@ -241,6 +261,7 @@ export function InstancesList() {
   } = useInstancesConnect();
 
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [reconnectTarget, setReconnectTarget] = useState<LocalInstance | null>(null);
 
   if (loading && instances.length === 0) {
     return null;
@@ -344,12 +365,18 @@ export function InstancesList() {
             onSetDefault={handleSetDefault}
             onDelete={handleDelete}
             onRename={handleRename}
+            onReconnect={setReconnectTarget}
             busy={busy}
           />
         ))}
       </div>
 
       <AddChipModal open={addModalOpen} onClose={() => setAddModalOpen(false)} />
+      <ReconnectChipModal
+        open={reconnectTarget !== null}
+        onClose={() => setReconnectTarget(null)}
+        instance={reconnectTarget}
+      />
     </div>
   );
 }
