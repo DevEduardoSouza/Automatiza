@@ -72,6 +72,10 @@ export interface AutomationGroup {
   // Database id of the WhatsApp instance that owns this group. Used by the
   // form to enforce the per-chip 20-groups cap before submit.
   instance_id?: string;
+  // Every chip whose sync has seen this group (string form). The form's
+  // chip filter uses this so groups shared between chips show under each
+  // participating chip — not just the owner.
+  participating_instance_ids?: string[];
 }
 
 export interface PreviewOffer {

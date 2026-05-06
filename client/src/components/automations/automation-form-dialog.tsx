@@ -131,14 +131,29 @@ export function AutomationFormDialog({
 
   // Groups/allGroups filtered to the selected chip — what the user actually
   // sees in the SendGroupsSelector / MonitorGroupsSelector.
+  //
+  // Match against participating_instance_ids (every chip whose sync has
+  // seen the group) instead of just instance_id (the single owner).
+  // Without this, a group both chips are admin in only shows under the
+  // owning chip, so the user can't pick it from the other chip's view.
+  // instance_id stays as the fallback when the array is empty (legacy
+  // rows from before migration 044).
+  const matchesChip = (g: AutomationGroup, chipId: string): boolean => {
+    const participants = g.participating_instance_ids;
+    if (participants && participants.length > 0) {
+      return participants.includes(chipId);
+    }
+    return g.instance_id === chipId;
+  };
+
   const filteredGroups = useMemo(() => {
     if (!selectedChipId) return groups;
-    return groups.filter((g) => g.instance_id === selectedChipId);
+    return groups.filter((g) => matchesChip(g, selectedChipId));
   }, [groups, selectedChipId]);
 
   const filteredAllGroups = useMemo(() => {
     if (!selectedChipId) return allGroups;
-    return allGroups.filter((g) => g.instance_id === selectedChipId);
+    return allGroups.filter((g) => matchesChip(g, selectedChipId));
   }, [allGroups, selectedChipId]);
 
   const handleChipChange = (id: string | null) => {
