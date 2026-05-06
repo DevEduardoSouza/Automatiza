@@ -14,18 +14,24 @@ import { useGroupsRealtime } from './use-groups-realtime';
 import { useGroupsSelection } from './use-groups-selection';
 import { useGroupsUI } from './use-groups-ui';
 
+interface UseGroupsOptions {
+  // Forwarded to useGroupsData; filters the server query and scopes
+  // pagination to the chip. null/undefined = no chip filter.
+  instanceFilterId?: string | null;
+}
+
 /**
  * Composite hook for groups page logic
  * Manages WhatsApp groups, messages, polls, and bulk actions
  */
-export function useGroups(): UseGroupsReturn {
+export function useGroups(options: UseGroupsOptions = {}): UseGroupsReturn {
   const navigate = useNavigate();
 
   // Internal state for groups (needed for setGroups in UI hook)
   const [internalGroups, setInternalGroups] = useState<Group[]>([]);
 
   // Data management
-  const data = useGroupsData();
+  const data = useGroupsData({ instanceFilterId: options.instanceFilterId });
 
   // Sync internal groups with data groups
   const groups = data.groups.length > 0 ? data.groups : internalGroups;

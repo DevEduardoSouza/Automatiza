@@ -22,7 +22,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// *
+//*
 // Status of a WhatsApp group.
 type GroupStatus int32
 
@@ -76,7 +76,7 @@ func (GroupStatus) EnumDescriptor() ([]byte, []int) {
 	return file_groups_v1_groups_proto_rawDescGZIP(), []int{0}
 }
 
-// *
+//*
 // Represents a WhatsApp group managed by the system.
 type Group struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -261,7 +261,11 @@ type ListGroupsRequest struct {
 	// Items per page (defaults to 20, max 100)
 	PageSize *int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3,oneof" json:"page_size,omitempty"`
 	// Search filter for group name (server-side filtering)
-	Search        *string `protobuf:"bytes,4,opt,name=search,proto3,oneof" json:"search,omitempty"`
+	Search *string `protobuf:"bytes,4,opt,name=search,proto3,oneof" json:"search,omitempty"`
+	// Filter to groups visible to this chip (matches participating_instance_ids,
+	// not just the owner). Empty / unset means "all chips". Server-side so the
+	// total count and pagination are scoped to the selected chip.
+	InstanceId    *string `protobuf:"bytes,5,opt,name=instance_id,json=instanceId,proto3,oneof" json:"instance_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -320,6 +324,13 @@ func (x *ListGroupsRequest) GetPageSize() int32 {
 func (x *ListGroupsRequest) GetSearch() string {
 	if x != nil && x.Search != nil {
 		return *x.Search
+	}
+	return ""
+}
+
+func (x *ListGroupsRequest) GetInstanceId() string {
+	if x != nil && x.InstanceId != nil {
+		return *x.InstanceId
 	}
 	return ""
 }
@@ -3311,18 +3322,21 @@ const file_groups_v1_groups_proto_rawDesc = "" +
 	"\x1aparticipating_instance_ids\x18\x0f \x03(\tR\x18participatingInstanceIdsB\x0e\n" +
 	"\f_instance_idB\x0e\n" +
 	"\f_descriptionB\x0e\n" +
-	"\f_invite_code\"\xc0\x01\n" +
+	"\f_invite_code\"\xf6\x01\n" +
 	"\x11ListGroupsRequest\x12\"\n" +
 	"\n" +
 	"admin_only\x18\x01 \x01(\bH\x00R\tadminOnly\x88\x01\x01\x12\x17\n" +
 	"\x04page\x18\x02 \x01(\x05H\x01R\x04page\x88\x01\x01\x12 \n" +
 	"\tpage_size\x18\x03 \x01(\x05H\x02R\bpageSize\x88\x01\x01\x12\x1b\n" +
-	"\x06search\x18\x04 \x01(\tH\x03R\x06search\x88\x01\x01B\r\n" +
+	"\x06search\x18\x04 \x01(\tH\x03R\x06search\x88\x01\x01\x12$\n" +
+	"\vinstance_id\x18\x05 \x01(\tH\x04R\n" +
+	"instanceId\x88\x01\x01B\r\n" +
 	"\v_admin_onlyB\a\n" +
 	"\x05_pageB\f\n" +
 	"\n" +
 	"_page_sizeB\t\n" +
-	"\a_search\"\xcc\x01\n" +
+	"\a_searchB\x0e\n" +
+	"\f_instance_id\"\xcc\x01\n" +
 	"\x12ListGroupsResponse\x12(\n" +
 	"\x06groups\x18\x01 \x03(\v2\x10.groups.v1.GroupR\x06groups\x12\x1f\n" +
 	"\vtotal_count\x18\x02 \x01(\x05R\n" +

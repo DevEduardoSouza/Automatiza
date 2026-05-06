@@ -281,6 +281,9 @@ export interface ListGroupsParams {
   page?: number;
   pageSize?: number;
   search?: string;
+  // Filter to groups visible to this chip (matches the participation set
+  // server-side). undefined / empty = "all chips".
+  instanceId?: string;
 }
 
 export interface PaginatedGroupsResult {
@@ -525,6 +528,7 @@ export function useGroupsConnect(): UseGroupsConnectReturn {
           page: params.page,
           pageSize: params.pageSize,
           search: params.search,
+          instanceId: params.instanceId,
         })
       );
 
