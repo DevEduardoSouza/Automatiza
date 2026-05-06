@@ -18,6 +18,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Label } from '@/components/ui/label';
 import { ChipSelector } from '@/components/whatsapp/chip-selector';
 import { useOfferGenerate } from '@/hooks/use-offer-generate';
+import type { AutomationGroup } from '@/types/automation';
 import {
   ChevronDown,
   ChevronUp,
@@ -95,14 +96,27 @@ export default function OfferGenerate() {
     // Re-resolve only when the config row changes, not on every keystroke.
   }, [config?.id, instances]);
 
+  // Match against participating_instance_ids (every chip whose sync has
+  // seen the group) instead of just instance_id (the single owner). Without
+  // this, a group both chips are admin in only shows under the owning chip
+  // and the user can't reach it from the other chip's view. instance_id
+  // stays as the fallback for pre-migration legacy rows.
+  const matchesChip = (g: AutomationGroup, chipId: string): boolean => {
+    const participants = g.participating_instance_ids;
+    if (participants && participants.length > 0) {
+      return participants.includes(chipId);
+    }
+    return g.instance_id === chipId;
+  };
+
   const filteredGroups = useMemo(() => {
     if (!selectedChipId) return groups;
-    return groups.filter((g) => g.instance_id === selectedChipId);
+    return groups.filter((g) => matchesChip(g, selectedChipId));
   }, [groups, selectedChipId]);
 
   const filteredAllGroups = useMemo(() => {
     if (!selectedChipId) return allGroups;
-    return allGroups.filter((g) => g.instance_id === selectedChipId);
+    return allGroups.filter((g) => matchesChip(g, selectedChipId));
   }, [allGroups, selectedChipId]);
 
   const handleChipChange = (id: string | null) => {
