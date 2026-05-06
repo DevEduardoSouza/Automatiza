@@ -95,12 +95,25 @@ func NewOfferGenerateService(
 }
 
 func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *models.IncomingMessage) error {
-	// 1. Validate: group message, not fromMe
+	// 1. Validate: must be a group message
 	if !strings.HasSuffix(msg.RemoteJID, "@g.us") {
 		return nil
 	}
+
+	// FromMe handling: a blanket "skip every fromMe" guard would also kill
+	// the legitimate case of the chip's owner posting links into a monitor
+	// group from their own phone. Instead, mark each outgoing message
+	// before we send it (see processAutomation, og_self_send key) and
+	// skip only when this incoming hash matches one we just sent. That
+	// blocks real loops (group is both monitor and send) without blocking
+	// manual posts.
 	if msg.FromMe {
-		return nil
+		if s.isOwnOutgoing(ctx, msg.InstanceName, msg.RemoteJID, msg.Body) {
+			s.logger.Debug("Offer generate: own outgoing returned via webhook, skipping",
+				zap.String("instance", msg.InstanceName),
+				zap.String("group", msg.RemoteJID))
+			return nil
+		}
 	}
 
 	// 2. Extract links from message body
@@ -508,6 +521,13 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		}
 		time.Sleep(time.Duration(delay) * time.Second)
 
+		// Mark this body as our own outgoing BEFORE sending. The webhook
+		// for our send arrives with FromMe=true; ProcessIncomingMessage
+		// looks for this key to distinguish "real loop" from "user posted
+		// manually." 60s TTL is far longer than any reasonable webhook
+		// delay; if the send fails, the orphan key is harmless.
+		s.markOwnOutgoing(ctx, senderSession, groupID, renderedMessage)
+
 		// Send via WhatsApp
 		sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		var sendErr error
@@ -553,6 +573,46 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 func (s *offerGenerateService) buildContentKey(instance, group, body string) string {
 	h := sha256.Sum256([]byte(body))
 	return fmt.Sprintf("og_content:%s:%s:%s", instance, group, hex.EncodeToString(h[:8]))
+}
+
+// buildSelfSendKey identifies an outgoing message hash we just sent so the
+// FromMe webhook that returns can be distinguished from a chip user's
+// manual post in a monitor group. Indexed by (session, group, body-hash)
+// because the webhook fires on the same session that sent the message.
+func (s *offerGenerateService) buildSelfSendKey(instance, group, body string) string {
+	h := sha256.Sum256([]byte(body))
+	return fmt.Sprintf("og_self_send:%s:%s:%s", instance, group, hex.EncodeToString(h[:8]))
+}
+
+// markOwnOutgoing records that we are about to send `body` from `instance`
+// into `group`. 60s TTL is large enough for any normal webhook delay; on
+// send failure the orphan key is harmless (no webhook fires).
+func (s *offerGenerateService) markOwnOutgoing(ctx context.Context, instance, group, body string) {
+	if s.cache == nil {
+		return
+	}
+	key := s.buildSelfSendKey(instance, group, body)
+	if err := s.cache.Set(ctx, key, "1", 60*time.Second); err != nil {
+		// Logged at warn — without the mark we fall back to the existing
+		// content/message-id dedup, which catches most loops anyway.
+		observability.LogAndCapture(s.logger, sentry.LevelWarning,
+			"Failed to mark own outgoing for offer_generate", err,
+			map[string]string{"module": "offer_generate", "operation": "mark_self_send"})
+	}
+}
+
+// isOwnOutgoing returns true if this incoming FromMe message matches a
+// self-send we marked recently — i.e. it's our own dispatch returning via
+// the WhatsApp webhook, not the chip user posting manually.
+func (s *offerGenerateService) isOwnOutgoing(ctx context.Context, instance, group, body string) bool {
+	if s.cache == nil {
+		return false
+	}
+	val, err := s.cache.Get(ctx, s.buildSelfSendKey(instance, group, body))
+	if err != nil {
+		return false
+	}
+	return val != ""
 }
 
 func (s *offerGenerateService) isDuplicate(ctx context.Context, key string) bool {
