@@ -86,6 +86,7 @@ export function useOfferGenerate() {
           wa_group_id: g.wa_group_id,
           is_favorite: g.is_favorite,
           instance_id: g.instance_id,
+          participating_instance_ids: g.participating_instance_ids,
         }))
         .sort((a, b) => {
           if (a.is_favorite && !b.is_favorite) return -1;
@@ -105,6 +106,7 @@ export function useOfferGenerate() {
           wa_group_id: g.wa_group_id,
           is_favorite: g.is_favorite,
           instance_id: g.instance_id,
+          participating_instance_ids: g.participating_instance_ids,
         }))
         .sort((a, b) => {
           if (a.is_favorite && !b.is_favorite) return -1;
