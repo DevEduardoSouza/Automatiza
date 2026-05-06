@@ -85,7 +85,9 @@ type GroupPaginatedResult struct {
 // GroupRepository handles group data operations
 type GroupRepository interface {
 	GetUserGroups(ctx context.Context, userID string, adminOnly bool) ([]models.Group, error)
-	GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*GroupPaginatedResult, error)
+	// instanceID = 0 means "no chip filter" (all chips). When > 0, filters
+	// to groups where the chip is a participant (via participating_instance_ids).
+	GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*GroupPaginatedResult, error)
 	GetGroupByID(ctx context.Context, groupID string) (*models.Group, error)
 	GetGroupByWAGroupID(ctx context.Context, userID, waGroupID string) (*models.Group, error)
 	GetGroupsByIDs(ctx context.Context, userID string, groupIDs []string) ([]models.Group, error)

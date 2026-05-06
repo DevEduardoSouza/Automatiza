@@ -14,7 +14,7 @@ import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { cn } from '@/lib/utils';
 import * as Sentry from '@sentry/react';
 import { AlertCircle, RefreshCw, Search, WifiOff } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const GroupsIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -59,6 +59,14 @@ const colors = {
  */
 export default function Groups() {
   const { t } = useTranslation();
+
+  // Chip filter (multi-instance): null = "Todos os números". Lifted above
+  // useGroups so it can flow into the data hook and become a server-side
+  // filter — this is what makes pagination and total count scope to the
+  // selected chip instead of leaving the user staring at half-empty pages.
+  const { instances } = useInstancesConnect();
+  const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
+
   const {
     groups,
     loading,
@@ -150,28 +158,12 @@ export default function Groups() {
     updatePollOption,
     handleSendPoll,
     members,
-  } = useGroups();
+  } = useGroups({ instanceFilterId: selectedChipId });
 
-  // Chip filter (multi-instance): null = "Todos os números". Filters the
-  // groups table without changing useGroups' internal state.
-  //
-  // Match against participating_instance_ids (every chip that has seen the
-  // group), not just instance_id (the single owner). Without this, picking
-  // chip B hides groups that chip A discovered first even when B is also in
-  // them — which is the bug users surfaced after PR #94. instance_id is
-  // kept as a fallback for legacy/empty-array rows.
-  const { instances } = useInstancesConnect();
-  const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
-  const displayedGroups = useMemo(() => {
-    if (!selectedChipId) return filteredGroups;
-    return filteredGroups.filter((g) => {
-      const participants = g.participating_instance_ids;
-      if (participants && participants.length > 0) {
-        return participants.includes(selectedChipId);
-      }
-      return g.instance_id === selectedChipId;
-    });
-  }, [filteredGroups, selectedChipId]);
+  // Filter is server-side (via useGroups({ instanceFilterId })), so what
+  // the data hook returns is already scoped to the selected chip. No
+  // client-side filtering layer here on top.
+  const displayedGroups = filteredGroups;
 
   useEffect(() => {
     if (error) {

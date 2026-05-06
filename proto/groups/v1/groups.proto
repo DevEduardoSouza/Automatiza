@@ -93,6 +93,11 @@ message ListGroupsRequest {
 
   // Search filter for group name (server-side filtering)
   optional string search = 4;
+
+  // Filter to groups visible to this chip (matches participating_instance_ids,
+  // not just the owner). Empty / unset means "all chips". Server-side so the
+  // total count and pagination are scoped to the selected chip.
+  optional string instance_id = 5;
 }
 
 message ListGroupsResponse {

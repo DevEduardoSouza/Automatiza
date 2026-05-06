@@ -50,7 +50,7 @@ func (r *groupRepository) GetUserGroups(ctx context.Context, userID string, admi
 	return r.scanGroups(rows)
 }
 
-func (r *groupRepository) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
+func (r *groupRepository) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*repository.GroupPaginatedResult, error) {
 	// Validate and set defaults
 	if page < 1 {
 		page = 1
@@ -74,6 +74,18 @@ func (r *groupRepository) GetUserGroupsPaginated(ctx context.Context, userID str
 	if search != "" {
 		whereClause += fmt.Sprintf(" AND name ILIKE $%d", argIndex)
 		args = append(args, "%"+search+"%")
+		argIndex++
+	}
+
+	// Per-chip filter via participating_instance_ids. The GIN index on the
+	// array makes the @> lookup cheap, and matching against the array (not
+	// just instance_id) means shared groups show under every chip that's
+	// in them — that's the whole point of moving the filter server-side.
+	// instanceID = 0 means "all chips" (the explicit "Todos os números"
+	// state in the UI).
+	if instanceID > 0 {
+		whereClause += fmt.Sprintf(" AND participating_instance_ids @> ARRAY[$%d::INTEGER]", argIndex)
+		args = append(args, instanceID)
 		argIndex++
 	}
 

@@ -10,11 +10,20 @@ import type { UseGroupsDataReturn } from './types';
 
 const DEFAULT_PAGE_SIZE = 10;
 
+interface UseGroupsDataOptions {
+  // Filter to groups visible to this chip. null = "all chips" (no filter).
+  // Forwarded to the server so total count and pagination are scoped to
+  // the chip — without this the chip dropdown only filters the current
+  // page client-side, leaving the user staring at half-empty pages.
+  instanceFilterId?: string | null;
+}
+
 /**
  * Hook for managing groups data: loading, filtering, syncing with server-side pagination.
  * Uses ConnectRPC GroupsService for all operations.
  */
-export function useGroupsData(): UseGroupsDataReturn {
+export function useGroupsData(options: UseGroupsDataOptions = {}): UseGroupsDataReturn {
+  const { instanceFilterId } = options;
   const { t } = useTranslation();
   const { toast } = useToast();
 
@@ -57,6 +66,7 @@ export function useGroupsData(): UseGroupsDataReturn {
         page: currentPage,
         pageSize,
         search: debouncedSearchQuery || undefined,
+        instanceId: instanceFilterId || undefined,
       });
       setPaginatedData(result);
     } catch (err) {
@@ -67,15 +77,17 @@ export function useGroupsData(): UseGroupsDataReturn {
     } finally {
       setIsPaginatedLoading(false);
     }
-  }, [listGroupsPaginated, currentPage, pageSize, debouncedSearchQuery, t]);
+  }, [listGroupsPaginated, currentPage, pageSize, debouncedSearchQuery, instanceFilterId, t]);
 
-  // Reset to page 1 when search changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: debouncedSearchQuery triggers reset intentionally
+  // Reset to page 1 when search or chip filter changes — pagination is
+  // scoped to the new filter, so staying on (say) page 3 after switching
+  // chips would land on a non-existent page for the new total.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: debouncedSearchQuery / instanceFilterId triggers reset intentionally
   useEffect(() => {
     if (usePagination) {
       setCurrentPage(1);
     }
-  }, [debouncedSearchQuery, usePagination]);
+  }, [debouncedSearchQuery, instanceFilterId, usePagination]);
 
   // Fetch paginated data when pagination is enabled
   useEffect(() => {

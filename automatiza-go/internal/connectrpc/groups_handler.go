@@ -192,8 +192,15 @@ func (h *GroupsHandler) ListGroups(
 
 	adminOnly := req.Msg.GetAdminOnly()
 
+	// Parse the optional chip filter. Empty string and unparseable values
+	// fall through as 0, which the repo treats as "no filter".
+	instanceID := 0
+	if req.Msg.InstanceId != nil && *req.Msg.InstanceId != "" {
+		_, _ = fmt.Sscanf(*req.Msg.InstanceId, "%d", &instanceID)
+	}
+
 	// Check if this is a paginated request
-	isPaginated := req.Msg.Page != nil || req.Msg.PageSize != nil || req.Msg.Search != nil
+	isPaginated := req.Msg.Page != nil || req.Msg.PageSize != nil || req.Msg.Search != nil || req.Msg.InstanceId != nil
 
 	if isPaginated {
 		// Use paginated query
@@ -210,7 +217,7 @@ func (h *GroupsHandler) ListGroups(
 		}
 		search := req.Msg.GetSearch()
 
-		result, err := h.groupRepo.GetUserGroupsPaginated(ctx, user.ID, page, pageSize, adminOnly, search)
+		result, err := h.groupRepo.GetUserGroupsPaginated(ctx, user.ID, page, pageSize, adminOnly, search, instanceID)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get groups: %w", err))
 		}
