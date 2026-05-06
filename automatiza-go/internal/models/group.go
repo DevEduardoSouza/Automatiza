@@ -3,22 +3,27 @@ package models
 // Group represents a WhatsApp group in the database
 // IMPORTANT: Field names must match exactly with database columns for compatibility
 type Group struct {
-	ID           string  `json:"id" db:"id"`
-	Name         string  `json:"name" db:"name"`
-	WAGroupID    string  `json:"wa_group_id" db:"wa_group_id"`
-	InstanceID   string  `json:"instance_id" db:"instance_id"`
-	AdminOnly    bool    `json:"admin_only" db:"admin_only"`
-	Description  *string `json:"description,omitempty" db:"description"`
-	PictureURL   *string `json:"picture_url,omitempty" db:"picture_url"`
-	UserID       string  `json:"user_id" db:"user_id"`
-	IsAdmin      bool    `json:"is_admin" db:"is_admin"`
-	IsFavorite   bool    `json:"is_favorite" db:"is_favorite"`
-	Status       string  `json:"status" db:"status"`
-	InviteCode   *string `json:"invite_code,omitempty" db:"invite_code"`
-	MembersCount int     `json:"members_count" db:"members_count"`
-	MemberLimit  int     `json:"member_limit" db:"member_limit"`
-	CreatedAt    string  `json:"created_at" db:"created_at"`
-	UpdatedAt    string  `json:"updated_at" db:"updated_at"`
+	ID         string `json:"id" db:"id"`
+	Name       string `json:"name" db:"name"`
+	WAGroupID  string `json:"wa_group_id" db:"wa_group_id"`
+	InstanceID string `json:"instance_id" db:"instance_id"`
+	// ParticipatingInstanceIDs lists every chip whose sync has seen this
+	// group. InstanceID is the "owner" (first to discover); this array is
+	// the full set used for chip-filtering and per-row chip rendering.
+	// Stringified to match InstanceID's wire format.
+	ParticipatingInstanceIDs []string `json:"participating_instance_ids" db:"participating_instance_ids"`
+	AdminOnly                bool     `json:"admin_only" db:"admin_only"`
+	Description              *string  `json:"description,omitempty" db:"description"`
+	PictureURL               *string  `json:"picture_url,omitempty" db:"picture_url"`
+	UserID                   string   `json:"user_id" db:"user_id"`
+	IsAdmin                  bool     `json:"is_admin" db:"is_admin"`
+	IsFavorite               bool     `json:"is_favorite" db:"is_favorite"`
+	Status                   string   `json:"status" db:"status"`
+	InviteCode               *string  `json:"invite_code,omitempty" db:"invite_code"`
+	MembersCount             int      `json:"members_count" db:"members_count"`
+	MemberLimit              int      `json:"member_limit" db:"member_limit"`
+	CreatedAt                string   `json:"created_at" db:"created_at"`
+	UpdatedAt                string   `json:"updated_at" db:"updated_at"`
 }
 
 // GroupStatus constants

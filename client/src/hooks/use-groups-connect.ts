@@ -73,6 +73,10 @@ export interface LocalGroup {
   id: string;
   user_id: string;
   instance_id?: string;
+  // Every chip whose sync has seen the group (string form). instance_id
+  // is the "owner" (first to discover); this list covers the full
+  // participation set for the chip filter and per-row badges.
+  participating_instance_ids?: string[];
   wa_group_id: string;
   name: string;
   description?: string;
@@ -395,6 +399,7 @@ function fromProtoGroup(group: Group): LocalGroup {
     id: group.id,
     user_id: group.userId,
     instance_id: group.instanceId,
+    participating_instance_ids: group.participatingInstanceIds,
     wa_group_id: group.waGroupId,
     name: group.name,
     description: group.description,

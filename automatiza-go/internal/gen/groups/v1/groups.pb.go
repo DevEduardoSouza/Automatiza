@@ -107,9 +107,14 @@ type Group struct {
 	// Creation timestamp (ISO 8601)
 	CreatedAt string `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// Last update timestamp (ISO 8601)
-	UpdatedAt     string `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	UpdatedAt string `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// Every chip whose sync has seen this group. instance_id is the
+	// "owner" (first to discover); this list is the full participation
+	// set used by the frontend to filter by chip and to render multi-chip
+	// badges per row when more than one chip shares the same group.
+	ParticipatingInstanceIds []string `protobuf:"bytes,15,rep,name=participating_instance_ids,json=participatingInstanceIds,proto3" json:"participating_instance_ids,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *Group) Reset() {
@@ -238,6 +243,13 @@ func (x *Group) GetUpdatedAt() string {
 		return x.UpdatedAt
 	}
 	return ""
+}
+
+func (x *Group) GetParticipatingInstanceIds() []string {
+	if x != nil {
+		return x.ParticipatingInstanceIds
+	}
+	return nil
 }
 
 type ListGroupsRequest struct {
@@ -3274,7 +3286,7 @@ var File_groups_v1_groups_proto protoreflect.FileDescriptor
 
 const file_groups_v1_groups_proto_rawDesc = "" +
 	"\n" +
-	"\x16groups/v1/groups.proto\x12\tgroups.v1\x1a\x1bbuf/validate/validate.proto\"\xf9\x03\n" +
+	"\x16groups/v1/groups.proto\x12\tgroups.v1\x1a\x1bbuf/validate/validate.proto\"\xb7\x04\n" +
 	"\x05Group\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12$\n" +
@@ -3295,7 +3307,8 @@ const file_groups_v1_groups_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\r \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\x0e \x01(\tR\tupdatedAtB\x0e\n" +
+	"updated_at\x18\x0e \x01(\tR\tupdatedAt\x12<\n" +
+	"\x1aparticipating_instance_ids\x18\x0f \x03(\tR\x18participatingInstanceIdsB\x0e\n" +
 	"\f_instance_idB\x0e\n" +
 	"\f_descriptionB\x0e\n" +
 	"\f_invite_code\"\xc0\x01\n" +

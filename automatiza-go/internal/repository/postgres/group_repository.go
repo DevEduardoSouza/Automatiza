@@ -29,7 +29,7 @@ func (r *groupRepository) GetUserGroups(ctx context.Context, userID string, admi
 	query := `
 		SELECT id, user_id, instance_id, wa_group_id, name, description, picture_url,
 		       members_count, member_limit, status, is_admin, invite_code, admin_only,
-		       is_favorite, created_at, updated_at
+		       is_favorite, created_at, updated_at, participating_instance_ids
 		FROM groups
 		WHERE user_id = $1
 	`
@@ -96,7 +96,7 @@ func (r *groupRepository) GetUserGroupsPaginated(ctx context.Context, userID str
 	dataQuery := fmt.Sprintf(`
 		SELECT id, user_id, instance_id, wa_group_id, name, description, picture_url,
 		       members_count, member_limit, status, is_admin, invite_code, admin_only,
-		       is_favorite, created_at, updated_at
+		       is_favorite, created_at, updated_at, participating_instance_ids
 		FROM groups
 		%s
 		ORDER BY name ASC
@@ -130,7 +130,7 @@ func (r *groupRepository) GetGroupByID(ctx context.Context, groupID string) (*mo
 	query := `
 		SELECT id, user_id, instance_id, wa_group_id, name, description, picture_url,
 		       members_count, member_limit, status, is_admin, invite_code, admin_only,
-		       is_favorite, created_at, updated_at
+		       is_favorite, created_at, updated_at, participating_instance_ids
 		FROM groups
 		WHERE id = $1
 	`
@@ -142,7 +142,7 @@ func (r *groupRepository) GetGroupByWAGroupID(ctx context.Context, userID, waGro
 	query := `
 		SELECT id, user_id, instance_id, wa_group_id, name, description, picture_url,
 		       members_count, member_limit, status, is_admin, invite_code, admin_only,
-		       is_favorite, created_at, updated_at
+		       is_favorite, created_at, updated_at, participating_instance_ids
 		FROM groups
 		WHERE user_id = $1 AND wa_group_id = $2
 	`
@@ -158,7 +158,7 @@ func (r *groupRepository) GetGroupsByIDs(ctx context.Context, userID string, gro
 	query := `
 		SELECT id, user_id, instance_id, wa_group_id, name, description, picture_url,
 		       members_count, member_limit, status, is_admin, invite_code, admin_only,
-		       is_favorite, created_at, updated_at
+		       is_favorite, created_at, updated_at, participating_instance_ids
 		FROM groups
 		WHERE user_id = $1 AND id = ANY($2)
 		ORDER BY name ASC
@@ -179,56 +179,17 @@ func (r *groupRepository) SyncGroups(ctx context.Context, userID string, instanc
 	}
 
 	return r.db.WithTx(ctx, func(tx pgx.Tx) error {
-		// Get existing groups for this instance
-		existingQuery := `
-			SELECT wa_group_id FROM groups
-			WHERE user_id = $1 AND instance_id = $2
-		`
-		existingRows, err := tx.Query(ctx, existingQuery, userID, instanceID)
+		existingIDs, err := loadParticipatingGroupIDs(ctx, tx, userID, instanceID)
 		if err != nil {
 			return err
 		}
 
-		existingIDs := make(map[string]bool)
-		for existingRows.Next() {
-			var waGroupID string
-			if err := existingRows.Scan(&waGroupID); err != nil {
-				existingRows.Close()
-				return err
-			}
-			existingIDs[waGroupID] = true
-		}
-		existingRows.Close()
-
 		// Track which IDs we're syncing
 		syncedIDs := make(map[string]bool)
 
-		// Upsert groups.
-		//
-		// instance_id is intentionally NOT updated on conflict: the first
-		// chip that discovers a group keeps ownership. If two chips share
-		// the same WhatsApp group, syncing the second chip would otherwise
-		// "steal" the group from the first, hiding it from the chip filter
-		// in the automation form (groups are filtered by instance_id) and
-		// causing a per-sync ping-pong between the two chips.
-		upsertQuery := `
-			INSERT INTO groups (user_id, instance_id, wa_group_id, name, description, picture_url,
-			                    members_count, member_limit, is_admin, admin_only, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-			ON CONFLICT (user_id, wa_group_id) DO UPDATE SET
-				name = EXCLUDED.name,
-				description = EXCLUDED.description,
-				picture_url = EXCLUDED.picture_url,
-				members_count = EXCLUDED.members_count,
-				member_limit = EXCLUDED.member_limit,
-				is_admin = EXCLUDED.is_admin,
-				admin_only = EXCLUDED.admin_only,
-				updated_at = EXCLUDED.updated_at
-		`
-
 		now := time.Now().UTC()
 		for _, g := range groups {
-			_, err := tx.Exec(ctx, upsertQuery,
+			_, err := tx.Exec(ctx, upsertGroupQuery,
 				userID, instanceID, g.WAGroupID, g.Name, g.Description, g.PictureURL,
 				g.MembersCount, g.MemberLimit, g.IsAdmin, g.AdminOnly, now, now,
 			)
@@ -241,16 +202,13 @@ func (r *groupRepository) SyncGroups(ctx context.Context, userID string, instanc
 			syncedIDs[g.WAGroupID] = true
 		}
 
-		// Delete groups that no longer exist
+		// For groups this chip used to participate in but no longer sees,
+		// remove this chip from the participation set. Helper handles
+		// owner reassignment and deletion-when-empty.
 		for waGroupID := range existingIDs {
 			if !syncedIDs[waGroupID] {
-				deleteQuery := `
-					DELETE FROM groups
-					WHERE user_id = $1 AND instance_id = $2 AND wa_group_id = $3
-				`
-				_, err := tx.Exec(ctx, deleteQuery, userID, instanceID, waGroupID)
-				if err != nil {
-					r.logger.Error("Failed to delete removed group",
+				if err := removeChipFromGroup(ctx, tx, userID, instanceID, waGroupID); err != nil {
+					r.logger.Error("Failed to demote chip from group",
 						zap.String("waGroupID", waGroupID),
 						zap.Error(err))
 					return err
@@ -262,6 +220,99 @@ func (r *groupRepository) SyncGroups(ctx context.Context, userID string, instanc
 	})
 }
 
+// upsertGroupQuery insert-or-update for a single group seen by a chip.
+//
+// instance_id stays as the first chip that discovered the group (the
+// "owner") to avoid ping-pong on shared groups; participating_instance_ids
+// accumulates every chip whose sync has seen the group, deduped, so the
+// frontend can filter by chip and render multi-chip badges.
+const upsertGroupQuery = `
+	INSERT INTO groups (user_id, instance_id, wa_group_id, name, description, picture_url,
+	                    members_count, member_limit, is_admin, admin_only,
+	                    participating_instance_ids, created_at, updated_at)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, ARRAY[$2::INTEGER], $11, $12)
+	ON CONFLICT (user_id, wa_group_id) DO UPDATE SET
+		name = EXCLUDED.name,
+		description = EXCLUDED.description,
+		picture_url = EXCLUDED.picture_url,
+		members_count = EXCLUDED.members_count,
+		member_limit = EXCLUDED.member_limit,
+		is_admin = EXCLUDED.is_admin,
+		admin_only = EXCLUDED.admin_only,
+		participating_instance_ids = (
+			SELECT ARRAY(
+				SELECT DISTINCT unnest(groups.participating_instance_ids || ARRAY[EXCLUDED.instance_id])
+			)
+		),
+		updated_at = EXCLUDED.updated_at
+`
+
+// loadParticipatingGroupIDs returns the wa_group_ids of every group the
+// given chip currently participates in (owner OR member of the array).
+// Used by sync to detect groups the chip no longer sees so it can be
+// demoted from them.
+func loadParticipatingGroupIDs(ctx context.Context, tx pgx.Tx, userID string, instanceID int) (map[string]bool, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT wa_group_id FROM groups
+		WHERE user_id = $1
+		  AND ($2::INTEGER = instance_id OR $2::INTEGER = ANY(participating_instance_ids))
+	`, userID, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]bool)
+	for rows.Next() {
+		var waGroupID string
+		if err := rows.Scan(&waGroupID); err != nil {
+			return nil, err
+		}
+		out[waGroupID] = true
+	}
+	return out, rows.Err()
+}
+
+// removeChipFromGroup is called when a chip's sync no longer reports a
+// group it used to see. Three cases, handled atomically:
+//
+//   - chip is the only participant → DELETE the row entirely.
+//   - chip is a participant but not the owner → just remove it from the array.
+//   - chip is the owner and others remain → reassign ownership to the
+//     first remaining participant (deterministic so re-syncs are stable),
+//     then remove this chip from the array.
+//
+// Without this, two chips sharing a group would lose data when one of them
+// stopped seeing it: the older code blindly DELETEd, and the rest of the
+// participants would silently lose access until they re-synced.
+func removeChipFromGroup(ctx context.Context, tx pgx.Tx, userID string, instanceID int, waGroupID string) error {
+	_, err := tx.Exec(ctx, `
+		WITH target AS (
+			SELECT id, instance_id, array_remove(participating_instance_ids, $2::INTEGER) AS remaining
+			FROM groups
+			WHERE user_id = $1 AND wa_group_id = $3
+			FOR UPDATE
+		),
+		deleted AS (
+			DELETE FROM groups g
+			USING target t
+			WHERE g.id = t.id AND COALESCE(array_length(t.remaining, 1), 0) = 0
+			RETURNING g.id
+		)
+		UPDATE groups g
+		SET participating_instance_ids = t.remaining,
+		    instance_id = CASE
+		        WHEN g.instance_id = $2 THEN t.remaining[1]
+		        ELSE g.instance_id
+		    END,
+		    updated_at = NOW()
+		FROM target t
+		WHERE g.id = t.id
+		  AND COALESCE(array_length(t.remaining, 1), 0) > 0
+	`, userID, instanceID, waGroupID)
+	return err
+}
+
 func (r *groupRepository) SyncGroupsWithStats(ctx context.Context, userID string, instanceID int, groups []models.Group, options repository.SyncOptions) (*repository.SyncResult, error) {
 	result := &repository.SyncResult{}
 	if len(groups) == 0 {
@@ -269,56 +320,17 @@ func (r *groupRepository) SyncGroupsWithStats(ctx context.Context, userID string
 	}
 
 	err := r.db.WithTx(ctx, func(tx pgx.Tx) error {
-		// Get existing groups for this instance
-		existingQuery := `
-			SELECT wa_group_id FROM groups
-			WHERE user_id = $1 AND instance_id = $2
-		`
-		existingRows, err := tx.Query(ctx, existingQuery, userID, instanceID)
+		existingIDs, err := loadParticipatingGroupIDs(ctx, tx, userID, instanceID)
 		if err != nil {
 			return err
 		}
 
-		existingIDs := make(map[string]bool)
-		for existingRows.Next() {
-			var waGroupID string
-			if err := existingRows.Scan(&waGroupID); err != nil {
-				existingRows.Close()
-				return err
-			}
-			existingIDs[waGroupID] = true
-		}
-		existingRows.Close()
-
 		// Track which IDs we're syncing
 		syncedIDs := make(map[string]bool)
 
-		// Upsert groups.
-		//
-		// instance_id is intentionally NOT updated on conflict: the first
-		// chip that discovers a group keeps ownership. If two chips share
-		// the same WhatsApp group, syncing the second chip would otherwise
-		// "steal" the group from the first, hiding it from the chip filter
-		// in the automation form (groups are filtered by instance_id) and
-		// causing a per-sync ping-pong between the two chips.
-		upsertQuery := `
-			INSERT INTO groups (user_id, instance_id, wa_group_id, name, description, picture_url,
-			                    members_count, member_limit, is_admin, admin_only, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-			ON CONFLICT (user_id, wa_group_id) DO UPDATE SET
-				name = EXCLUDED.name,
-				description = EXCLUDED.description,
-				picture_url = EXCLUDED.picture_url,
-				members_count = EXCLUDED.members_count,
-				member_limit = EXCLUDED.member_limit,
-				is_admin = EXCLUDED.is_admin,
-				admin_only = EXCLUDED.admin_only,
-				updated_at = EXCLUDED.updated_at
-		`
-
 		now := time.Now().UTC()
 		for _, g := range groups {
-			_, err := tx.Exec(ctx, upsertQuery,
+			_, err := tx.Exec(ctx, upsertGroupQuery,
 				userID, instanceID, g.WAGroupID, g.Name, g.Description, g.PictureURL,
 				g.MembersCount, g.MemberLimit, g.IsAdmin, g.AdminOnly, now, now,
 			)
@@ -330,7 +342,9 @@ func (r *groupRepository) SyncGroupsWithStats(ctx context.Context, userID string
 			}
 			syncedIDs[g.WAGroupID] = true
 
-			// Count created vs updated
+			// Count created vs updated. existingIDs covers participation,
+			// not just ownership, so a chip seeing a shared group for the
+			// second time correctly counts as Updated.
 			if existingIDs[g.WAGroupID] {
 				result.Updated++
 			} else {
@@ -338,16 +352,13 @@ func (r *groupRepository) SyncGroupsWithStats(ctx context.Context, userID string
 			}
 		}
 
-		// Delete groups that no longer exist
+		// Demote chip from groups it no longer sees. Helper deletes the
+		// row only when no other chip remained in the participation set,
+		// otherwise reassigns ownership and trims the array.
 		for waGroupID := range existingIDs {
 			if !syncedIDs[waGroupID] {
-				deleteQuery := `
-					DELETE FROM groups
-					WHERE user_id = $1 AND instance_id = $2 AND wa_group_id = $3
-				`
-				_, err := tx.Exec(ctx, deleteQuery, userID, instanceID, waGroupID)
-				if err != nil {
-					r.logger.Error("Failed to delete removed group",
+				if err := removeChipFromGroup(ctx, tx, userID, instanceID, waGroupID); err != nil {
+					r.logger.Error("Failed to demote chip from group",
 						zap.String("waGroupID", waGroupID),
 						zap.Error(err))
 					return err
@@ -517,11 +528,12 @@ func (r *groupRepository) scanGroup(row pgx.Row) (*models.Group, error) {
 	var instanceID int
 	var status, inviteCode *string
 	var createdAt, updatedAt time.Time
+	var participatingIDs []int32
 
 	err := row.Scan(
 		&g.ID, &g.UserID, &instanceID, &g.WAGroupID, &g.Name, &g.Description, &g.PictureURL,
 		&g.MembersCount, &g.MemberLimit, &status, &g.IsAdmin, &inviteCode, &g.AdminOnly,
-		&g.IsFavorite, &createdAt, &updatedAt,
+		&g.IsFavorite, &createdAt, &updatedAt, &participatingIDs,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -531,6 +543,7 @@ func (r *groupRepository) scanGroup(row pgx.Row) (*models.Group, error) {
 	}
 
 	g.InstanceID = fmt.Sprintf("%d", instanceID)
+	g.ParticipatingInstanceIDs = stringifyInstanceIDs(participatingIDs)
 	if status != nil {
 		g.Status = *status
 	}
@@ -547,17 +560,19 @@ func (r *groupRepository) scanGroups(rows pgx.Rows) ([]models.Group, error) {
 		var instanceID int
 		var status, inviteCode *string
 		var createdAt, updatedAt time.Time
+		var participatingIDs []int32
 
 		err := rows.Scan(
 			&g.ID, &g.UserID, &instanceID, &g.WAGroupID, &g.Name, &g.Description, &g.PictureURL,
 			&g.MembersCount, &g.MemberLimit, &status, &g.IsAdmin, &inviteCode, &g.AdminOnly,
-			&g.IsFavorite, &createdAt, &updatedAt,
+			&g.IsFavorite, &createdAt, &updatedAt, &participatingIDs,
 		)
 		if err != nil {
 			return nil, err
 		}
 
 		g.InstanceID = fmt.Sprintf("%d", instanceID)
+		g.ParticipatingInstanceIDs = stringifyInstanceIDs(participatingIDs)
 		if status != nil {
 			g.Status = *status
 		}
@@ -570,6 +585,18 @@ func (r *groupRepository) scanGroups(rows pgx.Rows) ([]models.Group, error) {
 	return groups, rows.Err()
 }
 
+// stringifyInstanceIDs converts a Postgres INTEGER[] of instance IDs into
+// the string form used by the Group model (matches InstanceID's format).
+// Returns an empty slice for nil/empty input — never nil — so JSON
+// serialization stays as "[]" instead of "null".
+func stringifyInstanceIDs(ids []int32) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, fmt.Sprintf("%d", id))
+	}
+	return out
+}
+
 // GetGroupsByWAGroupIDs retrieves groups by their WhatsApp group IDs
 func (r *groupRepository) GetGroupsByWAGroupIDs(ctx context.Context, userID string, waGroupIDs []string) ([]models.Group, error) {
 	if len(waGroupIDs) == 0 {
@@ -579,7 +606,7 @@ func (r *groupRepository) GetGroupsByWAGroupIDs(ctx context.Context, userID stri
 	query := `
 		SELECT id, user_id, instance_id, wa_group_id, name, description, picture_url,
 		       members_count, member_limit, status, is_admin, invite_code, admin_only,
-		       is_favorite, created_at, updated_at
+		       is_favorite, created_at, updated_at, participating_instance_ids
 		FROM groups
 		WHERE user_id = $1 AND wa_group_id = ANY($2)
 		ORDER BY name ASC
@@ -599,8 +626,8 @@ func (r *groupRepository) CreateGroup(ctx context.Context, userID string, group 
 	query := `
 		INSERT INTO groups (user_id, instance_id, wa_group_id, name, description, picture_url,
 		                    members_count, member_limit, status, is_admin, invite_code, admin_only,
-		                    is_favorite, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		                    is_favorite, participating_instance_ids, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, ARRAY[$2::INTEGER], $14, $15)
 		RETURNING id
 	`
 
@@ -720,7 +747,7 @@ func (r *groupRepository) GetFavoriteGroups(ctx context.Context, userID string) 
 	query := `
 		SELECT id, user_id, instance_id, wa_group_id, name, description, picture_url,
 		       members_count, member_limit, status, is_admin, invite_code, admin_only,
-		       is_favorite, created_at, updated_at
+		       is_favorite, created_at, updated_at, participating_instance_ids
 		FROM groups
 		WHERE user_id = $1 AND is_favorite = TRUE
 		ORDER BY name ASC

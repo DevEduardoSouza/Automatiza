@@ -541,17 +541,18 @@ func groupToProto(g *models.Group) *groupsv1.Group {
 	}
 
 	proto := &groupsv1.Group{
-		Id:           g.ID,
-		UserId:       g.UserID,
-		WaGroupId:    g.WAGroupID,
-		Name:         g.Name,
-		MembersCount: int32(g.MembersCount),
-		MemberLimit:  int32(g.MemberLimit),
-		Status:       modelStatusToProto(g.Status),
-		IsAdmin:      g.IsAdmin,
-		IsFavorite:   g.IsFavorite,
-		CreatedAt:    g.CreatedAt,
-		UpdatedAt:    g.UpdatedAt,
+		Id:                       g.ID,
+		UserId:                   g.UserID,
+		WaGroupId:                g.WAGroupID,
+		Name:                     g.Name,
+		MembersCount:             int32(g.MembersCount),
+		MemberLimit:              int32(g.MemberLimit),
+		Status:                   modelStatusToProto(g.Status),
+		IsAdmin:                  g.IsAdmin,
+		IsFavorite:               g.IsFavorite,
+		CreatedAt:                g.CreatedAt,
+		UpdatedAt:                g.UpdatedAt,
+		ParticipatingInstanceIds: g.ParticipatingInstanceIDs,
 	}
 
 	if g.InstanceID != "" {
