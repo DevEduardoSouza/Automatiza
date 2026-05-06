@@ -57,20 +57,20 @@ function formatPhoneShort(raw: string | undefined): string | null {
   return digits;
 }
 
-interface ChipOwnerBadgeProps {
+interface ChipBadgeProps {
   instance: LocalInstance;
 }
 
 /**
- * Compact pill shown next to a group's name to identify which WhatsApp
- * chip "owns" it (groups.instance_id). Only rendered when the user has
- * more than one chip — single-chip accounts get no clutter.
+ * Compact pill shown next to a group's name to identify a WhatsApp chip
+ * that participates in the group. Rendered once per chip in the group's
+ * participation set, so shared groups show multiple badges side by side.
  *
  * Label fallback: friendly_name → formatted phone → truncated session id.
- * The raw session id reads as garbage to users, so we only use it as a
+ * The raw session id reads as garbage to users, so it is only used as a
  * last resort when the chip has no phone yet.
  */
-function ChipOwnerBadge({ instance }: ChipOwnerBadgeProps) {
+function ChipBadge({ instance }: ChipBadgeProps) {
   const friendly = instance.friendly_name?.trim();
   const phone = formatPhoneShort(instance.phone_number);
   const label =
@@ -99,6 +99,28 @@ function ChipOwnerBadge({ instance }: ChipOwnerBadgeProps) {
   );
 }
 
+/**
+ * Picks every chip the user has that participates in this group, in a
+ * stable order: owner first (instance_id), then the rest of
+ * participating_instance_ids in their server-provided order.
+ *
+ * Falls back to the owner alone for legacy rows where the array is
+ * empty (pre-migration data) so callers don't need a second branch.
+ */
+function getParticipatingInstances(
+  group: Group,
+  instanceById: Map<string, LocalInstance>
+): LocalInstance[] {
+  const ids: string[] = [];
+  if (group.instance_id) ids.push(group.instance_id);
+  for (const id of group.participating_instance_ids ?? []) {
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids
+    .map((id) => instanceById.get(id))
+    .filter((inst): inst is LocalInstance => inst !== undefined);
+}
+
 interface GroupListTableProps {
   groups: Group[];
   filteredGroups: Group[];
@@ -109,9 +131,10 @@ interface GroupListTableProps {
   onToggleFavorite: (groupId: string, currentFavorite: boolean) => void;
   onEditInviteCode: (group: Group) => void;
   onManageMembers: (group: { wa_group_id: string; name: string }) => void;
-  // Multi-chip ownership: when supplied with >1 entries, each row gets a
-  // ChipOwnerBadge so the user can tell which number a group came from
-  // (especially useful when "Todos os números" is selected in the filter).
+  // Multi-chip participation: when more than one chip exists, each row
+  // gets one ChipBadge per chip in the group's participation set, so the
+  // user can tell which numbers reach the group (especially useful when
+  // "Todos os números" is selected in the filter).
   instances?: LocalInstance[];
   // Pagination props (optional for backwards compatibility)
   usePagination?: boolean;
@@ -317,12 +340,15 @@ export function GroupListTable({
         key: 'name',
         header: <SortableHeader columnKey="name" label={t('pages.groups.list.columns.name')} />,
         render: (group: Group) => {
-          const owner =
-            showChipBadges && group.instance_id ? instanceById.get(group.instance_id) : undefined;
+          const participants = showChipBadges
+            ? getParticipatingInstances(group, instanceById)
+            : [];
           return (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium">{group.name}</span>
-              {owner && <ChipOwnerBadge instance={owner} />}
+              {participants.map((inst) => (
+                <ChipBadge key={inst.id} instance={inst} />
+              ))}
             </div>
           );
         },
@@ -507,10 +533,9 @@ export function GroupListTable({
           </div>
         ) : (
           sortedGroups.map((group) => {
-            const owner =
-              showChipBadges && group.instance_id
-                ? instanceById.get(group.instance_id)
-                : undefined;
+            const participants = showChipBadges
+              ? getParticipatingInstances(group, instanceById)
+              : [];
             return (
             <div
               key={group.id}
@@ -554,7 +579,9 @@ export function GroupListTable({
                         <h3 className="font-semibold text-sm xs:text-base break-words">
                           {group.name}
                         </h3>
-                        {owner && <ChipOwnerBadge instance={owner} />}
+                        {participants.map((inst) => (
+                          <ChipBadge key={inst.id} instance={inst} />
+                        ))}
                       </div>
                       <div
                         className="flex flex-wrap gap-2 text-xs"

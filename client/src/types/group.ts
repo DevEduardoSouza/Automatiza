@@ -15,6 +15,12 @@ export interface Group {
   // Optional because not every code path that produces a Group fills it in;
   // the chip filter UI degrades gracefully when missing (group never matches).
   instance_id?: string;
+  // Every chip whose sync has seen this group (string form, matches instance_id).
+  // instance_id is the "owner" (first to discover); this list is the full
+  // participation set used by the chip filter and per-row chip badges. Always
+  // includes the owner. Optional for compat — pre-44 rows lack the column,
+  // and Pick<> sub-types don't propagate it.
+  participating_instance_ids?: string[];
 }
 
 /**

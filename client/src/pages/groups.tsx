@@ -154,11 +154,23 @@ export default function Groups() {
 
   // Chip filter (multi-instance): null = "Todos os números". Filters the
   // groups table without changing useGroups' internal state.
+  //
+  // Match against participating_instance_ids (every chip that has seen the
+  // group), not just instance_id (the single owner). Without this, picking
+  // chip B hides groups that chip A discovered first even when B is also in
+  // them — which is the bug users surfaced after PR #94. instance_id is
+  // kept as a fallback for legacy/empty-array rows.
   const { instances } = useInstancesConnect();
   const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
   const displayedGroups = useMemo(() => {
     if (!selectedChipId) return filteredGroups;
-    return filteredGroups.filter((g) => g.instance_id === selectedChipId);
+    return filteredGroups.filter((g) => {
+      const participants = g.participating_instance_ids;
+      if (participants && participants.length > 0) {
+        return participants.includes(selectedChipId);
+      }
+      return g.instance_id === selectedChipId;
+    });
   }, [filteredGroups, selectedChipId]);
 
   useEffect(() => {

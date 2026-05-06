@@ -69,6 +69,12 @@ message Group {
 
   // Last update timestamp (ISO 8601)
   string updated_at = 14;
+
+  // Every chip whose sync has seen this group. instance_id is the
+  // "owner" (first to discover); this list is the full participation
+  // set used by the frontend to filter by chip and to render multi-chip
+  // badges per row when more than one chip shares the same group.
+  repeated string participating_instance_ids = 15;
 }
 
 // ============================================================
