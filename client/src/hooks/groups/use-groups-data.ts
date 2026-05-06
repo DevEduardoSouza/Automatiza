@@ -27,7 +27,7 @@ export function useGroupsData(): UseGroupsDataReturn {
     syncGroups: syncGroupsRpc,
     getSyncStatus,
   } = useGroupsConnect();
-  const { primaryInstance } = useInstancesConnect();
+  const { instances } = useInstancesConnect();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -235,62 +235,116 @@ export function useGroupsData(): UseGroupsDataReturn {
     setSyncing(true);
 
     try {
-      // Use the user's primary connected chip (default first, else any
-      // connected). Replaces the legacy latestInstance check that flagged
-      // "no instance" when the most-recently-updated chip happened to be
-      // not connected (e.g. user added a 2nd chip then it went pending).
-      if (!primaryInstance || primaryInstance.status !== 'connected') {
+      // Sync from EVERY connected chip, not just the primary. Each chip
+      // owns a different set of groups (each WhatsApp account has its own
+      // membership) so syncing only one would leave the other chips' groups
+      // stale or absent. Jobs are queued and polled in parallel so the wait
+      // time is bounded by the slowest single chip, not the sum.
+      const connectedInstances = instances.filter((i) => i.status === 'connected');
+      if (connectedInstances.length === 0) {
         throw new Error(t('pages.groups.errors.noInstance'));
       }
 
-      const syncInstanceName = primaryInstance.instance_id;
+      type Job = { instanceName: string; jobId: string };
+      const queueResults = await Promise.allSettled(
+        connectedInstances.map((inst) => syncGroupsRpc(inst.instance_id))
+      );
 
-      const queued = await syncGroupsRpc(syncInstanceName);
-      if (!queued?.success || !queued?.job_id) {
+      const jobs: Job[] = [];
+      const queueErrors: string[] = [];
+      queueResults.forEach((result, idx) => {
+        const inst = connectedInstances[idx];
+        if (result.status === 'fulfilled' && result.value?.success && result.value.job_id) {
+          jobs.push({ instanceName: inst.instance_id, jobId: String(result.value.job_id) });
+        } else {
+          queueErrors.push(inst.friendly_name?.trim() || inst.instance_id);
+        }
+      });
+
+      if (jobs.length === 0) {
         throw new Error(t('pages.groups.errors.syncQueue'));
       }
 
-      const jobId = String(queued.job_id);
-
+      // Poll all jobs concurrently. Done when the pending set is empty or
+      // the per-batch deadline elapses.
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       const deadline = Date.now() + 2 * 60 * 1000;
-      let lastState: string | undefined = undefined;
+      const pending = new Set(jobs.map((j) => j.jobId));
+      const failures: string[] = [];
 
-      while (Date.now() < deadline) {
-        try {
-          const status = await getSyncStatus(jobId);
-          const state = status?.status;
+      while (pending.size > 0 && Date.now() < deadline) {
+        const checks = await Promise.allSettled(
+          [...pending].map(async (jobId) => {
+            try {
+              const status = await getSyncStatus(jobId);
+              return { jobId, state: status?.status, error: status?.error };
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : '';
+              // "job not found" usually means the job already completed and
+              // got cleaned up — treat as success rather than throwing.
+              if (
+                msg.toLowerCase().includes('job not found') ||
+                msg.toLowerCase().includes('not_found')
+              ) {
+                return { jobId, state: 'completed' as const, error: undefined };
+              }
+              throw e;
+            }
+          })
+        );
 
-          lastState = state;
-          if (state === 'completed') break;
-          if (state === 'failed') {
-            throw new Error(status?.error || t('pages.groups.errors.syncFailed'));
+        for (const c of checks) {
+          if (c.status !== 'fulfilled') continue;
+          const { jobId, state, error } = c.value;
+          if (state === 'completed') {
+            pending.delete(jobId);
+          } else if (state === 'failed') {
+            const job = jobs.find((j) => j.jobId === jobId);
+            const inst = job
+              ? connectedInstances.find((i) => i.instance_id === job.instanceName)
+              : undefined;
+            const label = inst?.friendly_name?.trim() || job?.instanceName || 'chip';
+            failures.push(error ? `${label}: ${error}` : label);
+            pending.delete(jobId);
           }
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : '';
-          if (
-            msg.toLowerCase().includes('job not found') ||
-            msg.toLowerCase().includes('not_found')
-          ) {
-            lastState = 'completed';
-            break;
-          }
-          throw e;
         }
 
-        await sleep(1000);
-      }
-
-      if (lastState !== 'completed') {
-        throw new Error(t('pages.groups.errors.syncTimeout'));
+        if (pending.size > 0) await sleep(1000);
       }
 
       await loadGroups();
 
-      toast({
-        title: t('pages.groups.success.synced'),
-        description: t('pages.groups.success.syncedMessage'),
-      });
+      const totalProblems = pending.size + failures.length + queueErrors.length;
+      if (totalProblems > 0 && totalProblems === connectedInstances.length) {
+        // Every chip failed — surface as a hard error.
+        throw new Error(
+          pending.size > 0
+            ? t('pages.groups.errors.syncTimeout')
+            : t('pages.groups.errors.syncFailed')
+        );
+      }
+
+      if (totalProblems > 0) {
+        toast({
+          variant: 'destructive',
+          title: t('pages.groups.errors.syncPartial', {
+            failed: totalProblems,
+            total: connectedInstances.length,
+            defaultValue: 'Sincronizado parcialmente: {{failed}} de {{total}} números falharam',
+          }),
+        });
+      } else {
+        toast({
+          title: t('pages.groups.success.synced'),
+          description:
+            connectedInstances.length === 1
+              ? t('pages.groups.success.syncedMessage')
+              : t('pages.groups.success.syncedAllInstances', {
+                  count: connectedInstances.length,
+                  defaultValue: '{{count}} números sincronizados',
+                }),
+        });
+      }
     } catch (error: unknown) {
       captureHookError(error, 'useGroupsData', 'handleSync');
       const errorMessage = error instanceof Error ? error.message : t('pages.groups.errors.sync');
@@ -302,7 +356,7 @@ export function useGroupsData(): UseGroupsDataReturn {
     } finally {
       setSyncing(false);
     }
-  }, [syncing, toast, t, loadGroups, syncGroupsRpc, getSyncStatus, primaryInstance]);
+  }, [syncing, toast, t, loadGroups, syncGroupsRpc, getSyncStatus, instances]);
 
   return {
     groups,
