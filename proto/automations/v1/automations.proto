@@ -198,6 +198,11 @@ message Automation {
 
   // LIST mode: send link as downloaded image + caption instead of native preview
   optional bool list_send_as_image = 31;
+
+  // Preferred sender chip — when set and connected, every dispatch from
+  // this automation goes through this chip; otherwise falls back to the
+  // group's owner chip and then to the first connected instance.
+  optional string instance_id = 32;
 }
 
 /**
@@ -296,6 +301,9 @@ message CreateAutomationRequest {
   optional bool list_include_image = 24;
   repeated string cta_ids = 25;
   optional bool list_send_as_image = 26;
+  // Preferred sender chip for every dispatch (database id, string form).
+  // Empty / unset means "no preference" — fall back to per-group ownership.
+  optional string instance_id = 27;
 }
 
 message CreateAutomationResponse {
@@ -334,6 +342,9 @@ message UpdateAutomationRequest {
   optional bool list_include_image = 25;
   repeated string cta_ids = 26;
   optional bool list_send_as_image = 27;
+  // Preferred sender chip. Empty string explicitly clears the preference;
+  // unset (no field) means "leave unchanged" (proto3 optional semantics).
+  optional string instance_id = 28;
 }
 
 message UpdateAutomationResponse {

@@ -93,6 +93,10 @@ export interface LocalAutomation {
   listItemsPerRun?: number;
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
+  // Preferred sender chip (instance database id, string form). Empty / unset
+  // = no preference; the worker treats either case as "fall back to per-group
+  // ownership / first connected."
+  instanceId?: string;
 }
 
 export interface LocalDiagnosticStep {
@@ -139,6 +143,7 @@ export interface CreateAutomationParams {
   listItemsPerRun?: number;
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
+  instanceId?: string;
 }
 
 export interface UpdateAutomationParams {
@@ -169,6 +174,9 @@ export interface UpdateAutomationParams {
   listItemsPerRun?: number;
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
+  // Empty string explicitly clears the preference; undefined leaves it
+  // unchanged (matches proto3 optional semantics on the wire).
+  instanceId?: string;
 }
 
 export interface LocalRunAutomationResult {
@@ -374,6 +382,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     listItemsPerRun: automation.listItemsPerRun,
     listIncludeImage: automation.listIncludeImage,
     listSendAsImage: automation.listSendAsImage,
+    instanceId: automation.instanceId,
   };
 }
 
@@ -518,6 +527,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listItemsPerRun: params.listItemsPerRun,
           listIncludeImage: params.listIncludeImage,
           listSendAsImage: params.listSendAsImage,
+          instanceId: params.instanceId,
         })
       );
 
@@ -586,6 +596,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listItemsPerRun: params.listItemsPerRun,
           listIncludeImage: params.listIncludeImage,
           listSendAsImage: params.listSendAsImage,
+          instanceId: params.instanceId,
         })
       );
 

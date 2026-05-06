@@ -528,21 +528,23 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		return nil, fmt.Errorf("no WhatsApp instance found")
 	}
 
-	var connectedInstance *models.Instance
-	for _, inst := range instances {
-		if inst.Status == "connected" {
-			connectedInstance = &inst
-			break
-		}
-	}
+	// Honor an explicit per-automation chip preference: if the user chose
+	// a specific chip in the form, every dispatch goes through it (when
+	// connected). Per-group routing is bypassed in that case — the user's
+	// choice is the whole point.
+	connectedInstance := pickPreferredOrFirstConnected(automation.InstanceID, instances)
 	if connectedInstance == nil {
 		return nil, fmt.Errorf("no connected WhatsApp instance")
 	}
 
-	// Resolve per-group instances when multi-instance dispatch is enabled.
-	// Returns nil when flag is off, so the inner loop transparently uses
-	// connectedInstance as the sender.
-	groupInstances := s.fetchGroupInstancesIfEnabled(ctx, automation.UserID, targetGroups)
+	// Resolve per-group instances when multi-instance dispatch is enabled
+	// AND the automation has no chip preference. With a preference set,
+	// we want every group to go through that chip, not the per-group
+	// owner — so we skip the map (nil short-circuits inside the helper).
+	var groupInstances map[string]*models.Instance
+	if automation.InstanceID == nil || *automation.InstanceID == "" {
+		groupInstances = s.fetchGroupInstancesIfEnabled(ctx, automation.UserID, targetGroups)
+	}
 
 	// Determine stores to search
 	stores := automation.Stores
@@ -1275,4 +1277,31 @@ func stringPtrValue(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// pickPreferredOrFirstConnected returns the instance the automation
+// explicitly prefers (when set, parseable, present, and connected),
+// otherwise the first connected instance in the slice.
+//
+// preferredID is the wire-format string of an instance database id —
+// matches Automation.InstanceID. Empty / nil / unparseable / unconnected
+// all degrade to the first-connected fallback so a stale preference
+// doesn't strand the user.
+func pickPreferredOrFirstConnected(preferredID *string, instances []models.Instance) *models.Instance {
+	if preferredID != nil && *preferredID != "" {
+		var n int
+		if _, err := fmt.Sscanf(*preferredID, "%d", &n); err == nil && n > 0 {
+			for i := range instances {
+				if instances[i].ID == n && instances[i].Status == "connected" {
+					return &instances[i]
+				}
+			}
+		}
+	}
+	for i := range instances {
+		if instances[i].Status == "connected" {
+			return &instances[i]
+		}
+	}
+	return nil
 }

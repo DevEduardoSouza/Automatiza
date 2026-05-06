@@ -67,7 +67,7 @@ func (r *automationRepository) GetUserAutomations(ctx context.Context, userID st
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image
+		       list_send_as_image, instance_id
 		FROM automations
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -93,7 +93,7 @@ func (r *automationRepository) GetActiveAutomations(ctx context.Context) ([]mode
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image
+		       list_send_as_image, instance_id
 		FROM automations
 		WHERE status = 'active'
 		ORDER BY priority DESC, created_at ASC
@@ -119,7 +119,7 @@ func (r *automationRepository) GetAutomationByID(ctx context.Context, automation
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image
+		       list_send_as_image, instance_id
 		FROM automations
 		WHERE id = $1
 	`
@@ -138,7 +138,7 @@ func (r *automationRepository) GetAutomationByIDAndUser(ctx context.Context, aut
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image
+		       list_send_as_image, instance_id
 		FROM automations
 		WHERE id = $1 AND user_id = $2
 	`
@@ -172,14 +172,24 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 			schedule_time, schedule_days, start_time, end_time, interval_minutes,
 			delay_seconds, dedupe_hours, coupon_id, created_at, updated_at,
 			texts, ctas, cta_ids, ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-			list_send_as_image
+			list_send_as_image, instance_id
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
-			$32, $33, $34, $35, $36, $37, $38, $39
+			$32, $33, $34, $35, $36, $37, $38, $39, $40
 		)
 		RETURNING id
 	`
+
+	// instance_id is the string form on the wire; coerce to int for the
+	// INTEGER FK column. Empty string / unparseable → NULL (no preference).
+	var instanceIDArg interface{}
+	if data.InstanceID != nil && *data.InstanceID != "" {
+		var n int
+		if _, err := fmt.Sscanf(*data.InstanceID, "%d", &n); err == nil && n > 0 {
+			instanceIDArg = n
+		}
+	}
 
 	var id string
 	err := r.db.QueryRow(ctx, query,
@@ -190,7 +200,7 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 		data.ScheduleTime, scheduleDaysJSON, data.StartTime, data.EndTime, data.IntervalMinutes,
 		data.DelaySeconds, data.DedupeHours, data.CouponID, now, now,
 		data.Texts, data.CTAs, data.CTAIDs, data.MlLinkListID, data.ListItemsPerRun, data.ListIncludeImage, data.PriorityType,
-		data.ListSendAsImage,
+		data.ListSendAsImage, instanceIDArg,
 	).Scan(&id)
 
 	if err != nil {
@@ -227,6 +237,28 @@ func (r *automationRepository) UpdateAutomation(ctx context.Context, automationI
 		if rules, ok := val.(*models.MonitoringTextRules); ok {
 			jsonBytes := marshalJSONField(r.logger, rules, "monitoring_text_rules", []byte("null"))
 			updates["monitoring_text_rules"] = string(jsonBytes)
+		}
+	}
+
+	// instance_id arrives as the wire-format string from the update map
+	// (or already nil from ToMap when the user cleared it). Coerce strings
+	// to int so the FK comparison works; unparseable / non-positive values
+	// become NULL, matching the "no preference" default.
+	if val, ok := updates["instance_id"]; ok {
+		switch v := val.(type) {
+		case nil:
+			// already correct
+		case string:
+			if v == "" {
+				updates["instance_id"] = nil
+			} else {
+				var n int
+				if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 {
+					updates["instance_id"] = n
+				} else {
+					updates["instance_id"] = nil
+				}
+			}
 		}
 	}
 
@@ -291,7 +323,7 @@ func (r *automationRepository) GetMonitoringAutomationsForGroup(ctx context.Cont
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image
+		       list_send_as_image, instance_id
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'monitoring'
@@ -320,7 +352,7 @@ func (r *automationRepository) GetOfferGenerateAutomationsForGroup(ctx context.C
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image
+		       list_send_as_image, instance_id
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'offer_generate'
@@ -359,6 +391,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	var listItemsPerRun *int
 	var listIncludeImage *bool
 	var listSendAsImage *bool
+	var instanceID *int
 
 	err := row.Scan(
 		&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
@@ -370,7 +403,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 		&couponID, &createdAt, &updatedAt,
 		&texts, &ctas, &ctaIDs, &lastError, &lastErrorAt,
 		&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
-		&listSendAsImage,
+		&listSendAsImage, &instanceID,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -396,6 +429,10 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	a.ListItemsPerRun = listItemsPerRun
 	a.ListIncludeImage = listIncludeImage
 	a.ListSendAsImage = listSendAsImage
+	if instanceID != nil {
+		s := fmt.Sprintf("%d", *instanceID)
+		a.InstanceID = &s
+	}
 	if includeImage != nil {
 		a.IncludeImage = *includeImage
 	}

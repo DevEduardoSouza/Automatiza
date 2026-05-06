@@ -68,6 +68,12 @@ type Automation struct {
 	// Error tracking
 	LastError   *string `json:"last_error,omitempty" db:"last_error"`
 	LastErrorAt *string `json:"last_error_at,omitempty" db:"last_error_at"`
+
+	// Preferred sender chip (database id of an instance row, string form
+	// to match the wire format). NULL = no preference, fall back to
+	// per-group ownership. When set and the chip is connected, every
+	// dispatch from this automation goes through it.
+	InstanceID *string `json:"instance_id,omitempty" db:"instance_id"`
 }
 
 // AutomationStatus constants
@@ -191,6 +197,7 @@ type CreateAutomationRequest struct {
 	EndTime         *string  `json:"end_time,omitempty"`
 	IntervalMinutes *int     `json:"interval_minutes,omitempty"`
 	CouponID        *string  `json:"coupon_id,omitempty"`
+	InstanceID      *string  `json:"instance_id,omitempty"`
 }
 
 // UpdateAutomationRequest represents a request to update an automation
@@ -218,6 +225,9 @@ type UpdateAutomationRequest struct {
 	EndTime         *string  `json:"end_time,omitempty"`
 	IntervalMinutes *int     `json:"interval_minutes,omitempty"`
 	CouponID        *string  `json:"coupon_id,omitempty"`
+	// InstanceID is a tri-state pointer: nil = not provided (no change),
+	// pointer to "" = explicitly clear the preference, otherwise = set.
+	InstanceID *string `json:"instance_id,omitempty"`
 }
 
 // ToMap converts UpdateAutomationRequest to a map for database updates
@@ -292,6 +302,17 @@ func (r *UpdateAutomationRequest) ToMap() map[string]interface{} {
 	}
 	if r.CouponID != nil {
 		result["coupon_id"] = *r.CouponID
+	}
+	if r.InstanceID != nil {
+		// Empty string = explicit clear (FK to NULL); non-empty = parsed
+		// to int when written, but at this layer we leave it as the raw
+		// string and let the repo coerce. Keeping the empty-string path
+		// mapped to nil here lets the repo treat both the same.
+		if *r.InstanceID == "" {
+			result["instance_id"] = nil
+		} else {
+			result["instance_id"] = *r.InstanceID
+		}
 	}
 
 	return result

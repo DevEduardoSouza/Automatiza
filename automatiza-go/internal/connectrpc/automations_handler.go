@@ -526,6 +526,11 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 		proto.ListSendAsImage = a.ListSendAsImage
 	}
 
+	// Preferred sender chip
+	if a.InstanceID != nil {
+		proto.InstanceId = a.InstanceID
+	}
+
 	// Convert stores
 	for _, store := range a.Stores {
 		proto.Stores = append(proto.Stores, modelStoreToProto(store))
@@ -831,6 +836,12 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.ListSendAsImage = msg.ListSendAsImage
 	}
 
+	// Preferred sender chip — empty string == no preference, so drop it
+	// to nil so the repo writes NULL.
+	if msg.InstanceId != nil && *msg.InstanceId != "" {
+		automation.InstanceID = msg.InstanceId
+	}
+
 	// Convert stores
 	for _, store := range msg.GetStores() {
 		if s := protoStoreToModel(store); s != "" {
@@ -937,6 +948,13 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 	}
 	if msg.ListSendAsImage != nil {
 		updates["list_send_as_image"] = msg.GetListSendAsImage()
+	}
+
+	// Preferred sender chip — empty string means "clear the preference"
+	// (write NULL to the FK). The repo's UpdateAutomation handles the
+	// string→int coercion and the empty-string special case.
+	if msg.InstanceId != nil {
+		updates["instance_id"] = msg.GetInstanceId()
 	}
 
 	// Monitoring text rules
