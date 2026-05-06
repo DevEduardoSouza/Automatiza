@@ -117,6 +117,14 @@ export function AutomationFormDialog({
       setSelectedChipId(null);
       return;
     }
+    // Prefer the saved per-automation chip preference (formData.instance_id)
+    // over inferring it from the first group's owner. Without this, picking
+    // chip B and saving would silently revert to A on the next edit because
+    // groups[].instance_id is the *owner*, not the user's choice.
+    if (formData.instance_id) {
+      setSelectedChipId(formData.instance_id);
+      return;
+    }
     const firstSendGroup = formData.send_groups?.[0];
     const fromExisting = firstSendGroup
       ? groups.find((g) => g.wa_group_id === firstSendGroup)?.instance_id
@@ -159,12 +167,14 @@ export function AutomationFormDialog({
   const handleChipChange = (id: string | null) => {
     if (id === selectedChipId) return;
     setSelectedChipId(id);
-    // Clear selections so the user does not accidentally save references
-    // to groups owned by a chip they are no longer targeting.
+    // Clear group selections (they may not match the new chip) AND
+    // persist the preference into formData so the save call carries it.
+    // null == "all chips" → empty string → repo writes NULL.
     setFormData((prev) => ({
       ...prev,
       send_groups: [],
       monitor_groups: [],
+      instance_id: id ?? null,
     }));
   };
 

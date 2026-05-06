@@ -62,6 +62,11 @@ export interface Automation {
   list_items_per_run?: number;
   list_include_image?: boolean;
   list_send_as_image?: boolean;
+  // Preferred sender chip (database id of an instance, string form). Set
+  // by the form's chip selector and persisted; the worker uses it as the
+  // sender for every dispatch from this automation. Empty / null = no
+  // preference (legacy default).
+  instance_id?: string | null;
 }
 
 export interface AutomationGroup {
