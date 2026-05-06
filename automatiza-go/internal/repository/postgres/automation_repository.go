@@ -515,6 +515,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		var listItemsPerRun *int
 		var listIncludeImage *bool
 		var listSendAsImage *bool
+		var instanceID *int
 
 		err := rows.Scan(
 			&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
@@ -526,7 +527,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 			&couponID, &createdAt, &updatedAt,
 			&texts, &ctas, &ctaIDs, &lastError, &lastErrorAt,
 			&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
-			&listSendAsImage,
+			&listSendAsImage, &instanceID,
 		)
 		if err != nil {
 			return nil, err
@@ -549,6 +550,10 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		a.ListItemsPerRun = listItemsPerRun
 		a.ListIncludeImage = listIncludeImage
 		a.ListSendAsImage = listSendAsImage
+		if instanceID != nil {
+			s := fmt.Sprintf("%d", *instanceID)
+			a.InstanceID = &s
+		}
 		if includeImage != nil {
 			a.IncludeImage = *includeImage
 		}
