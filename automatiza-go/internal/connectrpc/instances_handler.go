@@ -83,6 +83,17 @@ func (h *InstancesHandler) ListUserInstances(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get instances: %w", err))
 	}
 
+	// Backfill phone_number for any connected chip whose row has it empty.
+	// Webhook_consumer_worker normally writes this field when a session.status
+	// event arrives carrying me.id, but a chip that paired before that path
+	// existed (or whose connect event missed me) ends up stuck with an empty
+	// phone, and the UI badge falls back to the raw session id. WAHA always
+	// has the AuthenticatedUser populated for connected sessions, so a single
+	// REST round-trip per affected chip resolves it. Errors are warned and
+	// swallowed — we'd rather show the chip without a phone than block the
+	// entire list.
+	h.backfillMissingPhones(ctx, instances)
+
 	protoInstances := make([]*instancesv1.Instance, len(instances))
 	for i, inst := range instances {
 		protoInstances[i] = instanceToProto(&inst)
@@ -91,6 +102,52 @@ func (h *InstancesHandler) ListUserInstances(
 	return connect.NewResponse(&instancesv1.ListUserInstancesResponse{
 		Instances: protoInstances,
 	}), nil
+}
+
+// backfillMissingPhones fills the empty PhoneNumber field on any connected
+// instance by reading me.id from WAHA's session status. Mutates `instances`
+// in place so the proto serialization picks up the new value, and persists
+// the result so subsequent reads don't pay the WAHA hop.
+func (h *InstancesHandler) backfillMissingPhones(ctx context.Context, instances []models.Instance) {
+	if h.waProvider == nil {
+		return
+	}
+	for i := range instances {
+		inst := &instances[i]
+		if inst.Status != models.InstanceStatusConnected {
+			continue
+		}
+		if inst.PhoneNumber != nil && *inst.PhoneNumber != "" {
+			continue
+		}
+		session, err := h.waProvider.GetSessionStatus(ctx, inst.InstanceID)
+		if err != nil || session == nil || session.AuthenticatedUser == nil {
+			if err != nil {
+				h.logger().Warn("Failed to fetch WAHA session for phone backfill",
+					zap.String("session", inst.InstanceID),
+					zap.Error(err))
+			}
+			continue
+		}
+		phone := whatsapp.ExtractPhoneFromID(session.AuthenticatedUser.ID)
+		if phone == "" {
+			continue
+		}
+		if err := h.instanceRepo.UpdateInstancePhoneNumber(ctx, inst.ID, phone); err != nil {
+			observability.LogAndCapture(h.logger(), sentry.LevelWarning,
+				"Failed to persist backfilled phone_number", err,
+				map[string]string{"module": "instances", "operation": "list_backfill_phone"})
+			continue
+		}
+		inst.PhoneNumber = &phone
+	}
+}
+
+// logger returns a zap.Logger usable inside this handler. The struct does
+// not carry one yet, so we lazily build a no-op logger; replace with a
+// constructor-injected logger if more methods need structured logging.
+func (h *InstancesHandler) logger() *zap.Logger {
+	return zap.NewNop()
 }
 
 // UpsertInstanceStatus creates or updates an instance's status.

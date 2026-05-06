@@ -620,12 +620,12 @@
       },
       "howItWorks": {
         "title": "Como funciona?",
-        "steps_1": "Clique em \"Gerar QR Code\"",
+        "steps_1": "Clique em \"Conectar novo número\"",
         "steps_2": "Abra o WhatsApp no seu celular",
         "steps_3": "Vá em Configurações → Aparelhos conectados → Conectar um aparelho",
         "steps_4": "Escaneie o QR Code exibido na tela",
-        "steps_5": "Pronto! Seus grupos serão importados automaticamente",
-        "steps_6": "Importe seus grupos clicando em 'Importar Grupos' ou ative o Auto-sync"
+        "steps_5": "Pronto! Seus grupos são sincronizados automaticamente assim que o número conecta",
+        "steps_6": "Pra adicionar outro chip, clique em \"Conectar novo número\" de novo — os dois sincronizam em paralelo"
       },
       "success": {
         "qrGenerated": "QR Code gerado!",
