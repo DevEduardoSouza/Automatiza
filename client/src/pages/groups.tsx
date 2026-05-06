@@ -261,7 +261,7 @@ export default function Groups() {
                     className="text-xs xs:text-sm tracking-tight"
                     style={{ color: colors.wineTextMuted }}
                   >
-                    {t('pages.groups.subtitle', { count: groups.length })}
+                    {t('pages.groups.subtitle', { count: totalCount })}
                   </p>
                 </div>
               </div>
