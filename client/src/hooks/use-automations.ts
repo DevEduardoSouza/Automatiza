@@ -682,10 +682,10 @@ export function useAutomations(): UseAutomationsReturn {
           listSendAsImage:
             mode === 'list' ? Boolean(formData.list_send_as_image ?? false) : undefined,
           instanceId: formData.instance_id ?? undefined,
-          // Mirrors the form's mode-aware default (see automation-form-dialog):
-          // search defaults OFF, anything else defaults ON.
-          applyCouponRules:
-            formData.apply_coupon_rules ?? formData.mode !== 'search',
+          // Mirrors the form default (see automation-form-dialog): every
+          // new automation here starts with the rule engine OFF, so the
+          // user opts in explicitly when they want coupon injection.
+          applyCouponRules: formData.apply_coupon_rules ?? false,
         };
 
         await automationsConnect.createAutomation(createParams);

@@ -388,11 +388,13 @@ export function AutomationFormDialog({
               </p>
             </div>
             <Switch
-              // Default policy: ON for monitor/list/offer_generate, OFF for
-              // search. Search mode often pulls products that already carry
-              // a Shopee promo; piling our own coupon on top reads as
-              // redundant. The user can flip per automation either way.
-              checked={formData.apply_coupon_rules ?? formData.mode !== 'search'}
+              // Default OFF for every new automation in this form (search,
+              // monitor, list). Operators here usually want full control
+              // over the message and pull products from sources that may
+              // already carry promo codes — opt-in to coupon injection.
+              // The /offer-generate config page keeps its own default ON
+              // since that flow is event-driven (chat → bot rewrite).
+              checked={formData.apply_coupon_rules ?? false}
               onCheckedChange={(checked) =>
                 setFormData((prev) => ({ ...prev, apply_coupon_rules: checked }))
               }
