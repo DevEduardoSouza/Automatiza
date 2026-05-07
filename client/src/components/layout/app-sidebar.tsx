@@ -362,6 +362,7 @@ export const menuItems: MenuItem[] = [
   { titleKey: 'sidebar.affiliatePrograms', url: '/affiliate-programs', icon: AffiliateIcon },
   { titleKey: 'sidebar.ctas', url: '/ctas', icon: MessageSquare },
   { titleKey: 'sidebar.coupons', url: '/coupons', icon: CouponsIcon },
+  { titleKey: 'sidebar.couponRules', url: '/coupons/rules', icon: CouponsIcon },
   { titleKey: 'sidebar.automationLogs', url: '/automation-logs', icon: AutomationLogsIcon },
   { titleKey: 'sidebar.history', url: '/history', icon: HistoryIcon },
   { titleKey: 'sidebar.profile', url: '/profile', icon: ProfileIcon },

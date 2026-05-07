@@ -289,6 +289,7 @@ func main() {
 	settingsRepo := repos.Settings
 	ctaRepo := repos.CTA
 	couponRepo := repos.Coupon
+	couponRuleRepo := repos.CouponRule
 	dispatchLogRepo := repos.DispatchLog
 	scheduledJobRepo := repos.ScheduledJob
 	systemEventRepo := repos.SystemEvent
@@ -442,6 +443,7 @@ func main() {
 		queueClient,
 		cacheClient,
 		couponRepo,
+		couponRuleRepo,
 		config.NewModuleLogger(logger, "automation"),
 	)
 
@@ -492,7 +494,7 @@ func main() {
 	var ogCouponHandler offer_generate.CouponApplier
 	if couponRepo != nil {
 		ogCouponHandler = &couponHandlerAdapter{
-			handler: automation.NewCouponHandler(couponRepo, logger),
+			handler: automation.NewCouponHandler(couponRepo, couponRuleRepo, logger),
 		}
 	}
 	offerGenerateService := offer_generate.NewOfferGenerateService(
@@ -858,7 +860,7 @@ func main() {
 	connectServer.RegisterService(historyPath, historyHTTPHandler)
 
 	// Register coupons service handler (requires auth)
-	couponsHandler := connectrpc.NewCouponsHandler(couponsService)
+	couponsHandler := connectrpc.NewCouponsHandler(couponsService, couponRuleRepo)
 	couponsPath, couponsHTTPHandler := couponsv1connect.NewCouponsServiceHandler(
 		couponsHandler,
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
@@ -1077,6 +1079,18 @@ func (a *couponHandlerAdapter) ApplyCouponWithPreloaded(coupon *models.Coupon, o
 		CouponText:      result.CouponText,
 		DiscountedPrice: result.DiscountedPrice,
 	}
+}
+
+func (a *couponHandlerAdapter) ApplyCoupon(ctx context.Context, auto *models.Automation, offerPrice float64, offerStore string) (*offer_generate.CouponResult, error) {
+	result, err := a.handler.ApplyCoupon(ctx, auto, offerPrice, offerStore)
+	if err != nil || result == nil {
+		return nil, err
+	}
+	return &offer_generate.CouponResult{
+		Applied:         result.Applied,
+		CouponText:      result.CouponText,
+		DiscountedPrice: result.DiscountedPrice,
+	}, nil
 }
 
 // queueEnqueuerAdapter adapts *workers.QueueClient to startup.ReconcileEnqueuer.

@@ -50,6 +50,7 @@ const Auth = lazyWithRetry(() => import('./pages/auth'));
 const AuthMagic = lazyWithRetry(() => import('./pages/auth-magic'));
 const AutomationLogs = lazyWithRetry(() => import('./pages/automation-logs'));
 const Coupons = lazyWithRetry(() => import('./pages/coupons'));
+const CouponRules = lazyWithRetry(() => import('./pages/coupon-rules'));
 const CTAs = lazyWithRetry(() => import('./pages/ctas'));
 const Dashboard = lazyWithRetry(() => import('./pages/dashboard'));
 const DispatchTexts = lazyWithRetry(() => import('./pages/dispatch-texts'));
@@ -254,6 +255,17 @@ const App = () => (
                         <ProtectedRoute>
                           <AppLayout>
                             <Coupons />
+                          </AppLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/coupons/rules"
+                      element={
+                        <ProtectedRoute>
+                          <AppLayout>
+                            <CouponRules />
                           </AppLayout>
                         </ProtectedRoute>
                       }

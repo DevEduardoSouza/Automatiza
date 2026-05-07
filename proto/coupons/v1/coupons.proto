@@ -190,6 +190,84 @@ message ListCouponsByStoreResponse {
 }
 
 // ============================================================
+// Coupon Rules (auto-apply rules)
+// ============================================================
+
+/**
+ * CouponRule defines when a Coupon should be auto-injected into a
+ * dispatched offer. The matcher uses platform + period + min_price as
+ * filters; tie-break order: highest min_price the product clears, then
+ * priority desc, then created_at desc.
+ */
+message CouponRule {
+  string id = 1;
+  string user_id = 2;
+  string coupon_id = 3;
+  // "shopee", "mercado_livre", etc. — matches Coupon.store canonical form.
+  string platform = 4;
+  // Vigência. Null = sem início / sem fim.
+  optional string period_start = 5;
+  optional string period_end = 6;
+  // Valor mínimo do produto pra regra disparar (R$). 0 = qualquer preço.
+  double min_price = 7;
+  // Tie-break entre regras com mesmo min_price (maior vence).
+  int32 priority = 8;
+  bool is_active = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+message ListCouponRulesRequest {}
+
+message ListCouponRulesResponse {
+  repeated CouponRule rules = 1;
+}
+
+message GetCouponRuleRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetCouponRuleResponse {
+  CouponRule rule = 1;
+}
+
+message CreateCouponRuleRequest {
+  string coupon_id = 1 [(buf.validate.field).string.min_len = 1];
+  string platform = 2 [(buf.validate.field).string.min_len = 1];
+  optional string period_start = 3;
+  optional string period_end = 4;
+  optional double min_price = 5;
+  optional int32 priority = 6;
+  optional bool is_active = 7;
+}
+
+message CreateCouponRuleResponse {
+  CouponRule rule = 1;
+}
+
+message UpdateCouponRuleRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  optional string coupon_id = 2;
+  optional string platform = 3;
+  // Empty string explicitly clears the bound (writes NULL); unset leaves alone.
+  optional string period_start = 4;
+  optional string period_end = 5;
+  optional double min_price = 6;
+  optional int32 priority = 7;
+  optional bool is_active = 8;
+}
+
+message UpdateCouponRuleResponse {
+  CouponRule rule = 1;
+}
+
+message DeleteCouponRuleRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteCouponRuleResponse {}
+
+// ============================================================
 // Service Definition
 // ============================================================
 
@@ -214,4 +292,11 @@ service CouponsService {
 
   // Lists active coupons for a specific store.
   rpc ListCouponsByStore(ListCouponsByStoreRequest) returns (ListCouponsByStoreResponse);
+
+  // Auto-apply rules.
+  rpc ListCouponRules(ListCouponRulesRequest) returns (ListCouponRulesResponse);
+  rpc GetCouponRule(GetCouponRuleRequest) returns (GetCouponRuleResponse);
+  rpc CreateCouponRule(CreateCouponRuleRequest) returns (CreateCouponRuleResponse);
+  rpc UpdateCouponRule(UpdateCouponRuleRequest) returns (UpdateCouponRuleResponse);
+  rpc DeleteCouponRule(DeleteCouponRuleRequest) returns (DeleteCouponRuleResponse);
 }

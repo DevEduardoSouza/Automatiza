@@ -37,9 +37,14 @@ type CouponResult struct {
 
 // CouponApplier handles coupon loading and application.
 // This interface avoids an import cycle with the automation package.
+//
+// LoadCouponOnce / ApplyCouponWithPreloaded are kept for legacy code
+// (e.g. discount-tag override flow); ApplyCoupon is the rules-engine
+// entry point used per offer with the actual price + platform.
 type CouponApplier interface {
 	LoadCouponOnce(ctx context.Context, automation *models.Automation) (*models.Coupon, string)
 	ApplyCouponWithPreloaded(coupon *models.Coupon, offerPrice float64, offerStore string) *CouponResult
+	ApplyCoupon(ctx context.Context, automation *models.Automation, offerPrice float64, offerStore string) (*CouponResult, error)
 }
 
 type offerGenerateService struct {
@@ -265,12 +270,15 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		}
 	}
 
-	// 7. Preload coupon: from automation config OR from discount tag coupon code
+	// 7. Coupon resolution (rules engine + discount-tag fallback).
+	//
+	// Per-automation coupon was retired with migration 046 — coupons are
+	// now picked by the rule engine, evaluated below per offer once we
+	// know the price and platform. The only preload that still makes
+	// sense here is the discount-tag override: messages can carry a
+	// coupon code in the tag itself, and that takes priority over rules.
 	var preloadedCoupon *models.Coupon
-	if s.couponHandler != nil && auto.CouponID != nil && *auto.CouponID != "" {
-		preloadedCoupon, _ = s.couponHandler.LoadCouponOnce(ctx, auto)
-	}
-	if preloadedCoupon == nil && discountTag != nil && discountTag.CouponCode != "" && s.couponRepo != nil {
+	if discountTag != nil && discountTag.CouponCode != "" && s.couponRepo != nil {
 		tagCoupon, err := s.couponRepo.GetCouponByCode(ctx, auto.UserID, discountTag.CouponCode)
 		if err == nil && tagCoupon != nil && tagCoupon.IsActive {
 			preloadedCoupon = tagCoupon
@@ -356,11 +364,16 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			offerPrice = text.ApplyDiscountTag(offerPrice, discountTag)
 		}
 
-		// Apply coupon
+		// Apply coupon: discount-tag override first, then rule engine.
 		couponBlock := ""
-		if s.couponHandler != nil && preloadedCoupon != nil {
-			couponResult := s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, store)
-			if couponResult.Applied {
+		if s.couponHandler != nil {
+			var couponResult *CouponResult
+			if preloadedCoupon != nil {
+				couponResult = s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, store)
+			} else if cr, err := s.couponHandler.ApplyCoupon(ctx, auto, offerPrice, store); err == nil {
+				couponResult = cr
+			}
+			if couponResult != nil && couponResult.Applied {
 				couponBlock = couponResult.CouponText
 				if couponResult.DiscountedPrice > 0 {
 					offerPrice = couponResult.DiscountedPrice
@@ -421,11 +434,16 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			offerPrice = text.ApplyDiscountTag(offerPrice, discountTag)
 		}
 
-		// Apply coupon
+		// Apply coupon: discount-tag override first, then rule engine.
 		couponBlock := ""
-		if s.couponHandler != nil && preloadedCoupon != nil {
-			couponResult := s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, store)
-			if couponResult.Applied {
+		if s.couponHandler != nil {
+			var couponResult *CouponResult
+			if preloadedCoupon != nil {
+				couponResult = s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, store)
+			} else if cr, err := s.couponHandler.ApplyCoupon(ctx, auto, offerPrice, store); err == nil {
+				couponResult = cr
+			}
+			if couponResult != nil && couponResult.Applied {
 				couponBlock = couponResult.CouponText
 				if couponResult.DiscountedPrice > 0 {
 					offerPrice = couponResult.DiscountedPrice

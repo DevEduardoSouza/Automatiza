@@ -97,6 +97,8 @@ export interface LocalAutomation {
   // = no preference; the worker treats either case as "fall back to per-group
   // ownership / first connected."
   instanceId?: string;
+  // Per-automation opt-out for the coupon rule engine.
+  applyCouponRules?: boolean;
 }
 
 export interface LocalDiagnosticStep {
@@ -144,6 +146,7 @@ export interface CreateAutomationParams {
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
   instanceId?: string;
+  applyCouponRules?: boolean;
 }
 
 export interface UpdateAutomationParams {
@@ -177,6 +180,7 @@ export interface UpdateAutomationParams {
   // Empty string explicitly clears the preference; undefined leaves it
   // unchanged (matches proto3 optional semantics on the wire).
   instanceId?: string;
+  applyCouponRules?: boolean;
 }
 
 export interface LocalRunAutomationResult {
@@ -383,6 +387,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     listIncludeImage: automation.listIncludeImage,
     listSendAsImage: automation.listSendAsImage,
     instanceId: automation.instanceId,
+    applyCouponRules: automation.applyCouponRules,
   };
 }
 
@@ -528,6 +533,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listIncludeImage: params.listIncludeImage,
           listSendAsImage: params.listSendAsImage,
           instanceId: params.instanceId,
+          applyCouponRules: params.applyCouponRules,
         })
       );
 
@@ -597,6 +603,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listIncludeImage: params.listIncludeImage,
           listSendAsImage: params.listSendAsImage,
           instanceId: params.instanceId,
+          applyCouponRules: params.applyCouponRules,
         })
       );
 

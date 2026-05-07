@@ -153,17 +153,10 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		}
 	}
 
-	// Load coupon once for all items (avoids repeated DB lookups)
-	var preloadedCoupon *models.Coupon
-	if s.couponHandler != nil {
-		coupon, skipMsg := s.couponHandler.LoadCouponOnce(ctx, automation)
-		if skipMsg != "" {
-			s.logger.Info("Coupon skip for list mode",
-				zap.String("automationID", automation.ID),
-				zap.String("reason", skipMsg))
-		}
-		preloadedCoupon = coupon
-	}
+	// Coupon resolution moved to per-item via the rules engine — see the
+	// ApplyCoupon call inside the per-item loop below. The legacy
+	// per-automation preload is gone because the matched coupon depends
+	// on the item's price (different rules apply at different price tiers).
 
 	result := &models.RunAutomationResult{
 		Success:      true,
@@ -258,9 +251,11 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			}
 		}
 
-		// Apply coupon to this item
+		// Resolve a coupon for this specific item via the rules engine.
+		// The matched coupon depends on offerPrice, so this lookup runs
+		// once per item — see CouponHandler.ApplyCoupon for details.
 		var couponResult *CouponResult
-		if s.couponHandler != nil && preloadedCoupon != nil {
+		if s.couponHandler != nil {
 			var offerPrice float64
 			var offerStore string
 			if isML && preview != nil {
@@ -271,7 +266,9 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				offerStore = "shopee"
 			}
 			if offerPrice > 0 {
-				couponResult = s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, offerStore)
+				if cr, err := s.couponHandler.ApplyCoupon(ctx, automation, offerPrice, offerStore); err == nil {
+					couponResult = cr
+				}
 			}
 		}
 

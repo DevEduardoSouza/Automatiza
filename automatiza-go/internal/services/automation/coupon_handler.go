@@ -28,39 +28,53 @@ type CouponResult struct {
 	DiscountedPrice float64
 }
 
-// CouponHandler handles coupon validation and application for automations.
-// It encapsulates the logic for determining if a coupon should be applied
-// to an offer based on various criteria (store match, price threshold, etc.).
+// CouponHandler resolves which coupon (if any) to inject into an offer
+// dispatch. As of migration 046 it queries the global rule engine
+// (coupon_rules table) instead of reading the per-automation coupon_id.
+//
+// The flow is per-offer: each call to ApplyCoupon hits the matcher with
+// (userID, store, productPrice). For automations dispatching the same
+// product to N groups this is N queries — acceptable for the MVP given
+// the partial index on (user_id, platform, is_active=true). If it shows
+// up as a hotspot we can preload rules+coupons once per automation run
+// and match in-memory.
+//
+// couponRuleRepo can be nil when callers pass no rule repo (e.g. during
+// migration or tests); the handler then degrades to "no coupon".
 type CouponHandler struct {
-	couponRepo repository.CouponRepository
-	logger     *zap.Logger
+	couponRepo     repository.CouponRepository
+	couponRuleRepo repository.CouponRuleRepository
+	logger         *zap.Logger
 }
 
-// NewCouponHandler creates a new coupon handler with the given repository and logger.
-func NewCouponHandler(couponRepo repository.CouponRepository, logger *zap.Logger) *CouponHandler {
+// NewCouponHandler creates a new coupon handler. couponRuleRepo can be
+// nil for callers that aren't on the rules engine yet — the handler
+// then resolves to "no coupon" on every call.
+func NewCouponHandler(couponRepo repository.CouponRepository, couponRuleRepo repository.CouponRuleRepository, logger *zap.Logger) *CouponHandler {
 	return &CouponHandler{
-		couponRepo: couponRepo,
-		logger:     logger,
+		couponRepo:     couponRepo,
+		couponRuleRepo: couponRuleRepo,
+		logger:         logger,
 	}
 }
 
-// ApplyCoupon checks if a coupon should be applied to an offer and returns the result.
+// ApplyCoupon resolves which coupon to inject into an offer using the
+// rules engine and returns the formatted result.
 //
-// The function validates:
-// - Automation has a coupon configured
-// - Coupon exists and belongs to the user
-// - Coupon is active and not expired
-// - Coupon store matches the offer store (if store is specified)
-// - Offer price meets the minimum price requirement (if configured)
+// Flow:
+//   - automation.ApplyCouponRules == false → result.Applied=false (the
+//     operator opted this automation out of the rule engine).
+//   - couponRuleRepo nil → handler runs without rules support, no coupon.
+//   - Otherwise: query the rules engine with (userID, offerStore,
+//     offerPrice). The engine returns the best-matching coupon (highest
+//     min_price tier the product clears, then priority, then created_at).
+//   - Defensive checks on the resolved coupon: must be active, must not
+//     be expired. Store / min_product_price are NOT re-checked here:
+//     the rule already filtered by platform and min_price.
 //
-// Parameters:
-// - ctx: Context for cancellation and timeouts
-// - automation: The automation containing the coupon configuration
-// - offerPrice: The price of the offer being sent
-// - offerStore: The store the offer is from (e.g., "shopee", "ml", "amazon")
-//
-// Returns CouponResult with Applied=true and formatted CouponText if the coupon should be applied,
-// or Applied=false with SkipReason explaining why the coupon was not applied.
+// Returns CouponResult with Applied=true and formatted CouponText if a
+// rule matched, or Applied=false with SkipReason describing why nothing
+// was injected.
 func (h *CouponHandler) ApplyCoupon(
 	ctx context.Context,
 	automation *models.Automation,
@@ -69,42 +83,43 @@ func (h *CouponHandler) ApplyCoupon(
 ) (*CouponResult, error) {
 	result := &CouponResult{Applied: false}
 
-	// Check if automation has coupon configured
-	if automation.CouponID == nil || *automation.CouponID == "" {
-		result.SkipReason = "no coupon configured"
+	if !automation.ApplyCouponRules {
+		result.SkipReason = "coupon rules disabled for this automation"
+		return result, nil
+	}
+	if h.couponRuleRepo == nil {
+		result.SkipReason = "coupon rules engine not configured"
 		return result, nil
 	}
 
-	couponID := *automation.CouponID
-
-	// Get coupon with ownership validation
-	coupon, err := h.couponRepo.GetCouponByID(ctx, couponID, automation.UserID)
+	// Normalize the store before querying — the rules table stores
+	// platform exactly as the catalog (e.g. "shopee", "mercado_livre"),
+	// so keep the same canonical form here.
+	platform := normalizeStoreName(offerStore)
+	coupon, err := h.couponRuleRepo.FindMatchingCoupon(ctx, automation.UserID, platform, offerPrice)
 	if err != nil {
-		h.logger.Error("Failed to get coupon",
-			zap.String("couponID", couponID),
+		h.logger.Error("Failed to resolve coupon rule",
 			zap.String("userID", automation.UserID),
+			zap.String("platform", platform),
+			zap.Float64("offerPrice", offerPrice),
 			zap.Error(err))
-		result.SkipReason = "coupon retrieval failed"
+		result.SkipReason = "coupon rule lookup failed"
 		return result, nil // Don't fail the automation, just skip coupon
 	}
-
 	if coupon == nil {
-		h.logger.Warn("Coupon not found or not owned by user",
-			zap.String("couponID", couponID),
-			zap.String("userID", automation.UserID))
-		result.SkipReason = "coupon not found"
+		result.SkipReason = "no coupon rule matched"
 		return result, nil
 	}
 
 	result.CouponCode = coupon.Code
 
-	// Check if coupon is active
+	// Defensive: a rule could point to an inactive or expired coupon
+	// (operator deactivated the catalog row but left the rule on). Skip
+	// rather than emit a stale coupon.
 	if !coupon.IsActive {
 		result.SkipReason = "coupon is inactive"
 		return result, nil
 	}
-
-	// Check if coupon is expired
 	if coupon.ExpiresAt != nil && *coupon.ExpiresAt != "" {
 		expiresAt, err := time.Parse(time.RFC3339, *coupon.ExpiresAt)
 		if err == nil && expiresAt.Before(time.Now()) {
@@ -113,32 +128,14 @@ func (h *CouponHandler) ApplyCoupon(
 		}
 	}
 
-	// Check if coupon store matches offer store (if coupon has store restriction)
-	if coupon.Store != "" && offerStore != "" {
-		if normalizeStoreName(coupon.Store) != normalizeStoreName(offerStore) {
-			result.SkipReason = fmt.Sprintf("coupon is for store %s (offer is from %s)", coupon.Store, offerStore)
-			return result, nil
-		}
-	}
-
-	// Check minimum price requirement
-	if coupon.MinProductPrice != nil {
-		minPrice := *coupon.MinProductPrice
-		if offerPrice < minPrice {
-			result.SkipReason = fmt.Sprintf("offer price R$ %.2f below minimum R$ %.2f", offerPrice, minPrice)
-			return result, nil
-		}
-	}
-
-	// Coupon is valid - apply it
 	result.Applied = true
 	result.CouponText = h.formatCouponText(coupon)
 	result.DiscountedPrice = CalculateDiscountedPrice(offerPrice, coupon)
 
-	h.logger.Debug("Coupon applied successfully",
+	h.logger.Debug("Coupon applied via rule engine",
 		zap.String("couponID", coupon.ID),
 		zap.String("couponCode", coupon.Code),
-		zap.String("store", offerStore),
+		zap.String("platform", platform),
 		zap.Float64("offerPrice", offerPrice))
 
 	return result, nil
@@ -195,97 +192,50 @@ func (h *CouponHandler) formatCouponText(coupon *models.Coupon) string {
 	return result
 }
 
-// LoadCouponOnce loads and validates a coupon once at the start of automation execution.
-// This is an optimization to avoid repeated database lookups when sending to multiple groups.
+// LoadCouponOnce is a legacy optimization that pre-fetched the
+// automation's fixed coupon once before iterating dispatch targets.
+// With the rules engine the matched coupon depends on the offer's
+// price and platform, so a single preload no longer fits — every
+// caller should use ApplyCoupon per offer instead.
 //
-// Returns the loaded coupon (or nil if not configured/invalid) and any error message.
-// The coupon is pre-validated for active status and expiration.
+// Kept as a no-op so older call sites compile during the migration;
+// a follow-up will remove the function entirely.
 func (h *CouponHandler) LoadCouponOnce(
-	ctx context.Context,
-	automation *models.Automation,
+	_ context.Context,
+	_ *models.Automation,
 ) (*models.Coupon, string) {
-	// Check if automation has coupon configured
-	if automation.CouponID == nil || *automation.CouponID == "" {
-		return nil, ""
-	}
-
-	couponID := *automation.CouponID
-
-	// Get coupon with ownership validation
-	coupon, err := h.couponRepo.GetCouponByID(ctx, couponID, automation.UserID)
-	if err != nil {
-		h.logger.Error("Failed to load coupon",
-			zap.String("couponID", couponID),
-			zap.Error(err))
-		return nil, "Falha ao carregar cupom"
-	}
-
-	if coupon == nil {
-		return nil, "Cupom nao encontrado"
-	}
-
-	// Check if active
-	if !coupon.IsActive {
-		return nil, "Cupom inativo"
-	}
-
-	// Check expiration
-	if coupon.ExpiresAt != nil && *coupon.ExpiresAt != "" {
-		expiresAt, err := time.Parse(time.RFC3339, *coupon.ExpiresAt)
-		if err == nil && expiresAt.Before(time.Now()) {
-			return nil, "Cupom expirado"
-		}
-	}
-
-	return coupon, ""
+	return nil, ""
 }
 
-// ApplyCouponWithPreloaded applies a preloaded coupon to an offer.
-// This is more efficient when processing multiple offers with the same coupon.
-//
-// Parameters:
-// - coupon: The preloaded coupon (can be nil if no coupon configured)
-// - offerPrice: The price of the offer being sent
-// - offerStore: The store the offer is from
-//
-// Returns CouponResult with the application result.
+// ApplyCouponWithPreloaded is a legacy fast-path that took a coupon
+// already loaded by LoadCouponOnce. With the rules engine the resolved
+// coupon depends on the offer's price, so the preload pattern no longer
+// applies — callers should switch to ApplyCoupon. Kept as a thin
+// fallback that just formats a non-nil coupon, mostly so older code
+// paths compile and tests continue to exercise the formatting.
 func (h *CouponHandler) ApplyCouponWithPreloaded(
 	coupon *models.Coupon,
 	offerPrice float64,
 	offerStore string,
 ) *CouponResult {
 	result := &CouponResult{Applied: false}
-
-	// No coupon configured
 	if coupon == nil {
 		result.SkipReason = "no coupon configured"
 		return result
 	}
-
 	result.CouponCode = coupon.Code
-
-	// Check store match
-	if coupon.Store != "" && offerStore != "" {
-		if normalizeStoreName(coupon.Store) != normalizeStoreName(offerStore) {
-			result.SkipReason = fmt.Sprintf("coupon is for store %s (offer is from %s)", coupon.Store, offerStore)
-			return result
-		}
+	if coupon.Store != "" && offerStore != "" &&
+		normalizeStoreName(coupon.Store) != normalizeStoreName(offerStore) {
+		result.SkipReason = fmt.Sprintf("coupon is for store %s (offer is from %s)", coupon.Store, offerStore)
+		return result
 	}
-
-	// Check minimum price
-	if coupon.MinProductPrice != nil {
-		minPrice := *coupon.MinProductPrice
-		if offerPrice < minPrice {
-			result.SkipReason = fmt.Sprintf("offer price R$ %.2f below minimum R$ %.2f", offerPrice, minPrice)
-			return result
-		}
+	if coupon.MinProductPrice != nil && offerPrice < *coupon.MinProductPrice {
+		result.SkipReason = fmt.Sprintf("offer price R$ %.2f below minimum R$ %.2f", offerPrice, *coupon.MinProductPrice)
+		return result
 	}
-
-	// Coupon is valid
 	result.Applied = true
 	result.CouponText = h.formatCouponText(coupon)
 	result.DiscountedPrice = CalculateDiscountedPrice(offerPrice, coupon)
-
 	return result
 }
 

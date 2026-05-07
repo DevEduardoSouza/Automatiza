@@ -1083,6 +1083,668 @@ func (x *ListCouponsByStoreResponse) GetCoupons() []*Coupon {
 	return nil
 }
 
+// *
+// CouponRule defines when a Coupon should be auto-injected into a
+// dispatched offer. The matcher uses platform + period + min_price as
+// filters; tie-break order: highest min_price the product clears, then
+// priority desc, then created_at desc.
+type CouponRule struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	UserId   string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	CouponId string                 `protobuf:"bytes,3,opt,name=coupon_id,json=couponId,proto3" json:"coupon_id,omitempty"`
+	// "shopee", "mercado_livre", etc. — matches Coupon.store canonical form.
+	Platform string `protobuf:"bytes,4,opt,name=platform,proto3" json:"platform,omitempty"`
+	// Vigência. Null = sem início / sem fim.
+	PeriodStart *string `protobuf:"bytes,5,opt,name=period_start,json=periodStart,proto3,oneof" json:"period_start,omitempty"`
+	PeriodEnd   *string `protobuf:"bytes,6,opt,name=period_end,json=periodEnd,proto3,oneof" json:"period_end,omitempty"`
+	// Valor mínimo do produto pra regra disparar (R$). 0 = qualquer preço.
+	MinPrice float64 `protobuf:"fixed64,7,opt,name=min_price,json=minPrice,proto3" json:"min_price,omitempty"`
+	// Tie-break entre regras com mesmo min_price (maior vence).
+	Priority      int32  `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
+	IsActive      bool   `protobuf:"varint,9,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
+	CreatedAt     string `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     string `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CouponRule) Reset() {
+	*x = CouponRule{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CouponRule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CouponRule) ProtoMessage() {}
+
+func (x *CouponRule) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CouponRule.ProtoReflect.Descriptor instead.
+func (*CouponRule) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CouponRule) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *CouponRule) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *CouponRule) GetCouponId() string {
+	if x != nil {
+		return x.CouponId
+	}
+	return ""
+}
+
+func (x *CouponRule) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *CouponRule) GetPeriodStart() string {
+	if x != nil && x.PeriodStart != nil {
+		return *x.PeriodStart
+	}
+	return ""
+}
+
+func (x *CouponRule) GetPeriodEnd() string {
+	if x != nil && x.PeriodEnd != nil {
+		return *x.PeriodEnd
+	}
+	return ""
+}
+
+func (x *CouponRule) GetMinPrice() float64 {
+	if x != nil {
+		return x.MinPrice
+	}
+	return 0
+}
+
+func (x *CouponRule) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
+
+func (x *CouponRule) GetIsActive() bool {
+	if x != nil {
+		return x.IsActive
+	}
+	return false
+}
+
+func (x *CouponRule) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *CouponRule) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
+type ListCouponRulesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCouponRulesRequest) Reset() {
+	*x = ListCouponRulesRequest{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCouponRulesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCouponRulesRequest) ProtoMessage() {}
+
+func (x *ListCouponRulesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCouponRulesRequest.ProtoReflect.Descriptor instead.
+func (*ListCouponRulesRequest) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{15}
+}
+
+type ListCouponRulesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rules         []*CouponRule          `protobuf:"bytes,1,rep,name=rules,proto3" json:"rules,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCouponRulesResponse) Reset() {
+	*x = ListCouponRulesResponse{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCouponRulesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCouponRulesResponse) ProtoMessage() {}
+
+func (x *ListCouponRulesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCouponRulesResponse.ProtoReflect.Descriptor instead.
+func (*ListCouponRulesResponse) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListCouponRulesResponse) GetRules() []*CouponRule {
+	if x != nil {
+		return x.Rules
+	}
+	return nil
+}
+
+type GetCouponRuleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCouponRuleRequest) Reset() {
+	*x = GetCouponRuleRequest{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCouponRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCouponRuleRequest) ProtoMessage() {}
+
+func (x *GetCouponRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCouponRuleRequest.ProtoReflect.Descriptor instead.
+func (*GetCouponRuleRequest) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *GetCouponRuleRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type GetCouponRuleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rule          *CouponRule            `protobuf:"bytes,1,opt,name=rule,proto3" json:"rule,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCouponRuleResponse) Reset() {
+	*x = GetCouponRuleResponse{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCouponRuleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCouponRuleResponse) ProtoMessage() {}
+
+func (x *GetCouponRuleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCouponRuleResponse.ProtoReflect.Descriptor instead.
+func (*GetCouponRuleResponse) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *GetCouponRuleResponse) GetRule() *CouponRule {
+	if x != nil {
+		return x.Rule
+	}
+	return nil
+}
+
+type CreateCouponRuleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CouponId      string                 `protobuf:"bytes,1,opt,name=coupon_id,json=couponId,proto3" json:"coupon_id,omitempty"`
+	Platform      string                 `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	PeriodStart   *string                `protobuf:"bytes,3,opt,name=period_start,json=periodStart,proto3,oneof" json:"period_start,omitempty"`
+	PeriodEnd     *string                `protobuf:"bytes,4,opt,name=period_end,json=periodEnd,proto3,oneof" json:"period_end,omitempty"`
+	MinPrice      *float64               `protobuf:"fixed64,5,opt,name=min_price,json=minPrice,proto3,oneof" json:"min_price,omitempty"`
+	Priority      *int32                 `protobuf:"varint,6,opt,name=priority,proto3,oneof" json:"priority,omitempty"`
+	IsActive      *bool                  `protobuf:"varint,7,opt,name=is_active,json=isActive,proto3,oneof" json:"is_active,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateCouponRuleRequest) Reset() {
+	*x = CreateCouponRuleRequest{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateCouponRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateCouponRuleRequest) ProtoMessage() {}
+
+func (x *CreateCouponRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateCouponRuleRequest.ProtoReflect.Descriptor instead.
+func (*CreateCouponRuleRequest) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *CreateCouponRuleRequest) GetCouponId() string {
+	if x != nil {
+		return x.CouponId
+	}
+	return ""
+}
+
+func (x *CreateCouponRuleRequest) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *CreateCouponRuleRequest) GetPeriodStart() string {
+	if x != nil && x.PeriodStart != nil {
+		return *x.PeriodStart
+	}
+	return ""
+}
+
+func (x *CreateCouponRuleRequest) GetPeriodEnd() string {
+	if x != nil && x.PeriodEnd != nil {
+		return *x.PeriodEnd
+	}
+	return ""
+}
+
+func (x *CreateCouponRuleRequest) GetMinPrice() float64 {
+	if x != nil && x.MinPrice != nil {
+		return *x.MinPrice
+	}
+	return 0
+}
+
+func (x *CreateCouponRuleRequest) GetPriority() int32 {
+	if x != nil && x.Priority != nil {
+		return *x.Priority
+	}
+	return 0
+}
+
+func (x *CreateCouponRuleRequest) GetIsActive() bool {
+	if x != nil && x.IsActive != nil {
+		return *x.IsActive
+	}
+	return false
+}
+
+type CreateCouponRuleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rule          *CouponRule            `protobuf:"bytes,1,opt,name=rule,proto3" json:"rule,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateCouponRuleResponse) Reset() {
+	*x = CreateCouponRuleResponse{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateCouponRuleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateCouponRuleResponse) ProtoMessage() {}
+
+func (x *CreateCouponRuleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateCouponRuleResponse.ProtoReflect.Descriptor instead.
+func (*CreateCouponRuleResponse) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *CreateCouponRuleResponse) GetRule() *CouponRule {
+	if x != nil {
+		return x.Rule
+	}
+	return nil
+}
+
+type UpdateCouponRuleRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	CouponId *string                `protobuf:"bytes,2,opt,name=coupon_id,json=couponId,proto3,oneof" json:"coupon_id,omitempty"`
+	Platform *string                `protobuf:"bytes,3,opt,name=platform,proto3,oneof" json:"platform,omitempty"`
+	// Empty string explicitly clears the bound (writes NULL); unset leaves alone.
+	PeriodStart   *string  `protobuf:"bytes,4,opt,name=period_start,json=periodStart,proto3,oneof" json:"period_start,omitempty"`
+	PeriodEnd     *string  `protobuf:"bytes,5,opt,name=period_end,json=periodEnd,proto3,oneof" json:"period_end,omitempty"`
+	MinPrice      *float64 `protobuf:"fixed64,6,opt,name=min_price,json=minPrice,proto3,oneof" json:"min_price,omitempty"`
+	Priority      *int32   `protobuf:"varint,7,opt,name=priority,proto3,oneof" json:"priority,omitempty"`
+	IsActive      *bool    `protobuf:"varint,8,opt,name=is_active,json=isActive,proto3,oneof" json:"is_active,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateCouponRuleRequest) Reset() {
+	*x = UpdateCouponRuleRequest{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateCouponRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateCouponRuleRequest) ProtoMessage() {}
+
+func (x *UpdateCouponRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateCouponRuleRequest.ProtoReflect.Descriptor instead.
+func (*UpdateCouponRuleRequest) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *UpdateCouponRuleRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateCouponRuleRequest) GetCouponId() string {
+	if x != nil && x.CouponId != nil {
+		return *x.CouponId
+	}
+	return ""
+}
+
+func (x *UpdateCouponRuleRequest) GetPlatform() string {
+	if x != nil && x.Platform != nil {
+		return *x.Platform
+	}
+	return ""
+}
+
+func (x *UpdateCouponRuleRequest) GetPeriodStart() string {
+	if x != nil && x.PeriodStart != nil {
+		return *x.PeriodStart
+	}
+	return ""
+}
+
+func (x *UpdateCouponRuleRequest) GetPeriodEnd() string {
+	if x != nil && x.PeriodEnd != nil {
+		return *x.PeriodEnd
+	}
+	return ""
+}
+
+func (x *UpdateCouponRuleRequest) GetMinPrice() float64 {
+	if x != nil && x.MinPrice != nil {
+		return *x.MinPrice
+	}
+	return 0
+}
+
+func (x *UpdateCouponRuleRequest) GetPriority() int32 {
+	if x != nil && x.Priority != nil {
+		return *x.Priority
+	}
+	return 0
+}
+
+func (x *UpdateCouponRuleRequest) GetIsActive() bool {
+	if x != nil && x.IsActive != nil {
+		return *x.IsActive
+	}
+	return false
+}
+
+type UpdateCouponRuleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rule          *CouponRule            `protobuf:"bytes,1,opt,name=rule,proto3" json:"rule,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateCouponRuleResponse) Reset() {
+	*x = UpdateCouponRuleResponse{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateCouponRuleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateCouponRuleResponse) ProtoMessage() {}
+
+func (x *UpdateCouponRuleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateCouponRuleResponse.ProtoReflect.Descriptor instead.
+func (*UpdateCouponRuleResponse) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *UpdateCouponRuleResponse) GetRule() *CouponRule {
+	if x != nil {
+		return x.Rule
+	}
+	return nil
+}
+
+type DeleteCouponRuleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteCouponRuleRequest) Reset() {
+	*x = DeleteCouponRuleRequest{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteCouponRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteCouponRuleRequest) ProtoMessage() {}
+
+func (x *DeleteCouponRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteCouponRuleRequest.ProtoReflect.Descriptor instead.
+func (*DeleteCouponRuleRequest) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *DeleteCouponRuleRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type DeleteCouponRuleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteCouponRuleResponse) Reset() {
+	*x = DeleteCouponRuleResponse{}
+	mi := &file_coupons_v1_coupons_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteCouponRuleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteCouponRuleResponse) ProtoMessage() {}
+
+func (x *DeleteCouponRuleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coupons_v1_coupons_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteCouponRuleResponse.ProtoReflect.Descriptor instead.
+func (*DeleteCouponRuleResponse) Descriptor() ([]byte, []int) {
+	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{24}
+}
+
 var File_coupons_v1_coupons_proto protoreflect.FileDescriptor
 
 const file_coupons_v1_coupons_proto_rawDesc = "" +
@@ -1199,7 +1861,76 @@ const file_coupons_v1_coupons_proto_rawDesc = "" +
 	"\x19ListCouponsByStoreRequest\x121\n" +
 	"\x05store\x18\x01 \x01(\x0e2\x11.coupons.v1.StoreB\b\xbaH\x05\x82\x01\x02\x10\x01R\x05store\"J\n" +
 	"\x1aListCouponsByStoreResponse\x12,\n" +
-	"\acoupons\x18\x01 \x03(\v2\x12.coupons.v1.CouponR\acoupons*a\n" +
+	"\acoupons\x18\x01 \x03(\v2\x12.coupons.v1.CouponR\acoupons\"\xee\x02\n" +
+	"\n" +
+	"CouponRule\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1b\n" +
+	"\tcoupon_id\x18\x03 \x01(\tR\bcouponId\x12\x1a\n" +
+	"\bplatform\x18\x04 \x01(\tR\bplatform\x12&\n" +
+	"\fperiod_start\x18\x05 \x01(\tH\x00R\vperiodStart\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"period_end\x18\x06 \x01(\tH\x01R\tperiodEnd\x88\x01\x01\x12\x1b\n" +
+	"\tmin_price\x18\a \x01(\x01R\bminPrice\x12\x1a\n" +
+	"\bpriority\x18\b \x01(\x05R\bpriority\x12\x1b\n" +
+	"\tis_active\x18\t \x01(\bR\bisActive\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\n" +
+	" \x01(\tR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\v \x01(\tR\tupdatedAtB\x0f\n" +
+	"\r_period_startB\r\n" +
+	"\v_period_end\"\x18\n" +
+	"\x16ListCouponRulesRequest\"G\n" +
+	"\x17ListCouponRulesResponse\x12,\n" +
+	"\x05rules\x18\x01 \x03(\v2\x16.coupons.v1.CouponRuleR\x05rules\"/\n" +
+	"\x14GetCouponRuleRequest\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\"C\n" +
+	"\x15GetCouponRuleResponse\x12*\n" +
+	"\x04rule\x18\x01 \x01(\v2\x16.coupons.v1.CouponRuleR\x04rule\"\xde\x02\n" +
+	"\x17CreateCouponRuleRequest\x12$\n" +
+	"\tcoupon_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bcouponId\x12#\n" +
+	"\bplatform\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bplatform\x12&\n" +
+	"\fperiod_start\x18\x03 \x01(\tH\x00R\vperiodStart\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"period_end\x18\x04 \x01(\tH\x01R\tperiodEnd\x88\x01\x01\x12 \n" +
+	"\tmin_price\x18\x05 \x01(\x01H\x02R\bminPrice\x88\x01\x01\x12\x1f\n" +
+	"\bpriority\x18\x06 \x01(\x05H\x03R\bpriority\x88\x01\x01\x12 \n" +
+	"\tis_active\x18\a \x01(\bH\x04R\bisActive\x88\x01\x01B\x0f\n" +
+	"\r_period_startB\r\n" +
+	"\v_period_endB\f\n" +
+	"\n" +
+	"_min_priceB\v\n" +
+	"\t_priorityB\f\n" +
+	"\n" +
+	"_is_active\"F\n" +
+	"\x18CreateCouponRuleResponse\x12*\n" +
+	"\x04rule\x18\x01 \x01(\v2\x16.coupons.v1.CouponRuleR\x04rule\"\x8a\x03\n" +
+	"\x17UpdateCouponRuleRequest\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12 \n" +
+	"\tcoupon_id\x18\x02 \x01(\tH\x00R\bcouponId\x88\x01\x01\x12\x1f\n" +
+	"\bplatform\x18\x03 \x01(\tH\x01R\bplatform\x88\x01\x01\x12&\n" +
+	"\fperiod_start\x18\x04 \x01(\tH\x02R\vperiodStart\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"period_end\x18\x05 \x01(\tH\x03R\tperiodEnd\x88\x01\x01\x12 \n" +
+	"\tmin_price\x18\x06 \x01(\x01H\x04R\bminPrice\x88\x01\x01\x12\x1f\n" +
+	"\bpriority\x18\a \x01(\x05H\x05R\bpriority\x88\x01\x01\x12 \n" +
+	"\tis_active\x18\b \x01(\bH\x06R\bisActive\x88\x01\x01B\f\n" +
+	"\n" +
+	"_coupon_idB\v\n" +
+	"\t_platformB\x0f\n" +
+	"\r_period_startB\r\n" +
+	"\v_period_endB\f\n" +
+	"\n" +
+	"_min_priceB\v\n" +
+	"\t_priorityB\f\n" +
+	"\n" +
+	"_is_active\"F\n" +
+	"\x18UpdateCouponRuleResponse\x12*\n" +
+	"\x04rule\x18\x01 \x01(\v2\x16.coupons.v1.CouponRuleR\x04rule\"2\n" +
+	"\x17DeleteCouponRuleRequest\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\"\x1a\n" +
+	"\x18DeleteCouponRuleResponse*a\n" +
 	"\fDiscountType\x12\x1d\n" +
 	"\x19DISCOUNT_TYPE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13DISCOUNT_TYPE_FIXED\x10\x01\x12\x19\n" +
@@ -1213,14 +1944,19 @@ const file_coupons_v1_coupons_proto_rawDesc = "" +
 	"\vSTORE_SHEIN\x10\x05\x12\x14\n" +
 	"\x10STORE_ALIEXPRESS\x10\x06\x12\x0e\n" +
 	"\n" +
-	"STORE_AWIN\x10\a2\x88\x04\n" +
+	"STORE_AWIN\x10\a2\xd7\a\n" +
 	"\x0eCouponsService\x12N\n" +
 	"\vListCoupons\x12\x1e.coupons.v1.ListCouponsRequest\x1a\x1f.coupons.v1.ListCouponsResponse\x12H\n" +
 	"\tGetCoupon\x12\x1c.coupons.v1.GetCouponRequest\x1a\x1d.coupons.v1.GetCouponResponse\x12Q\n" +
 	"\fCreateCoupon\x12\x1f.coupons.v1.CreateCouponRequest\x1a .coupons.v1.CreateCouponResponse\x12Q\n" +
 	"\fUpdateCoupon\x12\x1f.coupons.v1.UpdateCouponRequest\x1a .coupons.v1.UpdateCouponResponse\x12Q\n" +
 	"\fDeleteCoupon\x12\x1f.coupons.v1.DeleteCouponRequest\x1a .coupons.v1.DeleteCouponResponse\x12c\n" +
-	"\x12ListCouponsByStore\x12%.coupons.v1.ListCouponsByStoreRequest\x1a&.coupons.v1.ListCouponsByStoreResponseB\x98\x01\n" +
+	"\x12ListCouponsByStore\x12%.coupons.v1.ListCouponsByStoreRequest\x1a&.coupons.v1.ListCouponsByStoreResponse\x12Z\n" +
+	"\x0fListCouponRules\x12\".coupons.v1.ListCouponRulesRequest\x1a#.coupons.v1.ListCouponRulesResponse\x12T\n" +
+	"\rGetCouponRule\x12 .coupons.v1.GetCouponRuleRequest\x1a!.coupons.v1.GetCouponRuleResponse\x12]\n" +
+	"\x10CreateCouponRule\x12#.coupons.v1.CreateCouponRuleRequest\x1a$.coupons.v1.CreateCouponRuleResponse\x12]\n" +
+	"\x10UpdateCouponRule\x12#.coupons.v1.UpdateCouponRuleRequest\x1a$.coupons.v1.UpdateCouponRuleResponse\x12]\n" +
+	"\x10DeleteCouponRule\x12#.coupons.v1.DeleteCouponRuleRequest\x1a$.coupons.v1.DeleteCouponRuleResponseB\x98\x01\n" +
 	"\x0ecom.coupons.v1B\fCouponsProtoP\x01Z/automatiza-go/internal/gen/coupons/v1;couponsv1\xa2\x02\x03CXX\xaa\x02\n" +
 	"Coupons.V1\xca\x02\n" +
 	"Coupons\\V1\xe2\x02\x16Coupons\\V1\\GPBMetadata\xea\x02\vCoupons::V1b\x06proto3"
@@ -1238,7 +1974,7 @@ func file_coupons_v1_coupons_proto_rawDescGZIP() []byte {
 }
 
 var file_coupons_v1_coupons_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_coupons_v1_coupons_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_coupons_v1_coupons_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_coupons_v1_coupons_proto_goTypes = []any{
 	(DiscountType)(0),                  // 0: coupons.v1.DiscountType
 	(Store)(0),                         // 1: coupons.v1.Store
@@ -1256,6 +1992,17 @@ var file_coupons_v1_coupons_proto_goTypes = []any{
 	(*DeleteCouponResponse)(nil),       // 13: coupons.v1.DeleteCouponResponse
 	(*ListCouponsByStoreRequest)(nil),  // 14: coupons.v1.ListCouponsByStoreRequest
 	(*ListCouponsByStoreResponse)(nil), // 15: coupons.v1.ListCouponsByStoreResponse
+	(*CouponRule)(nil),                 // 16: coupons.v1.CouponRule
+	(*ListCouponRulesRequest)(nil),     // 17: coupons.v1.ListCouponRulesRequest
+	(*ListCouponRulesResponse)(nil),    // 18: coupons.v1.ListCouponRulesResponse
+	(*GetCouponRuleRequest)(nil),       // 19: coupons.v1.GetCouponRuleRequest
+	(*GetCouponRuleResponse)(nil),      // 20: coupons.v1.GetCouponRuleResponse
+	(*CreateCouponRuleRequest)(nil),    // 21: coupons.v1.CreateCouponRuleRequest
+	(*CreateCouponRuleResponse)(nil),   // 22: coupons.v1.CreateCouponRuleResponse
+	(*UpdateCouponRuleRequest)(nil),    // 23: coupons.v1.UpdateCouponRuleRequest
+	(*UpdateCouponRuleResponse)(nil),   // 24: coupons.v1.UpdateCouponRuleResponse
+	(*DeleteCouponRuleRequest)(nil),    // 25: coupons.v1.DeleteCouponRuleRequest
+	(*DeleteCouponRuleResponse)(nil),   // 26: coupons.v1.DeleteCouponRuleResponse
 }
 var file_coupons_v1_coupons_proto_depIdxs = []int32{
 	1,  // 0: coupons.v1.Coupon.store:type_name -> coupons.v1.Store
@@ -1272,23 +2019,37 @@ var file_coupons_v1_coupons_proto_depIdxs = []int32{
 	2,  // 11: coupons.v1.UpdateCouponResponse.coupon:type_name -> coupons.v1.Coupon
 	1,  // 12: coupons.v1.ListCouponsByStoreRequest.store:type_name -> coupons.v1.Store
 	2,  // 13: coupons.v1.ListCouponsByStoreResponse.coupons:type_name -> coupons.v1.Coupon
-	4,  // 14: coupons.v1.CouponsService.ListCoupons:input_type -> coupons.v1.ListCouponsRequest
-	6,  // 15: coupons.v1.CouponsService.GetCoupon:input_type -> coupons.v1.GetCouponRequest
-	8,  // 16: coupons.v1.CouponsService.CreateCoupon:input_type -> coupons.v1.CreateCouponRequest
-	10, // 17: coupons.v1.CouponsService.UpdateCoupon:input_type -> coupons.v1.UpdateCouponRequest
-	12, // 18: coupons.v1.CouponsService.DeleteCoupon:input_type -> coupons.v1.DeleteCouponRequest
-	14, // 19: coupons.v1.CouponsService.ListCouponsByStore:input_type -> coupons.v1.ListCouponsByStoreRequest
-	5,  // 20: coupons.v1.CouponsService.ListCoupons:output_type -> coupons.v1.ListCouponsResponse
-	7,  // 21: coupons.v1.CouponsService.GetCoupon:output_type -> coupons.v1.GetCouponResponse
-	9,  // 22: coupons.v1.CouponsService.CreateCoupon:output_type -> coupons.v1.CreateCouponResponse
-	11, // 23: coupons.v1.CouponsService.UpdateCoupon:output_type -> coupons.v1.UpdateCouponResponse
-	13, // 24: coupons.v1.CouponsService.DeleteCoupon:output_type -> coupons.v1.DeleteCouponResponse
-	15, // 25: coupons.v1.CouponsService.ListCouponsByStore:output_type -> coupons.v1.ListCouponsByStoreResponse
-	20, // [20:26] is the sub-list for method output_type
-	14, // [14:20] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	16, // 14: coupons.v1.ListCouponRulesResponse.rules:type_name -> coupons.v1.CouponRule
+	16, // 15: coupons.v1.GetCouponRuleResponse.rule:type_name -> coupons.v1.CouponRule
+	16, // 16: coupons.v1.CreateCouponRuleResponse.rule:type_name -> coupons.v1.CouponRule
+	16, // 17: coupons.v1.UpdateCouponRuleResponse.rule:type_name -> coupons.v1.CouponRule
+	4,  // 18: coupons.v1.CouponsService.ListCoupons:input_type -> coupons.v1.ListCouponsRequest
+	6,  // 19: coupons.v1.CouponsService.GetCoupon:input_type -> coupons.v1.GetCouponRequest
+	8,  // 20: coupons.v1.CouponsService.CreateCoupon:input_type -> coupons.v1.CreateCouponRequest
+	10, // 21: coupons.v1.CouponsService.UpdateCoupon:input_type -> coupons.v1.UpdateCouponRequest
+	12, // 22: coupons.v1.CouponsService.DeleteCoupon:input_type -> coupons.v1.DeleteCouponRequest
+	14, // 23: coupons.v1.CouponsService.ListCouponsByStore:input_type -> coupons.v1.ListCouponsByStoreRequest
+	17, // 24: coupons.v1.CouponsService.ListCouponRules:input_type -> coupons.v1.ListCouponRulesRequest
+	19, // 25: coupons.v1.CouponsService.GetCouponRule:input_type -> coupons.v1.GetCouponRuleRequest
+	21, // 26: coupons.v1.CouponsService.CreateCouponRule:input_type -> coupons.v1.CreateCouponRuleRequest
+	23, // 27: coupons.v1.CouponsService.UpdateCouponRule:input_type -> coupons.v1.UpdateCouponRuleRequest
+	25, // 28: coupons.v1.CouponsService.DeleteCouponRule:input_type -> coupons.v1.DeleteCouponRuleRequest
+	5,  // 29: coupons.v1.CouponsService.ListCoupons:output_type -> coupons.v1.ListCouponsResponse
+	7,  // 30: coupons.v1.CouponsService.GetCoupon:output_type -> coupons.v1.GetCouponResponse
+	9,  // 31: coupons.v1.CouponsService.CreateCoupon:output_type -> coupons.v1.CreateCouponResponse
+	11, // 32: coupons.v1.CouponsService.UpdateCoupon:output_type -> coupons.v1.UpdateCouponResponse
+	13, // 33: coupons.v1.CouponsService.DeleteCoupon:output_type -> coupons.v1.DeleteCouponResponse
+	15, // 34: coupons.v1.CouponsService.ListCouponsByStore:output_type -> coupons.v1.ListCouponsByStoreResponse
+	18, // 35: coupons.v1.CouponsService.ListCouponRules:output_type -> coupons.v1.ListCouponRulesResponse
+	20, // 36: coupons.v1.CouponsService.GetCouponRule:output_type -> coupons.v1.GetCouponRuleResponse
+	22, // 37: coupons.v1.CouponsService.CreateCouponRule:output_type -> coupons.v1.CreateCouponRuleResponse
+	24, // 38: coupons.v1.CouponsService.UpdateCouponRule:output_type -> coupons.v1.UpdateCouponRuleResponse
+	26, // 39: coupons.v1.CouponsService.DeleteCouponRule:output_type -> coupons.v1.DeleteCouponRuleResponse
+	29, // [29:40] is the sub-list for method output_type
+	18, // [18:29] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_coupons_v1_coupons_proto_init() }
@@ -1301,13 +2062,16 @@ func file_coupons_v1_coupons_proto_init() {
 	file_coupons_v1_coupons_proto_msgTypes[2].OneofWrappers = []any{}
 	file_coupons_v1_coupons_proto_msgTypes[6].OneofWrappers = []any{}
 	file_coupons_v1_coupons_proto_msgTypes[8].OneofWrappers = []any{}
+	file_coupons_v1_coupons_proto_msgTypes[14].OneofWrappers = []any{}
+	file_coupons_v1_coupons_proto_msgTypes[19].OneofWrappers = []any{}
+	file_coupons_v1_coupons_proto_msgTypes[21].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_coupons_v1_coupons_proto_rawDesc), len(file_coupons_v1_coupons_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   14,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

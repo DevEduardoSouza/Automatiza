@@ -25,10 +25,10 @@ import { AlertCircle, Info, Plus, Save } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Switch } from '@/components/ui/switch';
 import {
   CTASelector,
   CategoriesSection,
-  CouponSelector,
   DispatchTextSelector,
   FiltersSection,
   IntervalSelector,
@@ -373,14 +373,28 @@ export function AutomationFormDialog({
             </div>
           )}
 
-          {/* Coupon Selection (list mode) */}
-          {formData.mode === 'list' && (
-            <CouponSelector
-              formData={formData}
-              setFormData={setFormData}
-              availableCoupons={availableCoupons}
+          {/* Coupon rule engine opt-out — substitui o seletor de cupom
+              fixo retirado na migration 046. Quando ligado (default), o
+              worker avalia as regras de Cupons Avançados em cada disparo
+              dessa automação. Desligar é útil pra automações de modo
+              busca cujos produtos já vêm com promoção da Shopee. */}
+          <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <div className="text-sm font-medium">Aplicar cupons automáticos</div>
+              <p className="text-xs text-muted-foreground">
+                Quando ligado, a automação consulta as regras de "Cupons Avançados" e
+                injeta o cupom que casar com o produto. Desligue se essa automação
+                envia produtos que já estão em promoção/cupom da própria loja.
+              </p>
+            </div>
+            <Switch
+              checked={formData.apply_coupon_rules ?? true}
+              onCheckedChange={(checked) =>
+                setFormData((prev) => ({ ...prev, apply_coupon_rules: checked }))
+              }
+              aria-label="Aplicar cupons automáticos"
             />
-          )}
+          </div>
 
           {/* CTA Selection (search + list mode) */}
           {(formData.mode === 'search' || formData.mode === 'list') && (

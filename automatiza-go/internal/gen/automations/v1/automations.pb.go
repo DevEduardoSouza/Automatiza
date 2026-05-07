@@ -519,9 +519,15 @@ type Automation struct {
 	// Preferred sender chip — when set and connected, every dispatch from
 	// this automation goes through this chip; otherwise falls back to the
 	// group's owner chip and then to the first connected instance.
-	InstanceId    *string `protobuf:"bytes,32,opt,name=instance_id,json=instanceId,proto3,oneof" json:"instance_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	InstanceId *string `protobuf:"bytes,32,opt,name=instance_id,json=instanceId,proto3,oneof" json:"instance_id,omitempty"`
+	// Per-automation opt-out for the global coupon rule engine. true (the
+	// default for new rows) = the worker matches active CouponRules on
+	// every dispatch. false = no coupon is ever injected, even if a rule
+	// would otherwise fit. Use it for search-mode automations whose
+	// products already carry a Shopee promo.
+	ApplyCouponRules bool `protobuf:"varint,33,opt,name=apply_coupon_rules,json=applyCouponRules,proto3" json:"apply_coupon_rules,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *Automation) Reset() {
@@ -776,6 +782,13 @@ func (x *Automation) GetInstanceId() string {
 		return *x.InstanceId
 	}
 	return ""
+}
+
+func (x *Automation) GetApplyCouponRules() bool {
+	if x != nil {
+		return x.ApplyCouponRules
+	}
+	return false
 }
 
 //*
@@ -1151,9 +1164,12 @@ type CreateAutomationRequest struct {
 	ListSendAsImage     *bool                  `protobuf:"varint,26,opt,name=list_send_as_image,json=listSendAsImage,proto3,oneof" json:"list_send_as_image,omitempty"`
 	// Preferred sender chip for every dispatch (database id, string form).
 	// Empty / unset means "no preference" — fall back to per-group ownership.
-	InstanceId    *string `protobuf:"bytes,27,opt,name=instance_id,json=instanceId,proto3,oneof" json:"instance_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	InstanceId *string `protobuf:"bytes,27,opt,name=instance_id,json=instanceId,proto3,oneof" json:"instance_id,omitempty"`
+	// Per-automation opt-out for the coupon rule engine. Defaults to true
+	// server-side when not provided.
+	ApplyCouponRules *bool `protobuf:"varint,28,opt,name=apply_coupon_rules,json=applyCouponRules,proto3,oneof" json:"apply_coupon_rules,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CreateAutomationRequest) Reset() {
@@ -1375,6 +1391,13 @@ func (x *CreateAutomationRequest) GetInstanceId() string {
 	return ""
 }
 
+func (x *CreateAutomationRequest) GetApplyCouponRules() bool {
+	if x != nil && x.ApplyCouponRules != nil {
+		return *x.ApplyCouponRules
+	}
+	return false
+}
+
 type CreateAutomationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Automation    *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
@@ -1450,9 +1473,12 @@ type UpdateAutomationRequest struct {
 	ListSendAsImage     *bool                  `protobuf:"varint,27,opt,name=list_send_as_image,json=listSendAsImage,proto3,oneof" json:"list_send_as_image,omitempty"`
 	// Preferred sender chip. Empty string explicitly clears the preference;
 	// unset (no field) means "leave unchanged" (proto3 optional semantics).
-	InstanceId    *string `protobuf:"bytes,28,opt,name=instance_id,json=instanceId,proto3,oneof" json:"instance_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	InstanceId *string `protobuf:"bytes,28,opt,name=instance_id,json=instanceId,proto3,oneof" json:"instance_id,omitempty"`
+	// Per-automation opt-out for the coupon rule engine. unset = leave
+	// unchanged; explicitly set false to silence the rule engine.
+	ApplyCouponRules *bool `protobuf:"varint,29,opt,name=apply_coupon_rules,json=applyCouponRules,proto3,oneof" json:"apply_coupon_rules,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *UpdateAutomationRequest) Reset() {
@@ -1679,6 +1705,13 @@ func (x *UpdateAutomationRequest) GetInstanceId() string {
 		return *x.InstanceId
 	}
 	return ""
+}
+
+func (x *UpdateAutomationRequest) GetApplyCouponRules() bool {
+	if x != nil && x.ApplyCouponRules != nil {
+		return *x.ApplyCouponRules
+	}
+	return false
 }
 
 type UpdateAutomationResponse struct {
@@ -2472,7 +2505,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x16\n" +
 	"\x06suffix\x18\x04 \x01(\tR\x06suffix\x12!\n" +
 	"\fclean_phones\x18\x05 \x01(\bR\vcleanPhones\x12%\n" +
-	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xe0\f\n" +
+	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\x8e\r\n" +
 	"\n" +
 	"Automation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -2515,7 +2548,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x12list_include_image\x18\x1c \x01(\bH\rR\x10listIncludeImage\x88\x01\x01\x120\n" +
 	"\x12list_send_as_image\x18\x1f \x01(\bH\x0eR\x0flistSendAsImage\x88\x01\x01\x12$\n" +
 	"\vinstance_id\x18  \x01(\tH\x0fR\n" +
-	"instanceId\x88\x01\x01B\x13\n" +
+	"instanceId\x88\x01\x01\x12,\n" +
+	"\x12apply_coupon_rules\x18! \x01(\bR\x10applyCouponRulesB\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
 	"\x16_monitoring_text_rulesB\x0f\n" +
 	"\r_min_discountB\f\n" +
@@ -2563,7 +2597,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x15GetAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\x90\v\n" +
+	"automation\"\xda\v\n" +
 	"\x17CreateAutomationRequest\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x04name\x122\n" +
@@ -2600,7 +2634,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x12list_send_as_image\x18\x1a \x01(\bH\n" +
 	"R\x0flistSendAsImage\x88\x01\x01\x12$\n" +
 	"\vinstance_id\x18\x1b \x01(\tH\vR\n" +
-	"instanceId\x88\x01\x01B\x13\n" +
+	"instanceId\x88\x01\x01\x121\n" +
+	"\x12apply_coupon_rules\x18\x1c \x01(\bH\fR\x10applyCouponRules\x88\x01\x01B\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
 	"\x16_monitoring_text_rulesB\x0f\n" +
 	"\r_min_discountB\f\n" +
@@ -2615,11 +2650,12 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x13_list_items_per_runB\x15\n" +
 	"\x13_list_include_imageB\x15\n" +
 	"\x13_list_send_as_imageB\x0e\n" +
-	"\f_instance_id\"V\n" +
+	"\f_instance_idB\x15\n" +
+	"\x13_apply_coupon_rules\"V\n" +
 	"\x18CreateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\x9f\f\n" +
+	"automation\"\xe9\f\n" +
 	"\x17UpdateAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
 	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x127\n" +
@@ -2656,7 +2692,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\acta_ids\x18\x1a \x03(\tR\x06ctaIds\x120\n" +
 	"\x12list_send_as_image\x18\x1b \x01(\bH\x12R\x0flistSendAsImage\x88\x01\x01\x12$\n" +
 	"\vinstance_id\x18\x1c \x01(\tH\x13R\n" +
-	"instanceId\x88\x01\x01B\a\n" +
+	"instanceId\x88\x01\x01\x121\n" +
+	"\x12apply_coupon_rules\x18\x1d \x01(\bH\x14R\x10applyCouponRules\x88\x01\x01B\a\n" +
 	"\x05_nameB\a\n" +
 	"\x05_modeB\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
@@ -2679,7 +2716,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x13_list_items_per_runB\x15\n" +
 	"\x13_list_include_imageB\x15\n" +
 	"\x13_list_send_as_imageB\x0e\n" +
-	"\f_instance_id\"V\n" +
+	"\f_instance_idB\x15\n" +
+	"\x13_apply_coupon_rules\"V\n" +
 	"\x18UpdateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
