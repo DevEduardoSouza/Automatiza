@@ -204,7 +204,10 @@ type CouponRuleRepository interface {
 	CreateCouponRule(ctx context.Context, userID string, data *models.CouponRule) (*models.CouponRule, error)
 	UpdateCouponRule(ctx context.Context, ruleID, userID string, updates map[string]interface{}) error
 	DeleteCouponRule(ctx context.Context, ruleID, userID string) error
-	FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64) (*models.Coupon, error)
+	// productIsOfficial flags Shopee Mall items so rules with
+	// official_only=true can be filtered correctly. Pass false for
+	// non-Shopee platforms or when the flag is unknown.
+	FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64, productIsOfficial bool) (*models.Coupon, error)
 }
 
 // DispatchLogWithGroup represents a dispatch log with group name from a join

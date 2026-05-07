@@ -449,7 +449,6 @@ func (h *CouponsHandler) CreateCouponRule(
 		return nil, connect.NewError(connect.CodeUnimplemented, err)
 	}
 	rule := &models.CouponRule{
-		CouponID: req.Msg.GetCouponId(),
 		Platform: req.Msg.GetPlatform(),
 		IsActive: true, // default if not provided
 	}
@@ -467,6 +466,27 @@ func (h *CouponsHandler) CreateCouponRule(
 	}
 	if v := req.Msg.IsActive; v != nil {
 		rule.IsActive = *v
+	}
+	if v := req.Msg.OfficialOnly; v != nil {
+		rule.OfficialOnly = *v
+	}
+	if v := req.Msg.Code; v != nil && *v != "" {
+		rule.Code = v
+	}
+	if v := req.Msg.Message; v != nil && *v != "" {
+		rule.Message = v
+	}
+	if req.Msg.DiscountType != nil {
+		dt := protoDiscountTypeToModel(req.Msg.GetDiscountType())
+		if dt != "" {
+			rule.DiscountType = &dt
+		}
+	}
+	if v := req.Msg.DiscountValue; v != nil {
+		rule.DiscountValue = v
+	}
+	if v := req.Msg.MaxDiscount; v != nil {
+		rule.MaxDiscount = v
 	}
 	created, err := h.couponRuleRepo.CreateCouponRule(ctx, user.ID, rule)
 	if err != nil {
@@ -487,9 +507,9 @@ func (h *CouponsHandler) UpdateCouponRule(
 		return nil, connect.NewError(connect.CodeUnimplemented, err)
 	}
 	updates := make(map[string]interface{})
-	if v := req.Msg.CouponId; v != nil {
-		updates["coupon_id"] = *v
-	}
+	// coupon_id (legacy FK) is intentionally ignored on update — rules
+	// are standalone since 048 and the field is preserved only for
+	// rollback compatibility.
 	if v := req.Msg.Platform; v != nil {
 		updates["platform"] = *v
 	}
@@ -515,6 +535,37 @@ func (h *CouponsHandler) UpdateCouponRule(
 	}
 	if v := req.Msg.IsActive; v != nil {
 		updates["is_active"] = *v
+	}
+	if v := req.Msg.OfficialOnly; v != nil {
+		updates["official_only"] = *v
+	}
+	if v := req.Msg.Code; v != nil {
+		if *v == "" {
+			updates["code"] = nil
+		} else {
+			updates["code"] = *v
+		}
+	}
+	if v := req.Msg.Message; v != nil {
+		if *v == "" {
+			updates["message"] = nil
+		} else {
+			updates["message"] = *v
+		}
+	}
+	if req.Msg.DiscountType != nil {
+		dt := protoDiscountTypeToModel(req.Msg.GetDiscountType())
+		if dt == "" {
+			updates["discount_type"] = nil
+		} else {
+			updates["discount_type"] = dt
+		}
+	}
+	if v := req.Msg.DiscountValue; v != nil {
+		updates["discount_value"] = *v
+	}
+	if v := req.Msg.MaxDiscount; v != nil {
+		updates["max_discount"] = *v
 	}
 	if err := h.couponRuleRepo.UpdateCouponRule(ctx, req.Msg.GetId(), user.ID, updates); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update coupon rule: %w", err))
@@ -548,21 +599,40 @@ func couponRuleToProto(r *models.CouponRule) *couponsv1.CouponRule {
 		return nil
 	}
 	out := &couponsv1.CouponRule{
-		Id:        r.ID,
-		UserId:    r.UserID,
-		CouponId:  r.CouponID,
-		Platform:  r.Platform,
-		MinPrice:  r.MinPrice,
-		Priority:  int32(r.Priority),
-		IsActive:  r.IsActive,
-		CreatedAt: r.CreatedAt,
-		UpdatedAt: r.UpdatedAt,
+		Id:           r.ID,
+		UserId:       r.UserID,
+		Platform:     r.Platform,
+		MinPrice:     r.MinPrice,
+		Priority:     int32(r.Priority),
+		IsActive:     r.IsActive,
+		OfficialOnly: r.OfficialOnly,
+		CreatedAt:    r.CreatedAt,
+		UpdatedAt:    r.UpdatedAt,
+	}
+	if r.CouponID != nil {
+		out.CouponId = *r.CouponID
 	}
 	if r.PeriodStart != nil {
 		out.PeriodStart = r.PeriodStart
 	}
 	if r.PeriodEnd != nil {
 		out.PeriodEnd = r.PeriodEnd
+	}
+	if r.Code != nil {
+		out.Code = r.Code
+	}
+	if r.Message != nil {
+		out.Message = r.Message
+	}
+	if r.DiscountType != nil && *r.DiscountType != "" {
+		dt := modelDiscountTypeToProto(*r.DiscountType)
+		out.DiscountType = &dt
+	}
+	if r.DiscountValue != nil {
+		out.DiscountValue = r.DiscountValue
+	}
+	if r.MaxDiscount != nil {
+		out.MaxDiscount = r.MaxDiscount
 	}
 	return out
 }

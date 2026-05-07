@@ -66,8 +66,10 @@ func NewCouponHandler(couponRepo repository.CouponRepository, couponRuleRepo rep
 //     operator opted this automation out of the rule engine).
 //   - couponRuleRepo nil → handler runs without rules support, no coupon.
 //   - Otherwise: query the rules engine with (userID, offerStore,
-//     offerPrice). The engine returns the best-matching coupon (highest
-//     min_price tier the product clears, then priority, then created_at).
+//     offerPrice, productIsOfficial). The engine returns the
+//     best-matching coupon (highest min_price tier the product clears,
+//     then priority, then created_at) and skips rules whose
+//     official_only=true don't match the Shopee Mall flag.
 //   - Defensive checks on the resolved coupon: must be active, must not
 //     be expired. Store / min_product_price are NOT re-checked here:
 //     the rule already filtered by platform and min_price.
@@ -80,6 +82,7 @@ func (h *CouponHandler) ApplyCoupon(
 	automation *models.Automation,
 	offerPrice float64,
 	offerStore string,
+	productIsOfficial bool,
 ) (*CouponResult, error) {
 	result := &CouponResult{Applied: false}
 
@@ -96,7 +99,7 @@ func (h *CouponHandler) ApplyCoupon(
 	// platform exactly as the catalog (e.g. "shopee", "mercado_livre"),
 	// so keep the same canonical form here.
 	platform := normalizeStoreName(offerStore)
-	coupon, err := h.couponRuleRepo.FindMatchingCoupon(ctx, automation.UserID, platform, offerPrice)
+	coupon, err := h.couponRuleRepo.FindMatchingCoupon(ctx, automation.UserID, platform, offerPrice, productIsOfficial)
 	if err != nil {
 		h.logger.Error("Failed to resolve coupon rule",
 			zap.String("userID", automation.UserID),
@@ -152,8 +155,11 @@ func (h *CouponHandler) ApplyCoupon(
 func (h *CouponHandler) formatCouponText(coupon *models.Coupon) string {
 	var lines []string
 
-	// Line 1: Coupon code
-	lines = append(lines, fmt.Sprintf("🏷️ CUPOM: %s", coupon.Code))
+	// Line 1: Coupon code (skip when empty — standalone rules may not
+	// carry a code, just a message + discount).
+	if coupon.Code != "" {
+		lines = append(lines, fmt.Sprintf("🏷️ CUPOM: %s", coupon.Code))
+	}
 
 	// Line 2: Discount info (if configured)
 	if coupon.DiscountType != nil && coupon.DiscountValue != nil {
