@@ -231,6 +231,11 @@ func (m *mockInstanceRepoForSync) UpdateInstancePhoneNumber(ctx context.Context,
 	return args.Error(0)
 }
 
+func (m *mockInstanceRepoForSync) SupersedePriorInstances(ctx context.Context, userID string, currentInstanceID int, phoneNumber string) (int, error) {
+	args := m.Called(ctx, userID, currentInstanceID, phoneNumber)
+	return args.Int(0), args.Error(1)
+}
+
 // mockProgressPub implements workers.JobProgressPublisher for testing.
 type mockProgressPub struct {
 	mock.Mock

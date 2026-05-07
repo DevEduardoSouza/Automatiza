@@ -36,7 +36,7 @@ import { useToast } from './use-toast';
 // Local Types
 // ============================================================
 
-export type LocalInstanceStatus = 'pending' | 'connected' | 'disconnected';
+export type LocalInstanceStatus = 'pending' | 'connected' | 'disconnected' | 'superseded';
 
 export interface LocalInstance {
   id: string;
@@ -125,6 +125,7 @@ function fromProtoStatus(status: InstanceStatus): LocalInstanceStatus {
     [InstanceStatus.PENDING]: 'pending',
     [InstanceStatus.CONNECTED]: 'connected',
     [InstanceStatus.DISCONNECTED]: 'disconnected',
+    [InstanceStatus.SUPERSEDED]: 'superseded',
   };
   return map[status] ?? 'pending';
 }

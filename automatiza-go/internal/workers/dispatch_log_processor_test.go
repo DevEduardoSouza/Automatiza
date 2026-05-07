@@ -133,6 +133,10 @@ func (m *stubInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instan
 	return nil
 }
 
+func (m *stubInstanceRepo) SupersedePriorInstances(ctx context.Context, userID string, currentInstanceID int, phoneNumber string) (int, error) {
+	return 0, nil
+}
+
 func TestDispatchLogProcessor_ProcessMessage(t *testing.T) {
 	logger := zap.NewNop()
 

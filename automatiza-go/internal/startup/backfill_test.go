@@ -56,6 +56,9 @@ func (m *mockInstanceRepo) UpdateInstanceLabel(context.Context, string, int, str
 func (m *mockInstanceRepo) UpdateInstancePhoneNumber(context.Context, int, string) error {
 	return nil
 }
+func (m *mockInstanceRepo) SupersedePriorInstances(context.Context, string, int, string) (int, error) {
+	return 0, nil
+}
 
 // mockCheckpointRepo implements reconciliation.CheckpointRepository for testing.
 type mockCheckpointRepo struct {

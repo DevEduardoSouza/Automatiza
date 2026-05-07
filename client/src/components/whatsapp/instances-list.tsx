@@ -232,6 +232,26 @@ export function InstancesList() {
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [reconnectTarget, setReconnectTarget] = useState<LocalInstance | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Hide noise from the default view: superseded rows (already replaced
+  // by a newer session of the same chip) and zombies (disconnected for
+  // >7 days without ever capturing a phone — abandoned QR scans). The
+  // operator can still see them via the "Mostrar histórico" toggle.
+  const ZOMBIE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const isHidden = (inst: LocalInstance) => {
+    if (inst.status === 'superseded') return true;
+    if (inst.status === 'disconnected' && !inst.phone_number) {
+      const created = new Date(inst.created_at).getTime();
+      if (!Number.isNaN(created) && now - created > ZOMBIE_THRESHOLD_MS) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const visibleInstances = showHistory ? instances : instances.filter((i) => !isHidden(i));
+  const hiddenCount = instances.length - instances.filter((i) => !isHidden(i)).length;
 
   if (loading && instances.length === 0) {
     return null;
@@ -242,7 +262,7 @@ export function InstancesList() {
   }
 
   const busy = isDeletingInstance || isUpdatingLabel;
-  const canAddMore = instances.length < MAX_INSTANCES_PER_USER;
+  const canAddMore = visibleInstances.length < MAX_INSTANCES_PER_USER;
 
   const handleRename = async (id: string, friendlyName: string) => {
     try {
@@ -288,7 +308,7 @@ export function InstancesList() {
           </h3>
           <p className="text-xs xs:text-sm tracking-tight" style={{ color: colors.wineTextMuted }}>
             {t('pages.whatsapp.instancesList.subtitle', {
-              count: instances.length,
+              count: visibleInstances.length,
               max: MAX_INSTANCES_PER_USER,
               defaultValue: '{{count}} de {{max}} conectados',
             })}
@@ -298,7 +318,7 @@ export function InstancesList() {
       </div>
 
       <div className="space-y-2 xs:space-y-3">
-        {instances.map((inst) => (
+        {visibleInstances.map((inst) => (
           <InstanceRow
             key={inst.id}
             instance={inst}
@@ -309,6 +329,26 @@ export function InstancesList() {
           />
         ))}
       </div>
+
+      {hiddenCount > 0 && (
+        <div className="mt-3 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShowHistory((v) => !v)}
+            className="text-xs xs:text-sm font-medium underline-offset-4 hover:underline"
+            style={{ color: colors.wineTextMuted }}
+          >
+            {showHistory
+              ? t('pages.whatsapp.instancesList.hideHistory', {
+                  defaultValue: 'Esconder histórico',
+                })
+              : t('pages.whatsapp.instancesList.showHistory', {
+                  count: hiddenCount,
+                  defaultValue: 'Mostrar histórico ({{count}} sessões antigas)',
+                })}
+          </button>
+        </div>
+      )}
 
       {/* QR-pairing card below the list — mirrors the legacy ConnectionCard
           look (wine bg, header with QR icon, divider, primary glow button)

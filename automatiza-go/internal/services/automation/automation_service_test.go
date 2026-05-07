@@ -258,6 +258,11 @@ func (m *MockInstanceRepository) UpdateInstancePhoneNumber(ctx context.Context, 
 	return args.Error(0)
 }
 
+func (m *MockInstanceRepository) SupersedePriorInstances(ctx context.Context, userID string, currentInstanceID int, phoneNumber string) (int, error) {
+	args := m.Called(ctx, userID, currentInstanceID, phoneNumber)
+	return args.Int(0), args.Error(1)
+}
+
 // MockGroupRepository implements repository.GroupRepository
 type MockGroupRepository struct {
 	mock.Mock

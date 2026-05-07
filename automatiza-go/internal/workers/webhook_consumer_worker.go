@@ -443,6 +443,12 @@ func (w *WebhookConsumerWorker) handleSessionStatusEvent(ctx context.Context, da
 			// shape { status, me: { id: "557498137258@c.us", ... } } once
 			// the chip pairs; without this write the UI can never display
 			// the phone next to the chip name.
+			//
+			// Once we have the phone, supersede prior rows of the same
+			// chip that the UI no longer needs to show — past sessions
+			// of the same number plus zombie scan attempts (NULL phone
+			// + disconnected). Without this the user accumulates a
+			// lifetime of dead session cards every time a QR scan misses.
 			if dbStatus == models.InstanceStatusConnected {
 				if phone := extractPhoneFromMe(data.Payload); phone != "" {
 					if err := w.instanceRepo.UpdateInstancePhoneNumber(ctx, instance.ID, phone); err != nil {
@@ -450,6 +456,17 @@ func (w *WebhookConsumerWorker) handleSessionStatusEvent(ctx context.Context, da
 							zap.String("session", data.Session),
 							zap.Int("instanceID", instance.ID),
 							zap.Error(err))
+					}
+					if n, err := w.instanceRepo.SupersedePriorInstances(ctx, instance.UserID, instance.ID, phone); err != nil {
+						w.logger.Warn("Failed to supersede prior instances",
+							zap.String("session", data.Session),
+							zap.Int("instanceID", instance.ID),
+							zap.Error(err))
+					} else if n > 0 {
+						w.logger.Info("Superseded prior instances",
+							zap.String("session", data.Session),
+							zap.Int("instanceID", instance.ID),
+							zap.Int("supersededCount", n))
 					}
 				}
 			}

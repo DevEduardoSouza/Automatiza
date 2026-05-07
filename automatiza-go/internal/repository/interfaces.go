@@ -67,6 +67,15 @@ type InstanceRepository interface {
 	// `me.id` once a session reaches WORKING. Idempotent: skips the write when
 	// the value already matches so the row does not churn updated_at.
 	UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error
+	// SupersedePriorInstances marks past instance rows of the same user as
+	// `superseded` once a fresh session connects. Targets two cohorts that
+	// the UI no longer needs to display: zombies (status='disconnected'
+	// with NULL/empty phone — abandoned QR scans that never authenticated)
+	// and old sessions of the same phone that are no longer the active one.
+	//
+	// Excludes rows currently `connected` so a multi-phone account keeps
+	// its other live chips. Returns the count of rows updated.
+	SupersedePriorInstances(ctx context.Context, userID string, currentInstanceID int, phoneNumber string) (int, error)
 	// CountUserInstances returns the number of instances owned by a user.
 	// Used for quota enforcement before creating a new instance.
 	CountUserInstances(ctx context.Context, userID string) (int, error)
