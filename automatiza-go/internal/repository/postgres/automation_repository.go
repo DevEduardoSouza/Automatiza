@@ -527,7 +527,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 			&couponID, &createdAt, &updatedAt,
 			&texts, &ctas, &ctaIDs, &lastError, &lastErrorAt,
 			&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
-			&listSendAsImage, &instanceID,
+			&listSendAsImage, &instanceID, &a.ApplyCouponRules,
 		)
 		if err != nil {
 			return nil, err
