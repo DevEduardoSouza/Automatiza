@@ -1,3 +1,4 @@
+import { CouponsTabsHeader } from '@/components/coupons/coupons-tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -179,6 +180,7 @@ export default function CouponRulesPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 lg:p-8 xl:max-w-[1400px] mx-auto w-full">
+      <CouponsTabsHeader />
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">

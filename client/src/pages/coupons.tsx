@@ -1,3 +1,4 @@
+import { CouponsTabsHeader } from '@/components/coupons/coupons-tabs';
 import { ErrorBoundary } from '@/components/error-boundary';
 import {
   Dialog,
@@ -119,6 +120,7 @@ export default function Coupons() {
           style={{ backgroundColor: '#ffffff', borderColor: 'rgba(228, 228, 231, 0.6)' }}
         >
           <div className="space-y-4 xs:space-y-5 sm:space-y-6 md:space-y-8 lg:space-y-10">
+            <CouponsTabsHeader />
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2 xs:gap-3">
                 <div
