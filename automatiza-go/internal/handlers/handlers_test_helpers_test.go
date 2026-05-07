@@ -307,6 +307,9 @@ func (m *mockInstanceRepo) DeleteInstance(ctx context.Context, instanceID int) e
 	}
 	return nil
 }
+func (m *mockInstanceRepo) SupersedePriorInstances(context.Context, string, int, string) (int, error) {
+	return 0, nil
+}
 func (m *mockInstanceRepo) SetDefaultInstance(ctx context.Context, userID string, instanceID int) error {
 	if m.SetDefaultInstanceFunc != nil {
 		return m.SetDefaultInstanceFunc(ctx, userID, instanceID)

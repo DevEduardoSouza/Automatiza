@@ -367,6 +367,10 @@ func (m *enhancedMockInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context
 	return nil
 }
 
+func (m *enhancedMockInstanceRepo) SupersedePriorInstances(ctx context.Context, userID string, currentInstanceID int, phoneNumber string) (int, error) {
+	return 0, nil
+}
+
 // ============================================================
 // Enhanced Mock User Role Repository
 // ============================================================

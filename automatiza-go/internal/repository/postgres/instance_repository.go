@@ -356,6 +356,58 @@ func (r *instanceRepository) UpdateInstancePhoneNumber(ctx context.Context, inst
 	return nil
 }
 
+// SupersedePriorInstances marks past instance rows of the same user as
+// `superseded` once a fresh session connects. Hits two cohorts the UI
+// no longer needs to display:
+//
+//  1. **Same phone, not currently connected**: previous chip rows of the
+//     same number that got replaced by a new scan.
+//  2. **NULL/empty phone, disconnected**: zombie scan attempts that
+//     never authenticated past SCAN_QR_CODE — produced ~91% of the rows
+//     in `instances` before this fix.
+//
+// Excludes `connected` rows so a multi-phone account keeps its other
+// live chips untouched. Excludes already-`superseded` rows for
+// idempotency — a webhook tick that re-runs the supersede pass should
+// be a no-op, not churn `updated_at`.
+//
+// Returns the number of rows updated (useful for the worker log).
+func (r *instanceRepository) SupersedePriorInstances(ctx context.Context, userID string, currentInstanceID int, phoneNumber string) (int, error) {
+	trimmed := strings.TrimSpace(phoneNumber)
+	if trimmed == "" {
+		// Without a captured phone number we can't safely match prior
+		// rows of the same chip — bail out instead of zapping every
+		// disconnected row of the user.
+		return 0, nil
+	}
+	res, err := r.db.pool.Exec(ctx,
+		`UPDATE instances
+		 SET status = $1, updated_at = $2
+		 WHERE user_id = $3
+		   AND id <> $4
+		   AND status NOT IN ($1, $5)
+		   AND (
+		     phone_number = $6
+		     OR phone_number IS NULL
+		     OR phone_number = ''
+		   )`,
+		models.InstanceStatusSuperseded,
+		time.Now().UTC(),
+		userID,
+		currentInstanceID,
+		models.InstanceStatusConnected,
+		trimmed,
+	)
+	if err != nil {
+		r.logger.Error("Failed to supersede prior instances",
+			zap.String("userID", userID),
+			zap.Int("currentInstanceID", currentInstanceID),
+			zap.Error(err))
+		return 0, err
+	}
+	return int(res.RowsAffected()), nil
+}
+
 func (r *instanceRepository) UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error {
 	// Treat empty/whitespace input as "clear" — store NULL so reads fall back
 	// to instance_id at the UI layer instead of showing an empty label.

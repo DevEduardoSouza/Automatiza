@@ -222,6 +222,10 @@ func (m *mockInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instan
 	return nil
 }
 
+func (m *mockInstanceRepo) SupersedePriorInstances(ctx context.Context, userID string, currentInstanceID int, phoneNumber string) (int, error) {
+	return 0, nil
+}
+
 type mockDispatchLogRepo struct {
 	CreateFn                   func(ctx context.Context, log *models.DispatchLog) (*models.DispatchLog, error)
 	UpdateFn                   func(ctx context.Context, logID int, updates map[string]interface{}) error

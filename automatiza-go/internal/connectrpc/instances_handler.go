@@ -375,6 +375,8 @@ func instanceStatusToProto(status string) instancesv1.InstanceStatus {
 		return instancesv1.InstanceStatus_INSTANCE_STATUS_DISCONNECTED
 	case models.InstanceStatusPending:
 		return instancesv1.InstanceStatus_INSTANCE_STATUS_PENDING
+	case models.InstanceStatusSuperseded:
+		return instancesv1.InstanceStatus_INSTANCE_STATUS_SUPERSEDED
 	default:
 		return instancesv1.InstanceStatus_INSTANCE_STATUS_UNSPECIFIED
 	}
@@ -388,6 +390,8 @@ func protoInstanceStatusToModel(status instancesv1.InstanceStatus) string {
 		return models.InstanceStatusDisconnected
 	case instancesv1.InstanceStatus_INSTANCE_STATUS_PENDING:
 		return models.InstanceStatusPending
+	case instancesv1.InstanceStatus_INSTANCE_STATUS_SUPERSEDED:
+		return models.InstanceStatusSuperseded
 	default:
 		return ""
 	}

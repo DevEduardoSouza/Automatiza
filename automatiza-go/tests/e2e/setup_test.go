@@ -594,6 +594,10 @@ func (m *mockInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instan
 	return nil
 }
 
+func (m *mockInstanceRepo) SupersedePriorInstances(ctx context.Context, userID string, currentInstanceID int, phoneNumber string) (int, error) {
+	return 0, nil
+}
+
 func (m *mockInstanceRepo) AddInstance(instance *models.Instance) {
 	m.instances[instance.ID] = instance
 	m.byUserID[instance.UserID] = append(m.byUserID[instance.UserID], *instance)

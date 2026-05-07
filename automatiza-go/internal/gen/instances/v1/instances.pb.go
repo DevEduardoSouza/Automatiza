@@ -31,6 +31,10 @@ const (
 	InstanceStatus_INSTANCE_STATUS_PENDING      InstanceStatus = 1
 	InstanceStatus_INSTANCE_STATUS_CONNECTED    InstanceStatus = 2
 	InstanceStatus_INSTANCE_STATUS_DISCONNECTED InstanceStatus = 3
+	// Superseded: a newer session connected with the same phone, retiring
+	// this row from the active list. Hidden from the default UI listing
+	// but kept in the table for audit / FK integrity.
+	InstanceStatus_INSTANCE_STATUS_SUPERSEDED InstanceStatus = 4
 )
 
 // Enum value maps for InstanceStatus.
@@ -40,12 +44,14 @@ var (
 		1: "INSTANCE_STATUS_PENDING",
 		2: "INSTANCE_STATUS_CONNECTED",
 		3: "INSTANCE_STATUS_DISCONNECTED",
+		4: "INSTANCE_STATUS_SUPERSEDED",
 	}
 	InstanceStatus_value = map[string]int32{
 		"INSTANCE_STATUS_UNSPECIFIED":  0,
 		"INSTANCE_STATUS_PENDING":      1,
 		"INSTANCE_STATUS_CONNECTED":    2,
 		"INSTANCE_STATUS_DISCONNECTED": 3,
+		"INSTANCE_STATUS_SUPERSEDED":   4,
 	}
 )
 
@@ -1177,12 +1183,13 @@ const file_instances_v1_instances_proto_rawDesc = "" +
 	"\rqrcode_base64\x18\x02 \x01(\tH\x00R\fqrcodeBase64\x88\x01\x01\x12\x19\n" +
 	"\x05error\x18\x03 \x01(\tH\x01R\x05error\x88\x01\x01B\x10\n" +
 	"\x0e_qrcode_base64B\b\n" +
-	"\x06_error*\x8f\x01\n" +
+	"\x06_error*\xaf\x01\n" +
 	"\x0eInstanceStatus\x12\x1f\n" +
 	"\x1bINSTANCE_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17INSTANCE_STATUS_PENDING\x10\x01\x12\x1d\n" +
 	"\x19INSTANCE_STATUS_CONNECTED\x10\x02\x12 \n" +
-	"\x1cINSTANCE_STATUS_DISCONNECTED\x10\x032\xce\b\n" +
+	"\x1cINSTANCE_STATUS_DISCONNECTED\x10\x03\x12\x1e\n" +
+	"\x1aINSTANCE_STATUS_SUPERSEDED\x10\x042\xce\b\n" +
 	"\x10InstancesService\x12d\n" +
 	"\x11GetLatestInstance\x12&.instances.v1.GetLatestInstanceRequest\x1a'.instances.v1.GetLatestInstanceResponse\x12d\n" +
 	"\x11ListUserInstances\x12&.instances.v1.ListUserInstancesRequest\x1a'.instances.v1.ListUserInstancesResponse\x12m\n" +

@@ -36,6 +36,12 @@ const (
 	InstanceStatusPending      = "pending"
 	InstanceStatusOpen         = "open"
 	InstanceStatusClose        = "close"
+	// InstanceStatusSuperseded is set on an old instance row when a newer
+	// session connects with the same phone (or the old row never captured
+	// a phone — i.e. zombie scan attempts). It hides the row from the
+	// default `/whatsapp` listing without deleting it, so audit history
+	// stays intact and dispatch_logs FKs remain valid.
+	InstanceStatusSuperseded = "superseded"
 )
 
 // IsConnected returns true if the instance is connected

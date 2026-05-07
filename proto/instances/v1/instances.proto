@@ -18,6 +18,10 @@ enum InstanceStatus {
   INSTANCE_STATUS_PENDING = 1;
   INSTANCE_STATUS_CONNECTED = 2;
   INSTANCE_STATUS_DISCONNECTED = 3;
+  // Superseded: a newer session connected with the same phone, retiring
+  // this row from the active list. Hidden from the default UI listing
+  // but kept in the table for audit / FK integrity.
+  INSTANCE_STATUS_SUPERSEDED = 4;
 }
 
 // ============================================================
