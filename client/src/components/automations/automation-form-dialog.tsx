@@ -388,7 +388,11 @@ export function AutomationFormDialog({
               </p>
             </div>
             <Switch
-              checked={formData.apply_coupon_rules ?? true}
+              // Default policy: ON for monitor/list/offer_generate, OFF for
+              // search. Search mode often pulls products that already carry
+              // a Shopee promo; piling our own coupon on top reads as
+              // redundant. The user can flip per automation either way.
+              checked={formData.apply_coupon_rules ?? formData.mode !== 'search'}
               onCheckedChange={(checked) =>
                 setFormData((prev) => ({ ...prev, apply_coupon_rules: checked }))
               }

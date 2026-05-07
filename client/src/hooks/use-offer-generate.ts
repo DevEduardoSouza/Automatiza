@@ -217,6 +217,10 @@ export function useOfferGenerate() {
         delaySeconds: formData.delay_seconds ?? 10,
         couponId: formData.coupon_id || undefined,
         dispatchTextId: formData.dispatch_text_id || undefined,
+        // Mirror the toggle on the offer-generate config page; default
+        // to true when unset so the rule engine still kicks in for
+        // existing rows that pre-date the field.
+        applyCouponRules: formData.apply_coupon_rules ?? true,
       };
 
       if (config) {
