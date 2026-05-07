@@ -2,24 +2,36 @@ package connectrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	couponsv1 "automatiza-go/internal/gen/coupons/v1"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/coupons"
 
 	"connectrpc.com/connect"
 )
 
 // CouponsHandler implements the couponsv1connect.CouponsServiceHandler interface.
+//
+// Holds two collaborators: the legacy coupons.Service (catalog CRUD)
+// and the new couponRuleRepo (auto-apply rules introduced with
+// migration 046). The rule RPCs talk to the repo directly — no service
+// layer wraps them yet, since the matcher is the only consumer and it
+// already lives next to the dispatch flow.
 type CouponsHandler struct {
 	couponsService coupons.Service
+	couponRuleRepo repository.CouponRuleRepository
 }
 
-// NewCouponsHandler creates a new coupons handler.
-func NewCouponsHandler(couponsService coupons.Service) *CouponsHandler {
+// NewCouponsHandler creates a new coupons handler. couponRuleRepo can
+// be nil during transitional configurations; the rule RPCs then return
+// Unimplemented instead of crashing.
+func NewCouponsHandler(couponsService coupons.Service, couponRuleRepo repository.CouponRuleRepository) *CouponsHandler {
 	return &CouponsHandler{
 		couponsService: couponsService,
+		couponRuleRepo: couponRuleRepo,
 	}
 }
 
@@ -367,4 +379,190 @@ func protoDiscountTypeToModel(discountType couponsv1.DiscountType) string {
 	default:
 		return ""
 	}
+}
+
+// ============================================================
+// Coupon Rules (auto-apply rules)
+// ============================================================
+
+var errRulesEngineDisabled = errors.New("coupon rules engine is not configured")
+
+func (h *CouponsHandler) requireRules() error {
+	if h.couponRuleRepo == nil {
+		return errRulesEngineDisabled
+	}
+	return nil
+}
+
+func (h *CouponsHandler) ListCouponRules(
+	ctx context.Context,
+	_ *connect.Request[couponsv1.ListCouponRulesRequest],
+) (*connect.Response[couponsv1.ListCouponRulesResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.requireRules(); err != nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, err)
+	}
+	rules, err := h.couponRuleRepo.GetUserCouponRules(ctx, user.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to list coupon rules: %w", err))
+	}
+	out := make([]*couponsv1.CouponRule, len(rules))
+	for i := range rules {
+		out[i] = couponRuleToProto(&rules[i])
+	}
+	return connect.NewResponse(&couponsv1.ListCouponRulesResponse{Rules: out}), nil
+}
+
+func (h *CouponsHandler) GetCouponRule(
+	ctx context.Context,
+	req *connect.Request[couponsv1.GetCouponRuleRequest],
+) (*connect.Response[couponsv1.GetCouponRuleResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.requireRules(); err != nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, err)
+	}
+	rule, err := h.couponRuleRepo.GetCouponRuleByID(ctx, req.Msg.GetId(), user.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get coupon rule: %w", err))
+	}
+	if rule == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("coupon rule not found"))
+	}
+	return connect.NewResponse(&couponsv1.GetCouponRuleResponse{Rule: couponRuleToProto(rule)}), nil
+}
+
+func (h *CouponsHandler) CreateCouponRule(
+	ctx context.Context,
+	req *connect.Request[couponsv1.CreateCouponRuleRequest],
+) (*connect.Response[couponsv1.CreateCouponRuleResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.requireRules(); err != nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, err)
+	}
+	rule := &models.CouponRule{
+		CouponID: req.Msg.GetCouponId(),
+		Platform: req.Msg.GetPlatform(),
+		IsActive: true, // default if not provided
+	}
+	if v := req.Msg.PeriodStart; v != nil && *v != "" {
+		rule.PeriodStart = v
+	}
+	if v := req.Msg.PeriodEnd; v != nil && *v != "" {
+		rule.PeriodEnd = v
+	}
+	if v := req.Msg.MinPrice; v != nil {
+		rule.MinPrice = *v
+	}
+	if v := req.Msg.Priority; v != nil {
+		rule.Priority = int(*v)
+	}
+	if v := req.Msg.IsActive; v != nil {
+		rule.IsActive = *v
+	}
+	created, err := h.couponRuleRepo.CreateCouponRule(ctx, user.ID, rule)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create coupon rule: %w", err))
+	}
+	return connect.NewResponse(&couponsv1.CreateCouponRuleResponse{Rule: couponRuleToProto(created)}), nil
+}
+
+func (h *CouponsHandler) UpdateCouponRule(
+	ctx context.Context,
+	req *connect.Request[couponsv1.UpdateCouponRuleRequest],
+) (*connect.Response[couponsv1.UpdateCouponRuleResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.requireRules(); err != nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, err)
+	}
+	updates := make(map[string]interface{})
+	if v := req.Msg.CouponId; v != nil {
+		updates["coupon_id"] = *v
+	}
+	if v := req.Msg.Platform; v != nil {
+		updates["platform"] = *v
+	}
+	if v := req.Msg.PeriodStart; v != nil {
+		if *v == "" {
+			updates["period_start"] = nil
+		} else {
+			updates["period_start"] = *v
+		}
+	}
+	if v := req.Msg.PeriodEnd; v != nil {
+		if *v == "" {
+			updates["period_end"] = nil
+		} else {
+			updates["period_end"] = *v
+		}
+	}
+	if v := req.Msg.MinPrice; v != nil {
+		updates["min_price"] = *v
+	}
+	if v := req.Msg.Priority; v != nil {
+		updates["priority"] = int(*v)
+	}
+	if v := req.Msg.IsActive; v != nil {
+		updates["is_active"] = *v
+	}
+	if err := h.couponRuleRepo.UpdateCouponRule(ctx, req.Msg.GetId(), user.ID, updates); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update coupon rule: %w", err))
+	}
+	updated, err := h.couponRuleRepo.GetCouponRuleByID(ctx, req.Msg.GetId(), user.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to reload coupon rule: %w", err))
+	}
+	return connect.NewResponse(&couponsv1.UpdateCouponRuleResponse{Rule: couponRuleToProto(updated)}), nil
+}
+
+func (h *CouponsHandler) DeleteCouponRule(
+	ctx context.Context,
+	req *connect.Request[couponsv1.DeleteCouponRuleRequest],
+) (*connect.Response[couponsv1.DeleteCouponRuleResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.requireRules(); err != nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, err)
+	}
+	if err := h.couponRuleRepo.DeleteCouponRule(ctx, req.Msg.GetId(), user.ID); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to delete coupon rule: %w", err))
+	}
+	return connect.NewResponse(&couponsv1.DeleteCouponRuleResponse{}), nil
+}
+
+func couponRuleToProto(r *models.CouponRule) *couponsv1.CouponRule {
+	if r == nil {
+		return nil
+	}
+	out := &couponsv1.CouponRule{
+		Id:        r.ID,
+		UserId:    r.UserID,
+		CouponId:  r.CouponID,
+		Platform:  r.Platform,
+		MinPrice:  r.MinPrice,
+		Priority:  int32(r.Priority),
+		IsActive:  r.IsActive,
+		CreatedAt: r.CreatedAt,
+		UpdatedAt: r.UpdatedAt,
+	}
+	if r.PeriodStart != nil {
+		out.PeriodStart = r.PeriodStart
+	}
+	if r.PeriodEnd != nil {
+		out.PeriodEnd = r.PeriodEnd
+	}
+	return out
 }

@@ -531,6 +531,9 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 		proto.InstanceId = a.InstanceID
 	}
 
+	// Coupon rule engine opt-out (default true server-side)
+	proto.ApplyCouponRules = a.ApplyCouponRules
+
 	// Convert stores
 	for _, store := range a.Stores {
 		proto.Stores = append(proto.Stores, modelStoreToProto(store))
@@ -842,6 +845,14 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.InstanceID = msg.InstanceId
 	}
 
+	// Coupon rule engine opt-out — default true when client doesn't send it
+	// so create requests behave like the migration default.
+	if msg.ApplyCouponRules != nil {
+		automation.ApplyCouponRules = *msg.ApplyCouponRules
+	} else {
+		automation.ApplyCouponRules = true
+	}
+
 	// Convert stores
 	for _, store := range msg.GetStores() {
 		if s := protoStoreToModel(store); s != "" {
@@ -955,6 +966,11 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 	// string→int coercion and the empty-string special case.
 	if msg.InstanceId != nil {
 		updates["instance_id"] = msg.GetInstanceId()
+	}
+
+	// Coupon rule engine opt-out
+	if msg.ApplyCouponRules != nil {
+		updates["apply_coupon_rules"] = *msg.ApplyCouponRules
 	}
 
 	// Monitoring text rules

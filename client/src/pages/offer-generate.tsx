@@ -339,6 +339,28 @@ export default function OfferGenerate() {
                     dispatchTexts={dispatchTexts}
                   />
 
+                  {/* Coupon rule engine opt-out — same toggle as the
+                      automation form. Default mirrors the form policy:
+                      offer_generate is event-driven (chat → bot), not a
+                      bulk-dispatch from Shopee, so coupons make sense
+                      and the default stays ON. */}
+                  <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium">Aplicar cupons automáticos</div>
+                      <p className="text-xs" style={{ color: colors.wineTextMuted }}>
+                        Quando ligado, cada oferta gerada consulta as regras de
+                        Cupons Avançados e injeta o cupom que casar com o produto.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={formData.apply_coupon_rules ?? true}
+                      onCheckedChange={(checked) =>
+                        setFormData((prev) => ({ ...prev, apply_coupon_rules: checked }))
+                      }
+                      aria-label="Aplicar cupons automáticos"
+                    />
+                  </div>
+
                   {/* Action buttons */}
                   <div className="flex flex-col xs:flex-row justify-between gap-2 pt-1">
                     {config && (

@@ -186,6 +186,7 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     list_include_image: local.listIncludeImage,
     list_send_as_image: local.listSendAsImage,
     instance_id: local.instanceId ?? null,
+    apply_coupon_rules: local.applyCouponRules ?? true,
   };
 }
 
@@ -628,6 +629,7 @@ export function useAutomations(): UseAutomationsReturn {
           // preference (when the user picks "all chips"). undefined
           // would leave the previous value untouched.
           instanceId: formData.instance_id ?? '',
+          applyCouponRules: formData.apply_coupon_rules,
         };
 
         await automationsConnect.updateAutomation(updateParams);
@@ -680,6 +682,10 @@ export function useAutomations(): UseAutomationsReturn {
           listSendAsImage:
             mode === 'list' ? Boolean(formData.list_send_as_image ?? false) : undefined,
           instanceId: formData.instance_id ?? undefined,
+          // Mirrors the form's mode-aware default (see automation-form-dialog):
+          // search defaults OFF, anything else defaults ON.
+          applyCouponRules:
+            formData.apply_coupon_rules ?? formData.mode !== 'search',
         };
 
         await automationsConnect.createAutomation(createParams);

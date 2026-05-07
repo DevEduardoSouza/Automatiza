@@ -203,6 +203,13 @@ message Automation {
   // this automation goes through this chip; otherwise falls back to the
   // group's owner chip and then to the first connected instance.
   optional string instance_id = 32;
+
+  // Per-automation opt-out for the global coupon rule engine. true (the
+  // default for new rows) = the worker matches active CouponRules on
+  // every dispatch. false = no coupon is ever injected, even if a rule
+  // would otherwise fit. Use it for search-mode automations whose
+  // products already carry a Shopee promo.
+  bool apply_coupon_rules = 33;
 }
 
 /**
@@ -304,6 +311,9 @@ message CreateAutomationRequest {
   // Preferred sender chip for every dispatch (database id, string form).
   // Empty / unset means "no preference" — fall back to per-group ownership.
   optional string instance_id = 27;
+  // Per-automation opt-out for the coupon rule engine. Defaults to true
+  // server-side when not provided.
+  optional bool apply_coupon_rules = 28;
 }
 
 message CreateAutomationResponse {
@@ -345,6 +355,9 @@ message UpdateAutomationRequest {
   // Preferred sender chip. Empty string explicitly clears the preference;
   // unset (no field) means "leave unchanged" (proto3 optional semantics).
   optional string instance_id = 28;
+  // Per-automation opt-out for the coupon rule engine. unset = leave
+  // unchanged; explicitly set false to silence the rule engine.
+  optional bool apply_coupon_rules = 29;
 }
 
 message UpdateAutomationResponse {

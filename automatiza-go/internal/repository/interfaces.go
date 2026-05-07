@@ -190,6 +190,23 @@ type CouponRepository interface {
 	GetBestCouponForProduct(ctx context.Context, userID, store string, productPrice float64, category *string) (*models.Coupon, error)
 }
 
+// CouponRuleRepository handles auto-apply rule data operations.
+//
+// FindMatchingCoupon is the hot path called from the offer dispatcher:
+// pass in (userID, platform, productPrice) and get back the Coupon to
+// inject into the message, or nil when no rule applies. Tie-break order
+// is min_price DESC → priority DESC → created_at DESC, so an operator
+// that designed tiered rules (R$30 OFF > R$200, R$50 OFF > R$400, etc.)
+// gets the largest coupon the product clears.
+type CouponRuleRepository interface {
+	GetUserCouponRules(ctx context.Context, userID string) ([]models.CouponRule, error)
+	GetCouponRuleByID(ctx context.Context, ruleID, userID string) (*models.CouponRule, error)
+	CreateCouponRule(ctx context.Context, userID string, data *models.CouponRule) (*models.CouponRule, error)
+	UpdateCouponRule(ctx context.Context, ruleID, userID string, updates map[string]interface{}) error
+	DeleteCouponRule(ctx context.Context, ruleID, userID string) error
+	FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64) (*models.Coupon, error)
+}
+
 // DispatchLogWithGroup represents a dispatch log with group name from a join
 type DispatchLogWithGroup struct {
 	models.DispatchLog

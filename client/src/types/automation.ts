@@ -67,6 +67,10 @@ export interface Automation {
   // sender for every dispatch from this automation. Empty / null = no
   // preference (legacy default).
   instance_id?: string | null;
+  // Per-automation opt-out for the coupon rule engine. true (default)
+  // means the worker matches global CouponRules on every dispatch.
+  // false silences cupom injection for this automation entirely.
+  apply_coupon_rules?: boolean;
 }
 
 export interface AutomationGroup {

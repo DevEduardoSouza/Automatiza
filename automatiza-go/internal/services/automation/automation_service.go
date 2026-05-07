@@ -101,6 +101,7 @@ func NewAutomationService(
 	queueClient *workers.QueueClient,
 	cache *cache.Cache,
 	couponRepo repository.CouponRepository,
+	couponRuleRepo repository.CouponRuleRepository,
 	logger *zap.Logger,
 ) Service {
 	svc := &automationService{
@@ -129,7 +130,7 @@ func NewAutomationService(
 		svc.backpressure = bp
 	}
 	if couponRepo != nil {
-		svc.couponHandler = NewCouponHandler(couponRepo, logger)
+		svc.couponHandler = NewCouponHandler(couponRepo, couponRuleRepo, logger)
 	}
 	return svc
 }

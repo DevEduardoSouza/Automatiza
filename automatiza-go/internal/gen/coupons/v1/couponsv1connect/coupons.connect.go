@@ -51,6 +51,21 @@ const (
 	// CouponsServiceListCouponsByStoreProcedure is the fully-qualified name of the CouponsService's
 	// ListCouponsByStore RPC.
 	CouponsServiceListCouponsByStoreProcedure = "/coupons.v1.CouponsService/ListCouponsByStore"
+	// CouponsServiceListCouponRulesProcedure is the fully-qualified name of the CouponsService's
+	// ListCouponRules RPC.
+	CouponsServiceListCouponRulesProcedure = "/coupons.v1.CouponsService/ListCouponRules"
+	// CouponsServiceGetCouponRuleProcedure is the fully-qualified name of the CouponsService's
+	// GetCouponRule RPC.
+	CouponsServiceGetCouponRuleProcedure = "/coupons.v1.CouponsService/GetCouponRule"
+	// CouponsServiceCreateCouponRuleProcedure is the fully-qualified name of the CouponsService's
+	// CreateCouponRule RPC.
+	CouponsServiceCreateCouponRuleProcedure = "/coupons.v1.CouponsService/CreateCouponRule"
+	// CouponsServiceUpdateCouponRuleProcedure is the fully-qualified name of the CouponsService's
+	// UpdateCouponRule RPC.
+	CouponsServiceUpdateCouponRuleProcedure = "/coupons.v1.CouponsService/UpdateCouponRule"
+	// CouponsServiceDeleteCouponRuleProcedure is the fully-qualified name of the CouponsService's
+	// DeleteCouponRule RPC.
+	CouponsServiceDeleteCouponRuleProcedure = "/coupons.v1.CouponsService/DeleteCouponRule"
 )
 
 // CouponsServiceClient is a client for the coupons.v1.CouponsService service.
@@ -67,6 +82,12 @@ type CouponsServiceClient interface {
 	DeleteCoupon(context.Context, *connect.Request[v1.DeleteCouponRequest]) (*connect.Response[v1.DeleteCouponResponse], error)
 	// Lists active coupons for a specific store.
 	ListCouponsByStore(context.Context, *connect.Request[v1.ListCouponsByStoreRequest]) (*connect.Response[v1.ListCouponsByStoreResponse], error)
+	// Auto-apply rules.
+	ListCouponRules(context.Context, *connect.Request[v1.ListCouponRulesRequest]) (*connect.Response[v1.ListCouponRulesResponse], error)
+	GetCouponRule(context.Context, *connect.Request[v1.GetCouponRuleRequest]) (*connect.Response[v1.GetCouponRuleResponse], error)
+	CreateCouponRule(context.Context, *connect.Request[v1.CreateCouponRuleRequest]) (*connect.Response[v1.CreateCouponRuleResponse], error)
+	UpdateCouponRule(context.Context, *connect.Request[v1.UpdateCouponRuleRequest]) (*connect.Response[v1.UpdateCouponRuleResponse], error)
+	DeleteCouponRule(context.Context, *connect.Request[v1.DeleteCouponRuleRequest]) (*connect.Response[v1.DeleteCouponRuleResponse], error)
 }
 
 // NewCouponsServiceClient constructs a client for the coupons.v1.CouponsService service. By
@@ -116,6 +137,36 @@ func NewCouponsServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(couponsServiceMethods.ByName("ListCouponsByStore")),
 			connect.WithClientOptions(opts...),
 		),
+		listCouponRules: connect.NewClient[v1.ListCouponRulesRequest, v1.ListCouponRulesResponse](
+			httpClient,
+			baseURL+CouponsServiceListCouponRulesProcedure,
+			connect.WithSchema(couponsServiceMethods.ByName("ListCouponRules")),
+			connect.WithClientOptions(opts...),
+		),
+		getCouponRule: connect.NewClient[v1.GetCouponRuleRequest, v1.GetCouponRuleResponse](
+			httpClient,
+			baseURL+CouponsServiceGetCouponRuleProcedure,
+			connect.WithSchema(couponsServiceMethods.ByName("GetCouponRule")),
+			connect.WithClientOptions(opts...),
+		),
+		createCouponRule: connect.NewClient[v1.CreateCouponRuleRequest, v1.CreateCouponRuleResponse](
+			httpClient,
+			baseURL+CouponsServiceCreateCouponRuleProcedure,
+			connect.WithSchema(couponsServiceMethods.ByName("CreateCouponRule")),
+			connect.WithClientOptions(opts...),
+		),
+		updateCouponRule: connect.NewClient[v1.UpdateCouponRuleRequest, v1.UpdateCouponRuleResponse](
+			httpClient,
+			baseURL+CouponsServiceUpdateCouponRuleProcedure,
+			connect.WithSchema(couponsServiceMethods.ByName("UpdateCouponRule")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteCouponRule: connect.NewClient[v1.DeleteCouponRuleRequest, v1.DeleteCouponRuleResponse](
+			httpClient,
+			baseURL+CouponsServiceDeleteCouponRuleProcedure,
+			connect.WithSchema(couponsServiceMethods.ByName("DeleteCouponRule")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -127,6 +178,11 @@ type couponsServiceClient struct {
 	updateCoupon       *connect.Client[v1.UpdateCouponRequest, v1.UpdateCouponResponse]
 	deleteCoupon       *connect.Client[v1.DeleteCouponRequest, v1.DeleteCouponResponse]
 	listCouponsByStore *connect.Client[v1.ListCouponsByStoreRequest, v1.ListCouponsByStoreResponse]
+	listCouponRules    *connect.Client[v1.ListCouponRulesRequest, v1.ListCouponRulesResponse]
+	getCouponRule      *connect.Client[v1.GetCouponRuleRequest, v1.GetCouponRuleResponse]
+	createCouponRule   *connect.Client[v1.CreateCouponRuleRequest, v1.CreateCouponRuleResponse]
+	updateCouponRule   *connect.Client[v1.UpdateCouponRuleRequest, v1.UpdateCouponRuleResponse]
+	deleteCouponRule   *connect.Client[v1.DeleteCouponRuleRequest, v1.DeleteCouponRuleResponse]
 }
 
 // ListCoupons calls coupons.v1.CouponsService.ListCoupons.
@@ -159,6 +215,31 @@ func (c *couponsServiceClient) ListCouponsByStore(ctx context.Context, req *conn
 	return c.listCouponsByStore.CallUnary(ctx, req)
 }
 
+// ListCouponRules calls coupons.v1.CouponsService.ListCouponRules.
+func (c *couponsServiceClient) ListCouponRules(ctx context.Context, req *connect.Request[v1.ListCouponRulesRequest]) (*connect.Response[v1.ListCouponRulesResponse], error) {
+	return c.listCouponRules.CallUnary(ctx, req)
+}
+
+// GetCouponRule calls coupons.v1.CouponsService.GetCouponRule.
+func (c *couponsServiceClient) GetCouponRule(ctx context.Context, req *connect.Request[v1.GetCouponRuleRequest]) (*connect.Response[v1.GetCouponRuleResponse], error) {
+	return c.getCouponRule.CallUnary(ctx, req)
+}
+
+// CreateCouponRule calls coupons.v1.CouponsService.CreateCouponRule.
+func (c *couponsServiceClient) CreateCouponRule(ctx context.Context, req *connect.Request[v1.CreateCouponRuleRequest]) (*connect.Response[v1.CreateCouponRuleResponse], error) {
+	return c.createCouponRule.CallUnary(ctx, req)
+}
+
+// UpdateCouponRule calls coupons.v1.CouponsService.UpdateCouponRule.
+func (c *couponsServiceClient) UpdateCouponRule(ctx context.Context, req *connect.Request[v1.UpdateCouponRuleRequest]) (*connect.Response[v1.UpdateCouponRuleResponse], error) {
+	return c.updateCouponRule.CallUnary(ctx, req)
+}
+
+// DeleteCouponRule calls coupons.v1.CouponsService.DeleteCouponRule.
+func (c *couponsServiceClient) DeleteCouponRule(ctx context.Context, req *connect.Request[v1.DeleteCouponRuleRequest]) (*connect.Response[v1.DeleteCouponRuleResponse], error) {
+	return c.deleteCouponRule.CallUnary(ctx, req)
+}
+
 // CouponsServiceHandler is an implementation of the coupons.v1.CouponsService service.
 type CouponsServiceHandler interface {
 	// Lists all coupons for the authenticated user with optional filters.
@@ -173,6 +254,12 @@ type CouponsServiceHandler interface {
 	DeleteCoupon(context.Context, *connect.Request[v1.DeleteCouponRequest]) (*connect.Response[v1.DeleteCouponResponse], error)
 	// Lists active coupons for a specific store.
 	ListCouponsByStore(context.Context, *connect.Request[v1.ListCouponsByStoreRequest]) (*connect.Response[v1.ListCouponsByStoreResponse], error)
+	// Auto-apply rules.
+	ListCouponRules(context.Context, *connect.Request[v1.ListCouponRulesRequest]) (*connect.Response[v1.ListCouponRulesResponse], error)
+	GetCouponRule(context.Context, *connect.Request[v1.GetCouponRuleRequest]) (*connect.Response[v1.GetCouponRuleResponse], error)
+	CreateCouponRule(context.Context, *connect.Request[v1.CreateCouponRuleRequest]) (*connect.Response[v1.CreateCouponRuleResponse], error)
+	UpdateCouponRule(context.Context, *connect.Request[v1.UpdateCouponRuleRequest]) (*connect.Response[v1.UpdateCouponRuleResponse], error)
+	DeleteCouponRule(context.Context, *connect.Request[v1.DeleteCouponRuleRequest]) (*connect.Response[v1.DeleteCouponRuleResponse], error)
 }
 
 // NewCouponsServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -218,6 +305,36 @@ func NewCouponsServiceHandler(svc CouponsServiceHandler, opts ...connect.Handler
 		connect.WithSchema(couponsServiceMethods.ByName("ListCouponsByStore")),
 		connect.WithHandlerOptions(opts...),
 	)
+	couponsServiceListCouponRulesHandler := connect.NewUnaryHandler(
+		CouponsServiceListCouponRulesProcedure,
+		svc.ListCouponRules,
+		connect.WithSchema(couponsServiceMethods.ByName("ListCouponRules")),
+		connect.WithHandlerOptions(opts...),
+	)
+	couponsServiceGetCouponRuleHandler := connect.NewUnaryHandler(
+		CouponsServiceGetCouponRuleProcedure,
+		svc.GetCouponRule,
+		connect.WithSchema(couponsServiceMethods.ByName("GetCouponRule")),
+		connect.WithHandlerOptions(opts...),
+	)
+	couponsServiceCreateCouponRuleHandler := connect.NewUnaryHandler(
+		CouponsServiceCreateCouponRuleProcedure,
+		svc.CreateCouponRule,
+		connect.WithSchema(couponsServiceMethods.ByName("CreateCouponRule")),
+		connect.WithHandlerOptions(opts...),
+	)
+	couponsServiceUpdateCouponRuleHandler := connect.NewUnaryHandler(
+		CouponsServiceUpdateCouponRuleProcedure,
+		svc.UpdateCouponRule,
+		connect.WithSchema(couponsServiceMethods.ByName("UpdateCouponRule")),
+		connect.WithHandlerOptions(opts...),
+	)
+	couponsServiceDeleteCouponRuleHandler := connect.NewUnaryHandler(
+		CouponsServiceDeleteCouponRuleProcedure,
+		svc.DeleteCouponRule,
+		connect.WithSchema(couponsServiceMethods.ByName("DeleteCouponRule")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/coupons.v1.CouponsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CouponsServiceListCouponsProcedure:
@@ -232,6 +349,16 @@ func NewCouponsServiceHandler(svc CouponsServiceHandler, opts ...connect.Handler
 			couponsServiceDeleteCouponHandler.ServeHTTP(w, r)
 		case CouponsServiceListCouponsByStoreProcedure:
 			couponsServiceListCouponsByStoreHandler.ServeHTTP(w, r)
+		case CouponsServiceListCouponRulesProcedure:
+			couponsServiceListCouponRulesHandler.ServeHTTP(w, r)
+		case CouponsServiceGetCouponRuleProcedure:
+			couponsServiceGetCouponRuleHandler.ServeHTTP(w, r)
+		case CouponsServiceCreateCouponRuleProcedure:
+			couponsServiceCreateCouponRuleHandler.ServeHTTP(w, r)
+		case CouponsServiceUpdateCouponRuleProcedure:
+			couponsServiceUpdateCouponRuleHandler.ServeHTTP(w, r)
+		case CouponsServiceDeleteCouponRuleProcedure:
+			couponsServiceDeleteCouponRuleHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -263,4 +390,24 @@ func (UnimplementedCouponsServiceHandler) DeleteCoupon(context.Context, *connect
 
 func (UnimplementedCouponsServiceHandler) ListCouponsByStore(context.Context, *connect.Request[v1.ListCouponsByStoreRequest]) (*connect.Response[v1.ListCouponsByStoreResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("coupons.v1.CouponsService.ListCouponsByStore is not implemented"))
+}
+
+func (UnimplementedCouponsServiceHandler) ListCouponRules(context.Context, *connect.Request[v1.ListCouponRulesRequest]) (*connect.Response[v1.ListCouponRulesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("coupons.v1.CouponsService.ListCouponRules is not implemented"))
+}
+
+func (UnimplementedCouponsServiceHandler) GetCouponRule(context.Context, *connect.Request[v1.GetCouponRuleRequest]) (*connect.Response[v1.GetCouponRuleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("coupons.v1.CouponsService.GetCouponRule is not implemented"))
+}
+
+func (UnimplementedCouponsServiceHandler) CreateCouponRule(context.Context, *connect.Request[v1.CreateCouponRuleRequest]) (*connect.Response[v1.CreateCouponRuleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("coupons.v1.CouponsService.CreateCouponRule is not implemented"))
+}
+
+func (UnimplementedCouponsServiceHandler) UpdateCouponRule(context.Context, *connect.Request[v1.UpdateCouponRuleRequest]) (*connect.Response[v1.UpdateCouponRuleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("coupons.v1.CouponsService.UpdateCouponRule is not implemented"))
+}
+
+func (UnimplementedCouponsServiceHandler) DeleteCouponRule(context.Context, *connect.Request[v1.DeleteCouponRuleRequest]) (*connect.Response[v1.DeleteCouponRuleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("coupons.v1.CouponsService.DeleteCouponRule is not implemented"))
 }

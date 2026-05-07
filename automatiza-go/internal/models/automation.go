@@ -74,6 +74,13 @@ type Automation struct {
 	// per-group ownership. When set and the chip is connected, every
 	// dispatch from this automation goes through it.
 	InstanceID *string `json:"instance_id,omitempty" db:"instance_id"`
+
+	// Per-automation opt-out for the global coupon rule engine. Default
+	// TRUE: the worker matches active CouponRules on every dispatch.
+	// Set FALSE when the automation already pulls products from a
+	// promo source (e.g. Shopee Big Sale via search mode) and adding
+	// our own coupon on top would be redundant.
+	ApplyCouponRules bool `json:"apply_coupon_rules" db:"apply_coupon_rules"`
 }
 
 // AutomationStatus constants
