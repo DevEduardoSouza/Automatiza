@@ -701,8 +701,10 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 	}
 	appID, secret := getShopeeCredentials(creds)
 
-	// Use productOfferV2 with itemId and shopId to get product details
-	gqlQuery := fmt.Sprintf(`{ productOfferV2(itemId: %d, shopId: %d, limit: 1) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName } } }`, itemID, shopID)
+	// Use productOfferV2 with itemId and shopId to get product details.
+	// shopType is included so the model's IsMall flag (= shopType == 1)
+	// can drive the coupon rule engine's official_only filter.
+	gqlQuery := fmt.Sprintf(`{ productOfferV2(itemId: %d, shopId: %d, limit: 1) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName shopType } } }`, itemID, shopID)
 	payload, marshalErr := json.Marshal(map[string]string{"query": gqlQuery})
 	if marshalErr != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee getProduct payload", marshalErr, map[string]string{
@@ -740,6 +742,10 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 				RatingStar        string `json:"ratingStar"`
 				PriceDiscountRate int    `json:"priceDiscountRate"`
 				ShopName          string `json:"shopName"`
+				// shopType: 1=Mall (loja oficial), 2=Preferred, 3=Normal.
+				// Drives ShopeeOffer.IsMall, which the coupon rule
+				// matcher reads to honor official_only filters.
+				ShopType int `json:"shopType"`
 			} `json:"nodes"`
 		} `json:"productOfferV2"`
 	}
@@ -800,6 +806,10 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 		ProductURL:     node.ProductLink,
 		Image:          node.ImageURL,
 		Discount:       discount,
+		// Shopee shopType=1 marks Mall lojas oficiais — the only signal
+		// the affiliate API gives us about official storefronts. Used
+		// by coupon rules with official_only=true to filter dispatches.
+		IsMall: node.ShopType == 1,
 	}, nil
 }
 

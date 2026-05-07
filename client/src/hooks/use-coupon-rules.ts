@@ -3,6 +3,7 @@ import {
   CouponsService,
   CreateCouponRuleRequestSchema,
   DeleteCouponRuleRequestSchema,
+  DiscountType,
   ListCouponRulesRequestSchema,
   UpdateCouponRuleRequestSchema,
   type CouponRule as ProtoCouponRule,
@@ -20,6 +21,10 @@ import { useTranslation } from 'react-i18next';
  * pattern used by the rest of the dashboard (e.g. use-coupons), even
  * though the proto is camelCase, so existing form components can plug
  * in without conversion.
+ *
+ * As of migration 048 the rule is standalone — it carries its own
+ * code/message/discount fields. coupon_id remains as a legacy pointer
+ * for existing rows; new rules leave it empty.
  */
 export interface LocalCouponRule {
   id: string;
@@ -31,23 +36,33 @@ export interface LocalCouponRule {
   min_price: number;
   priority: number;
   is_active: boolean;
+  official_only: boolean;
+  code: string | null;
+  message: string | null;
+  discount_type: 'fixed' | 'percent' | null;
+  discount_value: number | null;
+  max_discount: number | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface CreateCouponRuleParams {
-  coupon_id: string;
   platform: string;
   period_start?: string | null;
   period_end?: string | null;
   min_price?: number;
   priority?: number;
   is_active?: boolean;
+  official_only?: boolean;
+  code?: string | null;
+  message?: string | null;
+  discount_type?: 'fixed' | 'percent' | null;
+  discount_value?: number | null;
+  max_discount?: number | null;
 }
 
 export interface UpdateCouponRuleParams {
   id: string;
-  coupon_id?: string;
   platform?: string;
   // empty string explicitly clears (writes NULL); undefined leaves alone
   period_start?: string;
@@ -55,6 +70,26 @@ export interface UpdateCouponRuleParams {
   min_price?: number;
   priority?: number;
   is_active?: boolean;
+  official_only?: boolean;
+  code?: string;
+  message?: string;
+  discount_type?: 'fixed' | 'percent' | null;
+  discount_value?: number;
+  max_discount?: number;
+}
+
+function discountTypeToProto(
+  v: 'fixed' | 'percent' | null | undefined,
+): DiscountType | undefined {
+  if (v === 'fixed') return DiscountType.FIXED;
+  if (v === 'percent') return DiscountType.PERCENT;
+  return undefined;
+}
+
+function discountTypeFromProto(v: DiscountType | undefined): 'fixed' | 'percent' | null {
+  if (v === DiscountType.FIXED) return 'fixed';
+  if (v === DiscountType.PERCENT) return 'percent';
+  return null;
 }
 
 function fromProto(r: ProtoCouponRule): LocalCouponRule {
@@ -68,6 +103,12 @@ function fromProto(r: ProtoCouponRule): LocalCouponRule {
     min_price: r.minPrice,
     priority: r.priority,
     is_active: r.isActive,
+    official_only: r.officialOnly,
+    code: r.code ?? null,
+    message: r.message ?? null,
+    discount_type: discountTypeFromProto(r.discountType),
+    discount_value: r.discountValue ?? null,
+    max_discount: r.maxDiscount ?? null,
     created_at: r.createdAt,
     updated_at: r.updatedAt,
   };
@@ -107,13 +148,18 @@ export function useCouponRules() {
     mutationFn: async (params: CreateCouponRuleParams) => {
       const resp = await client.createCouponRule(
         create(CreateCouponRuleRequestSchema, {
-          couponId: params.coupon_id,
           platform: params.platform,
           periodStart: params.period_start ?? undefined,
           periodEnd: params.period_end ?? undefined,
           minPrice: params.min_price,
           priority: params.priority,
           isActive: params.is_active,
+          officialOnly: params.official_only,
+          code: params.code ?? undefined,
+          message: params.message ?? undefined,
+          discountType: discountTypeToProto(params.discount_type),
+          discountValue: params.discount_value ?? undefined,
+          maxDiscount: params.max_discount ?? undefined,
         }),
       );
       return resp.rule ? fromProto(resp.rule) : null;
@@ -135,13 +181,18 @@ export function useCouponRules() {
       const resp = await client.updateCouponRule(
         create(UpdateCouponRuleRequestSchema, {
           id: params.id,
-          couponId: params.coupon_id,
           platform: params.platform,
           periodStart: params.period_start,
           periodEnd: params.period_end,
           minPrice: params.min_price,
           priority: params.priority,
           isActive: params.is_active,
+          officialOnly: params.official_only,
+          code: params.code,
+          message: params.message,
+          discountType: discountTypeToProto(params.discount_type),
+          discountValue: params.discount_value,
+          maxDiscount: params.max_discount,
         }),
       );
       return resp.rule ? fromProto(resp.rule) : null;

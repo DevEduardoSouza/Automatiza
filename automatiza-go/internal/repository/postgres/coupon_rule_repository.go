@@ -24,7 +24,9 @@ func NewCouponRuleRepository(db *DB, logger *zap.Logger) repository.CouponRuleRe
 
 const couponRuleSelectColumns = `
 	id, user_id, coupon_id, platform, period_start, period_end,
-	min_price, priority, is_active, created_at, updated_at
+	min_price, priority, is_active, official_only,
+	code, message, discount_type, discount_value, max_discount,
+	created_at, updated_at
 `
 
 func (r *couponRuleRepository) GetUserCouponRules(ctx context.Context, userID string) ([]models.CouponRule, error) {
@@ -55,17 +57,24 @@ func (r *couponRuleRepository) GetCouponRuleByID(ctx context.Context, ruleID, us
 func (r *couponRuleRepository) CreateCouponRule(ctx context.Context, userID string, data *models.CouponRule) (*models.CouponRule, error) {
 	now := time.Now().UTC()
 	query := `
-		INSERT INTO coupon_rules (user_id, coupon_id, platform, period_start, period_end,
-		                          min_price, priority, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO coupon_rules (user_id, platform, period_start, period_end,
+		                          min_price, priority, is_active, official_only,
+		                          code, message, discount_type, discount_value, max_discount,
+		                          created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id
 	`
 	var id string
 	if err := r.db.QueryRow(ctx, query,
-		userID, data.CouponID, data.Platform,
+		userID, data.Platform,
 		nullableTimestamp(data.PeriodStart),
 		nullableTimestamp(data.PeriodEnd),
-		data.MinPrice, data.Priority, data.IsActive,
+		data.MinPrice, data.Priority, data.IsActive, data.OfficialOnly,
+		nullableString(data.Code),
+		nullableString(data.Message),
+		nullableString(data.DiscountType),
+		nullableFloat(data.DiscountValue),
+		nullableFloat(data.MaxDiscount),
 		now, now,
 	).Scan(&id); err != nil {
 		r.logger.Error("Failed to create coupon rule",
@@ -136,66 +145,72 @@ func (r *couponRuleRepository) DeleteCouponRule(ctx context.Context, ruleID, use
 // partial index on (user_id, platform) WHERE is_active keeps it fast
 // even for users with many rules.
 //
+// As of 048 the rule itself owns code/message/discount fields — there's
+// no JOIN to coupons anymore. We synthesize a *models.Coupon from the
+// rule fields so the downstream coupon_handler / formatters keep working
+// without signature churn. The synthesized Coupon's ID is set to the
+// rule ID for ops logging — that's the entity that actually fired.
+//
 // period_start / period_end are NULL = "always valid"; non-null bounds
-// must contain NOW. min_price is the only product-side filter for now;
-// store / category / official-only get added in the follow-up PR.
-func (r *couponRuleRepository) FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64) (*models.Coupon, error) {
+// must contain NOW. official_only=TRUE rules only match Shopee Mall
+// items (productIsOfficial=true on the call); for non-Shopee platforms
+// productIsOfficial is always false, so an official_only rule on
+// Mercado Livre simply never matches — that's the intended behavior.
+func (r *couponRuleRepository) FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64, productIsOfficial bool) (*models.Coupon, error) {
 	const query = `
-		SELECT c.id, c.user_id, c.code, c.title, c.store, c.affiliate_link,
-		       c.expires_at, c.is_active, c.category, c.discount_type,
-		       c.discount_value, c.max_discount, c.min_product_price,
-		       c.coupon_text, c.created_at, c.updated_at
+		SELECT cr.id, cr.user_id, cr.platform,
+		       cr.code, cr.message, cr.discount_type, cr.discount_value, cr.max_discount,
+		       cr.created_at, cr.updated_at
 		FROM coupon_rules cr
-		JOIN coupons c ON c.id = cr.coupon_id
 		WHERE cr.user_id = $1
 		  AND cr.is_active = TRUE
 		  AND cr.platform = $2
 		  AND (cr.period_start IS NULL OR cr.period_start <= NOW())
 		  AND (cr.period_end IS NULL OR cr.period_end >= NOW())
 		  AND cr.min_price <= $3
+		  AND (NOT cr.official_only OR $4)
 		ORDER BY cr.min_price DESC, cr.priority DESC, cr.created_at DESC
 		LIMIT 1
 	`
 
-	row := r.db.QueryRow(ctx, query, userID, platform, productPrice)
+	row := r.db.QueryRow(ctx, query, userID, platform, productPrice, productIsOfficial)
 
-	var c models.Coupon
-	var affiliateLink, category, discountType, couponText *string
-	var discountValue, maxDiscount, minProductPrice *float64
-	var expiresAt *time.Time
-	var createdAt, updatedAt time.Time
-	var isActive *bool
-
-	err := row.Scan(
-		&c.ID, &c.UserID, &c.Code, &c.Title, &c.Store, &affiliateLink,
-		&expiresAt, &isActive, &category, &discountType,
-		&discountValue, &maxDiscount, &minProductPrice,
-		&couponText, &createdAt, &updatedAt,
+	var (
+		id, userIDOut, platformOut       string
+		code, message, discountType      *string
+		discountValue, maxDiscount       *float64
+		createdAt, updatedAt             time.Time
 	)
-	if err != nil {
+
+	if err := row.Scan(
+		&id, &userIDOut, &platformOut,
+		&code, &message, &discountType, &discountValue, &maxDiscount,
+		&createdAt, &updatedAt,
+	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
 
-	c.AffiliateLink = affiliateLink
-	c.Category = category
-	c.DiscountType = discountType
-	c.DiscountValue = discountValue
-	c.MaxDiscount = maxDiscount
-	c.MinProductPrice = minProductPrice
-	c.CouponText = couponText
-	if isActive != nil {
-		c.IsActive = *isActive
+	c := &models.Coupon{
+		ID:            id,
+		UserID:        userIDOut,
+		Store:         platformOut,
+		IsActive:      true,
+		DiscountType:  discountType,
+		DiscountValue: discountValue,
+		MaxDiscount:   maxDiscount,
+		// Message goes into CouponText so the existing formatter (which
+		// looks up CouponText) renders the rule's body verbatim.
+		CouponText: message,
+		CreatedAt:  createdAt.Format(time.RFC3339),
+		UpdatedAt:  updatedAt.Format(time.RFC3339),
 	}
-	if expiresAt != nil {
-		t := expiresAt.Format(time.RFC3339)
-		c.ExpiresAt = &t
+	if code != nil {
+		c.Code = *code
 	}
-	c.CreatedAt = createdAt.Format(time.RFC3339)
-	c.UpdatedAt = updatedAt.Format(time.RFC3339)
-	return &c, nil
+	return c, nil
 }
 
 func (r *couponRuleRepository) scanRule(row pgx.Row) (*models.CouponRule, error) {
@@ -206,7 +221,8 @@ func (r *couponRuleRepository) scanRule(row pgx.Row) (*models.CouponRule, error)
 	err := row.Scan(
 		&rule.ID, &rule.UserID, &rule.CouponID, &rule.Platform,
 		&periodStart, &periodEnd,
-		&rule.MinPrice, &rule.Priority, &rule.IsActive,
+		&rule.MinPrice, &rule.Priority, &rule.IsActive, &rule.OfficialOnly,
+		&rule.Code, &rule.Message, &rule.DiscountType, &rule.DiscountValue, &rule.MaxDiscount,
 		&createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -238,7 +254,8 @@ func (r *couponRuleRepository) scanRules(rows pgx.Rows) ([]models.CouponRule, er
 		if err := rows.Scan(
 			&rule.ID, &rule.UserID, &rule.CouponID, &rule.Platform,
 			&periodStart, &periodEnd,
-			&rule.MinPrice, &rule.Priority, &rule.IsActive,
+			&rule.MinPrice, &rule.Priority, &rule.IsActive, &rule.OfficialOnly,
+			&rule.Code, &rule.Message, &rule.DiscountType, &rule.DiscountValue, &rule.MaxDiscount,
 			&createdAt, &updatedAt,
 		); err != nil {
 			return nil, err
@@ -270,4 +287,18 @@ func nullableTimestamp(s *string) interface{} {
 		return nil
 	}
 	return t
+}
+
+func nullableString(s *string) interface{} {
+	if s == nil || *s == "" {
+		return nil
+	}
+	return *s
+}
+
+func nullableFloat(f *float64) interface{} {
+	if f == nil {
+		return nil
+	}
+	return *f
 }

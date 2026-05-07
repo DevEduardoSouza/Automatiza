@@ -1,4 +1,5 @@
 import { CouponsTabsHeader } from '@/components/coupons/coupons-tabs';
+import { WhatsAppPreview } from '@/components/coupons/whatsapp-preview';
 import { ErrorBoundary } from '@/components/error-boundary';
 import {
   Dialog,
@@ -358,6 +359,17 @@ export default function Coupons() {
                             rows={3}
                             className={`${inputClasses} resize-none`}
                           />
+                          <p className="text-[11px] text-muted-foreground">
+                            Use *negrito*, _itálico_, ~riscado~ e `código` (formato WhatsApp).
+                          </p>
+                        </div>
+
+                        {/* Preview ao vivo do texto que vai pra mensagem.
+                            Reutilizado da página de Cupons Avançados pra
+                            que catálogo e regras compartilhem a mesma
+                            visualização. */}
+                        <div className="space-y-2">
+                          <WhatsAppPreview text={formData.coupon_text ?? ''} />
                         </div>
                       </div>
                     </div>

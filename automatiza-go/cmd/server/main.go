@@ -1081,8 +1081,8 @@ func (a *couponHandlerAdapter) ApplyCouponWithPreloaded(coupon *models.Coupon, o
 	}
 }
 
-func (a *couponHandlerAdapter) ApplyCoupon(ctx context.Context, auto *models.Automation, offerPrice float64, offerStore string) (*offer_generate.CouponResult, error) {
-	result, err := a.handler.ApplyCoupon(ctx, auto, offerPrice, offerStore)
+func (a *couponHandlerAdapter) ApplyCoupon(ctx context.Context, auto *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool) (*offer_generate.CouponResult, error) {
+	result, err := a.handler.ApplyCoupon(ctx, auto, offerPrice, offerStore, productIsOfficial)
 	if err != nil || result == nil {
 		return nil, err
 	}

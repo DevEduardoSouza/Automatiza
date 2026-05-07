@@ -1,4 +1,5 @@
 import { CouponsTabsHeader } from '@/components/coupons/coupons-tabs';
+import { WhatsAppPreview } from '@/components/coupons/whatsapp-preview';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -19,14 +20,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { useCoupons } from '@/hooks/use-coupons';
+import { Textarea } from '@/components/ui/textarea';
 import {
   type CreateCouponRuleParams,
   type LocalCouponRule,
   useCouponRules,
 } from '@/hooks/use-coupon-rules';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const PLATFORM_OPTIONS = [
@@ -35,23 +36,33 @@ const PLATFORM_OPTIONS = [
 ];
 
 interface RuleFormState {
-  coupon_id: string;
   platform: string;
   period_start: string; // datetime-local format
   period_end: string;
   min_price: string;
   priority: string;
   is_active: boolean;
+  official_only: boolean;
+  code: string;
+  message: string;
+  discount_type: '' | 'fixed' | 'percent';
+  discount_value: string;
+  max_discount: string;
 }
 
 const EMPTY_FORM: RuleFormState = {
-  coupon_id: '',
   platform: 'shopee',
   period_start: '',
   period_end: '',
   min_price: '0',
   priority: '0',
   is_active: true,
+  official_only: false,
+  code: '',
+  message: '',
+  discount_type: '',
+  discount_value: '',
+  max_discount: '',
 };
 
 // datetime-local widgets emit "YYYY-MM-DDTHH:mm"; the proto / repo
@@ -89,16 +100,45 @@ function formatPrice(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function formatDiscount(rule: LocalCouponRule): string {
+  if (!rule.discount_type || rule.discount_value == null) return '—';
+  if (rule.discount_type === 'fixed') {
+    return `R$ ${rule.discount_value.toFixed(2)} OFF`;
+  }
+  let line = `${rule.discount_value.toFixed(0)}% OFF`;
+  if (rule.max_discount && rule.max_discount > 0) {
+    line += ` (max R$ ${rule.max_discount.toFixed(2)})`;
+  }
+  return line;
+}
+
+// Build the WhatsApp preview body from the form state. Mirrors the
+// formatter the worker uses when injecting the rule into a dispatch:
+// 🏷️ CUPOM: <code>, 💰 desconto, 📝 mensagem custom. The user sees in
+// the side panel exactly the bubble the chat will show.
+function buildPreview(form: RuleFormState): string {
+  const lines: string[] = [];
+  if (form.code.trim()) lines.push(`🏷️ CUPOM: ${form.code.trim()}`);
+  if (form.discount_type && form.discount_value) {
+    const v = Number(form.discount_value);
+    if (!Number.isNaN(v) && v > 0) {
+      if (form.discount_type === 'fixed') {
+        lines.push(`💰 Desconto: R$ ${v.toFixed(2)} OFF`);
+      } else {
+        let line = `💰 Desconto: ${v.toFixed(0)}% OFF`;
+        const max = Number(form.max_discount);
+        if (!Number.isNaN(max) && max > 0) line += ` (max R$ ${max.toFixed(2)})`;
+        lines.push(line);
+      }
+    }
+  }
+  if (form.message.trim()) lines.push(`📝 ${form.message.trim()}`);
+  return lines.join('\n');
+}
+
 export default function CouponRulesPage() {
   const { t } = useTranslation();
   const { rules, isLoading, createRule, updateRule, deleteRule, isMutating } = useCouponRules();
-  const { coupons } = useCoupons();
-
-  const couponById = useMemo(() => {
-    const m = new Map<string, { code: string; title: string }>();
-    for (const c of coupons) m.set(c.id, { code: c.code, title: c.title });
-    return m;
-  }, [coupons]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -114,35 +154,52 @@ export default function CouponRulesPage() {
   function openEdit(rule: LocalCouponRule) {
     setEditingId(rule.id);
     setForm({
-      coupon_id: rule.coupon_id,
       platform: rule.platform,
       period_start: rfc3339ToLocal(rule.period_start),
       period_end: rfc3339ToLocal(rule.period_end),
       min_price: String(rule.min_price ?? 0),
       priority: String(rule.priority ?? 0),
       is_active: rule.is_active,
+      official_only: rule.official_only,
+      code: rule.code ?? '',
+      message: rule.message ?? '',
+      discount_type: rule.discount_type ?? '',
+      discount_value: rule.discount_value != null ? String(rule.discount_value) : '',
+      max_discount: rule.max_discount != null ? String(rule.max_discount) : '',
     });
     setDialogOpen(true);
   }
 
   async function handleSave() {
-    if (!form.coupon_id || !form.platform) return;
+    if (!form.platform) return;
+    if (!form.code.trim() && !form.message.trim()) return; // at least one must be set
+
+    const discountValueNum = form.discount_value ? Number(form.discount_value) : null;
+    const maxDiscountNum = form.max_discount ? Number(form.max_discount) : null;
 
     const payload: CreateCouponRuleParams = {
-      coupon_id: form.coupon_id,
       platform: form.platform,
       period_start: localToRFC3339(form.period_start) ?? null,
       period_end: localToRFC3339(form.period_end) ?? null,
       min_price: Number(form.min_price) || 0,
       priority: Number(form.priority) || 0,
       is_active: form.is_active,
+      // official_only só faz efeito no Shopee (onde o flag IsMall é
+      // populado); na ML o filtro acaba não casando nada. Forçamos
+      // false quando a plataforma não é Shopee pra não confundir o
+      // operador no banco.
+      official_only: form.platform === 'shopee' && form.official_only,
+      code: form.code.trim() || null,
+      message: form.message.trim() || null,
+      discount_type: form.discount_type || null,
+      discount_value: discountValueNum,
+      max_discount: maxDiscountNum,
     };
 
     try {
       if (editingId) {
         await updateRule({
           id: editingId,
-          coupon_id: payload.coupon_id,
           platform: payload.platform,
           // Empty string explicitly clears the period bound on the server.
           period_start: payload.period_start ?? '',
@@ -150,6 +207,12 @@ export default function CouponRulesPage() {
           min_price: payload.min_price,
           priority: payload.priority,
           is_active: payload.is_active,
+          official_only: payload.official_only,
+          code: payload.code ?? '',
+          message: payload.message ?? '',
+          discount_type: payload.discount_type ?? null,
+          discount_value: discountValueNum ?? 0,
+          max_discount: maxDiscountNum ?? 0,
         });
       } else {
         await createRule(payload);
@@ -193,21 +256,11 @@ export default function CouponRulesPage() {
             })}
           </p>
         </div>
-        <Button onClick={openCreate} disabled={coupons.length === 0}>
+        <Button onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
           {t('pages.couponRules.addRule', { defaultValue: 'Adicionar Regra' })}
         </Button>
       </div>
-
-      {coupons.length === 0 && (
-        <Card>
-          <CardContent className="py-6 text-sm text-muted-foreground">
-            {t('pages.couponRules.noCouponsHint', {
-              defaultValue: 'Crie um cupom em "Cupons" antes de criar regras.',
-            })}
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardContent className="p-0">
@@ -225,6 +278,7 @@ export default function CouponRulesPage() {
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="px-4 py-3 font-medium">Cupom</th>
+                    <th className="px-4 py-3 font-medium">Desconto</th>
                     <th className="px-4 py-3 font-medium">Plataforma</th>
                     <th className="px-4 py-3 font-medium">Valor mín.</th>
                     <th className="px-4 py-3 font-medium">Período</th>
@@ -234,55 +288,62 @@ export default function CouponRulesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rules.map((rule) => {
-                    const cup = couponById.get(rule.coupon_id);
-                    return (
-                      <tr key={rule.id} className="border-b">
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col">
-                            <span className="font-medium">
-                              {cup?.code ?? rule.coupon_id.slice(0, 8)}
+                  {rules.map((rule) => (
+                    <tr key={rule.id} className="border-b">
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{rule.code ?? '—'}</span>
+                          {rule.message && (
+                            <span className="text-xs text-muted-foreground line-clamp-1">
+                              {rule.message}
                             </span>
-                            {cup?.title && (
-                              <span className="text-xs text-muted-foreground">{cup.title}</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">{platformLabel(rule.platform)}</td>
-                        <td className="px-4 py-3">{formatPrice(rule.min_price)}</td>
-                        <td className="px-4 py-3 text-xs">{formatPeriod(rule)}</td>
-                        <td className="px-4 py-3">{rule.priority}</td>
-                        <td className="px-4 py-3">
-                          <Switch
-                            checked={rule.is_active}
-                            onCheckedChange={() => handleToggle(rule)}
-                            disabled={isMutating}
-                            aria-label="Ativar/desativar"
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => openEdit(rule)}
-                              aria-label="Editar"
-                            >
-                              <Pencil className="h-4 w-4" aria-hidden="true" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setConfirmDeleteId(rule.id)}
-                              aria-label="Remover"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-500" aria-hidden="true" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-xs">{formatDiscount(rule)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span>{platformLabel(rule.platform)}</span>
+                          {rule.official_only && (
+                            <span className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                              Loja Oficial
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">{formatPrice(rule.min_price)}</td>
+                      <td className="px-4 py-3 text-xs">{formatPeriod(rule)}</td>
+                      <td className="px-4 py-3">{rule.priority}</td>
+                      <td className="px-4 py-3">
+                        <Switch
+                          checked={rule.is_active}
+                          onCheckedChange={() => handleToggle(rule)}
+                          disabled={isMutating}
+                          aria-label="Ativar/desativar"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEdit(rule)}
+                            aria-label="Editar"
+                          >
+                            <Pencil className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setConfirmDeleteId(rule.id)}
+                            aria-label="Remover"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -292,7 +353,7 @@ export default function CouponRulesPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[480px]">
+        <DialogContent className="sm:max-w-[680px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingId
@@ -302,96 +363,204 @@ export default function CouponRulesPage() {
             <DialogDescription>
               {t('pages.couponRules.dialogHelp', {
                 defaultValue:
-                  'A regra dispara quando o produto bate em todos os filtros — plataforma, período e preço mínimo.',
+                  'A regra dispara quando o produto bate nos filtros (plataforma + valor mínimo + período) e injeta a mensagem na oferta.',
               })}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="rule-coupon">Cupom</Label>
-              <Select
-                value={form.coupon_id}
-                onValueChange={(v) => setForm((f) => ({ ...f, coupon_id: v }))}
-              >
-                <SelectTrigger id="rule-coupon">
-                  <SelectValue placeholder="Selecione um cupom" />
-                </SelectTrigger>
-                <SelectContent>
-                  {coupons.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.code} — {c.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-5 py-2">
+            {/* === Filtros === */}
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Filtros
+              </h3>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="rule-platform">Plataforma</Label>
-              <Select
-                value={form.platform}
-                onValueChange={(v) => setForm((f) => ({ ...f, platform: v }))}
-              >
-                <SelectTrigger id="rule-platform">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PLATFORM_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rule-platform">Plataforma</Label>
+                <Select
+                  value={form.platform}
+                  onValueChange={(v) => setForm((f) => ({ ...f, platform: v }))}
+                >
+                  <SelectTrigger id="rule-platform">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PLATFORM_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="rule-start">Início (opcional)</Label>
-                <Input
-                  id="rule-start"
-                  type="datetime-local"
-                  value={form.period_start}
-                  onChange={(e) => setForm((f) => ({ ...f, period_start: e.target.value }))}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-start">Início (opcional)</Label>
+                  <Input
+                    id="rule-start"
+                    type="datetime-local"
+                    value={form.period_start}
+                    onChange={(e) => setForm((f) => ({ ...f, period_start: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-end">Fim (opcional)</Label>
+                  <Input
+                    id="rule-end"
+                    type="datetime-local"
+                    value={form.period_end}
+                    onChange={(e) => setForm((f) => ({ ...f, period_end: e.target.value }))}
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="rule-end">Fim (opcional)</Label>
-                <Input
-                  id="rule-end"
-                  type="datetime-local"
-                  value={form.period_end}
-                  onChange={(e) => setForm((f) => ({ ...f, period_end: e.target.value }))}
-                />
-              </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="rule-min-price">Valor mín. (R$)</Label>
-                <Input
-                  id="rule-min-price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.min_price}
-                  onChange={(e) => setForm((f) => ({ ...f, min_price: e.target.value }))}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-min-price">Valor mín. produto (R$)</Label>
+                  <Input
+                    id="rule-min-price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.min_price}
+                    onChange={(e) => setForm((f) => ({ ...f, min_price: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-priority">
+                    Prioridade
+                    <span className="ml-1 text-xs text-muted-foreground font-normal">
+                      (desempate)
+                    </span>
+                  </Label>
+                  <Input
+                    id="rule-priority"
+                    type="number"
+                    step="1"
+                    value={form.priority}
+                    onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="rule-priority">Prioridade</Label>
-                <Input
-                  id="rule-priority"
-                  type="number"
-                  step="1"
-                  value={form.priority}
-                  onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
-                />
-              </div>
-            </div>
 
-            <div className="flex items-center justify-between">
+              {form.platform === 'shopee' && (
+                <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="rule-official" className="cursor-pointer">
+                      Apenas Loja Oficial Shopee
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Quando ligado, a regra só dispara em produtos do Shopee Mall
+                      (selo de loja oficial).
+                    </p>
+                  </div>
+                  <Switch
+                    id="rule-official"
+                    checked={form.official_only}
+                    onCheckedChange={(v) => setForm((f) => ({ ...f, official_only: v }))}
+                  />
+                </div>
+              )}
+            </section>
+
+            {/* === Cupom a Aplicar === */}
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Cupom a aplicar
+              </h3>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="rule-code">Código do cupom</Label>
+                <Input
+                  id="rule-code"
+                  type="text"
+                  placeholder="Ex.: BLACK10"
+                  value={form.code}
+                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Aparece como "🏷️ CUPOM: {'<código>'}" na mensagem. Deixe vazio
+                  se a promoção for só de mensagem (sem código).
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-discount-type">Tipo</Label>
+                  <Select
+                    value={form.discount_type || 'none'}
+                    onValueChange={(v) =>
+                      setForm((f) => ({
+                        ...f,
+                        discount_type: v === 'none' ? '' : (v as 'fixed' | 'percent'),
+                      }))
+                    }
+                  >
+                    <SelectTrigger id="rule-discount-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      <SelectItem value="fixed">Fixo (R$)</SelectItem>
+                      <SelectItem value="percent">Percentual (%)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-discount-value">Valor</Label>
+                  <Input
+                    id="rule-discount-value"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0"
+                    value={form.discount_value}
+                    onChange={(e) => setForm((f) => ({ ...f, discount_value: e.target.value }))}
+                    disabled={!form.discount_type}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-max-discount">Desconto máx. (R$)</Label>
+                  <Input
+                    id="rule-max-discount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0"
+                    value={form.max_discount}
+                    onChange={(e) => setForm((f) => ({ ...f, max_discount: e.target.value }))}
+                    disabled={form.discount_type !== 'percent'}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="rule-message">Mensagem do cupom</Label>
+                <Textarea
+                  id="rule-message"
+                  rows={4}
+                  placeholder="Ex.: Use o cupom e ganhe R$ 100 OFF | resgate aqui: https://..."
+                  value={form.message}
+                  onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Suporta formatação do WhatsApp:{' '}
+                  <code className="text-[10px]">*negrito*</code>{' '}
+                  <code className="text-[10px]">_itálico_</code>{' '}
+                  <code className="text-[10px]">~tachado~</code>{' '}
+                  <code className="text-[10px]">`mono`</code>
+                </p>
+              </div>
+
+              <WhatsAppPreview
+                text={buildPreview(form)}
+                title="Preview no WhatsApp"
+                emptyHint="Preencha o código ou a mensagem para ver o preview..."
+              />
+            </section>
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
               <Label htmlFor="rule-active" className="cursor-pointer">
                 Regra ativa
               </Label>
@@ -407,7 +576,12 @@ export default function CouponRulesPage() {
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} disabled={!form.coupon_id || isMutating}>
+            <Button
+              onClick={handleSave}
+              disabled={
+                isMutating || (!form.code.trim() && !form.message.trim())
+              }
+            >
               {editingId ? 'Salvar' : 'Criar'}
             </Button>
           </DialogFooter>
@@ -423,8 +597,7 @@ export default function CouponRulesPage() {
           <DialogHeader>
             <DialogTitle>Remover regra</DialogTitle>
             <DialogDescription>
-              A regra deixa de ser avaliada nos próximos disparos. Os cupons em si não são
-              afetados.
+              A regra deixa de ser avaliada nos próximos disparos.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

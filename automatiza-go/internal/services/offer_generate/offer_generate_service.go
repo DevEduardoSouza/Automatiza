@@ -44,7 +44,7 @@ type CouponResult struct {
 type CouponApplier interface {
 	LoadCouponOnce(ctx context.Context, automation *models.Automation) (*models.Coupon, string)
 	ApplyCouponWithPreloaded(coupon *models.Coupon, offerPrice float64, offerStore string) *CouponResult
-	ApplyCoupon(ctx context.Context, automation *models.Automation, offerPrice float64, offerStore string) (*CouponResult, error)
+	ApplyCoupon(ctx context.Context, automation *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool) (*CouponResult, error)
 }
 
 type offerGenerateService struct {
@@ -365,12 +365,14 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		}
 
 		// Apply coupon: discount-tag override first, then rule engine.
+		// product.IsMall flags Shopee Mall items so official_only rules
+		// can filter correctly.
 		couponBlock := ""
 		if s.couponHandler != nil {
 			var couponResult *CouponResult
 			if preloadedCoupon != nil {
 				couponResult = s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, store)
-			} else if cr, err := s.couponHandler.ApplyCoupon(ctx, auto, offerPrice, store); err == nil {
+			} else if cr, err := s.couponHandler.ApplyCoupon(ctx, auto, offerPrice, store, product.IsMall); err == nil {
 				couponResult = cr
 			}
 			if couponResult != nil && couponResult.Applied {
@@ -435,12 +437,13 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		}
 
 		// Apply coupon: discount-tag override first, then rule engine.
+		// ML doesn't expose a Mall-style flag — productIsOfficial=false.
 		couponBlock := ""
 		if s.couponHandler != nil {
 			var couponResult *CouponResult
 			if preloadedCoupon != nil {
 				couponResult = s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, store)
-			} else if cr, err := s.couponHandler.ApplyCoupon(ctx, auto, offerPrice, store); err == nil {
+			} else if cr, err := s.couponHandler.ApplyCoupon(ctx, auto, offerPrice, store, false); err == nil {
 				couponResult = cr
 			}
 			if couponResult != nil && couponResult.Applied {

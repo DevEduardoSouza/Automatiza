@@ -202,6 +202,9 @@ message ListCouponsByStoreResponse {
 message CouponRule {
   string id = 1;
   string user_id = 2;
+  // Legacy FK kept for rollback only — as of 048 the rule is
+  // self-contained (own code/message/discount fields below). New rules
+  // leave this empty.
   string coupon_id = 3;
   // "shopee", "mercado_livre", etc. — matches Coupon.store canonical form.
   string platform = 4;
@@ -213,8 +216,18 @@ message CouponRule {
   // Tie-break entre regras com mesmo min_price (maior vence).
   int32 priority = 8;
   bool is_active = 9;
-  string created_at = 10;
-  string updated_at = 11;
+  // Quando true, regra só dispara em produtos de Loja Oficial Shopee
+  // (Mall). Sem efeito em outras plataformas.
+  bool official_only = 10;
+  string created_at = 11;
+  string updated_at = 12;
+  // Inline coupon body (standalone rules, migration 048). The matcher
+  // returns these directly — there's no JOIN to a Cupom Simples row.
+  optional string code = 13;
+  optional string message = 14;
+  optional DiscountType discount_type = 15;
+  optional double discount_value = 16;
+  optional double max_discount = 17;
 }
 
 message ListCouponRulesRequest {}
@@ -232,13 +245,22 @@ message GetCouponRuleResponse {
 }
 
 message CreateCouponRuleRequest {
-  string coupon_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Deprecated since 048; servers ignore the value. Kept for wire
+  // compat so older clients don't fail validation. New clients omit it.
+  string coupon_id = 1;
   string platform = 2 [(buf.validate.field).string.min_len = 1];
   optional string period_start = 3;
   optional string period_end = 4;
   optional double min_price = 5;
   optional int32 priority = 6;
   optional bool is_active = 7;
+  optional bool official_only = 8;
+  // Inline coupon body — required for the rule to actually inject anything.
+  optional string code = 9;
+  optional string message = 10;
+  optional DiscountType discount_type = 11;
+  optional double discount_value = 12;
+  optional double max_discount = 13;
 }
 
 message CreateCouponRuleResponse {
@@ -247,6 +269,7 @@ message CreateCouponRuleResponse {
 
 message UpdateCouponRuleRequest {
   string id = 1 [(buf.validate.field).string.min_len = 1];
+  // Deprecated; server ignores updates to this field as of 048.
   optional string coupon_id = 2;
   optional string platform = 3;
   // Empty string explicitly clears the bound (writes NULL); unset leaves alone.
@@ -255,6 +278,13 @@ message UpdateCouponRuleRequest {
   optional double min_price = 6;
   optional int32 priority = 7;
   optional bool is_active = 8;
+  optional bool official_only = 9;
+  // Inline coupon body. Empty string clears (writes NULL).
+  optional string code = 10;
+  optional string message = 11;
+  optional DiscountType discount_type = 12;
+  optional double discount_value = 13;
+  optional double max_discount = 14;
 }
 
 message UpdateCouponRuleResponse {
