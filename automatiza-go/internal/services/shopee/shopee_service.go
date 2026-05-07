@@ -745,7 +745,13 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 				// shopType: 1=Mall (loja oficial), 2=Preferred, 3=Normal.
 				// Drives ShopeeOffer.IsMall, which the coupon rule
 				// matcher reads to honor official_only filters.
-				ShopType int `json:"shopType"`
+				//
+				// Shopee's API actually returns this as either an int
+				// or an int array depending on the product (some
+				// products have multiple shop_type tags — Mall and
+				// Preferred at once). RawMessage lets us accept both
+				// shapes and resolve to "is Mall?" in one helper.
+				ShopType json.RawMessage `json:"shopType"`
 			} `json:"nodes"`
 		} `json:"productOfferV2"`
 	}
@@ -809,8 +815,33 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 		// Shopee shopType=1 marks Mall lojas oficiais — the only signal
 		// the affiliate API gives us about official storefronts. Used
 		// by coupon rules with official_only=true to filter dispatches.
-		IsMall: node.ShopType == 1,
+		IsMall: shopTypeIsMall(node.ShopType),
 	}, nil
+}
+
+// shopTypeIsMall normalizes Shopee's `shopType` field, which the API
+// returns as either a scalar int (`1`) or an int array (`[1, 5]`) —
+// products with multiple shop tags. We treat the shop as Mall whenever
+// the value 1 appears in either shape. Unknown shapes return false so
+// the rule engine fails closed (won't dispatch a Mall-only coupon to
+// an unverified shop).
+func shopTypeIsMall(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var asInt int
+	if err := json.Unmarshal(raw, &asInt); err == nil {
+		return asInt == 1
+	}
+	var asArr []int
+	if err := json.Unmarshal(raw, &asArr); err == nil {
+		for _, v := range asArr {
+			if v == 1 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *shopeeService) ExpandURL(ctx context.Context, shortURL string) (string, error) {
