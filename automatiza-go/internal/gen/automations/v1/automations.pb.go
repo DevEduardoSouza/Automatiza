@@ -519,6 +519,11 @@ type Automation struct {
 	// Preferred sender chip — when set and connected, every dispatch from
 	// this automation goes through this chip; otherwise falls back to the
 	// group's owner chip and then to the first connected instance.
+	//
+	// Deprecated since 049: kept for rollback compat. The dispatcher now
+	// reads instance_ids (multi-chip fan-out for offer_generate). When
+	// both fields are set, instance_ids takes precedence; instance_id is
+	// synced server-side as instance_ids[0] for back-compat.
 	InstanceId *string `protobuf:"bytes,32,opt,name=instance_id,json=instanceId,proto3,oneof" json:"instance_id,omitempty"`
 	// Per-automation opt-out for the global coupon rule engine. true (the
 	// default for new rows) = the worker matches active CouponRules on
@@ -526,8 +531,13 @@ type Automation struct {
 	// would otherwise fit. Use it for search-mode automations whose
 	// products already carry a Shopee promo.
 	ApplyCouponRules bool `protobuf:"varint,33,opt,name=apply_coupon_rules,json=applyCouponRules,proto3" json:"apply_coupon_rules,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Multi-chip preference (049). When non-empty, the offer_generate
+	// dispatcher iterates each chip ID and sends through whichever chip
+	// participates in each destination group — fanning out the same
+	// generated offer across multiple chips without duplicate API calls.
+	InstanceIds   []string `protobuf:"bytes,34,rep,name=instance_ids,json=instanceIds,proto3" json:"instance_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Automation) Reset() {
@@ -789,6 +799,13 @@ func (x *Automation) GetApplyCouponRules() bool {
 		return x.ApplyCouponRules
 	}
 	return false
+}
+
+func (x *Automation) GetInstanceIds() []string {
+	if x != nil {
+		return x.InstanceIds
+	}
+	return nil
 }
 
 //*
@@ -1168,8 +1185,11 @@ type CreateAutomationRequest struct {
 	// Per-automation opt-out for the coupon rule engine. Defaults to true
 	// server-side when not provided.
 	ApplyCouponRules *bool `protobuf:"varint,28,opt,name=apply_coupon_rules,json=applyCouponRules,proto3,oneof" json:"apply_coupon_rules,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Multi-chip preference (049). Non-empty list activates fan-out for
+	// offer_generate. Empty list = no preference (server-side default).
+	InstanceIds   []string `protobuf:"bytes,29,rep,name=instance_ids,json=instanceIds,proto3" json:"instance_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateAutomationRequest) Reset() {
@@ -1398,6 +1418,13 @@ func (x *CreateAutomationRequest) GetApplyCouponRules() bool {
 	return false
 }
 
+func (x *CreateAutomationRequest) GetInstanceIds() []string {
+	if x != nil {
+		return x.InstanceIds
+	}
+	return nil
+}
+
 type CreateAutomationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Automation    *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
@@ -1477,8 +1504,12 @@ type UpdateAutomationRequest struct {
 	// Per-automation opt-out for the coupon rule engine. unset = leave
 	// unchanged; explicitly set false to silence the rule engine.
 	ApplyCouponRules *bool `protobuf:"varint,29,opt,name=apply_coupon_rules,json=applyCouponRules,proto3,oneof" json:"apply_coupon_rules,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Multi-chip preference (049). repeated field semantics: an empty
+	// list in the request clears the preference; to keep unchanged the
+	// client can simply omit the field. Non-empty list overwrites.
+	InstanceIds   []string `protobuf:"bytes,30,rep,name=instance_ids,json=instanceIds,proto3" json:"instance_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateAutomationRequest) Reset() {
@@ -1712,6 +1743,13 @@ func (x *UpdateAutomationRequest) GetApplyCouponRules() bool {
 		return *x.ApplyCouponRules
 	}
 	return false
+}
+
+func (x *UpdateAutomationRequest) GetInstanceIds() []string {
+	if x != nil {
+		return x.InstanceIds
+	}
+	return nil
 }
 
 type UpdateAutomationResponse struct {
@@ -2505,7 +2543,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x16\n" +
 	"\x06suffix\x18\x04 \x01(\tR\x06suffix\x12!\n" +
 	"\fclean_phones\x18\x05 \x01(\bR\vcleanPhones\x12%\n" +
-	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\x8e\r\n" +
+	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xb1\r\n" +
 	"\n" +
 	"Automation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -2549,7 +2587,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x12list_send_as_image\x18\x1f \x01(\bH\x0eR\x0flistSendAsImage\x88\x01\x01\x12$\n" +
 	"\vinstance_id\x18  \x01(\tH\x0fR\n" +
 	"instanceId\x88\x01\x01\x12,\n" +
-	"\x12apply_coupon_rules\x18! \x01(\bR\x10applyCouponRulesB\x13\n" +
+	"\x12apply_coupon_rules\x18! \x01(\bR\x10applyCouponRules\x12!\n" +
+	"\finstance_ids\x18\" \x03(\tR\vinstanceIdsB\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
 	"\x16_monitoring_text_rulesB\x0f\n" +
 	"\r_min_discountB\f\n" +
@@ -2597,7 +2636,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x15GetAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xda\v\n" +
+	"automation\"\xfd\v\n" +
 	"\x17CreateAutomationRequest\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x04name\x122\n" +
@@ -2635,7 +2674,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"R\x0flistSendAsImage\x88\x01\x01\x12$\n" +
 	"\vinstance_id\x18\x1b \x01(\tH\vR\n" +
 	"instanceId\x88\x01\x01\x121\n" +
-	"\x12apply_coupon_rules\x18\x1c \x01(\bH\fR\x10applyCouponRules\x88\x01\x01B\x13\n" +
+	"\x12apply_coupon_rules\x18\x1c \x01(\bH\fR\x10applyCouponRules\x88\x01\x01\x12!\n" +
+	"\finstance_ids\x18\x1d \x03(\tR\vinstanceIdsB\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
 	"\x16_monitoring_text_rulesB\x0f\n" +
 	"\r_min_discountB\f\n" +
@@ -2655,7 +2695,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x18CreateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xe9\f\n" +
+	"automation\"\x8c\r\n" +
 	"\x17UpdateAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
 	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x127\n" +
@@ -2693,7 +2733,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x12list_send_as_image\x18\x1b \x01(\bH\x12R\x0flistSendAsImage\x88\x01\x01\x12$\n" +
 	"\vinstance_id\x18\x1c \x01(\tH\x13R\n" +
 	"instanceId\x88\x01\x01\x121\n" +
-	"\x12apply_coupon_rules\x18\x1d \x01(\bH\x14R\x10applyCouponRules\x88\x01\x01B\a\n" +
+	"\x12apply_coupon_rules\x18\x1d \x01(\bH\x14R\x10applyCouponRules\x88\x01\x01\x12!\n" +
+	"\finstance_ids\x18\x1e \x03(\tR\vinstanceIdsB\a\n" +
 	"\x05_nameB\a\n" +
 	"\x05_modeB\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +

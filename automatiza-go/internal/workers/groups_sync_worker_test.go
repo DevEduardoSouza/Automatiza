@@ -63,6 +63,14 @@ func (m *mockGroupRepo) GetGroupByWAGroupID(ctx context.Context, userID, waGroup
 	return args.Get(0).(*models.Group), args.Error(1)
 }
 
+func (m *mockGroupRepo) GetGroupsByWAGroupIDs(ctx context.Context, userID string, waGroupIDs []string) ([]models.Group, error) {
+	args := m.Called(ctx, userID, waGroupIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.Group), args.Error(1)
+}
+
 func (m *mockGroupRepo) GetGroupsByIDs(ctx context.Context, userID string, groupIDs []string) ([]models.Group, error) {
 	args := m.Called(ctx, userID, groupIDs)
 	if args.Get(0) == nil {

@@ -531,6 +531,10 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 		proto.InstanceId = a.InstanceID
 	}
 
+	// Multi-chip preference (049). Always emit — empty list signals
+	// "no preference" to the client.
+	proto.InstanceIds = a.InstanceIDs
+
 	// Coupon rule engine opt-out (default true server-side)
 	proto.ApplyCouponRules = a.ApplyCouponRules
 
@@ -845,6 +849,17 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.InstanceID = msg.InstanceId
 	}
 
+	// Multi-chip preference (049). Non-empty list overrides the legacy
+	// single-chip InstanceID. The repo's CreateAutomation also writes
+	// instance_id = instance_ids[0] for rollback compat.
+	if len(msg.InstanceIds) > 0 {
+		automation.InstanceIDs = msg.InstanceIds
+		if automation.InstanceID == nil || *automation.InstanceID == "" {
+			first := msg.InstanceIds[0]
+			automation.InstanceID = &first
+		}
+	}
+
 	// Coupon rule engine opt-out — default true when client doesn't send it
 	// so create requests behave like the migration default.
 	if msg.ApplyCouponRules != nil {
@@ -966,6 +981,22 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 	// string→int coercion and the empty-string special case.
 	if msg.InstanceId != nil {
 		updates["instance_id"] = msg.GetInstanceId()
+	}
+
+	// Multi-chip preference (049). Whenever the field is non-nil in the
+	// proto, propagate — this includes the empty-list case which clears
+	// the preference. Note: proto3 `repeated` doesn't expose presence
+	// directly, but the connect-web client always sends the field (even
+	// as empty array) when the form intends to write it.
+	if msg.InstanceIds != nil {
+		updates["instance_ids"] = msg.InstanceIds
+		// Sync legacy instance_id for rollback compat: first element if
+		// non-empty, NULL if cleared.
+		if len(msg.InstanceIds) > 0 {
+			updates["instance_id"] = msg.InstanceIds[0]
+		} else {
+			updates["instance_id"] = ""
+		}
 	}
 
 	// Coupon rule engine opt-out

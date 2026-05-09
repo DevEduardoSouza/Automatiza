@@ -73,7 +73,19 @@ type Automation struct {
 	// to match the wire format). NULL = no preference, fall back to
 	// per-group ownership. When set and the chip is connected, every
 	// dispatch from this automation goes through it.
+	//
+	// Deprecated since migration 049: kept for rollback compat. The
+	// dispatcher now reads InstanceIDs (multi-chip fan-out). This field
+	// stays in sync with InstanceIDs[0] when the array is non-empty.
 	InstanceID *string `json:"instance_id,omitempty" db:"instance_id"`
+
+	// InstanceIDs lists the chips that should dispatch this automation.
+	// Empty / nil means "no preference" (fall back to first connected
+	// chip). The offer_generate dispatcher iterates each ID, finds groups
+	// in the destination set that the chip participates in, and sends
+	// via that chip — so a single automation fans out across N chips
+	// without requiring duplicate API calls per chip.
+	InstanceIDs []string `json:"instance_ids,omitempty" db:"instance_ids"`
 
 	// Per-automation opt-out for the global coupon rule engine. Default
 	// TRUE: the worker matches active CouponRules on every dispatch.
@@ -205,6 +217,10 @@ type CreateAutomationRequest struct {
 	IntervalMinutes *int     `json:"interval_minutes,omitempty"`
 	CouponID        *string  `json:"coupon_id,omitempty"`
 	InstanceID      *string  `json:"instance_id,omitempty"`
+	// InstanceIDs is the multi-chip preference (049). When provided,
+	// supersedes InstanceID — the create handler stores the array and
+	// syncs InstanceID with InstanceIDs[0] for back-compat.
+	InstanceIDs []string `json:"instance_ids,omitempty"`
 }
 
 // UpdateAutomationRequest represents a request to update an automation
@@ -235,6 +251,11 @@ type UpdateAutomationRequest struct {
 	// InstanceID is a tri-state pointer: nil = not provided (no change),
 	// pointer to "" = explicitly clear the preference, otherwise = set.
 	InstanceID *string `json:"instance_id,omitempty"`
+	// InstanceIDs replaces InstanceID for the multi-chip fan-out (049).
+	// nil = not provided (no change), empty slice = explicit clear,
+	// non-empty = set the new list. The repo also writes InstanceID
+	// (the legacy single field) as InstanceIDs[0] for rollback compat.
+	InstanceIDs *[]string `json:"instance_ids,omitempty"`
 }
 
 // ToMap converts UpdateAutomationRequest to a map for database updates
@@ -320,6 +341,11 @@ func (r *UpdateAutomationRequest) ToMap() map[string]interface{} {
 		} else {
 			result["instance_id"] = *r.InstanceID
 		}
+	}
+	if r.InstanceIDs != nil {
+		// nil = not provided (no change); empty = explicit clear; non-empty
+		// = set. Repo coerces the string IDs to ints when writing the array.
+		result["instance_ids"] = *r.InstanceIDs
 	}
 
 	return result

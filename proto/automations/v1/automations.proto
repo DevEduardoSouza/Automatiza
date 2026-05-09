@@ -202,6 +202,11 @@ message Automation {
   // Preferred sender chip — when set and connected, every dispatch from
   // this automation goes through this chip; otherwise falls back to the
   // group's owner chip and then to the first connected instance.
+  //
+  // Deprecated since 049: kept for rollback compat. The dispatcher now
+  // reads instance_ids (multi-chip fan-out for offer_generate). When
+  // both fields are set, instance_ids takes precedence; instance_id is
+  // synced server-side as instance_ids[0] for back-compat.
   optional string instance_id = 32;
 
   // Per-automation opt-out for the global coupon rule engine. true (the
@@ -210,6 +215,12 @@ message Automation {
   // would otherwise fit. Use it for search-mode automations whose
   // products already carry a Shopee promo.
   bool apply_coupon_rules = 33;
+
+  // Multi-chip preference (049). When non-empty, the offer_generate
+  // dispatcher iterates each chip ID and sends through whichever chip
+  // participates in each destination group — fanning out the same
+  // generated offer across multiple chips without duplicate API calls.
+  repeated string instance_ids = 34;
 }
 
 /**
@@ -314,6 +325,9 @@ message CreateAutomationRequest {
   // Per-automation opt-out for the coupon rule engine. Defaults to true
   // server-side when not provided.
   optional bool apply_coupon_rules = 28;
+  // Multi-chip preference (049). Non-empty list activates fan-out for
+  // offer_generate. Empty list = no preference (server-side default).
+  repeated string instance_ids = 29;
 }
 
 message CreateAutomationResponse {
@@ -358,6 +372,10 @@ message UpdateAutomationRequest {
   // Per-automation opt-out for the coupon rule engine. unset = leave
   // unchanged; explicitly set false to silence the rule engine.
   optional bool apply_coupon_rules = 29;
+  // Multi-chip preference (049). repeated field semantics: an empty
+  // list in the request clears the preference; to keep unchanged the
+  // client can simply omit the field. Non-empty list overwrites.
+  repeated string instance_ids = 30;
 }
 
 message UpdateAutomationResponse {

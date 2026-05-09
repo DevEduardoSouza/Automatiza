@@ -67,7 +67,7 @@ func (r *automationRepository) GetUserAutomations(ctx context.Context, userID st
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
 		FROM automations
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -93,7 +93,7 @@ func (r *automationRepository) GetActiveAutomations(ctx context.Context) ([]mode
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
 		FROM automations
 		WHERE status = 'active'
 		ORDER BY priority DESC, created_at ASC
@@ -119,7 +119,7 @@ func (r *automationRepository) GetAutomationByID(ctx context.Context, automation
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
 		FROM automations
 		WHERE id = $1
 	`
@@ -138,7 +138,7 @@ func (r *automationRepository) GetAutomationByIDAndUser(ctx context.Context, aut
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
 		FROM automations
 		WHERE id = $1 AND user_id = $2
 	`
@@ -172,11 +172,11 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 			schedule_time, schedule_days, start_time, end_time, interval_minutes,
 			delay_seconds, dedupe_hours, coupon_id, created_at, updated_at,
 			texts, ctas, cta_ids, ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-			list_send_as_image, instance_id, apply_coupon_rules
+			list_send_as_image, instance_id, instance_ids, apply_coupon_rules
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
-			$32, $33, $34, $35, $36, $37, $38, $39, $40, $41
+			$32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42
 		)
 		RETURNING id
 	`
@@ -191,6 +191,27 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 		}
 	}
 
+	// instance_ids is the multi-chip preference (049). The model field is
+	// []string to match the wire format; pgx writes INTEGER[] from []int.
+	// Unparseable / empty entries are dropped so the array never contains
+	// 0 (which would FK to a non-existent row). nil = NULL column.
+	var instanceIDsArg interface{}
+	if len(data.InstanceIDs) > 0 {
+		ids := make([]int, 0, len(data.InstanceIDs))
+		for _, s := range data.InstanceIDs {
+			if s == "" {
+				continue
+			}
+			var n int
+			if _, err := fmt.Sscanf(s, "%d", &n); err == nil && n > 0 {
+				ids = append(ids, n)
+			}
+		}
+		if len(ids) > 0 {
+			instanceIDsArg = ids
+		}
+	}
+
 	var id string
 	err := r.db.QueryRow(ctx, query,
 		userID, data.Name, data.Type, data.Status, data.Mode, data.ShopeeLink, data.Keyword,
@@ -200,7 +221,7 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 		data.ScheduleTime, scheduleDaysJSON, data.StartTime, data.EndTime, data.IntervalMinutes,
 		data.DelaySeconds, data.DedupeHours, data.CouponID, now, now,
 		data.Texts, data.CTAs, data.CTAIDs, data.MlLinkListID, data.ListItemsPerRun, data.ListIncludeImage, data.PriorityType,
-		data.ListSendAsImage, instanceIDArg, data.ApplyCouponRules,
+		data.ListSendAsImage, instanceIDArg, instanceIDsArg, data.ApplyCouponRules,
 	).Scan(&id)
 
 	if err != nil {
@@ -237,6 +258,30 @@ func (r *automationRepository) UpdateAutomation(ctx context.Context, automationI
 		if rules, ok := val.(*models.MonitoringTextRules); ok {
 			jsonBytes := marshalJSONField(r.logger, rules, "monitoring_text_rules", []byte("null"))
 			updates["monitoring_text_rules"] = string(jsonBytes)
+		}
+	}
+
+	// instance_ids arrives as []string from ToMap. Convert to []int so pgx
+	// can write the INTEGER[] column. Empty / non-positive entries are
+	// dropped — never write 0 (FK to a non-existent row). Empty result
+	// becomes nil so the column is set to NULL (clear preference).
+	if val, ok := updates["instance_ids"]; ok {
+		if arr, isStrSlice := val.([]string); isStrSlice {
+			ids := make([]int, 0, len(arr))
+			for _, s := range arr {
+				if s == "" {
+					continue
+				}
+				var n int
+				if _, err := fmt.Sscanf(s, "%d", &n); err == nil && n > 0 {
+					ids = append(ids, n)
+				}
+			}
+			if len(ids) == 0 {
+				updates["instance_ids"] = nil
+			} else {
+				updates["instance_ids"] = ids
+			}
 		}
 	}
 
@@ -323,7 +368,7 @@ func (r *automationRepository) GetMonitoringAutomationsForGroup(ctx context.Cont
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'monitoring'
@@ -352,7 +397,7 @@ func (r *automationRepository) GetOfferGenerateAutomationsForGroup(ctx context.C
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'offer_generate'
@@ -392,6 +437,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	var listIncludeImage *bool
 	var listSendAsImage *bool
 	var instanceID *int
+	var instanceIDs []int
 
 	err := row.Scan(
 		&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
@@ -403,7 +449,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 		&couponID, &createdAt, &updatedAt,
 		&texts, &ctas, &ctaIDs, &lastError, &lastErrorAt,
 		&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
-		&listSendAsImage, &instanceID, &a.ApplyCouponRules,
+		&listSendAsImage, &instanceID, &instanceIDs, &a.ApplyCouponRules,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -432,6 +478,13 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	if instanceID != nil {
 		s := fmt.Sprintf("%d", *instanceID)
 		a.InstanceID = &s
+	}
+	if len(instanceIDs) > 0 {
+		ids := make([]string, len(instanceIDs))
+		for i, n := range instanceIDs {
+			ids[i] = fmt.Sprintf("%d", n)
+		}
+		a.InstanceIDs = ids
 	}
 	if includeImage != nil {
 		a.IncludeImage = *includeImage
@@ -516,6 +569,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		var listIncludeImage *bool
 		var listSendAsImage *bool
 		var instanceID *int
+		var instanceIDs []int
 
 		err := rows.Scan(
 			&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
@@ -527,7 +581,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 			&couponID, &createdAt, &updatedAt,
 			&texts, &ctas, &ctaIDs, &lastError, &lastErrorAt,
 			&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
-			&listSendAsImage, &instanceID, &a.ApplyCouponRules,
+			&listSendAsImage, &instanceID, &instanceIDs, &a.ApplyCouponRules,
 		)
 		if err != nil {
 			return nil, err
@@ -553,6 +607,13 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		if instanceID != nil {
 			s := fmt.Sprintf("%d", *instanceID)
 			a.InstanceID = &s
+		}
+		if len(instanceIDs) > 0 {
+			ids := make([]string, len(instanceIDs))
+			for i, n := range instanceIDs {
+				ids[i] = fmt.Sprintf("%d", n)
+			}
+			a.InstanceIDs = ids
 		}
 		if includeImage != nil {
 			a.IncludeImage = *includeImage

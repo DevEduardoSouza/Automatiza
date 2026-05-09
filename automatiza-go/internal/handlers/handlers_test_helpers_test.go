@@ -364,6 +364,9 @@ func (m *mockGroupRepo) GetGroupByID(ctx context.Context, groupID string) (*mode
 func (m *mockGroupRepo) GetGroupByWAGroupID(ctx context.Context, userID, waGroupID string) (*models.Group, error) {
 	return nil, nil
 }
+func (m *mockGroupRepo) GetGroupsByWAGroupIDs(ctx context.Context, userID string, waGroupIDs []string) ([]models.Group, error) {
+	return nil, nil
+}
 func (m *mockGroupRepo) GetGroupsByIDs(ctx context.Context, userID string, groupIDs []string) ([]models.Group, error) {
 	return nil, nil
 }

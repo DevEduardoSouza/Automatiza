@@ -66,7 +66,16 @@ export interface Automation {
   // by the form's chip selector and persisted; the worker uses it as the
   // sender for every dispatch from this automation. Empty / null = no
   // preference (legacy default).
+  //
+  // Deprecated since 049: kept for rollback compat. The form now writes
+  // instance_ids (multi-chip fan-out for offer_generate); the backend
+  // syncs instance_id with instance_ids[0].
   instance_id?: string | null;
+  // Multi-chip preference (049). Non-empty list activates fan-out for
+  // offer_generate — the worker dispatches the same offer through every
+  // selected chip on whichever destination groups they participate in.
+  // For non-fan-out modes the dispatcher still uses just instance_ids[0].
+  instance_ids?: string[];
   // Per-automation opt-out for the coupon rule engine. true (default)
   // means the worker matches global CouponRules on every dispatch.
   // false silences cupom injection for this automation entirely.

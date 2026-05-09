@@ -186,6 +186,7 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     list_include_image: local.listIncludeImage,
     list_send_as_image: local.listSendAsImage,
     instance_id: local.instanceId ?? null,
+    instance_ids: local.instanceIds ?? [],
     apply_coupon_rules: local.applyCouponRules ?? true,
   };
 }
@@ -629,6 +630,7 @@ export function useAutomations(): UseAutomationsReturn {
           // preference (when the user picks "all chips"). undefined
           // would leave the previous value untouched.
           instanceId: formData.instance_id ?? '',
+          instanceIds: formData.instance_ids ?? [],
           applyCouponRules: formData.apply_coupon_rules,
         };
 
@@ -682,6 +684,7 @@ export function useAutomations(): UseAutomationsReturn {
           listSendAsImage:
             mode === 'list' ? Boolean(formData.list_send_as_image ?? false) : undefined,
           instanceId: formData.instance_id ?? undefined,
+          instanceIds: formData.instance_ids ?? [],
           // Mirrors the form default (see automation-form-dialog): every
           // new automation here starts with the rule engine OFF, so the
           // user opts in explicitly when they want coupon injection.

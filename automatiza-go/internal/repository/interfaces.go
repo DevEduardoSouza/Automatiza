@@ -99,6 +99,10 @@ type GroupRepository interface {
 	GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*GroupPaginatedResult, error)
 	GetGroupByID(ctx context.Context, groupID string) (*models.Group, error)
 	GetGroupByWAGroupID(ctx context.Context, userID, waGroupID string) (*models.Group, error)
+	// GetGroupsByWAGroupIDs is the batch counterpart of GetGroupByWAGroupID
+	// — used by the offer_generate fan-out to look up participating chip
+	// IDs for every destination group in one round-trip instead of N+1.
+	GetGroupsByWAGroupIDs(ctx context.Context, userID string, waGroupIDs []string) ([]models.Group, error)
 	GetGroupsByIDs(ctx context.Context, userID string, groupIDs []string) ([]models.Group, error)
 	GetFavoriteGroups(ctx context.Context, userID string) ([]models.Group, error)
 	CreateGroup(ctx context.Context, userID string, group *models.Group) (*models.Group, error)

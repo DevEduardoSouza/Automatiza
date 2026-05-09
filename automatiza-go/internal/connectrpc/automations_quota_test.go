@@ -45,6 +45,9 @@ func (f *fakeQuotaGroupRepo) GetGroupByID(context.Context, string) (*models.Grou
 func (f *fakeQuotaGroupRepo) GetGroupByWAGroupID(context.Context, string, string) (*models.Group, error) {
 	panic("GetGroupByWAGroupID not implemented in fakeQuotaGroupRepo")
 }
+func (f *fakeQuotaGroupRepo) GetGroupsByWAGroupIDs(context.Context, string, []string) ([]models.Group, error) {
+	return nil, nil
+}
 func (f *fakeQuotaGroupRepo) GetGroupsByIDs(context.Context, string, []string) ([]models.Group, error) {
 	panic("GetGroupsByIDs not implemented in fakeQuotaGroupRepo")
 }
