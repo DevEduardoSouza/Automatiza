@@ -217,6 +217,11 @@ export function useOfferGenerate() {
         delaySeconds: formData.delay_seconds ?? 10,
         couponId: formData.coupon_id || undefined,
         dispatchTextId: formData.dispatch_text_id || undefined,
+        // Multi-chip preference (049). Empty list = "no preference" (server
+        // falls back to first connected). instanceId é mantido em sync com
+        // instanceIds[0] no backend pra rollback compat.
+        instanceIds: formData.instance_ids ?? [],
+        instanceId: formData.instance_id ?? undefined,
         // Mirror the toggle on the offer-generate config page; default
         // to true when unset so the rule engine still kicks in for
         // existing rows that pre-date the field.

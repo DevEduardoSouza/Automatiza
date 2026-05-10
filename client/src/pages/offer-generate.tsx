@@ -73,14 +73,24 @@ export default function OfferGenerate() {
     confirmDelete,
   } = useOfferGenerate();
 
-  // Chip selection: which WhatsApp number this offer-generate config runs
-  // on. Default to the existing config's chip when editing; otherwise the
-  // user's default. The dispatch routing reads each saved group's chip,
-  // so this is purely a UI affordance to keep the group list focused.
-  const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
+  // Multi-chip preference (049). Operador escolhe N chips; offer_generate
+  // chama API 1x e despacha pra cada grupo destino através do primeiro
+  // chip da lista que participa daquele grupo. Resolução inicial:
+  //   - editing: usa o instance_ids salvo, ou cai pro instance_id legado,
+  //              ou infere do primeiro send_group existente
+  //   - novo:    chip is_default em uma lista de 1 elemento
+  const [selectedChipIds, setSelectedChipIds] = useState<string[]>([]);
   useEffect(() => {
     if (instances.length === 0) {
-      setSelectedChipId(null);
+      setSelectedChipIds([]);
+      return;
+    }
+    if (formData.instance_ids && formData.instance_ids.length > 0) {
+      setSelectedChipIds(formData.instance_ids);
+      return;
+    }
+    if (formData.instance_id) {
+      setSelectedChipIds([formData.instance_id]);
       return;
     }
     const firstSendGroup = formData.send_groups?.[0];
@@ -88,47 +98,52 @@ export default function OfferGenerate() {
       ? groups.find((g) => g.wa_group_id === firstSendGroup)?.instance_id
       : undefined;
     if (fromExisting) {
-      setSelectedChipId(fromExisting);
+      setSelectedChipIds([fromExisting]);
       return;
     }
     const defaultInstance = instances.find((i) => i.is_default) ?? instances[0];
-    setSelectedChipId((prev) => prev ?? defaultInstance?.id ?? null);
+    setSelectedChipIds(defaultInstance?.id ? [defaultInstance.id] : []);
     // Re-resolve only when the config row changes, not on every keystroke.
   }, [config?.id, instances]);
 
-  // Match against participating_instance_ids (every chip whose sync has
-  // seen the group) instead of just instance_id (the single owner). Without
-  // this, a group both chips are admin in only shows under the owning chip
-  // and the user can't reach it from the other chip's view. instance_id
-  // stays as the fallback for pre-migration legacy rows.
-  const matchesChip = (g: AutomationGroup, chipId: string): boolean => {
+  // Visibilidade do grupo: aparece quando AO MENOS UM dos chips marcados
+  // participa (ou é dono, fallback pré-044). Lista vazia = sem filtro.
+  const matchesAnyChip = (g: AutomationGroup, chipIds: string[]): boolean => {
+    if (chipIds.length === 0) return true;
     const participants = g.participating_instance_ids;
     if (participants && participants.length > 0) {
-      return participants.includes(chipId);
+      return chipIds.some((id) => participants.includes(id));
     }
-    return g.instance_id === chipId;
+    return g.instance_id ? chipIds.includes(g.instance_id) : false;
   };
 
   const filteredGroups = useMemo(() => {
-    if (!selectedChipId) return groups;
-    return groups.filter((g) => matchesChip(g, selectedChipId));
-  }, [groups, selectedChipId]);
+    if (selectedChipIds.length === 0) return groups;
+    return groups.filter((g) => matchesAnyChip(g, selectedChipIds));
+  }, [groups, selectedChipIds]);
 
   const filteredAllGroups = useMemo(() => {
-    if (!selectedChipId) return allGroups;
-    return allGroups.filter((g) => matchesChip(g, selectedChipId));
-  }, [allGroups, selectedChipId]);
+    if (selectedChipIds.length === 0) return allGroups;
+    return allGroups.filter((g) => matchesAnyChip(g, selectedChipIds));
+  }, [allGroups, selectedChipIds]);
 
-  const handleChipChange = (id: string | null) => {
-    if (id === selectedChipId) return;
-    setSelectedChipId(id);
-    // Clear selections so the user does not save group ids that belong to
-    // a chip they are no longer targeting.
-    setFormData((prev) => ({
-      ...prev,
-      send_groups: [],
-      monitor_groups: [],
-    }));
+  const handleChipToggle = (chipId: string) => {
+    setSelectedChipIds((prev) => {
+      const next = prev.includes(chipId)
+        ? prev.filter((id) => id !== chipId)
+        : [...prev, chipId];
+      // Limpa seleções de grupos (podem não pertencer aos chips atuais)
+      // e persiste a preferência no formData. instance_id legado fica em
+      // sync com [0] pra rollback compat.
+      setFormData((current) => ({
+        ...current,
+        send_groups: [],
+        monitor_groups: [],
+        instance_ids: next,
+        instance_id: next[0] ?? null,
+      }));
+      return next;
+    });
   };
 
   const handleTabChange = (tab: StatusTab) => {
@@ -284,25 +299,60 @@ export default function OfferGenerate() {
               {/* Config body */}
               {showConfig && (
                 <div className="px-4 xs:px-5 pb-4 xs:pb-5 space-y-3 xs:space-y-4">
-                  {/* Chip selector — picks which WhatsApp number this
-                      offer-generate config runs on. Filters the group lists
-                      below to that chip's groups. */}
+                  {/* Multi-chip preference (049). Marca os números pelos
+                      quais o offer_generate vai disparar; a API é chamada
+                      1x e o fan-out roteia cada grupo destino pro primeiro
+                      chip da lista que participa dele. */}
                   {instances.length > 0 && (
                     <div className="space-y-1.5 xs:space-y-2">
                       <Label>
-                        {t('pages.offerGenerate.config.chip', 'Número')} *{' '}
+                        {t('pages.offerGenerate.config.chips', 'Números')} *{' '}
                         <span className="text-xs text-muted-foreground">
                           {t(
-                            'pages.offerGenerate.config.chipHint',
-                            'Os grupos abaixo são deste número. Trocar limpa a seleção.'
+                            'pages.offerGenerate.config.chipsHint',
+                            'Marque um ou mais números. Os grupos abaixo são a união dos selecionados.'
                           )}
                         </span>
                       </Label>
-                      <ChipSelector
-                        value={selectedChipId}
-                        onChange={handleChipChange}
-                        instances={instances}
-                      />
+                      <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
+                        {instances.map((inst) => {
+                          const checked = selectedChipIds.includes(inst.id);
+                          const label =
+                            inst.friendly_name ||
+                            (inst.phone_number ? `+${inst.phone_number}` : inst.instance_id);
+                          return (
+                            <label
+                              key={inst.id}
+                              className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer text-sm transition-colors ${
+                                checked
+                                  ? 'border-[#8D2D53] bg-[rgba(141,45,83,0.08)]'
+                                  : 'border-input hover:bg-muted/40'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-[#8D2D53]"
+                                checked={checked}
+                                onChange={() => handleChipToggle(inst.id)}
+                              />
+                              <span className="flex-1 truncate">{label}</span>
+                              {inst.is_default && (
+                                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                  padrão
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {selectedChipIds.length === 0 && (
+                        <p className="text-xs text-amber-600">
+                          {t(
+                            'pages.offerGenerate.config.chipsRequired',
+                            'Selecione pelo menos 1 número.'
+                          )}
+                        </p>
+                      )}
                     </div>
                   )}
 
