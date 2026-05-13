@@ -108,6 +108,9 @@ export function AutomationFormDialog({
   //               user sees their saved selection right away
   // Switching chips clears send_groups/monitor_groups (selections from the
   // old chip wouldn't match the new chip's groups anyway).
+  //
+  // Single-chip por design: o /offer-automations dispara via UM chip por
+  // automação. O fan-out multi-chip vive em /offer-generate (049).
   const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: only re-resolve on open or initial editing target
@@ -117,10 +120,6 @@ export function AutomationFormDialog({
       setSelectedChipId(null);
       return;
     }
-    // Prefer the saved per-automation chip preference (formData.instance_id)
-    // over inferring it from the first group's owner. Without this, picking
-    // chip B and saving would silently revert to A on the next edit because
-    // groups[].instance_id is the *owner*, not the user's choice.
     if (formData.instance_id) {
       setSelectedChipId(formData.instance_id);
       return;
@@ -137,9 +136,6 @@ export function AutomationFormDialog({
     setSelectedChipId(defaultInstance?.id ?? null);
   }, [open, editingId]);
 
-  // Groups/allGroups filtered to the selected chip — what the user actually
-  // sees in the SendGroupsSelector / MonitorGroupsSelector.
-  //
   // Match against participating_instance_ids (every chip whose sync has
   // seen the group) instead of just instance_id (the single owner).
   // Without this, a group both chips are admin in only shows under the
@@ -169,12 +165,14 @@ export function AutomationFormDialog({
     setSelectedChipId(id);
     // Clear group selections (they may not match the new chip) AND
     // persist the preference into formData so the save call carries it.
-    // null == "all chips" → empty string → repo writes NULL.
+    // Mantemos instance_ids = [id] em sync pra que o backend salve a
+    // forma nova (049) consistentemente, mesmo com UI single-chip.
     setFormData((prev) => ({
       ...prev,
       send_groups: [],
       monitor_groups: [],
       instance_id: id ?? null,
+      instance_ids: id ? [id] : [],
     }));
   };
 

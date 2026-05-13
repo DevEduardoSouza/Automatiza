@@ -500,6 +500,7 @@ func main() {
 	offerGenerateService := offer_generate.NewOfferGenerateService(
 		automationRepo,
 		instanceRepo,
+		groupRepo,
 		dispatchLogRepo,
 		settingsRepo,
 		couponRepo,

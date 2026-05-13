@@ -50,6 +50,7 @@ type CouponApplier interface {
 type offerGenerateService struct {
 	automationRepo  repository.AutomationRepository
 	instanceRepo    repository.InstanceRepository
+	groupRepo       repository.GroupRepository
 	dispatchLogRepo repository.DispatchLogRepository
 	settingsRepo    repository.SettingsRepository
 	couponRepo      repository.CouponRepository
@@ -70,6 +71,7 @@ type offerGenerateService struct {
 func NewOfferGenerateService(
 	automationRepo repository.AutomationRepository,
 	instanceRepo repository.InstanceRepository,
+	groupRepo repository.GroupRepository,
 	dispatchLogRepo repository.DispatchLogRepository,
 	settingsRepo repository.SettingsRepository,
 	couponRepo repository.CouponRepository,
@@ -85,6 +87,7 @@ func NewOfferGenerateService(
 	return &offerGenerateService{
 		automationRepo:  automationRepo,
 		instanceRepo:    instanceRepo,
+		groupRepo:       groupRepo,
 		dispatchLogRepo: dispatchLogRepo,
 		settingsRepo:    settingsRepo,
 		couponRepo:      couponRepo,
@@ -288,23 +291,56 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		}
 	}
 
-	// 8. Resolve sender session (automation owner's connected instance)
+	// 8. Resolve sender chips for the multi-chip fan-out (049).
+	//
+	// Build (a) the connected-by-id map for picking session names, and
+	// (b) the ordered preference list. Falls back to "first connected"
+	// when the automation has no chip preference set, preserving the
+	// pre-049 behavior for older rows.
 	instances, err := s.instanceRepo.GetUserInstances(ctx, auto.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to get user instances: %w", err)
 	}
-	var senderSession string
+	connectedByID := make(map[string]string, len(instances)) // db id (string) -> session name
+	var firstConnected string
 	for _, inst := range instances {
-		if inst.Status == "connected" {
-			senderSession = inst.InstanceID
-			break
+		if inst.Status != "connected" {
+			continue
+		}
+		idStr := fmt.Sprintf("%d", inst.ID)
+		connectedByID[idStr] = inst.InstanceID
+		if firstConnected == "" {
+			firstConnected = inst.InstanceID
 		}
 	}
-	if senderSession == "" {
+	if firstConnected == "" {
 		s.logger.Warn("No connected WhatsApp instance for offer_generate",
 			zap.String("automationID", auto.ID),
 			zap.String("userID", auto.UserID))
 		return nil
+	}
+
+	// Preference order: explicit list when set; legacy single InstanceID
+	// otherwise; finally, fall through to "use firstConnected for every
+	// group" (no participation filter).
+	preferenceIDs := make([]string, 0, len(auto.InstanceIDs)+1)
+	for _, id := range auto.InstanceIDs {
+		if _, ok := connectedByID[id]; ok {
+			preferenceIDs = append(preferenceIDs, id)
+		}
+	}
+	if len(preferenceIDs) == 0 && auto.InstanceID != nil && *auto.InstanceID != "" {
+		if _, ok := connectedByID[*auto.InstanceID]; ok {
+			preferenceIDs = append(preferenceIDs, *auto.InstanceID)
+		}
+	}
+	// senderSession is the *default* chip for the dispatch run — used
+	// for markOwnOutgoing keys and as a fallback when no chip in the
+	// preference participates in a given group. Picks the first chip in
+	// the preference list, or the first connected if there's no list.
+	senderSession := firstConnected
+	if len(preferenceIDs) > 0 {
+		senderSession = connectedByID[preferenceIDs[0]]
 	}
 
 	// 9. Process the FIRST valid link
@@ -517,11 +553,66 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		destinationGroups = auto.GetTargetGroups()
 	}
 
+	// Build wa_group_id → []participating chip IDs map for the multi-chip
+	// fan-out. With the map, each destination group routes through the
+	// FIRST chip in the preference list that actually participates in it
+	// — falling back to senderSession when no preference applies. The
+	// lookup is O(1) per group and the load is one DB round-trip total.
+	groupParticipants := map[string][]string{}
+	if s.groupRepo != nil && len(preferenceIDs) > 0 && len(destinationGroups) > 0 {
+		groups, err := s.groupRepo.GetGroupsByWAGroupIDs(ctx, auto.UserID, destinationGroups)
+		if err != nil {
+			s.logger.Warn("Failed to load destination group participants — falling back to default chip",
+				zap.String("automationID", auto.ID), zap.Error(err))
+		} else {
+			for _, g := range groups {
+				groupParticipants[g.WAGroupID] = g.ParticipatingInstanceIDs
+			}
+		}
+	}
+
+	// chipForGroup picks the right chip session for a given group:
+	// the first chip in the automation's preference list that participates.
+	// Falls back to senderSession when the group has no recorded
+	// participation (e.g. brand-new sync) or no preference is set.
+	chipForGroup := func(waGroupID string) string {
+		if len(preferenceIDs) == 0 {
+			return senderSession
+		}
+		participants := groupParticipants[waGroupID]
+		if len(participants) == 0 {
+			// No participation data — best-effort use the first preferred
+			// chip; WAHA will fail loudly if it's truly not in the group.
+			return connectedByID[preferenceIDs[0]]
+		}
+		participantSet := make(map[string]struct{}, len(participants))
+		for _, p := range participants {
+			participantSet[p] = struct{}{}
+		}
+		for _, prefID := range preferenceIDs {
+			if _, ok := participantSet[prefID]; ok {
+				return connectedByID[prefID]
+			}
+		}
+		// None of the preferred chips participate — skip via empty string;
+		// caller will skip dispatch.
+		return ""
+	}
+
 	dedupeHours := auto.GetDedupeHours()
 
 	for _, groupID := range destinationGroups {
 		// Skip source group
 		if groupID == msg.RemoteJID {
+			continue
+		}
+
+		dispatchSession := chipForGroup(groupID)
+		if dispatchSession == "" {
+			s.logger.Info("No preferred chip participates in destination group, skipping",
+				zap.String("automationID", auto.ID),
+				zap.String("toGroup", groupID))
+			s.logDispatch(ctx, auto, groupID, links[0], "skipped", "no_chip_in_group", canonicalKey, store)
 			continue
 		}
 
@@ -546,22 +637,24 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		// for our send arrives with FromMe=true; ProcessIncomingMessage
 		// looks for this key to distinguish "real loop" from "user posted
 		// manually." 60s TTL is far longer than any reasonable webhook
-		// delay; if the send fails, the orphan key is harmless.
-		s.markOwnOutgoing(ctx, senderSession, groupID, renderedMessage)
+		// delay; if the send fails, the orphan key is harmless. Indexed
+		// by the actual sending session so multi-chip fan-out doesn't
+		// share keys across chips.
+		s.markOwnOutgoing(ctx, dispatchSession, groupID, renderedMessage)
 
 		// Send via WhatsApp
 		sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		var sendErr error
 		if imageURL != "" {
 			_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
-				SessionName: senderSession,
+				SessionName: dispatchSession,
 				ChatID:      groupID,
 				Caption:     renderedMessage,
 				ImageURL:    imageURL,
 			})
 		} else {
 			_, sendErr = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
-				SessionName: senderSession,
+				SessionName: dispatchSession,
 				ChatID:      groupID,
 				Text:        renderedMessage,
 			})
@@ -573,6 +666,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			s.logDispatch(ctx, auto, groupID, links[0], "failed", sendErr.Error(), canonicalKey, store)
 			s.logger.Error("Failed to send offer",
 				zap.String("groupID", groupID),
+				zap.String("session", dispatchSession),
 				zap.Error(sendErr))
 			continue
 		}
@@ -582,6 +676,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		s.logger.Info("Offer generated and sent successfully",
 			zap.String("fromGroup", msg.RemoteJID),
 			zap.String("toGroup", groupID),
+			zap.String("session", dispatchSession),
 			zap.String("automationID", auto.ID),
 			zap.String("canonicalKey", canonicalKey))
 	}

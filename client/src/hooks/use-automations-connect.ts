@@ -97,6 +97,10 @@ export interface LocalAutomation {
   // = no preference; the worker treats either case as "fall back to per-group
   // ownership / first connected."
   instanceId?: string;
+  // Multi-chip preference (049). Non-empty list activates fan-out for
+  // offer_generate; the backend syncs instanceId with instanceIds[0] for
+  // rollback compat.
+  instanceIds?: string[];
   // Per-automation opt-out for the coupon rule engine.
   applyCouponRules?: boolean;
 }
@@ -146,6 +150,8 @@ export interface CreateAutomationParams {
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
   instanceId?: string;
+  // Multi-chip preference (049). Empty array also valid as "clear preference."
+  instanceIds?: string[];
   applyCouponRules?: boolean;
 }
 
@@ -180,6 +186,9 @@ export interface UpdateAutomationParams {
   // Empty string explicitly clears the preference; undefined leaves it
   // unchanged (matches proto3 optional semantics on the wire).
   instanceId?: string;
+  // Multi-chip preference (049). Empty array clears; undefined leaves
+  // unchanged. Backend writes instance_ids and syncs instance_id from [0].
+  instanceIds?: string[];
   applyCouponRules?: boolean;
 }
 
@@ -387,6 +396,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     listIncludeImage: automation.listIncludeImage,
     listSendAsImage: automation.listSendAsImage,
     instanceId: automation.instanceId,
+    instanceIds: [...(automation.instanceIds ?? [])],
     applyCouponRules: automation.applyCouponRules,
   };
 }
@@ -533,6 +543,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listIncludeImage: params.listIncludeImage,
           listSendAsImage: params.listSendAsImage,
           instanceId: params.instanceId,
+          instanceIds: params.instanceIds ?? [],
           applyCouponRules: params.applyCouponRules,
         })
       );
@@ -603,6 +614,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listIncludeImage: params.listIncludeImage,
           listSendAsImage: params.listSendAsImage,
           instanceId: params.instanceId,
+          instanceIds: params.instanceIds ?? [],
           applyCouponRules: params.applyCouponRules,
         })
       );
