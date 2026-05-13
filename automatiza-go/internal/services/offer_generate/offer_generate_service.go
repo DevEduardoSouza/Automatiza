@@ -124,8 +124,11 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 		}
 	}
 
-	// 2. Extract links from message body
-	links := text.ExtractLinks(msg.Body)
+	// 2. Extract links from message body. info[...] must be stripped first
+	// so URLs embedded inside an info tag (typically a coupon link) are not
+	// mistaken for a separate product link.
+	bodyForLinks := text.StripInfoTag(msg.Body)
+	links := text.ExtractLinks(bodyForLinks)
 	if len(links) == 0 {
 		return nil
 	}
@@ -259,8 +262,9 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		return nil
 	}
 
-	// 4. Parse discount tag from message body
+	// 4. Parse discount and info tags from message body
 	discountTag := text.ParseDiscountTag(msg.Body)
+	infoText := text.ParseInfoTag(msg.Body)
 
 	// 5. Load dispatch template (required for offer_generate)
 	if auto.DispatchTextID == nil || *auto.DispatchTextID == "" {
@@ -447,6 +451,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			Store:         "Shopee",
 			CTA:           ctaText,
 			CouponBlock:   couponBlock,
+			Info:          infoText,
 		})
 
 	} else if len(mlLinks) > 0 && s.mlService != nil {
@@ -546,6 +551,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			ReviewCount:   reviewCount,
 			CTA:           ctaText,
 			CouponBlock:   couponBlock,
+			Info:          infoText,
 		})
 	} else {
 		return nil

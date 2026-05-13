@@ -17,6 +17,34 @@ type DiscountTag struct {
 
 var discountTagRegex = regexp.MustCompile(`desc\[([^\]]+)\]`)
 
+// infoTagRegex captures the contents of an info[...] tag. The body may
+// contain spaces and URLs (e.g. "info[APLIQUE O CUPOM https://...]"); the
+// only forbidden character is `]` since it closes the tag.
+var infoTagRegex = regexp.MustCompile(`info\[([^\]]*)\]`)
+
+// ParseInfoTag extracts the contents of an info[...] tag from the message
+// body and returns the trimmed text. Returns "" when no tag is present or
+// when the tag is empty.
+//
+// The info tag is used by /offer-generate as a free-form line that gets
+// injected into the dispatch template via the {info} placeholder — typical
+// use is appending a coupon code or extra observation that varies per send
+// without editing the template.
+func ParseInfoTag(body string) string {
+	match := infoTagRegex.FindStringSubmatch(body)
+	if match == nil {
+		return ""
+	}
+	return strings.TrimSpace(match[1])
+}
+
+// StripInfoTag removes every info[...] occurrence from the body. Callers
+// run this before link extraction so URLs embedded inside an info tag (the
+// canonical example is a coupon link) are not mistaken for product links.
+func StripInfoTag(body string) string {
+	return strings.TrimSpace(infoTagRegex.ReplaceAllString(body, ""))
+}
+
 // ParseDiscountTag extracts a discount tag from the message body.
 // Supported formats:
 //   - desc[25%|10]        → 25% off, max R$10

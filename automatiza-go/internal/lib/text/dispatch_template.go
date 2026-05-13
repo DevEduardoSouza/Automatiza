@@ -27,6 +27,11 @@ const (
 	VarCupom                 = "cupom"
 	VarCupomBloco            = "cupom_bloco"
 	VarAvisoPreco            = "aviso_preco"
+	// VarInfo is the free-form line populated by the info[...] tag in the
+	// trigger message (see ParseInfoTag). Renders to "" when the message
+	// has no info tag, which collapses any blank line around it via the
+	// multi-newline cleanup in RenderTemplate.
+	VarInfo = "info"
 	// ML-specific
 	VarDesconto        = "desconto"
 	VarCondicao        = "condicao"
@@ -89,6 +94,7 @@ type ShopeeOfferVars struct {
 	CouponCode    string
 	CouponText    string
 	CouponBlock   string
+	Info          string
 }
 
 // MLOfferVars holds variables for a Mercado Livre offer template
@@ -110,6 +116,7 @@ type MLOfferVars struct {
 	CouponCode    string
 	CouponText    string
 	CouponBlock   string
+	Info          string
 }
 
 // RenderShopeeOfferTemplate renders a template for a Shopee offer
@@ -134,6 +141,7 @@ func RenderShopeeOfferTemplate(template string, offer ShopeeOfferVars) string {
 		VarCupom:                  offer.CouponCode,
 		VarCupomBloco:             offer.CouponBlock,
 		VarAvisoPreco:             AvisoPrecoDefault,
+		VarInfo:                   offer.Info,
 		// English names (backward compat with older templates)
 		VarTitle:         offer.Title,
 		VarPrice:         FormatBRLSpaced(offer.Price),
@@ -175,6 +183,7 @@ func RenderMLOfferTemplate(template string, offer MLOfferVars) string {
 		VarCupom:                  offer.CouponCode,
 		VarCupomBloco:             offer.CouponBlock,
 		VarAvisoPreco:             AvisoPrecoDefault,
+		VarInfo:                   offer.Info,
 		// ML-specific
 		VarDesconto:        formatDiscountPercent(offer.Discount),
 		VarCondicao:        offer.Condition,
