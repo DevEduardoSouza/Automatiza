@@ -125,6 +125,81 @@ func TestStripDiscountTag(t *testing.T) {
 	}
 }
 
+func TestParseInfoTag(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "plain text",
+			body: "https://shopee.com.br/abc info[Frete grátis hoje]",
+			want: "Frete grátis hoje",
+		},
+		{
+			name: "embedded url",
+			body: "https://shopee.com.br/abc\ninfo[Use o cupom https://s.shopee.com.br/cupom-link]",
+			want: "Use o cupom https://s.shopee.com.br/cupom-link",
+		},
+		{
+			name: "tag at start",
+			body: "info[Linha extra] https://shopee.com.br/abc",
+			want: "Linha extra",
+		},
+		{
+			name: "empty tag",
+			body: "https://shopee.com.br/abc info[]",
+			want: "",
+		},
+		{
+			name: "no tag",
+			body: "https://shopee.com.br/abc",
+			want: "",
+		},
+		{
+			name: "whitespace trimmed",
+			body: "info[   spaced content   ]",
+			want: "spaced content",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseInfoTag(tt.body)
+			if got != tt.want {
+				t.Errorf("ParseInfoTag(%q) = %q, want %q", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripInfoTag(t *testing.T) {
+	tests := []struct {
+		body string
+		want string
+	}{
+		{"https://shopee.com.br/abc info[Cupom 25%]", "https://shopee.com.br/abc"},
+		{"info[X] https://shopee.com.br/abc", "https://shopee.com.br/abc"},
+		// URL inside info[] must be stripped so link extraction does not
+		// treat the coupon link as a product link.
+		{
+			"https://shopee.com.br/produto info[Use https://s.shopee.com.br/cupom]",
+			"https://shopee.com.br/produto",
+		},
+		{"https://shopee.com.br/abc", "https://shopee.com.br/abc"},
+		{"info[] https://shopee.com.br/abc", "https://shopee.com.br/abc"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.body, func(t *testing.T) {
+			got := StripInfoTag(tt.body)
+			if got != tt.want {
+				t.Errorf("StripInfoTag(%q) = %q, want %q", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestApplyDiscountTag(t *testing.T) {
 	tests := []struct {
 		name  string
