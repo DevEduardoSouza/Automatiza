@@ -136,16 +136,29 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 		zap.Int("links", len(links)),
 		zap.String("bodyPreview", truncateStr(msg.Body, 100)))
 
-	// 3. Content fingerprint dedup (2 min window)
-	contentKey := s.buildContentKey(msg.InstanceName, msg.RemoteJID, msg.Body)
+	// 3. Content fingerprint dedup (2 min window).
+	//
+	// Keyed by (group, body-hash) — sem o instance — pra que mensagens
+	// vistas por múltiplos chips do mesmo grupo monitor disparem só 1
+	// processamento. Se 4 chips do user estão no grupo de origem, WAHA
+	// fira 4 webhooks; o primeiro marca a key, os outros 3 batem aqui
+	// e fazem bailout antes da chamada à API da Shopee/ML — evita 4×
+	// rate limit + spam de "skipped:dedupe" no dispatch_logs.
+	//
+	// claimProductSlot() no loop de dispatch segue como cinto de
+	// segurança por (user, destinationGroup, canonicalKey), então
+	// mesmo que esse pré-dedup falhe (Redis offline), nunca há
+	// duplicação real no destino.
+	contentKey := s.buildContentKey(msg.RemoteJID, msg.Body)
 	if s.isDuplicate(ctx, contentKey) {
 		s.logger.Debug("Offer generate: duplicate content, skipping")
 		return nil
 	}
 	s.markProcessed(ctx, contentKey, 2*time.Minute)
 
-	// 4. Message ID dedup (10 min window)
-	msgKey := fmt.Sprintf("og_msg_dedup:%s:%s:%s", msg.InstanceName, msg.RemoteJID, msg.MessageID)
+	// 4. Message ID dedup (10 min window). Mesma motivação do (3) —
+	// keyed por (group, msgID), não por instance.
+	msgKey := fmt.Sprintf("og_msg_dedup:%s:%s", msg.RemoteJID, msg.MessageID)
 	if s.isDuplicate(ctx, msgKey) {
 		s.logger.Debug("Offer generate: duplicate message ID, skipping")
 		return nil
@@ -686,9 +699,20 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 
 // --- Helper methods ---
 
-func (s *offerGenerateService) buildContentKey(instance, group, body string) string {
+// buildContentKey returns a Redis key that uniquely identifies a content
+// fingerprint inside a WhatsApp group, regardless of which chip received
+// the webhook. This lets the pre-dispatch dedup (ProcessIncomingMessage)
+// short-circuit when the same message reaches us via multiple chips —
+// e.g. when more than one of the user's chips is a member of the source
+// group, WAHA fires one webhook per chip with the same body.
+//
+// The matching dispatch-side dedup (claimProductSlot) keeps using
+// (user, destinationGroup, canonicalKey) as a stronger guarantee, so a
+// hash collision here at most slips through to the per-destination
+// claim, which still prevents real duplication.
+func (s *offerGenerateService) buildContentKey(group, body string) string {
 	h := sha256.Sum256([]byte(body))
-	return fmt.Sprintf("og_content:%s:%s:%s", instance, group, hex.EncodeToString(h[:8]))
+	return fmt.Sprintf("og_content:%s:%s", group, hex.EncodeToString(h[:8]))
 }
 
 // buildSelfSendKey identifies an outgoing message hash we just sent so the
