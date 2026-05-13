@@ -374,12 +374,15 @@ export default function OfferGenerate() {
                     />
                   </div>
 
-                  {/* Destination Groups */}
+                  {/* Destination Groups — no cap here. /offer-generate is a
+                      single per-user config and has no server-side quota
+                      check, unlike /offer-automations. */}
                   <SendGroupsSelector
                     formData={formData}
                     setFormData={setFormData}
                     groups={filteredGroups}
                     onToggleFavorite={toggleFavorite}
+                    unlimited
                   />
 
                   {/* Dispatch Text */}
