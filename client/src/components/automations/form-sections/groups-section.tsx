@@ -204,6 +204,11 @@ interface SendGroupsSelectorProps {
   setFormData: React.Dispatch<React.SetStateAction<Partial<Automation>>>;
   groups: AutomationGroup[];
   onToggleFavorite: (groupId: string) => Promise<void>;
+  // When true, no global or per-chip cap is enforced and the counter/hint UI
+  // is hidden. Used by /offer-generate, which has no server-side quota check
+  // (the per-instance cap in internal/lib/quota only runs from the
+  // /offer-automations handler).
+  unlimited?: boolean;
 }
 
 export function SendGroupsSelector({
@@ -211,6 +216,7 @@ export function SendGroupsSelector({
   setFormData,
   groups,
   onToggleFavorite,
+  unlimited = false,
 }: SendGroupsSelectorProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -225,7 +231,7 @@ export function SendGroupsSelector({
     setFormData((prev) => {
       const current = prev.send_groups || [];
       const isSelected = current.includes(waGroupId);
-      if (checked && !isSelected && current.length >= MAX_SEND_GROUPS) {
+      if (!unlimited && checked && !isSelected && current.length >= MAX_SEND_GROUPS) {
         toast({
           title: t('pages.offerAutomations.validation.groupsLimit'),
           description: t('pages.offerAutomations.validation.groupsLimitMessage', {
@@ -237,7 +243,7 @@ export function SendGroupsSelector({
       }
       // Per-chip cap guard: block the 21st group on any single chip even if
       // we are still under MAX_SEND_GROUPS overall. Unchecking is always allowed.
-      if (checked && !isSelected) {
+      if (!unlimited && checked && !isSelected) {
         const target = groups.find((g) => g.wa_group_id === waGroupId);
         if (target?.instance_id) {
           const current = countByInstance.get(target.instance_id) ?? 0;
@@ -268,21 +274,27 @@ export function SendGroupsSelector({
     <div className="space-y-1.5 xs:space-y-2">
       <Label className="cursor-pointer">
         {t('pages.offerAutomations.form.sendGroups')} *{' '}
-        <span className="text-xs text-muted-foreground">
-          ({selectedIds.length}/{MAX_SEND_GROUPS})
-        </span>
+        {!unlimited && (
+          <span className="text-xs text-muted-foreground">
+            ({selectedIds.length}/{MAX_SEND_GROUPS})
+          </span>
+        )}
       </Label>
-      <p className="text-xs text-muted-foreground">
-        {t('pages.offerAutomations.form.sendGroupsHint', { max: MAX_SEND_GROUPS })}
-      </p>
-      <PerChipBreakdown countByInstance={countByInstance} cap={MAX_GROUPS_PER_INSTANCE} />
+      {!unlimited && (
+        <p className="text-xs text-muted-foreground">
+          {t('pages.offerAutomations.form.sendGroupsHint', { max: MAX_SEND_GROUPS })}
+        </p>
+      )}
+      {!unlimited && (
+        <PerChipBreakdown countByInstance={countByInstance} cap={MAX_GROUPS_PER_INSTANCE} />
+      )}
       <GroupsListCheckbox
         groups={groups}
         selectedIds={selectedIds}
         onToggle={handleToggle}
         onToggleFavorite={onToggleFavorite}
-        maxGroups={MAX_SEND_GROUPS}
-        perChipCap={MAX_GROUPS_PER_INSTANCE}
+        maxGroups={unlimited ? undefined : MAX_SEND_GROUPS}
+        perChipCap={unlimited ? undefined : MAX_GROUPS_PER_INSTANCE}
         selectedCountByInstance={countByInstance}
         showSearch
       />
