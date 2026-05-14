@@ -36,6 +36,7 @@ export const VARIABLE_KEYS = [
   'priceWarning',
   'cta',
   'couponBlock',
+  'info',
 ] as const;
 
 export type VariableKey = (typeof VARIABLE_KEYS)[number];
@@ -53,6 +54,11 @@ export const VARIABLE_MAP: Record<VariableKey, string> = {
   priceWarning: '{aviso_preco}',
   cta: '{cta}',
   couponBlock: '{cupom_bloco}',
+  // Texto livre extraído da tag info[...] no corpo da mensagem que
+  // dispara o /offer-generate. Renderiza vazio quando a mensagem não
+  // tem a tag, e o cleanup de newlines em RenderTemplate colapsa a
+  // linha em branco resultante.
+  info: '{info}',
 };
 
 /**
