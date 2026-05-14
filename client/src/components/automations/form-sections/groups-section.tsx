@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { MAX_SEND_GROUPS } from '@/config/automation-categories';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
+import { effectiveFriendlyName } from '@/lib/instance-label';
 import type { Automation, AutomationGroup } from '@/types/automation';
 import { Search, Star } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -158,13 +159,17 @@ function PerChipBreakdown({ countByInstance, cap }: PerChipBreakdownProps) {
   const { t } = useTranslation();
   const { instances } = useInstancesConnect();
 
-  // Map db-id -> friendly_name || instance_id so badges show a recognizable
-  // label instead of just the database id integer. Falls back to "chip #id"
-  // when neither field is available (e.g. mismatch with stale cache).
+  // Map db-id -> friendly label so badges show a recognizable string
+  // instead of the database id integer. Prefer (in order) user-set
+  // friendly_name, phone number, raw session id, fallback "número #id".
   const labelByInstance = useMemo(() => {
     const map = new Map<string, string>();
     for (const inst of instances) {
-      const label = inst.friendly_name?.trim() || inst.instance_id || `número #${inst.id}`;
+      const friendly = effectiveFriendlyName(inst);
+      const label =
+        friendly ||
+        (inst.phone_number ? `+${inst.phone_number}` : inst.instance_id) ||
+        `número #${inst.id}`;
       map.set(inst.id, label);
     }
     return map;
