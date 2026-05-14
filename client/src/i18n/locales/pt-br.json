@@ -1356,7 +1356,8 @@
         "affiliateLink": "Link afiliado",
         "priceWarning": "Aviso padrão",
         "cta": "Call-to-Action (CTA)",
-        "couponBlock": "Bloco do cupom"
+        "couponBlock": "Bloco do cupom",
+        "info": "Texto info[…] do gerar oferta"
       },
       "alert": {
         "formatting": "Você pode usar formatação do WhatsApp: *negrito*, _itálico_, ~riscado~ e quebras de linha. Variáveis ficam entre chaves: {nome_produto}.",
@@ -1377,7 +1378,7 @@
       "howItWorks": {
         "title": "Como funciona",
         "description": "Os Textos de Disparo são templates reutilizáveis que suas automações usam para enviar ofertas nos grupos do WhatsApp.",
-        "variables": "Use variáveis como {nome_produto}, {preco}, {preco_original}, {link_afiliado}, {aviso_preco} e {cupom_bloco} para preencher automaticamente os dados do produto.",
+        "variables": "Use variáveis como {nome_produto}, {preco}, {preco_original}, {link_afiliado}, {aviso_preco} e {cupom_bloco} para preencher automaticamente os dados do produto. A variável {info} recebe o texto entre colchetes na tag info[…] do disparo do gerar oferta — útil para cupons ou observações que variam por envio.",
         "formatting": "Formatação WhatsApp: *negrito*, _itálico_, ~riscado~ e > citação. Quebre linhas para organizar a mensagem.",
         "automations": "Ao criar uma automação, selecione um ou mais textos de disparo ativos. O sistema escolhe aleatoriamente entre eles para variar as mensagens.",
         "note": "Textos inativos não aparecem na seleção de automações. Ative pelo menos um texto antes de configurar uma automação."
