@@ -18,6 +18,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Label } from '@/components/ui/label';
 import { ChipSelector } from '@/components/whatsapp/chip-selector';
 import { useOfferGenerate } from '@/hooks/use-offer-generate';
+import { effectiveFriendlyName } from '@/lib/instance-label';
 import type { AutomationGroup } from '@/types/automation';
 import {
   ChevronDown,
@@ -318,7 +319,7 @@ export default function OfferGenerate() {
                         {instances.map((inst) => {
                           const checked = selectedChipIds.includes(inst.id);
                           const label =
-                            inst.friendly_name ||
+                            effectiveFriendlyName(inst) ||
                             (inst.phone_number ? `+${inst.phone_number}` : inst.instance_id);
                           return (
                             <label

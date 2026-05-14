@@ -6,6 +6,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { LocalInstance } from '@/hooks/use-instances-connect';
+import { effectiveFriendlyName } from '@/lib/instance-label';
 import { useTranslation } from 'react-i18next';
 
 const ALL_VALUE = '__all__';
@@ -103,7 +104,7 @@ export function ChipSelector({
           </SelectItem>
         )}
         {visible.map((inst) => {
-          const friendly = inst.friendly_name?.trim();
+          const friendly = effectiveFriendlyName(inst);
           const phone = formatPhoneShort(inst.phone_number);
           // Prefer the user-set friendly name; otherwise the phone reads
           // far better than the raw session id, which is unreadable.

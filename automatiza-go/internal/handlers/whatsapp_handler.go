@@ -76,11 +76,13 @@ func (h *WhatsAppHandler) CreateInstance(c *gin.Context) {
 		return
 	}
 
-	// Save to database
+	// Save to database. FriendlyName fica NULL até o usuário renomear: se
+	// defaultarmos pra instanceName, a UI mostra "session_01krk9..." em vez
+	// do telefone, porque o front prioriza friendly_name. UpsertInstance
+	// COALESCE preserva renomeações existentes em caso de re-pareamento.
 	_, err = h.deps.InstanceRepo.UpsertInstance(c.Request.Context(), user.ID, &models.Instance{
-		InstanceID:   instanceName,
-		FriendlyName: &instanceName,
-		Status:       "pending",
+		InstanceID: instanceName,
+		Status:     "pending",
 	})
 
 	if err != nil {
