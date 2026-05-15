@@ -413,6 +413,68 @@ export default function OfferGenerate() {
                     </div>
                   )}
 
+                  {/* Stores selector. /offer-generate filtra os links no
+                      backend pelas lojas marcadas aqui (shopee_links e
+                      ml_links são zerados quando a respectiva store está
+                      fora da seleção). Hoje só temos Shopee e Mercado
+                      Livre como afiliações ativas; ambas marcadas por
+                      default — desmarcar é um opt-out explícito. */}
+                  <div className="space-y-1.5 xs:space-y-2">
+                    <Label>
+                      {t('pages.offerGenerate.config.stores', 'Lojas')} *{' '}
+                      <span className="text-xs text-muted-foreground">
+                        {t(
+                          'pages.offerGenerate.config.storesHint',
+                          'Marque as plataformas que serão processadas quando um link cair no grupo de origem.'
+                        )}
+                      </span>
+                    </Label>
+                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
+                      {(
+                        [
+                          { key: 'shopee', label: 'Shopee' },
+                          { key: 'ml', label: 'Mercado Livre' },
+                        ] as const
+                      ).map((store) => {
+                        const checked = (formData.stores ?? []).includes(store.key);
+                        return (
+                          <label
+                            key={store.key}
+                            className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer text-sm transition-colors ${
+                              checked
+                                ? 'border-[#8D2D53] bg-[rgba(141,45,83,0.08)]'
+                                : 'border-input hover:bg-muted/40'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-[#8D2D53]"
+                              checked={checked}
+                              onChange={() =>
+                                setFormData((current) => {
+                                  const currentStores = current.stores ?? [];
+                                  const next = currentStores.includes(store.key)
+                                    ? currentStores.filter((s) => s !== store.key)
+                                    : [...currentStores, store.key];
+                                  return { ...current, stores: next };
+                                })
+                              }
+                            />
+                            <span className="flex-1 truncate">{store.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {(formData.stores ?? []).length === 0 && (
+                      <p className="text-xs text-amber-600">
+                        {t(
+                          'pages.offerGenerate.config.storesRequired',
+                          'Selecione pelo menos 1 loja.'
+                        )}
+                      </p>
+                    )}
+                  </div>
+
                   {/* Source Group (Monitor / Router group) */}
                   <div className="space-y-1.5">
                     <p className="text-xs font-medium" style={{ color: colors.wineTextLight }}>
