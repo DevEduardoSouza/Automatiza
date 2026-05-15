@@ -66,6 +66,7 @@ export function useDispatchTexts() {
       aviso_preco: t('pages.dispatchTexts.sampleVars.priceWarning'),
       cta: t('pages.dispatchTexts.sampleVars.cta'),
       cupom_bloco: t('pages.dispatchTexts.sampleVars.couponBlock'),
+      info: t('pages.dispatchTexts.sampleVars.info'),
     }),
     [t]
   );
