@@ -67,7 +67,7 @@ func (r *automationRepository) GetUserAutomations(ctx context.Context, userID st
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides
 		FROM automations
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -93,7 +93,7 @@ func (r *automationRepository) GetActiveAutomations(ctx context.Context) ([]mode
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides
 		FROM automations
 		WHERE status = 'active'
 		ORDER BY priority DESC, created_at ASC
@@ -119,7 +119,7 @@ func (r *automationRepository) GetAutomationByID(ctx context.Context, automation
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides
 		FROM automations
 		WHERE id = $1
 	`
@@ -138,7 +138,7 @@ func (r *automationRepository) GetAutomationByIDAndUser(ctx context.Context, aut
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides
 		FROM automations
 		WHERE id = $1 AND user_id = $2
 	`
@@ -172,11 +172,11 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 			schedule_time, schedule_days, start_time, end_time, interval_minutes,
 			delay_seconds, dedupe_hours, coupon_id, created_at, updated_at,
 			texts, ctas, cta_ids, ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-			list_send_as_image, instance_id, instance_ids, apply_coupon_rules
+			list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
-			$32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42
+			$32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43
 		)
 		RETURNING id
 	`
@@ -212,6 +212,12 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 		}
 	}
 
+	// chip_overrides (050): JSONB column. Marshal the map; nil/empty map
+	// becomes "{}" so the NOT NULL DEFAULT '{}'::jsonb constraint is
+	// satisfied. Empty-map and absence are equivalent at the dispatch
+	// level (full auto routing).
+	chipOverridesJSON := marshalJSONField(r.logger, data.ChipOverrides, "chip_overrides", []byte("{}"))
+
 	var id string
 	err := r.db.QueryRow(ctx, query,
 		userID, data.Name, data.Type, data.Status, data.Mode, data.ShopeeLink, data.Keyword,
@@ -221,7 +227,7 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 		data.ScheduleTime, scheduleDaysJSON, data.StartTime, data.EndTime, data.IntervalMinutes,
 		data.DelaySeconds, data.DedupeHours, data.CouponID, now, now,
 		data.Texts, data.CTAs, data.CTAIDs, data.MlLinkListID, data.ListItemsPerRun, data.ListIncludeImage, data.PriorityType,
-		data.ListSendAsImage, instanceIDArg, instanceIDsArg, data.ApplyCouponRules,
+		data.ListSendAsImage, instanceIDArg, instanceIDsArg, data.ApplyCouponRules, chipOverridesJSON,
 	).Scan(&id)
 
 	if err != nil {
@@ -282,6 +288,19 @@ func (r *automationRepository) UpdateAutomation(ctx context.Context, automationI
 			} else {
 				updates["instance_ids"] = ids
 			}
+		}
+	}
+
+	// chip_overrides (050) arrives as map[string]string from ToMap.
+	// Marshal to JSONB string for pgx. nil/empty map → "{}" so the
+	// NOT NULL constraint holds and the dispatch path treats it as
+	// "no overrides".
+	if val, ok := updates["chip_overrides"]; ok {
+		if m, isMap := val.(map[string]string); isMap {
+			jsonBytes := marshalJSONField(r.logger, m, "chip_overrides", []byte("{}"))
+			updates["chip_overrides"] = string(jsonBytes)
+		} else if val == nil {
+			updates["chip_overrides"] = "{}"
 		}
 	}
 
@@ -368,7 +387,7 @@ func (r *automationRepository) GetMonitoringAutomationsForGroup(ctx context.Cont
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'monitoring'
@@ -397,7 +416,7 @@ func (r *automationRepository) GetOfferGenerateAutomationsForGroup(ctx context.C
 		       coupon_id, created_at, updated_at,
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
-		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules
+		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'offer_generate'
@@ -438,6 +457,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	var listSendAsImage *bool
 	var instanceID *int
 	var instanceIDs []int
+	var chipOverridesJSON []byte
 
 	err := row.Scan(
 		&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
@@ -449,7 +469,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 		&couponID, &createdAt, &updatedAt,
 		&texts, &ctas, &ctaIDs, &lastError, &lastErrorAt,
 		&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
-		&listSendAsImage, &instanceID, &instanceIDs, &a.ApplyCouponRules,
+		&listSendAsImage, &instanceID, &instanceIDs, &a.ApplyCouponRules, &chipOverridesJSON,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -485,6 +505,11 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 			ids[i] = fmt.Sprintf("%d", n)
 		}
 		a.InstanceIDs = ids
+	}
+	if len(chipOverridesJSON) > 0 {
+		var overrides map[string]string
+		unmarshalJSONField(r.logger, chipOverridesJSON, &overrides, "chip_overrides", a.ID)
+		a.ChipOverrides = overrides
 	}
 	if includeImage != nil {
 		a.IncludeImage = *includeImage
@@ -570,6 +595,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		var listSendAsImage *bool
 		var instanceID *int
 		var instanceIDs []int
+		var chipOverridesJSON []byte
 
 		err := rows.Scan(
 			&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
@@ -581,7 +607,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 			&couponID, &createdAt, &updatedAt,
 			&texts, &ctas, &ctaIDs, &lastError, &lastErrorAt,
 			&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
-			&listSendAsImage, &instanceID, &instanceIDs, &a.ApplyCouponRules,
+			&listSendAsImage, &instanceID, &instanceIDs, &a.ApplyCouponRules, &chipOverridesJSON,
 		)
 		if err != nil {
 			return nil, err
@@ -614,6 +640,11 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 				ids[i] = fmt.Sprintf("%d", n)
 			}
 			a.InstanceIDs = ids
+		}
+		if len(chipOverridesJSON) > 0 {
+			var overrides map[string]string
+			unmarshalJSONField(r.logger, chipOverridesJSON, &overrides, "chip_overrides", a.ID)
+			a.ChipOverrides = overrides
 		}
 		if includeImage != nil {
 			a.IncludeImage = *includeImage

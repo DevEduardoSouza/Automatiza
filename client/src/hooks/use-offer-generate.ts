@@ -222,6 +222,10 @@ export function useOfferGenerate() {
         // instanceIds[0] no backend pra rollback compat.
         instanceIds: formData.instance_ids ?? [],
         instanceId: formData.instance_id ?? undefined,
+        // Manual chip routing per group (050). Empty map = full auto
+        // routing; the dispatcher falls through to the sticky-hash
+        // distribution across instance_ids.
+        chipOverrides: formData.chip_overrides ?? {},
         // Mirror the toggle on the offer-generate config page; default
         // to true when unset so the rule engine still kicks in for
         // existing rows that pre-date the field.

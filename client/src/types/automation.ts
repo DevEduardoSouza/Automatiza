@@ -76,6 +76,12 @@ export interface Automation {
   // selected chip on whichever destination groups they participate in.
   // For non-fan-out modes the dispatcher still uses just instance_ids[0].
   instance_ids?: string[];
+  // Manual chip routing per destination group (050). Maps wa_group_id →
+  // instance_id (as string, matching instance_ids). Groups present here
+  // pin to the named chip; groups absent fall through to the sticky
+  // hash distribution across instance_ids. Only consulted when 2+ chips
+  // are selected — single-chip automations ignore the field.
+  chip_overrides?: Record<string, string>;
   // Per-automation opt-out for the coupon rule engine. true (default)
   // means the worker matches global CouponRules on every dispatch.
   // false silences cupom injection for this automation entirely.

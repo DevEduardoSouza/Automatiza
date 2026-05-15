@@ -187,6 +187,7 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     list_send_as_image: local.listSendAsImage,
     instance_id: local.instanceId ?? null,
     instance_ids: local.instanceIds ?? [],
+    chip_overrides: local.chipOverrides ?? {},
     apply_coupon_rules: local.applyCouponRules ?? true,
   };
 }
@@ -631,6 +632,7 @@ export function useAutomations(): UseAutomationsReturn {
           // would leave the previous value untouched.
           instanceId: formData.instance_id ?? '',
           instanceIds: formData.instance_ids ?? [],
+          chipOverrides: formData.chip_overrides ?? {},
           applyCouponRules: formData.apply_coupon_rules,
         };
 
@@ -685,6 +687,7 @@ export function useAutomations(): UseAutomationsReturn {
             mode === 'list' ? Boolean(formData.list_send_as_image ?? false) : undefined,
           instanceId: formData.instance_id ?? undefined,
           instanceIds: formData.instance_ids ?? [],
+          chipOverrides: formData.chip_overrides ?? {},
           // Mirrors the form default (see automation-form-dialog): every
           // new automation here starts with the rule engine OFF, so the
           // user opts in explicitly when they want coupon injection.

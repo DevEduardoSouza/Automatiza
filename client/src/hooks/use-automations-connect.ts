@@ -101,6 +101,10 @@ export interface LocalAutomation {
   // offer_generate; the backend syncs instanceId with instanceIds[0] for
   // rollback compat.
   instanceIds?: string[];
+  // Manual chip routing per destination group (050). Maps wa_group_id →
+  // instance_id (string). Groups present pin to the named chip; absent
+  // groups fall through to the automatic distribution.
+  chipOverrides?: Record<string, string>;
   // Per-automation opt-out for the coupon rule engine.
   applyCouponRules?: boolean;
 }
@@ -152,6 +156,10 @@ export interface CreateAutomationParams {
   instanceId?: string;
   // Multi-chip preference (049). Empty array also valid as "clear preference."
   instanceIds?: string[];
+  // Manual chip routing per group (050). Maps wa_group_id → instance_id.
+  // Validated server-side against instanceIds — InvalidArgument when an
+  // override references a chip not in the list.
+  chipOverrides?: Record<string, string>;
   applyCouponRules?: boolean;
 }
 
@@ -189,6 +197,10 @@ export interface UpdateAutomationParams {
   // Multi-chip preference (049). Empty array clears; undefined leaves
   // unchanged. Backend writes instance_ids and syncs instance_id from [0].
   instanceIds?: string[];
+  // Manual chip routing per group (050). Empty map clears all overrides;
+  // undefined leaves them unchanged. Server validates against the
+  // effective instanceIds after the update applies.
+  chipOverrides?: Record<string, string>;
   applyCouponRules?: boolean;
 }
 
@@ -397,6 +409,9 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     listSendAsImage: automation.listSendAsImage,
     instanceId: automation.instanceId,
     instanceIds: [...(automation.instanceIds ?? [])],
+    // Proto map<string,string> deserializes as a plain object; copy to a
+    // fresh dict to keep LocalAutomation immutable from the wire response.
+    chipOverrides: { ...(automation.chipOverrides ?? {}) },
     applyCouponRules: automation.applyCouponRules,
   };
 }
@@ -544,6 +559,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listSendAsImage: params.listSendAsImage,
           instanceId: params.instanceId,
           instanceIds: params.instanceIds ?? [],
+          chipOverrides: params.chipOverrides ?? {},
           applyCouponRules: params.applyCouponRules,
         })
       );
@@ -615,6 +631,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listSendAsImage: params.listSendAsImage,
           instanceId: params.instanceId,
           instanceIds: params.instanceIds ?? [],
+          chipOverrides: params.chipOverrides ?? {},
           applyCouponRules: params.applyCouponRules,
         })
       );
