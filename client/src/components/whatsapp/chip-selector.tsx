@@ -9,7 +9,7 @@ import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { effectiveFriendlyName } from '@/lib/instance-label';
 import { ROUTES } from '@/constants/routes';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 const ALL_VALUE = '__all__';
 
