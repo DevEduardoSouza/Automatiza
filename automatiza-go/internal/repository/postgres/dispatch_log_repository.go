@@ -91,14 +91,14 @@ func (r *dispatchLogRepository) Update(ctx context.Context, logID int, updates m
 	return nil
 }
 
-func (r *dispatchLogRepository) GetRecentByCanonicalKey(ctx context.Context, userID, groupID, canonicalKey string, hours int) (*models.DispatchLog, error) {
+func (r *dispatchLogRepository) GetRecentByCanonicalKey(ctx context.Context, userID, groupID, canonicalKey string, window time.Duration) (*models.DispatchLog, error) {
 	query := `
 		SELECT id, user_id, automation_id, automation_name, store, group_id,
 		       product_url, product_page_url, canonical_key, status, type, error, created_at
 		FROM dispatch_logs
 		WHERE user_id = $1 AND group_id = $2 AND canonical_key = $3
 		  AND status IN ('sent', 'queued', 'pending')
-		  AND created_at > NOW() - make_interval(hours => $4)
+		  AND created_at > NOW() - make_interval(secs => $4)
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
@@ -106,7 +106,9 @@ func (r *dispatchLogRepository) GetRecentByCanonicalKey(ctx context.Context, use
 	var log models.DispatchLog
 	var createdAt time.Time
 
-	err := r.db.QueryRow(ctx, query, userID, groupID, canonicalKey, hours).Scan(
+	// make_interval(secs => ...) takes float seconds; using window.Seconds()
+	// gives sub-minute precision when callers want a 30min window etc.
+	err := r.db.QueryRow(ctx, query, userID, groupID, canonicalKey, window.Seconds()).Scan(
 		&log.ID, &log.UserID, &log.AutomationID, &log.AutomationName, &log.Store, &log.GroupID,
 		&log.ProductURL, &log.ProductPageURL, &log.CanonicalKey, &log.Status, &log.Type, &log.Error, &createdAt,
 	)

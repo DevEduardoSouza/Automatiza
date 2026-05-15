@@ -393,7 +393,7 @@ func TestDispatchLogRepository_GetRecentByCanonicalKey(t *testing.T) {
 	canonicalKey := "shopee:product123:group-dedup"
 
 	t.Run("returns nil when no matching log exists", func(t *testing.T) {
-		found, err := repo.GetRecentByCanonicalKey(ctx, userID, groupID, "non-existent-key", 24)
+		found, err := repo.GetRecentByCanonicalKey(ctx, userID, groupID, "non-existent-key", 24*time.Hour)
 
 		require.NoError(t, err)
 		assert.Nil(t, found)
@@ -411,7 +411,7 @@ func TestDispatchLogRepository_GetRecentByCanonicalKey(t *testing.T) {
 		require.NoError(t, err)
 
 		// Should find it within 24 hours
-		found, err := repo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, 24)
+		found, err := repo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, 24*time.Hour)
 
 		require.NoError(t, err)
 		require.NotNil(t, found)
@@ -420,14 +420,14 @@ func TestDispatchLogRepository_GetRecentByCanonicalKey(t *testing.T) {
 	})
 
 	t.Run("returns nil for different user", func(t *testing.T) {
-		found, err := repo.GetRecentByCanonicalKey(ctx, "different-user", groupID, canonicalKey, 24)
+		found, err := repo.GetRecentByCanonicalKey(ctx, "different-user", groupID, canonicalKey, 24*time.Hour)
 
 		require.NoError(t, err)
 		assert.Nil(t, found)
 	})
 
 	t.Run("returns nil for different group", func(t *testing.T) {
-		found, err := repo.GetRecentByCanonicalKey(ctx, userID, "different-group", canonicalKey, 24)
+		found, err := repo.GetRecentByCanonicalKey(ctx, userID, "different-group", canonicalKey, 24*time.Hour)
 
 		require.NoError(t, err)
 		assert.Nil(t, found)
@@ -447,7 +447,7 @@ func TestDispatchLogRepository_GetRecentByCanonicalKey(t *testing.T) {
 		require.NoError(t, err)
 
 		// Should not find it (failed status)
-		found, err := repo.GetRecentByCanonicalKey(ctx, userID, groupID, newCanonicalKey, 24)
+		found, err := repo.GetRecentByCanonicalKey(ctx, userID, groupID, newCanonicalKey, 24*time.Hour)
 
 		require.NoError(t, err)
 		assert.Nil(t, found)

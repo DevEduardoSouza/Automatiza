@@ -34,7 +34,7 @@ func (m *mockDispatchLogRepo) Update(ctx context.Context, logID int, updates map
 	return nil
 }
 
-func (m *mockDispatchLogRepo) GetRecentByCanonicalKey(ctx context.Context, userID, groupID, canonicalKey string, hours int) (*models.DispatchLog, error) {
+func (m *mockDispatchLogRepo) GetRecentByCanonicalKey(ctx context.Context, userID, groupID, canonicalKey string, window time.Duration) (*models.DispatchLog, error) {
 	return nil, nil
 }
 

@@ -1062,7 +1062,7 @@ func (s *automationService) isDuplicate(ctx context.Context, userID, groupID, ca
 		return false
 	}
 
-	log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, hours)
+	log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, time.Duration(hours)*time.Hour)
 	if err != nil {
 		s.logger.Warn("dedup DB check failed",
 			zap.String("userID", userID),
