@@ -601,7 +601,14 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		})
 	}
 
-	dedupeHours := auto.GetDedupeHours()
+	// Dedup window é fixo em 30min pra /offer-generate. Diferente do
+	// monitoring/search (que usa dedupe_hours da automation, default 7d),
+	// aqui o disparo é manual: o operador cola o link no grupo de origem
+	// quando quer enviar a oferta. Janela longa só atrapalha — se ele
+	// reenvia o mesmo produto 1h depois é proposital. 30min ainda corta
+	// o caso comum (mesma mensagem chegando por múltiplos chips no grupo
+	// monitor) e os webhooks Redis SetNX duplicados em segundos.
+	const dedupeWindow = 30 * time.Minute
 
 	for _, groupID := range destinationGroups {
 		// Skip source group
@@ -619,7 +626,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		}
 
 		// Dedup by (userID, groupID, canonicalKey)
-		if !s.claimProductSlot(ctx, auto.UserID, groupID, canonicalKey, dedupeHours) {
+		if !s.claimProductSlot(ctx, auto.UserID, groupID, canonicalKey, dedupeWindow) {
 			s.logger.Info("Product already sent (dedup), skipping",
 				zap.String("automationID", auto.ID),
 				zap.String("toGroup", groupID),
@@ -766,16 +773,15 @@ func (s *offerGenerateService) markProcessed(ctx context.Context, key string, tt
 	}
 }
 
-func (s *offerGenerateService) claimProductSlot(ctx context.Context, userID, groupID, canonicalKey string, hours int) bool {
+func (s *offerGenerateService) claimProductSlot(ctx context.Context, userID, groupID, canonicalKey string, window time.Duration) bool {
 	if canonicalKey == "" {
 		return true
 	}
 
 	cacheKey := fmt.Sprintf("og_prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
-	ttl := time.Duration(hours) * time.Hour
 
 	if s.cache != nil {
-		wasSet, err := s.cache.SetNX(ctx, cacheKey, "1", ttl)
+		wasSet, err := s.cache.SetNX(ctx, cacheKey, "1", window)
 		if err == nil && !wasSet {
 			return false
 		}
@@ -783,7 +789,7 @@ func (s *offerGenerateService) claimProductSlot(ctx context.Context, userID, gro
 
 	// Check DB for historical dispatches
 	if s.dispatchLogRepo != nil {
-		log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, hours)
+		log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, window)
 		if err == nil && log != nil {
 			return false
 		}

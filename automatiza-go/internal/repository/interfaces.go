@@ -239,7 +239,13 @@ type DispatchLogFilterResult struct {
 type DispatchLogRepository interface {
 	Create(ctx context.Context, log *models.DispatchLog) (*models.DispatchLog, error)
 	Update(ctx context.Context, logID int, updates map[string]interface{}) error
-	GetRecentByCanonicalKey(ctx context.Context, userID, groupID, canonicalKey string, hours int) (*models.DispatchLog, error)
+	// GetRecentByCanonicalKey looks for a recent sent/queued dispatch of the
+	// same canonical_key within the given lookback window. Returns nil when
+	// no match — caller treats nil as "free slot". Used by offer_generate
+	// and monitoring dedup paths; the window is a time.Duration so each
+	// caller can pick its own granularity (offer_generate uses 30min,
+	// monitoring uses dedupe_hours * time.Hour from the automation config).
+	GetRecentByCanonicalKey(ctx context.Context, userID, groupID, canonicalKey string, window time.Duration) (*models.DispatchLog, error)
 	GetUserLogs(ctx context.Context, userID string, limit, offset int) ([]models.DispatchLog, error)
 	DeleteRecentByAutomation(ctx context.Context, automationID string, sinceDays int) (int64, error)
 	// GetByAutomationIDWithCount retrieves dispatch logs for a specific automation with total count for pagination.

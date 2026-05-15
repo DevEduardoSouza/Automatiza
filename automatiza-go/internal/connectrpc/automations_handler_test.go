@@ -41,8 +41,8 @@ func (m *mockDispatchLogRepoForHandler) Update(ctx context.Context, logID int, u
 	return args.Error(0)
 }
 
-func (m *mockDispatchLogRepoForHandler) GetRecentByCanonicalKey(ctx context.Context, userID, groupID, canonicalKey string, hours int) (*models.DispatchLog, error) {
-	args := m.Called(ctx, userID, groupID, canonicalKey, hours)
+func (m *mockDispatchLogRepoForHandler) GetRecentByCanonicalKey(ctx context.Context, userID, groupID, canonicalKey string, window time.Duration) (*models.DispatchLog, error) {
+	args := m.Called(ctx, userID, groupID, canonicalKey, window)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

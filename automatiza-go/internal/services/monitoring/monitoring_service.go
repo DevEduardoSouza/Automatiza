@@ -693,7 +693,7 @@ func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupI
 
 	// Slow path: check database for historical dispatches
 	if s.dispatchLogRepo != nil {
-		log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, hours)
+		log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, time.Duration(hours)*time.Hour)
 		if err != nil {
 			s.logger.Warn("Monitoring dedup DB check failed",
 				zap.String("userID", userID),
