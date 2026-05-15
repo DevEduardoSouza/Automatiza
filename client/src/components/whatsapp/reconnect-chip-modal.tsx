@@ -111,7 +111,6 @@ export function ReconnectChipModal({ open, onClose, instance }: ReconnectChipMod
   useEffect(() => {
     if (!open || phase !== 'awaiting_qr' || !instance) return;
     const name = instance.instance_id;
-    const dbId = instance.id;
 
     const interval = setInterval(async () => {
       if (phaseRef.current !== 'awaiting_qr') return;
@@ -121,9 +120,14 @@ export function ReconnectChipModal({ open, onClose, instance }: ReconnectChipMod
         if (data.state === 'open') {
           setPhase('connected');
           // Persist the new status so the list reflects it even before the
-          // background poll picks it up.
+          // background poll picks it up. IMPORTANTE: usar o session name
+          // (instance.instance_id) e não o PK (instance.id). O handler
+          // UpsertInstanceStatus trata o campo como session name e o repo
+          // tem `ON CONFLICT (user_id, instance_id) DO UPDATE` — passar o
+          // PK numérico aqui cria um registro fantasma novo no banco em
+          // vez de atualizar a instância existente.
           try {
-            await upsertStatusRef.current(dbId, 'connected');
+            await upsertStatusRef.current(name, 'connected');
           } catch {
             // refetch below will reconcile from the server anyway.
           }
@@ -146,7 +150,7 @@ export function ReconnectChipModal({ open, onClose, instance }: ReconnectChipMod
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [open, phase, instance?.instance_id, instance?.id]);
+  }, [open, phase, instance?.instance_id]);
 
   // QR countdown — refreshes the QR by asking WAHA to re-issue when zero.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refs intentional
