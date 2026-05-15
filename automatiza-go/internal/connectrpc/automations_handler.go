@@ -54,6 +54,38 @@ func NewAutomationsHandler(
 	}
 }
 
+// validateChipOverrides ensures every chip referenced in a chip_overrides
+// map is one of the chips enabled on the automation. Returns nil for empty
+// maps. Doesn't validate that the chip is *connected* or that it actually
+// participates in the group — that's the dispatcher's call and varies over
+// time (a chip dropped from a group still has the override saved). We only
+// guarantee the static "you can't route to a chip the automation isn't
+// configured to use" invariant.
+func validateChipOverrides(overrides map[string]string, instanceIDs []string) error {
+	if len(overrides) == 0 {
+		return nil
+	}
+	if len(instanceIDs) < 2 {
+		// Override map without 2+ chips is meaningless. Could be a stale
+		// payload from before the user cleared InstanceIds — reject so we
+		// don't silently store data that the dispatch path won't read.
+		return fmt.Errorf("chip_overrides requires at least 2 chips selected on the automation")
+	}
+	allowed := make(map[string]struct{}, len(instanceIDs))
+	for _, id := range instanceIDs {
+		allowed[id] = struct{}{}
+	}
+	for waGroupID, chipID := range overrides {
+		if chipID == "" {
+			return fmt.Errorf("chip_overrides[%s] is empty", waGroupID)
+		}
+		if _, ok := allowed[chipID]; !ok {
+			return fmt.Errorf("chip_overrides[%s] references chip %s which is not in instance_ids", waGroupID, chipID)
+		}
+	}
+	return nil
+}
+
 // validateAutomationGroupQuota looks up which chip owns each waGroupID and
 // returns ErrGroupQuotaExceeded when any chip would host more than 20 of
 // the automation's groups. Returns nil when the repo is unavailable, the
@@ -148,6 +180,14 @@ func (h *AutomationsHandler) CreateAutomation(
 
 	automation := protoToAutomationCreate(req.Msg)
 
+	// Manual chip routing per group (050). Validate that every override
+	// references a chip enabled on the automation. We do it at the
+	// handler level so the user gets InvalidArgument back instead of a
+	// 500 from a DB constraint or silent drop.
+	if err := validateChipOverrides(automation.ChipOverrides, automation.InstanceIDs); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
 	// Reject when the automation would route more than MaxGroupsPerInstance
 	// groups through a single chip — the user's chip would face a fan-out
 	// that risks WhatsApp banning the number.
@@ -196,6 +236,20 @@ func (h *AutomationsHandler) UpdateAutomation(
 	}
 
 	updates := protoToAutomationUpdate(req.Msg)
+
+	// Manual chip routing per group (050). Validate when the update
+	// touches chip_overrides. Effective InstanceIDs come from the new
+	// update value when present, otherwise fall back to the existing
+	// record we already loaded for the ownership check.
+	if newOverrides, ok := updates["chip_overrides"].(map[string]string); ok {
+		effectiveInstanceIDs := existing.InstanceIDs
+		if newInstanceIDs, hasNew := updates["instance_ids"].([]string); hasNew {
+			effectiveInstanceIDs = newInstanceIDs
+		}
+		if err := validateChipOverrides(newOverrides, effectiveInstanceIDs); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+	}
 
 	// Re-validate per-chip quota only when the relevant list is being changed.
 	// When the field stays untouched we trust the existing record (which was
@@ -535,6 +589,14 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 	// "no preference" to the client.
 	proto.InstanceIds = a.InstanceIDs
 
+	// Manual chip routing per group (050). Always emit — empty map
+	// means "full auto routing" (dispatch falls through to sticky hash).
+	if a.ChipOverrides != nil {
+		proto.ChipOverrides = a.ChipOverrides
+	} else {
+		proto.ChipOverrides = map[string]string{}
+	}
+
 	// Coupon rule engine opt-out (default true server-side)
 	proto.ApplyCouponRules = a.ApplyCouponRules
 
@@ -860,6 +922,13 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		}
 	}
 
+	// Manual chip routing per group (050). Just copy; validation runs
+	// at the handler level (CreateAutomation / UpdateAutomation) so we
+	// can return InvalidArgument errors to the client.
+	if len(msg.ChipOverrides) > 0 {
+		automation.ChipOverrides = msg.ChipOverrides
+	}
+
 	// Coupon rule engine opt-out — default true when client doesn't send it
 	// so create requests behave like the migration default.
 	if msg.ApplyCouponRules != nil {
@@ -997,6 +1066,16 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 		} else {
 			updates["instance_id"] = ""
 		}
+	}
+
+	// Manual chip routing per group (050). map<> in proto3 doesn't expose
+	// presence, but the connect-web client always sends the field when
+	// the form intends to write it — including the empty map (clears all
+	// overrides). Validation runs at the handler level so it can call
+	// the repo to read the effective InstanceIDs when the request omits
+	// instance_ids.
+	if msg.ChipOverrides != nil {
+		updates["chip_overrides"] = msg.ChipOverrides
 	}
 
 	// Coupon rule engine opt-out

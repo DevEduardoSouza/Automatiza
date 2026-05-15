@@ -2,14 +2,52 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { MAX_SEND_GROUPS } from '@/config/automation-categories';
-import { useInstancesConnect } from '@/hooks/use-instances-connect';
+import { type LocalInstance, useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
 import { effectiveFriendlyName } from '@/lib/instance-label';
 import type { Automation, AutomationGroup } from '@/types/automation';
 import { Search, Star } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+// Sentinel value for the "Auto" option in the per-group chip Select.
+// Radix Select rejects empty-string values, so we use a non-empty token
+// and translate it to null/absence when persisting the override map.
+const CHIP_AUTO = '__auto__';
+
+function formatPhoneShort(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 0) return null;
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    const ddd = digits.slice(2, 4);
+    const rest = digits.slice(4);
+    if (rest.length === 9) return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    if (rest.length === 8) return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+  }
+  return digits;
+}
+
+// Short, human-readable label for a chip. Prefers the user-set friendly
+// name (when it isn't the raw session id placeholder); falls back to a
+// formatted phone, then the truncated session id.
+function chipLabel(inst: LocalInstance): string {
+  const friendly = effectiveFriendlyName(inst);
+  if (friendly) return friendly;
+  const phone = formatPhoneShort(inst.phone_number);
+  if (phone) return phone;
+  return inst.instance_id.length > 16
+    ? `${inst.instance_id.slice(0, 8)}…${inst.instance_id.slice(-4)}`
+    : inst.instance_id;
+}
 
 // Mirrors the backend cap in internal/lib/quota/quota.go (MaxGroupsPerInstance).
 // Keeping it as a local const so the UI can short-circuit before the API
@@ -49,6 +87,16 @@ interface GroupsListCheckboxProps {
   // become non-toggleable (unless they are the one being unchecked).
   perChipCap?: number;
   selectedCountByInstance?: Map<string, number>;
+  // Chips currently enabled on the automation. The per-group chip
+  // dropdown only renders when this has 2+ entries — single-chip
+  // automations have nothing to override, matching backend semantics.
+  selectedChipIds?: string[];
+  // Current overrides: wa_group_id → instance_id. Groups absent here
+  // follow the automatic sticky-hash distribution at dispatch time.
+  chipOverrides?: Record<string, string>;
+  // Called when the user pins / un-pins a chip for a group. instanceId
+  // is null when the user selects "Auto" (clear the override).
+  onOverrideChange?: (waGroupId: string, instanceId: string | null) => void;
 }
 
 export function GroupsListCheckbox({
@@ -61,7 +109,20 @@ export function GroupsListCheckbox({
   showSearch = false,
   perChipCap,
   selectedCountByInstance,
+  selectedChipIds,
+  chipOverrides,
+  onOverrideChange,
 }: GroupsListCheckboxProps) {
+  const { instances } = useInstancesConnect();
+  // Multi-chip routing UI only appears when the user actually has 2+
+  // chips on the automation. Single-chip automations skip the dropdown
+  // entirely — zero visual change from before.
+  const showChipRouting = (selectedChipIds?.length ?? 0) >= 2 && !!onOverrideChange;
+  const eligibleInstances = useMemo(() => {
+    if (!showChipRouting) return [] as LocalInstance[];
+    const set = new Set(selectedChipIds);
+    return instances.filter((i) => set.has(i.id));
+  }, [showChipRouting, selectedChipIds, instances]);
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -99,6 +160,12 @@ export function GroupsListCheckbox({
               (!isSelected && maxGroups !== undefined && selectedIds.length >= maxGroups) ||
               chipFull;
 
+            // Per-group chip pin. Only renders for selected groups in
+            // multi-chip mode; absent chips are disabled with a hint.
+            const participants = group.participating_instance_ids ?? [];
+            const overrideValue =
+              showChipRouting && isSelected ? (chipOverrides?.[group.wa_group_id] ?? '') : '';
+
             return (
               <div key={group.id} className="flex items-center space-x-2 mb-2 group/item">
                 <Checkbox
@@ -120,6 +187,48 @@ export function GroupsListCheckbox({
                 >
                   {group.name}
                 </Label>
+                {showChipRouting && isSelected && (
+                  <Select
+                    value={overrideValue || CHIP_AUTO}
+                    onValueChange={(v) =>
+                      onOverrideChange?.(group.wa_group_id, v === CHIP_AUTO ? null : v)
+                    }
+                  >
+                    <SelectTrigger className="h-7 text-xs w-[140px] shrink-0">
+                      <SelectValue placeholder="🤖 Auto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={CHIP_AUTO}>
+                        🤖{' '}
+                        {t('pages.offerAutomations.form.chipOverride.auto', {
+                          defaultValue: 'Auto',
+                        })}
+                      </SelectItem>
+                      {eligibleInstances.map((inst) => {
+                        // Backend-side WAHA fails loud if a chip isn't in
+                        // the group at send time, but we still try to flag
+                        // it in the UI so the user notices before saving.
+                        const inGroup = participants.length === 0 || participants.includes(inst.id);
+                        return (
+                          <SelectItem
+                            key={inst.id}
+                            value={inst.id}
+                            disabled={!inGroup}
+                          >
+                            📱 {chipLabel(inst)}
+                            {!inGroup && (
+                              <span className="ml-1 text-[10px] text-muted-foreground">
+                                ({t('pages.offerAutomations.form.chipOverride.notInGroup', {
+                                  defaultValue: 'não é membro',
+                                })})
+                              </span>
+                            )}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
                 <button
                   type="button"
                   onClick={() => onToggleFavorite(group.id)}
@@ -268,10 +377,32 @@ export function SendGroupsSelector({
           }
         }
       }
+      // When the user unchecks a group, also drop any chip override
+      // that was pinned to it so we don't leave orphan keys in the map.
+      let nextOverrides = prev.chip_overrides;
+      if (!checked && nextOverrides && waGroupId in nextOverrides) {
+        const { [waGroupId]: _dropped, ...rest } = nextOverrides;
+        nextOverrides = rest;
+      }
       return {
         ...prev,
         send_groups: checked ? [...current, waGroupId] : current.filter((g) => g !== waGroupId),
+        chip_overrides: nextOverrides,
       };
+    });
+  };
+
+  const handleOverrideChange = (waGroupId: string, instanceId: string | null) => {
+    setFormData((prev) => {
+      const current = prev.chip_overrides ?? {};
+      if (instanceId === null) {
+        // "Auto" — drop the override so the dispatch falls through to hash.
+        if (!(waGroupId in current)) return prev;
+        const { [waGroupId]: _dropped, ...rest } = current;
+        return { ...prev, chip_overrides: rest };
+      }
+      if (current[waGroupId] === instanceId) return prev;
+      return { ...prev, chip_overrides: { ...current, [waGroupId]: instanceId } };
     });
   };
 
@@ -301,6 +432,9 @@ export function SendGroupsSelector({
         maxGroups={unlimited ? undefined : MAX_SEND_GROUPS}
         perChipCap={unlimited ? undefined : MAX_GROUPS_PER_INSTANCE}
         selectedCountByInstance={countByInstance}
+        selectedChipIds={formData.instance_ids}
+        chipOverrides={formData.chip_overrides}
+        onOverrideChange={handleOverrideChange}
         showSearch
       />
     </div>

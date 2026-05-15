@@ -535,7 +535,13 @@ type Automation struct {
 	// dispatcher iterates each chip ID and sends through whichever chip
 	// participates in each destination group — fanning out the same
 	// generated offer across multiple chips without duplicate API calls.
-	InstanceIds   []string `protobuf:"bytes,34,rep,name=instance_ids,json=instanceIds,proto3" json:"instance_ids,omitempty"`
+	InstanceIds []string `protobuf:"bytes,34,rep,name=instance_ids,json=instanceIds,proto3" json:"instance_ids,omitempty"`
+	// Manual chip routing per destination group (migration 050). Maps
+	// wa_group_id -> instance_id-as-string. Groups present here force
+	// the dispatcher to use the named chip; groups absent fall through
+	// to the automatic algorithm (sticky hash across instance_ids).
+	// Empty map = full automatic mode.
+	ChipOverrides map[string]string `protobuf:"bytes,35,rep,name=chip_overrides,json=chipOverrides,proto3" json:"chip_overrides,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -804,6 +810,13 @@ func (x *Automation) GetApplyCouponRules() bool {
 func (x *Automation) GetInstanceIds() []string {
 	if x != nil {
 		return x.InstanceIds
+	}
+	return nil
+}
+
+func (x *Automation) GetChipOverrides() map[string]string {
+	if x != nil {
+		return x.ChipOverrides
 	}
 	return nil
 }
@@ -1187,7 +1200,10 @@ type CreateAutomationRequest struct {
 	ApplyCouponRules *bool `protobuf:"varint,28,opt,name=apply_coupon_rules,json=applyCouponRules,proto3,oneof" json:"apply_coupon_rules,omitempty"`
 	// Multi-chip preference (049). Non-empty list activates fan-out for
 	// offer_generate. Empty list = no preference (server-side default).
-	InstanceIds   []string `protobuf:"bytes,29,rep,name=instance_ids,json=instanceIds,proto3" json:"instance_ids,omitempty"`
+	InstanceIds []string `protobuf:"bytes,29,rep,name=instance_ids,json=instanceIds,proto3" json:"instance_ids,omitempty"`
+	// Manual chip routing per group (migration 050). See Automation
+	// message for semantics.
+	ChipOverrides map[string]string `protobuf:"bytes,30,rep,name=chip_overrides,json=chipOverrides,proto3" json:"chip_overrides,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1425,6 +1441,13 @@ func (x *CreateAutomationRequest) GetInstanceIds() []string {
 	return nil
 }
 
+func (x *CreateAutomationRequest) GetChipOverrides() map[string]string {
+	if x != nil {
+		return x.ChipOverrides
+	}
+	return nil
+}
+
 type CreateAutomationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Automation    *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
@@ -1507,7 +1530,13 @@ type UpdateAutomationRequest struct {
 	// Multi-chip preference (049). repeated field semantics: an empty
 	// list in the request clears the preference; to keep unchanged the
 	// client can simply omit the field. Non-empty list overwrites.
-	InstanceIds   []string `protobuf:"bytes,30,rep,name=instance_ids,json=instanceIds,proto3" json:"instance_ids,omitempty"`
+	InstanceIds []string `protobuf:"bytes,30,rep,name=instance_ids,json=instanceIds,proto3" json:"instance_ids,omitempty"`
+	// Manual chip routing per group (migration 050). map semantics: an
+	// empty map in the request clears all overrides; to keep unchanged
+	// the client should omit the field via a separate flag (the proto
+	// can't distinguish "empty" from "absent" for maps — we treat empty
+	// as "clear" since the UI sends the full desired map on save).
+	ChipOverrides map[string]string `protobuf:"bytes,31,rep,name=chip_overrides,json=chipOverrides,proto3" json:"chip_overrides,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1748,6 +1777,13 @@ func (x *UpdateAutomationRequest) GetApplyCouponRules() bool {
 func (x *UpdateAutomationRequest) GetInstanceIds() []string {
 	if x != nil {
 		return x.InstanceIds
+	}
+	return nil
+}
+
+func (x *UpdateAutomationRequest) GetChipOverrides() map[string]string {
+	if x != nil {
+		return x.ChipOverrides
 	}
 	return nil
 }
@@ -2543,7 +2579,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x16\n" +
 	"\x06suffix\x18\x04 \x01(\tR\x06suffix\x12!\n" +
 	"\fclean_phones\x18\x05 \x01(\bR\vcleanPhones\x12%\n" +
-	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xb1\r\n" +
+	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xc9\x0e\n" +
 	"\n" +
 	"Automation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -2588,7 +2624,11 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\vinstance_id\x18  \x01(\tH\x0fR\n" +
 	"instanceId\x88\x01\x01\x12,\n" +
 	"\x12apply_coupon_rules\x18! \x01(\bR\x10applyCouponRules\x12!\n" +
-	"\finstance_ids\x18\" \x03(\tR\vinstanceIdsB\x13\n" +
+	"\finstance_ids\x18\" \x03(\tR\vinstanceIds\x12T\n" +
+	"\x0echip_overrides\x18# \x03(\v2-.automations.v1.Automation.ChipOverridesEntryR\rchipOverrides\x1a@\n" +
+	"\x12ChipOverridesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
 	"\x16_monitoring_text_rulesB\x0f\n" +
 	"\r_min_discountB\f\n" +
@@ -2636,7 +2676,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x15GetAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xfd\v\n" +
+	"automation\"\xa2\r\n" +
 	"\x17CreateAutomationRequest\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x04name\x122\n" +
@@ -2675,7 +2715,11 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\vinstance_id\x18\x1b \x01(\tH\vR\n" +
 	"instanceId\x88\x01\x01\x121\n" +
 	"\x12apply_coupon_rules\x18\x1c \x01(\bH\fR\x10applyCouponRules\x88\x01\x01\x12!\n" +
-	"\finstance_ids\x18\x1d \x03(\tR\vinstanceIdsB\x13\n" +
+	"\finstance_ids\x18\x1d \x03(\tR\vinstanceIds\x12a\n" +
+	"\x0echip_overrides\x18\x1e \x03(\v2:.automations.v1.CreateAutomationRequest.ChipOverridesEntryR\rchipOverrides\x1a@\n" +
+	"\x12ChipOverridesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
 	"\x16_monitoring_text_rulesB\x0f\n" +
 	"\r_min_discountB\f\n" +
@@ -2695,7 +2739,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x18CreateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\x8c\r\n" +
+	"automation\"\xb1\x0e\n" +
 	"\x17UpdateAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
 	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x127\n" +
@@ -2734,7 +2778,11 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\vinstance_id\x18\x1c \x01(\tH\x13R\n" +
 	"instanceId\x88\x01\x01\x121\n" +
 	"\x12apply_coupon_rules\x18\x1d \x01(\bH\x14R\x10applyCouponRules\x88\x01\x01\x12!\n" +
-	"\finstance_ids\x18\x1e \x03(\tR\vinstanceIdsB\a\n" +
+	"\finstance_ids\x18\x1e \x03(\tR\vinstanceIds\x12a\n" +
+	"\x0echip_overrides\x18\x1f \x03(\v2:.automations.v1.UpdateAutomationRequest.ChipOverridesEntryR\rchipOverrides\x1a@\n" +
+	"\x12ChipOverridesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\a\n" +
 	"\x05_nameB\a\n" +
 	"\x05_modeB\x13\n" +
 	"\x11_dispatch_text_idB\x18\n" +
@@ -2906,7 +2954,7 @@ func file_automations_v1_automations_proto_rawDescGZIP() []byte {
 }
 
 var file_automations_v1_automations_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_automations_v1_automations_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_automations_v1_automations_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_automations_v1_automations_proto_goTypes = []any{
 	(AutomationMode)(0),                    // 0: automations.v1.AutomationMode
 	(AutomationStatus)(0),                  // 1: automations.v1.AutomationStatus
@@ -2937,7 +2985,10 @@ var file_automations_v1_automations_proto_goTypes = []any{
 	(*ListDispatchLogsRequest)(nil),        // 26: automations.v1.ListDispatchLogsRequest
 	(*ListDispatchLogsResponse)(nil),       // 27: automations.v1.ListDispatchLogsResponse
 	(*DispatchLog)(nil),                    // 28: automations.v1.DispatchLog
-	(*timestamppb.Timestamp)(nil),          // 29: google.protobuf.Timestamp
+	nil,                                    // 29: automations.v1.Automation.ChipOverridesEntry
+	nil,                                    // 30: automations.v1.CreateAutomationRequest.ChipOverridesEntry
+	nil,                                    // 31: automations.v1.UpdateAutomationRequest.ChipOverridesEntry
+	(*timestamppb.Timestamp)(nil),          // 32: google.protobuf.Timestamp
 }
 var file_automations_v1_automations_proto_depIdxs = []int32{
 	5,  // 0: automations.v1.MonitoringTextRules.substitutions:type_name -> automations.v1.TextSubstitution
@@ -2947,50 +2998,53 @@ var file_automations_v1_automations_proto_depIdxs = []int32{
 	2,  // 4: automations.v1.Automation.priority:type_name -> automations.v1.PriorityType
 	3,  // 5: automations.v1.Automation.filter_type:type_name -> automations.v1.FilterType
 	1,  // 6: automations.v1.Automation.status:type_name -> automations.v1.AutomationStatus
-	29, // 7: automations.v1.Automation.last_error_at:type_name -> google.protobuf.Timestamp
-	8,  // 8: automations.v1.DiagnosticResult.steps:type_name -> automations.v1.DiagnosticStep
-	7,  // 9: automations.v1.ListAutomationsResponse.automations:type_name -> automations.v1.Automation
-	7,  // 10: automations.v1.GetAutomationResponse.automation:type_name -> automations.v1.Automation
-	0,  // 11: automations.v1.CreateAutomationRequest.mode:type_name -> automations.v1.AutomationMode
-	6,  // 12: automations.v1.CreateAutomationRequest.monitoring_text_rules:type_name -> automations.v1.MonitoringTextRules
-	4,  // 13: automations.v1.CreateAutomationRequest.stores:type_name -> automations.v1.Store
-	2,  // 14: automations.v1.CreateAutomationRequest.priority:type_name -> automations.v1.PriorityType
-	3,  // 15: automations.v1.CreateAutomationRequest.filter_type:type_name -> automations.v1.FilterType
-	1,  // 16: automations.v1.CreateAutomationRequest.status:type_name -> automations.v1.AutomationStatus
-	7,  // 17: automations.v1.CreateAutomationResponse.automation:type_name -> automations.v1.Automation
-	0,  // 18: automations.v1.UpdateAutomationRequest.mode:type_name -> automations.v1.AutomationMode
-	6,  // 19: automations.v1.UpdateAutomationRequest.monitoring_text_rules:type_name -> automations.v1.MonitoringTextRules
-	4,  // 20: automations.v1.UpdateAutomationRequest.stores:type_name -> automations.v1.Store
-	2,  // 21: automations.v1.UpdateAutomationRequest.priority:type_name -> automations.v1.PriorityType
-	3,  // 22: automations.v1.UpdateAutomationRequest.filter_type:type_name -> automations.v1.FilterType
-	1,  // 23: automations.v1.UpdateAutomationRequest.status:type_name -> automations.v1.AutomationStatus
-	7,  // 24: automations.v1.UpdateAutomationResponse.automation:type_name -> automations.v1.Automation
-	9,  // 25: automations.v1.DiagnoseAutomationResponse.result:type_name -> automations.v1.DiagnosticResult
-	28, // 26: automations.v1.ListDispatchLogsResponse.logs:type_name -> automations.v1.DispatchLog
-	29, // 27: automations.v1.DispatchLog.created_at:type_name -> google.protobuf.Timestamp
-	10, // 28: automations.v1.AutomationsService.ListAutomations:input_type -> automations.v1.ListAutomationsRequest
-	12, // 29: automations.v1.AutomationsService.GetAutomation:input_type -> automations.v1.GetAutomationRequest
-	14, // 30: automations.v1.AutomationsService.CreateAutomation:input_type -> automations.v1.CreateAutomationRequest
-	16, // 31: automations.v1.AutomationsService.UpdateAutomation:input_type -> automations.v1.UpdateAutomationRequest
-	18, // 32: automations.v1.AutomationsService.DeleteAutomation:input_type -> automations.v1.DeleteAutomationRequest
-	20, // 33: automations.v1.AutomationsService.DiagnoseAutomation:input_type -> automations.v1.DiagnoseAutomationRequest
-	22, // 34: automations.v1.AutomationsService.RunAutomation:input_type -> automations.v1.RunAutomationRequest
-	24, // 35: automations.v1.AutomationsService.ResetAutomationHistory:input_type -> automations.v1.ResetAutomationHistoryRequest
-	26, // 36: automations.v1.AutomationsService.ListDispatchLogs:input_type -> automations.v1.ListDispatchLogsRequest
-	11, // 37: automations.v1.AutomationsService.ListAutomations:output_type -> automations.v1.ListAutomationsResponse
-	13, // 38: automations.v1.AutomationsService.GetAutomation:output_type -> automations.v1.GetAutomationResponse
-	15, // 39: automations.v1.AutomationsService.CreateAutomation:output_type -> automations.v1.CreateAutomationResponse
-	17, // 40: automations.v1.AutomationsService.UpdateAutomation:output_type -> automations.v1.UpdateAutomationResponse
-	19, // 41: automations.v1.AutomationsService.DeleteAutomation:output_type -> automations.v1.DeleteAutomationResponse
-	21, // 42: automations.v1.AutomationsService.DiagnoseAutomation:output_type -> automations.v1.DiagnoseAutomationResponse
-	23, // 43: automations.v1.AutomationsService.RunAutomation:output_type -> automations.v1.RunAutomationResponse
-	25, // 44: automations.v1.AutomationsService.ResetAutomationHistory:output_type -> automations.v1.ResetAutomationHistoryResponse
-	27, // 45: automations.v1.AutomationsService.ListDispatchLogs:output_type -> automations.v1.ListDispatchLogsResponse
-	37, // [37:46] is the sub-list for method output_type
-	28, // [28:37] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	32, // 7: automations.v1.Automation.last_error_at:type_name -> google.protobuf.Timestamp
+	29, // 8: automations.v1.Automation.chip_overrides:type_name -> automations.v1.Automation.ChipOverridesEntry
+	8,  // 9: automations.v1.DiagnosticResult.steps:type_name -> automations.v1.DiagnosticStep
+	7,  // 10: automations.v1.ListAutomationsResponse.automations:type_name -> automations.v1.Automation
+	7,  // 11: automations.v1.GetAutomationResponse.automation:type_name -> automations.v1.Automation
+	0,  // 12: automations.v1.CreateAutomationRequest.mode:type_name -> automations.v1.AutomationMode
+	6,  // 13: automations.v1.CreateAutomationRequest.monitoring_text_rules:type_name -> automations.v1.MonitoringTextRules
+	4,  // 14: automations.v1.CreateAutomationRequest.stores:type_name -> automations.v1.Store
+	2,  // 15: automations.v1.CreateAutomationRequest.priority:type_name -> automations.v1.PriorityType
+	3,  // 16: automations.v1.CreateAutomationRequest.filter_type:type_name -> automations.v1.FilterType
+	1,  // 17: automations.v1.CreateAutomationRequest.status:type_name -> automations.v1.AutomationStatus
+	30, // 18: automations.v1.CreateAutomationRequest.chip_overrides:type_name -> automations.v1.CreateAutomationRequest.ChipOverridesEntry
+	7,  // 19: automations.v1.CreateAutomationResponse.automation:type_name -> automations.v1.Automation
+	0,  // 20: automations.v1.UpdateAutomationRequest.mode:type_name -> automations.v1.AutomationMode
+	6,  // 21: automations.v1.UpdateAutomationRequest.monitoring_text_rules:type_name -> automations.v1.MonitoringTextRules
+	4,  // 22: automations.v1.UpdateAutomationRequest.stores:type_name -> automations.v1.Store
+	2,  // 23: automations.v1.UpdateAutomationRequest.priority:type_name -> automations.v1.PriorityType
+	3,  // 24: automations.v1.UpdateAutomationRequest.filter_type:type_name -> automations.v1.FilterType
+	1,  // 25: automations.v1.UpdateAutomationRequest.status:type_name -> automations.v1.AutomationStatus
+	31, // 26: automations.v1.UpdateAutomationRequest.chip_overrides:type_name -> automations.v1.UpdateAutomationRequest.ChipOverridesEntry
+	7,  // 27: automations.v1.UpdateAutomationResponse.automation:type_name -> automations.v1.Automation
+	9,  // 28: automations.v1.DiagnoseAutomationResponse.result:type_name -> automations.v1.DiagnosticResult
+	28, // 29: automations.v1.ListDispatchLogsResponse.logs:type_name -> automations.v1.DispatchLog
+	32, // 30: automations.v1.DispatchLog.created_at:type_name -> google.protobuf.Timestamp
+	10, // 31: automations.v1.AutomationsService.ListAutomations:input_type -> automations.v1.ListAutomationsRequest
+	12, // 32: automations.v1.AutomationsService.GetAutomation:input_type -> automations.v1.GetAutomationRequest
+	14, // 33: automations.v1.AutomationsService.CreateAutomation:input_type -> automations.v1.CreateAutomationRequest
+	16, // 34: automations.v1.AutomationsService.UpdateAutomation:input_type -> automations.v1.UpdateAutomationRequest
+	18, // 35: automations.v1.AutomationsService.DeleteAutomation:input_type -> automations.v1.DeleteAutomationRequest
+	20, // 36: automations.v1.AutomationsService.DiagnoseAutomation:input_type -> automations.v1.DiagnoseAutomationRequest
+	22, // 37: automations.v1.AutomationsService.RunAutomation:input_type -> automations.v1.RunAutomationRequest
+	24, // 38: automations.v1.AutomationsService.ResetAutomationHistory:input_type -> automations.v1.ResetAutomationHistoryRequest
+	26, // 39: automations.v1.AutomationsService.ListDispatchLogs:input_type -> automations.v1.ListDispatchLogsRequest
+	11, // 40: automations.v1.AutomationsService.ListAutomations:output_type -> automations.v1.ListAutomationsResponse
+	13, // 41: automations.v1.AutomationsService.GetAutomation:output_type -> automations.v1.GetAutomationResponse
+	15, // 42: automations.v1.AutomationsService.CreateAutomation:output_type -> automations.v1.CreateAutomationResponse
+	17, // 43: automations.v1.AutomationsService.UpdateAutomation:output_type -> automations.v1.UpdateAutomationResponse
+	19, // 44: automations.v1.AutomationsService.DeleteAutomation:output_type -> automations.v1.DeleteAutomationResponse
+	21, // 45: automations.v1.AutomationsService.DiagnoseAutomation:output_type -> automations.v1.DiagnoseAutomationResponse
+	23, // 46: automations.v1.AutomationsService.RunAutomation:output_type -> automations.v1.RunAutomationResponse
+	25, // 47: automations.v1.AutomationsService.ResetAutomationHistory:output_type -> automations.v1.ResetAutomationHistoryResponse
+	27, // 48: automations.v1.AutomationsService.ListDispatchLogs:output_type -> automations.v1.ListDispatchLogsResponse
+	40, // [40:49] is the sub-list for method output_type
+	31, // [31:40] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_automations_v1_automations_proto_init() }
@@ -3013,7 +3067,7 @@ func file_automations_v1_automations_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_automations_v1_automations_proto_rawDesc), len(file_automations_v1_automations_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   24,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

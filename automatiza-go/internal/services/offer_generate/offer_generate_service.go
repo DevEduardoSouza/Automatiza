@@ -590,32 +590,15 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		}
 	}
 
-	// chipForGroup picks the right chip session for a given group:
-	// the first chip in the automation's preference list that participates.
-	// Falls back to senderSession when the group has no recorded
-	// participation (e.g. brand-new sync) or no preference is set.
 	chipForGroup := func(waGroupID string) string {
-		if len(preferenceIDs) == 0 {
-			return senderSession
-		}
-		participants := groupParticipants[waGroupID]
-		if len(participants) == 0 {
-			// No participation data — best-effort use the first preferred
-			// chip; WAHA will fail loudly if it's truly not in the group.
-			return connectedByID[preferenceIDs[0]]
-		}
-		participantSet := make(map[string]struct{}, len(participants))
-		for _, p := range participants {
-			participantSet[p] = struct{}{}
-		}
-		for _, prefID := range preferenceIDs {
-			if _, ok := participantSet[prefID]; ok {
-				return connectedByID[prefID]
-			}
-		}
-		// None of the preferred chips participate — skip via empty string;
-		// caller will skip dispatch.
-		return ""
+		return PickChipForGroup(ChipRoutingInput{
+			WaGroupID:        waGroupID,
+			PreferenceIDs:    preferenceIDs,
+			GroupParticipants: groupParticipants[waGroupID],
+			ConnectedByID:    connectedByID,
+			ChipOverrides:    auto.ChipOverrides,
+			SenderSession:    senderSession,
+		})
 	}
 
 	dedupeHours := auto.GetDedupeHours()

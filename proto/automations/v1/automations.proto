@@ -221,6 +221,13 @@ message Automation {
   // participates in each destination group — fanning out the same
   // generated offer across multiple chips without duplicate API calls.
   repeated string instance_ids = 34;
+
+  // Manual chip routing per destination group (migration 050). Maps
+  // wa_group_id -> instance_id-as-string. Groups present here force
+  // the dispatcher to use the named chip; groups absent fall through
+  // to the automatic algorithm (sticky hash across instance_ids).
+  // Empty map = full automatic mode.
+  map<string, string> chip_overrides = 35;
 }
 
 /**
@@ -328,6 +335,9 @@ message CreateAutomationRequest {
   // Multi-chip preference (049). Non-empty list activates fan-out for
   // offer_generate. Empty list = no preference (server-side default).
   repeated string instance_ids = 29;
+  // Manual chip routing per group (migration 050). See Automation
+  // message for semantics.
+  map<string, string> chip_overrides = 30;
 }
 
 message CreateAutomationResponse {
@@ -376,6 +386,12 @@ message UpdateAutomationRequest {
   // list in the request clears the preference; to keep unchanged the
   // client can simply omit the field. Non-empty list overwrites.
   repeated string instance_ids = 30;
+  // Manual chip routing per group (migration 050). map semantics: an
+  // empty map in the request clears all overrides; to keep unchanged
+  // the client should omit the field via a separate flag (the proto
+  // can't distinguish "empty" from "absent" for maps — we treat empty
+  // as "clear" since the UI sends the full desired map on save).
+  map<string, string> chip_overrides = 31;
 }
 
 message UpdateAutomationResponse {

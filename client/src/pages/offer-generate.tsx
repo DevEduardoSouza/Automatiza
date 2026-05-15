@@ -135,13 +135,16 @@ export default function OfferGenerate() {
         : [...prev, chipId];
       // Limpa seleções de grupos (podem não pertencer aos chips atuais)
       // e persiste a preferência no formData. instance_id legado fica em
-      // sync com [0] pra rollback compat.
+      // sync com [0] pra rollback compat. Como zeramos send_groups, todo
+      // chip_override também deixa de fazer sentido (chave referencia um
+      // grupo que não está mais selecionado) — limpa o mapa inteiro.
       setFormData((current) => ({
         ...current,
         send_groups: [],
         monitor_groups: [],
         instance_ids: next,
         instance_id: next[0] ?? null,
+        chip_overrides: {},
       }));
       return next;
     });

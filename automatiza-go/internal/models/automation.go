@@ -87,6 +87,17 @@ type Automation struct {
 	// without requiring duplicate API calls per chip.
 	InstanceIDs []string `json:"instance_ids,omitempty" db:"instance_ids"`
 
+	// ChipOverrides forces specific destination groups onto specific
+	// chips (migration 050). Keys are wa_group_id, values are the
+	// instances.id as string (matches InstanceIDs format). Groups
+	// present here bypass the automatic fan-out algorithm; groups
+	// absent fall through to it. Empty map = full auto routing.
+	//
+	// Only consulted by the offer_generate dispatcher when InstanceIDs
+	// has 2+ entries — single-chip automations have nothing to override
+	// and we never touch the field in that path.
+	ChipOverrides map[string]string `json:"chip_overrides,omitempty" db:"chip_overrides"`
+
 	// Per-automation opt-out for the global coupon rule engine. Default
 	// TRUE: the worker matches active CouponRules on every dispatch.
 	// Set FALSE when the automation already pulls products from a
