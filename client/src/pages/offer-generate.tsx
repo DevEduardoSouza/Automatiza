@@ -17,6 +17,7 @@ import {
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Label } from '@/components/ui/label';
 import { ChipSelector } from '@/components/whatsapp/chip-selector';
+import { ROUTES } from '@/constants/routes';
 import { useOfferGenerate } from '@/hooks/use-offer-generate';
 import { effectiveFriendlyName } from '@/lib/instance-label';
 import type { AutomationGroup } from '@/types/automation';
@@ -32,6 +33,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 
 const colors = {
   wine: '#8D2D53',
@@ -306,8 +308,30 @@ export default function OfferGenerate() {
                   {/* Multi-chip preference (049). Marca os números pelos
                       quais o offer_generate vai disparar; a API é chamada
                       1x e o fan-out roteia cada grupo destino pro primeiro
-                      chip da lista que participa dele. */}
-                  {instances.length > 0 && (
+                      chip da lista que participa dele.
+
+                      Mostra TODOS os chips (não só conectados) — config
+                      é persistente, então faz sentido o user marcar um
+                      chip desconectado e reconectar depois sem perder a
+                      seleção. Chips offline aparecem com badge
+                      "desconectado" pra ficar óbvio. */}
+                  {instances.length === 0 ? (
+                    <div className="space-y-1.5 xs:space-y-2">
+                      <Label>{t('pages.offerGenerate.config.chips', 'Números')} *</Label>
+                      <div className="rounded-md border border-dashed border-amber-300 bg-amber-50/70 px-3 py-3 text-xs text-amber-800">
+                        {t(
+                          'pages.offerGenerate.config.chipsEmpty',
+                          'Nenhum número WhatsApp configurado. Conecte um número para começar.'
+                        )}
+                      </div>
+                      <Link
+                        to={ROUTES.WHATSAPP}
+                        className="text-xs font-medium text-[#8D2D53] hover:underline"
+                      >
+                        {t('components.chipSelector.connectLink', 'Conectar um número →')}
+                      </Link>
+                    </div>
+                  ) : (
                     <div className="space-y-1.5 xs:space-y-2">
                       <Label>
                         {t('pages.offerGenerate.config.chips', 'Números')} *{' '}
@@ -324,6 +348,7 @@ export default function OfferGenerate() {
                           const label =
                             effectiveFriendlyName(inst) ||
                             (inst.phone_number ? `+${inst.phone_number}` : inst.instance_id);
+                          const isOffline = inst.status !== 'connected';
                           return (
                             <label
                               key={inst.id}
@@ -331,7 +356,7 @@ export default function OfferGenerate() {
                                 checked
                                   ? 'border-[#8D2D53] bg-[rgba(141,45,83,0.08)]'
                                   : 'border-input hover:bg-muted/40'
-                              }`}
+                              } ${isOffline ? 'opacity-70' : ''}`}
                             >
                               <input
                                 type="checkbox"
@@ -339,16 +364,44 @@ export default function OfferGenerate() {
                                 checked={checked}
                                 onChange={() => handleChipToggle(inst.id)}
                               />
+                              <span
+                                className="inline-block h-2 w-2 rounded-full shrink-0"
+                                style={{
+                                  backgroundColor:
+                                    inst.status === 'connected'
+                                      ? '#22c55e'
+                                      : inst.status === 'pending'
+                                        ? '#f59e0b'
+                                        : '#ef4444',
+                                }}
+                                aria-hidden="true"
+                              />
                               <span className="flex-1 truncate">{label}</span>
                               {inst.is_default && (
                                 <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
                                   padrão
                                 </span>
                               )}
+                              {isOffline && (
+                                <span className="text-[10px] uppercase tracking-wide text-red-600 shrink-0">
+                                  {t('components.chipSelector.disconnected', 'desconectado')}
+                                </span>
+                              )}
                             </label>
                           );
                         })}
                       </div>
+                      {instances.every((i) => i.status !== 'connected') && (
+                        <p className="text-xs text-amber-700">
+                          {t(
+                            'pages.offerGenerate.config.allChipsOffline',
+                            'Nenhum número está conectado no momento. A automação não vai disparar até reconectar.'
+                          )}{' '}
+                          <Link to={ROUTES.WHATSAPP} className="font-medium hover:underline">
+                            {t('common.reconnect', 'Reconectar')}
+                          </Link>
+                        </p>
+                      )}
                       {selectedChipIds.length === 0 && (
                         <p className="text-xs text-amber-600">
                           {t(

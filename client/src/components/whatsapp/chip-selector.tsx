@@ -7,7 +7,9 @@ import {
 } from '@/components/ui/select';
 import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { effectiveFriendlyName } from '@/lib/instance-label';
+import { ROUTES } from '@/constants/routes';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 
 const ALL_VALUE = '__all__';
 
@@ -15,6 +17,7 @@ const dotColors = {
   connected: '#22c55e',
   disconnected: '#ef4444',
   pending: '#f59e0b',
+  superseded: '#a1a1aa',
 };
 
 function formatPhoneShort(raw: string | undefined): string | null {
@@ -48,7 +51,14 @@ interface ChipSelectorProps {
   disabled?: boolean;
   /** Visual placeholder when nothing is selected. */
   placeholder?: string;
-  /** Restrict the dropdown to instances matching this status (e.g. only connected). */
+  /**
+   * When set, restricts the dropdown to instances matching this status.
+   * Only use for *live* actions where picking a non-matching chip would
+   * fail immediately (e.g. "send message now"). Configuration UIs should
+   * leave it unset so the user can pick a disconnected chip and reconnect
+   * it later — the option is rendered with a "desconectado" hint so the
+   * state is still obvious.
+   */
   statusFilter?: LocalInstance['status'];
 }
 
@@ -61,6 +71,12 @@ interface ChipSelectorProps {
  * Optional "Todos os números" option (`allowAll`) is for filter UIs
  * where the user wants to see everything; the automation form omits it
  * because automations need a concrete chip.
+ *
+ * Empty state: when no instances are visible (either the user has zero
+ * chips connected anywhere, or `statusFilter` filters everything out)
+ * we render a disabled trigger with a hint and a link to /whatsapp so
+ * the user can immediately add or reconnect a chip without hunting for
+ * the page in the sidebar.
  */
 export function ChipSelector({
   value,
@@ -84,6 +100,37 @@ export function ChipSelector({
     }
     onChange(next);
   };
+
+  // Empty state. Two flavors:
+  //   - statusFilter set AND zero matches → "no connected chip right now"
+  //     (filter-induced empty; other chips exist but are offline)
+  //   - no statusFilter AND zero instances → "no chip at all"
+  // Both render the same CTA: a link to /whatsapp where the user can
+  // either reconnect or add a new chip.
+  if (visible.length === 0) {
+    const filtered = statusFilter !== undefined && instances.length > 0;
+    return (
+      <div className="flex flex-col gap-1.5 w-full sm:w-72">
+        <div className="rounded-md border border-dashed border-amber-300 bg-amber-50/70 px-3 py-2 text-xs text-amber-800">
+          {filtered
+            ? t(
+                'components.chipSelector.emptyConnected',
+                'Nenhum número conectado no momento.'
+              )
+            : t(
+                'components.chipSelector.empty',
+                'Nenhum número WhatsApp configurado.'
+              )}
+        </div>
+        <Link
+          to={ROUTES.WHATSAPP}
+          className="text-xs font-medium text-[#8D2D53] hover:underline"
+        >
+          {t('components.chipSelector.connectLink', 'Conectar um número →')}
+        </Link>
+      </div>
+    );
+  }
 
   // Select expects a non-empty value; map null to ALL_VALUE for the UI.
   const internalValue = value ?? (allowAll ? ALL_VALUE : '');
@@ -112,9 +159,19 @@ export function ChipSelector({
           // Show phone as a secondary line only when it isn't already the
           // primary (avoids duplication for un-named chips).
           const secondary = friendly && phone ? phone : null;
+          // Visual cue for non-connected chips: muted text + hint. The
+          // option stays SELECTABLE on purpose — config flows should let
+          // the user pick a chip that's offline now and bring it online
+          // later, otherwise editing an automation while its chip blinks
+          // would silently lose the selection.
+          const isOffline = inst.status !== 'connected';
           return (
             <SelectItem key={inst.id} value={inst.id}>
-              <div className="flex items-center gap-2 min-w-0 whitespace-nowrap">
+              <div
+                className={`flex items-center gap-2 min-w-0 whitespace-nowrap ${
+                  isOffline ? 'opacity-70' : ''
+                }`}
+              >
                 <span
                   className="inline-block h-2 w-2 rounded-full shrink-0"
                   style={{ backgroundColor: dotColors[inst.status] }}
@@ -124,6 +181,11 @@ export function ChipSelector({
                 {secondary && (
                   <span className="text-xs text-muted-foreground font-mono shrink-0">
                     {secondary}
+                  </span>
+                )}
+                {isOffline && (
+                  <span className="text-[10px] uppercase tracking-wide text-red-600 shrink-0">
+                    {t('components.chipSelector.disconnected', 'desconectado')}
                   </span>
                 )}
               </div>
