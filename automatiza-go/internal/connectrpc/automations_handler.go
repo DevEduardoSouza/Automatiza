@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"automatiza-go/internal/config"
 	automationsv1 "automatiza-go/internal/gen/automations/v1"
 	"automatiza-go/internal/lib/quota"
 	"automatiza-go/internal/models"
@@ -89,8 +90,14 @@ func validateChipOverrides(overrides map[string]string, instanceIDs []string) er
 // validateAutomationGroupQuota looks up which chip owns each waGroupID and
 // returns ErrGroupQuotaExceeded when any chip would host more than 20 of
 // the automation's groups. Returns nil when the repo is unavailable, the
-// list is empty, or no chip exceeds the cap.
+// list is empty, the feature flag is off, or no chip exceeds the cap.
 func (h *AutomationsHandler) validateAutomationGroupQuota(ctx context.Context, userID string, waGroupIDs []string, label string) error {
+	// Operator-controlled kill switch: when FEATURE_ENFORCE_GROUP_LIMITS is
+	// off (default), skip the per-chip cap entirely. Flip the env var to
+	// true to re-enable the WhatsApp-ban-protection limit.
+	if !config.GetFeatureFlags().EnforceGroupLimits {
+		return nil
+	}
 	if h.groupRepo == nil || len(waGroupIDs) == 0 {
 		return nil
 	}
