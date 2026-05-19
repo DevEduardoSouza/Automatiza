@@ -36,6 +36,16 @@ type FeatureFlags struct {
 	// rollout.
 	// Environment variable: FEATURE_USE_MULTI_INSTANCE_DISPATCH
 	UseMultiInstanceDispatch bool
+
+	// EnforceGroupLimits gates the per-chip group quota check inside an
+	// automation's send_groups / monitor_group_ids lists. When true, the
+	// handler rejects payloads where a single chip would host more than
+	// quota.MaxGroupsPerInstance groups. When false (default), the check is
+	// skipped and the user may pile any number of groups onto one chip — the
+	// frontend is expected to honor the same flag so the UI matches.
+	// Flip to true to re-enable the WhatsApp-ban-protection cap.
+	// Environment variable: FEATURE_ENFORCE_GROUP_LIMITS
+	EnforceGroupLimits bool
 }
 
 var (
@@ -60,6 +70,7 @@ func LoadFeatureFlags() *FeatureFlags {
 			UseGoDispatchLogs:        getEnvBool("FEATURE_USE_GO_DISPATCH_LOGS", true),
 			UseGoReconciliation:      getEnvBool("FEATURE_USE_GO_RECONCILIATION", true),
 			UseMultiInstanceDispatch: getEnvBool("FEATURE_USE_MULTI_INSTANCE_DISPATCH", false),
+			EnforceGroupLimits:       getEnvBool("FEATURE_ENFORCE_GROUP_LIMITS", false),
 		}
 
 		// Log feature flag values on load
@@ -67,7 +78,8 @@ func LoadFeatureFlags() *FeatureFlags {
 			featureFlagsLogger.Info("Feature flags loaded",
 				zap.Bool("useGoDispatchLogs", globalFeatureFlags.UseGoDispatchLogs),
 				zap.Bool("useGoReconciliation", globalFeatureFlags.UseGoReconciliation),
-				zap.Bool("useMultiInstanceDispatch", globalFeatureFlags.UseMultiInstanceDispatch))
+				zap.Bool("useMultiInstanceDispatch", globalFeatureFlags.UseMultiInstanceDispatch),
+				zap.Bool("enforceGroupLimits", globalFeatureFlags.EnforceGroupLimits))
 		}
 	})
 

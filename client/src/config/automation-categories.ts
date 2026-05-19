@@ -128,6 +128,18 @@ export const MIN_AUTOMATION_INTERVAL_MINUTES = 5;
 export const INTERVALS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 export const MAX_SEND_GROUPS = 20;
 
+/**
+ * Kill-switch for the send_groups limits in the automation form:
+ *  - global cap MAX_SEND_GROUPS (UI counter "0/20")
+ *  - per-chip cap MAX_GROUPS_PER_INSTANCE (badges and toggle guard)
+ *
+ * Defaults to `false` so the UI lets users pick any number of groups, matching
+ * the backend flag FEATURE_ENFORCE_GROUP_LIMITS (off by default). Flip to
+ * `true` here AND set FEATURE_ENFORCE_GROUP_LIMITS=true on the server to
+ * re-enable the WhatsApp-ban-protection cap end-to-end.
+ */
+export const ENFORCE_GROUP_LIMITS = false;
+
 /** Electronics subcategories with labels and i18n keys */
 export const ELETRONICOS_SUBCATEGORIES = {
   computadores: [

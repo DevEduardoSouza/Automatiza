@@ -5,10 +5,22 @@ import (
 	"errors"
 	"testing"
 
+	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/quota"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
 )
+
+// enableGroupLimits flips the FEATURE_ENFORCE_GROUP_LIMITS feature flag on
+// for the duration of a test. Needed because the default is off; without it,
+// validateAutomationGroupQuota returns nil unconditionally and the per-chip
+// behavior these tests assert can't be observed.
+func enableGroupLimits(t *testing.T) {
+	t.Helper()
+	t.Setenv("FEATURE_ENFORCE_GROUP_LIMITS", "true")
+	config.ResetFeatureFlags()
+	t.Cleanup(config.ResetFeatureFlags)
+}
 
 // fakeQuotaGroupRepo is a minimal GroupRepository stub focused on
 // GetInstancesForGroups for the per-chip quota tests below. Other methods
@@ -126,6 +138,7 @@ func TestValidateAutomationGroupQuota_EmptyListIsNoOp(t *testing.T) {
 }
 
 func TestValidateAutomationGroupQuota_BelowCapAllowed(t *testing.T) {
+	enableGroupLimits(t)
 	groups, mapping := makeGroups(quota.MaxGroupsPerInstance, 42)
 	h := &AutomationsHandler{groupRepo: &fakeQuotaGroupRepo{mapping: mapping}}
 	if err := h.validateAutomationGroupQuota(context.Background(), "user-1", groups, "send_groups"); err != nil {
@@ -134,6 +147,7 @@ func TestValidateAutomationGroupQuota_BelowCapAllowed(t *testing.T) {
 }
 
 func TestValidateAutomationGroupQuota_OverCapRejected(t *testing.T) {
+	enableGroupLimits(t)
 	groups, mapping := makeGroups(quota.MaxGroupsPerInstance+1, 42)
 	h := &AutomationsHandler{groupRepo: &fakeQuotaGroupRepo{mapping: mapping}}
 	err := h.validateAutomationGroupQuota(context.Background(), "user-1", groups, "send_groups")
@@ -143,6 +157,7 @@ func TestValidateAutomationGroupQuota_OverCapRejected(t *testing.T) {
 }
 
 func TestValidateAutomationGroupQuota_TwoChipsBothBelowCap(t *testing.T) {
+	enableGroupLimits(t)
 	mapping := map[string]*models.Instance{
 		"a@g.us": {ID: 1},
 		"b@g.us": {ID: 1},
@@ -157,6 +172,7 @@ func TestValidateAutomationGroupQuota_TwoChipsBothBelowCap(t *testing.T) {
 }
 
 func TestValidateAutomationGroupQuota_GroupsNotInMapAreIgnored(t *testing.T) {
+	enableGroupLimits(t)
 	// Groups with no matching record (e.g. user removed the chip) simply
 	// do not contribute to any chip's count. They neither pass nor fail
 	// the check; the validation focuses on chips that *are* resolvable.
@@ -171,6 +187,7 @@ func TestValidateAutomationGroupQuota_GroupsNotInMapAreIgnored(t *testing.T) {
 }
 
 func TestValidateAutomationGroupQuota_RepoErrorPropagates(t *testing.T) {
+	enableGroupLimits(t)
 	h := &AutomationsHandler{groupRepo: &fakeQuotaGroupRepo{err: errors.New("db down")}}
 	err := h.validateAutomationGroupQuota(context.Background(), "user-1", []string{"a@g.us"}, "send_groups")
 	if err == nil {
@@ -178,5 +195,17 @@ func TestValidateAutomationGroupQuota_RepoErrorPropagates(t *testing.T) {
 	}
 	if errors.Is(err, quota.ErrGroupQuotaExceeded) {
 		t.Fatalf("repo error should not be classified as quota error: %v", err)
+	}
+}
+
+func TestValidateAutomationGroupQuota_FlagOffSkipsCap(t *testing.T) {
+	// Default (flag off) — even an over-cap payload must return nil.
+	t.Setenv("FEATURE_ENFORCE_GROUP_LIMITS", "false")
+	config.ResetFeatureFlags()
+	t.Cleanup(config.ResetFeatureFlags)
+	groups, mapping := makeGroups(quota.MaxGroupsPerInstance+5, 42)
+	h := &AutomationsHandler{groupRepo: &fakeQuotaGroupRepo{mapping: mapping}}
+	if err := h.validateAutomationGroupQuota(context.Background(), "user-1", groups, "send_groups"); err != nil {
+		t.Fatalf("expected nil with flag off, got %v", err)
 	}
 }

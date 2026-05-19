@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ChipSelector } from '@/components/whatsapp/chip-selector';
+import { ENFORCE_GROUP_LIMITS } from '@/config/automation-categories';
 import type { RefinementState } from '@/hooks/use-automations';
 import type { CTA } from '@/entities/cta';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
@@ -330,6 +331,7 @@ export function AutomationFormDialog({
             setFormData={setFormData}
             groups={filteredGroups}
             onToggleFavorite={onToggleFavorite}
+            unlimited={!ENFORCE_GROUP_LIMITS}
           />
 
           {/* Monitor Groups (monitor mode) */}
