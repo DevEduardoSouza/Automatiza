@@ -40,7 +40,6 @@ interface RuleFormState {
   period_start: string; // datetime-local format
   period_end: string;
   min_price: string;
-  priority: string;
   is_active: boolean;
   official_only: boolean;
   code: string;
@@ -55,7 +54,6 @@ const EMPTY_FORM: RuleFormState = {
   period_start: '',
   period_end: '',
   min_price: '0',
-  priority: '0',
   is_active: true,
   official_only: false,
   code: '',
@@ -158,7 +156,6 @@ export default function CouponRulesPage() {
       period_start: rfc3339ToLocal(rule.period_start),
       period_end: rfc3339ToLocal(rule.period_end),
       min_price: String(rule.min_price ?? 0),
-      priority: String(rule.priority ?? 0),
       is_active: rule.is_active,
       official_only: rule.official_only,
       code: rule.code ?? '',
@@ -182,7 +179,12 @@ export default function CouponRulesPage() {
       period_start: localToRFC3339(form.period_start) ?? null,
       period_end: localToRFC3339(form.period_end) ?? null,
       min_price: Number(form.min_price) || 0,
-      priority: Number(form.priority) || 0,
+      // Priority foi removido do form em PR #128-ish — todas as regras
+      // criadas/editadas pela UI gravam 0. Backend ainda tem a coluna e
+      // ordena por (min_price DESC, priority DESC, created_at DESC), então
+      // regras antigas com priority>0 continuam vencendo o tie-break. Pra
+      // ajustar uma regra legada agora, mexer direto no banco.
+      priority: 0,
       is_active: form.is_active,
       // official_only só faz efeito no Shopee (onde o flag IsMall é
       // populado); na ML o filtro acaba não casando nada. Forçamos
@@ -282,7 +284,6 @@ export default function CouponRulesPage() {
                     <th className="px-4 py-3 font-medium">Plataforma</th>
                     <th className="px-4 py-3 font-medium">Valor mín.</th>
                     <th className="px-4 py-3 font-medium">Período</th>
-                    <th className="px-4 py-3 font-medium">Prio.</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium text-right">Ações</th>
                   </tr>
@@ -313,7 +314,6 @@ export default function CouponRulesPage() {
                       </td>
                       <td className="px-4 py-3">{formatPrice(rule.min_price)}</td>
                       <td className="px-4 py-3 text-xs">{formatPeriod(rule)}</td>
-                      <td className="px-4 py-3">{rule.priority}</td>
                       <td className="px-4 py-3">
                         <Switch
                           checked={rule.is_active}
@@ -415,33 +415,16 @@ export default function CouponRulesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="rule-min-price">Valor mín. produto (R$)</Label>
-                  <Input
-                    id="rule-min-price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.min_price}
-                    onChange={(e) => setForm((f) => ({ ...f, min_price: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="rule-priority">
-                    Prioridade
-                    <span className="ml-1 text-xs text-muted-foreground font-normal">
-                      (desempate)
-                    </span>
-                  </Label>
-                  <Input
-                    id="rule-priority"
-                    type="number"
-                    step="1"
-                    value={form.priority}
-                    onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rule-min-price">Valor mín. produto (R$)</Label>
+                <Input
+                  id="rule-min-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.min_price}
+                  onChange={(e) => setForm((f) => ({ ...f, min_price: e.target.value }))}
+                />
               </div>
 
               {form.platform === 'shopee' && (
