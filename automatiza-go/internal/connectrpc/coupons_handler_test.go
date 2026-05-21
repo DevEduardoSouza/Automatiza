@@ -107,7 +107,7 @@ func ptrFloat64(f float64) *float64 { return &f }
 func TestListCoupons_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	ctx := context.Background()
 
@@ -123,7 +123,7 @@ func TestListCoupons_Unauthenticated(t *testing.T) {
 func TestListCoupons_SuccessWithoutFilter(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -171,7 +171,7 @@ func TestListCoupons_SuccessWithoutFilter(t *testing.T) {
 func TestListCoupons_SuccessWithStoreFilter(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -211,7 +211,7 @@ func TestListCoupons_SuccessWithStoreFilter(t *testing.T) {
 func TestListCoupons_InternalError(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -236,7 +236,7 @@ func TestListCoupons_InternalError(t *testing.T) {
 func TestGetCoupon_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	ctx := context.Background()
 
@@ -252,7 +252,7 @@ func TestGetCoupon_Unauthenticated(t *testing.T) {
 func TestGetCoupon_NotFound(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -273,7 +273,7 @@ func TestGetCoupon_NotFound(t *testing.T) {
 func TestGetCoupon_Success(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -316,7 +316,7 @@ func TestGetCoupon_Success(t *testing.T) {
 func TestCreateCoupon_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	ctx := context.Background()
 
@@ -336,7 +336,7 @@ func TestCreateCoupon_Unauthenticated(t *testing.T) {
 func TestCreateCoupon_Success(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -375,7 +375,7 @@ func TestCreateCoupon_Success(t *testing.T) {
 func TestCreateCoupon_DuplicateCodeError(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -400,7 +400,7 @@ func TestCreateCoupon_DuplicateCodeError(t *testing.T) {
 func TestCreateCoupon_InternalError(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -429,7 +429,7 @@ func TestCreateCoupon_InternalError(t *testing.T) {
 func TestUpdateCoupon_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	ctx := context.Background()
 
@@ -448,7 +448,7 @@ func TestUpdateCoupon_Unauthenticated(t *testing.T) {
 func TestUpdateCoupon_Success(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -486,7 +486,7 @@ func TestUpdateCoupon_Success(t *testing.T) {
 func TestUpdateCoupon_DuplicateCodeError(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -510,7 +510,7 @@ func TestUpdateCoupon_DuplicateCodeError(t *testing.T) {
 func TestUpdateCoupon_CouponNotFoundError(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -538,7 +538,7 @@ func TestUpdateCoupon_CouponNotFoundError(t *testing.T) {
 func TestDeleteCoupon_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	ctx := context.Background()
 
@@ -554,7 +554,7 @@ func TestDeleteCoupon_Unauthenticated(t *testing.T) {
 func TestDeleteCoupon_Success(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -572,7 +572,7 @@ func TestDeleteCoupon_Success(t *testing.T) {
 func TestDeleteCoupon_CouponNotFoundError(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -597,7 +597,7 @@ func TestDeleteCoupon_CouponNotFoundError(t *testing.T) {
 func TestListCouponsByStore_Success(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -840,7 +840,7 @@ func TestProtoDiscountTypeToModel_RoundTrip(t *testing.T) {
 func TestListCouponsByStore_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	ctx := context.Background()
 
@@ -858,7 +858,7 @@ func TestListCouponsByStore_Unauthenticated(t *testing.T) {
 func TestListCouponsByStore_InternalError(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -881,7 +881,7 @@ func TestListCouponsByStore_InternalError(t *testing.T) {
 func TestGetCoupon_InternalError(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -902,7 +902,7 @@ func TestGetCoupon_InternalError(t *testing.T) {
 func TestDeleteCoupon_InternalError(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -923,7 +923,7 @@ func TestDeleteCoupon_InternalError(t *testing.T) {
 func TestUpdateCoupon_InternalError(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -947,7 +947,7 @@ func TestUpdateCoupon_InternalError(t *testing.T) {
 func TestCreateCoupon_WithAllOptionalFields(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -1032,7 +1032,7 @@ func TestCreateCoupon_WithAllOptionalFields(t *testing.T) {
 func TestUpdateCoupon_WithAllOptionalFields(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -1095,7 +1095,7 @@ func TestUpdateCoupon_WithAllOptionalFields(t *testing.T) {
 func TestUpdateCoupon_WithOptionalStringFields(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -1151,7 +1151,7 @@ func TestUpdateCoupon_WithOptionalStringFields(t *testing.T) {
 func TestListCoupons_WithIsActiveFilter(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -1190,7 +1190,7 @@ func TestListCoupons_WithIsActiveFilter(t *testing.T) {
 func TestListCoupons_WithCategoryFilter(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)
@@ -1230,7 +1230,7 @@ func TestListCoupons_WithCategoryFilter(t *testing.T) {
 func TestListCouponsByStore_EmptyResult(t *testing.T) {
 	t.Parallel()
 	mockSvc := new(mockCouponsServiceForHandler)
-	handler := NewCouponsHandler(mockSvc)
+	handler := NewCouponsHandler(mockSvc, nil)
 
 	userID := "user-123"
 	ctx := createTestUserContextForCoupons(userID)

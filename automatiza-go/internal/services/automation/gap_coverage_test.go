@@ -200,6 +200,11 @@ func (m *mockInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instan
 	return args.Error(0)
 }
 
+func (m *mockInstanceRepo) SupersedePriorInstances(ctx context.Context, userID string, currentInstanceID int, phoneNumber string) (int, error) {
+	args := m.Called(ctx, userID, currentInstanceID, phoneNumber)
+	return args.Int(0), args.Error(1)
+}
+
 type mockDispatchLogRepo struct {
 	mock.Mock
 }

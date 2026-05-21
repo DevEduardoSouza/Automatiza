@@ -204,8 +204,8 @@ func (m *MockGroupRepository) CountAll(ctx context.Context) (int64, error) {
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *MockGroupRepository) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
-	args := m.Called(ctx, userID, page, pageSize, adminOnly, search)
+func (m *MockGroupRepository) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*repository.GroupPaginatedResult, error) {
+	args := m.Called(ctx, userID, page, pageSize, adminOnly, search, instanceID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

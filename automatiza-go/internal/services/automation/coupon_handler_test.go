@@ -83,7 +83,10 @@ func (m *mockCouponRepoForAutomation) GetBestCouponForProduct(ctx context.Contex
 
 func newTestCouponHandler(repo repository.CouponRepository) *CouponHandler {
 	logger, _ := zap.NewDevelopment()
-	return NewCouponHandler(repo, logger)
+	// couponRuleRepo nil: legacy suite predates o rules engine; handler
+	// devolve "no rules" e os casos do legado continuam exercitando o
+	// fallback path. Reescrita dos testes é tarefa separada.
+	return NewCouponHandler(repo, nil, logger)
 }
 
 func strPtr(s string) *string       { return &s }
@@ -104,7 +107,7 @@ func TestApplyCoupon_NoCouponConfigured(t *testing.T) {
 		CouponID: nil, // no coupon
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.False(t, result.Applied)
 	assert.Equal(t, "no coupon configured", result.SkipReason)
@@ -122,7 +125,7 @@ func TestApplyCoupon_EmptyCouponID(t *testing.T) {
 		CouponID: strPtr(""),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.False(t, result.Applied)
 	assert.Equal(t, "no coupon configured", result.SkipReason)
@@ -143,7 +146,7 @@ func TestApplyCoupon_CouponNotFound(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.False(t, result.Applied)
 	assert.Equal(t, "coupon not found", result.SkipReason)
@@ -164,7 +167,7 @@ func TestApplyCoupon_RepositoryError(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err) // does not propagate error, just skips
 	assert.False(t, result.Applied)
 	assert.Equal(t, "coupon retrieval failed", result.SkipReason)
@@ -191,7 +194,7 @@ func TestApplyCoupon_CouponInactive(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.False(t, result.Applied)
 	assert.Equal(t, "coupon is inactive", result.SkipReason)
@@ -221,7 +224,7 @@ func TestApplyCoupon_CouponExpired(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.False(t, result.Applied)
 	assert.Equal(t, "coupon is expired", result.SkipReason)
@@ -249,7 +252,7 @@ func TestApplyCoupon_NoExpirationPassesThrough(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.True(t, result.Applied)
 	assert.Empty(t, result.SkipReason)
@@ -276,7 +279,7 @@ func TestApplyCoupon_StoreMismatch(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "amazon")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "amazon", false)
 	require.NoError(t, err)
 	assert.False(t, result.Applied)
 	assert.Contains(t, result.SkipReason, "coupon is for store")
@@ -306,7 +309,7 @@ func TestApplyCoupon_BelowMinProductPrice(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 30.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 30.0, "shopee", false)
 	require.NoError(t, err)
 	assert.False(t, result.Applied)
 	assert.Contains(t, result.SkipReason, "below minimum")
@@ -343,7 +346,7 @@ func TestApplyCoupon_SuccessWithAllFields(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.True(t, result.Applied)
 	assert.Equal(t, "MEGA30", result.CouponCode)
@@ -380,7 +383,7 @@ func TestFormatCouponText_OnlyCode(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.True(t, result.Applied)
 	assert.Contains(t, result.CouponText, "CUPOM: SIMPLE")
@@ -412,7 +415,7 @@ func TestFormatCouponText_FixedDiscount(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.True(t, result.Applied)
 	assert.Contains(t, result.CouponText, "R$ 5.50 OFF")
@@ -442,7 +445,7 @@ func TestFormatCouponText_PercentDiscountWithMax(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.True(t, result.Applied)
 	assert.Contains(t, result.CouponText, "20% OFF")
@@ -471,7 +474,7 @@ func TestFormatCouponText_WithCouponText(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.True(t, result.Applied)
 	assert.Contains(t, result.CouponText, "Valido apenas no app")
@@ -499,7 +502,7 @@ func TestFormatCouponText_WithAffiliateLink(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.True(t, result.Applied)
 	assert.Contains(t, result.CouponText, "Link do cupom: https://shopee.com.br/cupom")
@@ -728,7 +731,7 @@ func TestApplyCoupon_EmptyStoresMatchAny(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "amazon")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "amazon", false)
 	require.NoError(t, err)
 	assert.True(t, result.Applied)
 	repo.AssertExpectations(t)
@@ -773,7 +776,7 @@ func TestFormatCouponText_PercentDiscountWithoutMax(t *testing.T) {
 		CouponID: strPtr("coupon-1"),
 	}
 
-	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee")
+	result, err := handler.ApplyCoupon(context.Background(), automation, 100.0, "shopee", false)
 	require.NoError(t, err)
 	assert.True(t, result.Applied)
 	assert.Contains(t, result.CouponText, "15% OFF")

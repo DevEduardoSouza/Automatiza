@@ -229,7 +229,7 @@ func (m *mockInstanceRepo) SupersedePriorInstances(ctx context.Context, userID s
 type mockDispatchLogRepo struct {
 	CreateFn                   func(ctx context.Context, log *models.DispatchLog) (*models.DispatchLog, error)
 	UpdateFn                   func(ctx context.Context, logID int, updates map[string]interface{}) error
-	GetRecentByCanonicalKeyFn  func(ctx context.Context, userID, groupID, canonicalKey string, hours int) (*models.DispatchLog, error)
+	GetRecentByCanonicalKeyFn  func(ctx context.Context, userID, groupID, canonicalKey string, window time.Duration) (*models.DispatchLog, error)
 	GetUserLogsFn              func(ctx context.Context, userID string, limit, offset int) ([]models.DispatchLog, error)
 	DeleteRecentByAutomationFn func(ctx context.Context, automationID string, sinceDays int) (int64, error)
 	GetByAutomationIDWithCountFn func(ctx context.Context, automationID, userID string, limit, offset int) ([]repository.DispatchLogWithGroup, int, error)

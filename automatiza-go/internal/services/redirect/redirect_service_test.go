@@ -85,7 +85,7 @@ var _ repository.RedirectLinkRepository = (*mockRedirectLinkRepo)(nil)
 
 type mockGroupRepo struct {
 	GetUserGroupsFn          func(ctx context.Context, userID string, adminOnly bool) ([]models.Group, error)
-	GetUserGroupsPaginatedFn func(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error)
+	GetUserGroupsPaginatedFn func(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*repository.GroupPaginatedResult, error)
 	GetGroupByIDFn           func(ctx context.Context, groupID string) (*models.Group, error)
 	GetGroupByWAGroupIDFn    func(ctx context.Context, userID, waGroupID string) (*models.Group, error)
 	GetGroupsByIDsFn         func(ctx context.Context, userID string, groupIDs []string) ([]models.Group, error)
@@ -110,9 +110,9 @@ func (m *mockGroupRepo) GetUserGroups(ctx context.Context, userID string, adminO
 	}
 	return nil, nil
 }
-func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
+func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*repository.GroupPaginatedResult, error) {
 	if m.GetUserGroupsPaginatedFn != nil {
-		return m.GetUserGroupsPaginatedFn(ctx, userID, page, pageSize, adminOnly, search)
+		return m.GetUserGroupsPaginatedFn(ctx, userID, page, pageSize, adminOnly, search, instanceID)
 	}
 	return nil, nil
 }

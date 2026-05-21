@@ -183,6 +183,7 @@ func newTestService(t *testing.T, automationRunRepo *MockAutomationRunRepository
 		nil, // queueClient
 		nil, // cache
 		nil, // couponRepo
+		nil, // couponRuleRepo
 		logger,
 	)
 
@@ -366,7 +367,7 @@ func TestAcquireExecutionLock_NilRepository(t *testing.T) {
 	svc := NewAutomationService(
 		&MockAutomationRepository{},
 		nil, // nil automationRunRepo
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		logger,
 	)
 
@@ -436,7 +437,7 @@ func TestReleaseExecutionLock_NilRepository(t *testing.T) {
 	svc := NewAutomationService(
 		&MockAutomationRepository{},
 		nil, // nil automationRunRepo
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		logger,
 	)
 
