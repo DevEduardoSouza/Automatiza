@@ -166,6 +166,21 @@ export function GroupsListCheckbox({
             const overrideValue =
               showChipRouting && isSelected ? (chipOverrides?.[group.wa_group_id] ?? '') : '';
 
+            // Chips selecionados na automação que efetivamente são membros
+            // deste grupo. Quando só 1 chip é elegível, não há override real
+            // pra escolher — o backend usaria esse chip de qualquer jeito —
+            // então renderizamos um label estático em vez do <Select>. O
+            // dropdown só aparece quando 2+ chips podem mesmo enviar pro
+            // grupo (caso onde o "Auto" tem semântica de espalhar via hash
+            // ou o operador pode pinar manualmente um dos membros).
+            const inGroup = (inst: LocalInstance): boolean =>
+              participants.length === 0
+                ? group.instance_id === inst.id
+                : participants.includes(inst.id);
+            const eligibleInGroup = showChipRouting && isSelected
+              ? eligibleInstances.filter(inGroup)
+              : [];
+
             return (
               <div key={group.id} className="flex items-center space-x-2 mb-2 group/item">
                 <Checkbox
@@ -187,7 +202,17 @@ export function GroupsListCheckbox({
                 >
                   {group.name}
                 </Label>
-                {showChipRouting && isSelected && (
+                {showChipRouting && isSelected && eligibleInGroup.length === 1 && (
+                  <span
+                    className="inline-flex h-7 items-center rounded-md border bg-muted/30 px-2 text-xs text-muted-foreground shrink-0 w-[140px] truncate"
+                    title={t('pages.offerAutomations.form.chipOverride.onlyMember', {
+                      defaultValue: 'Só este número é membro deste grupo',
+                    })}
+                  >
+                    📱 <span className="ml-1 truncate">{chipLabel(eligibleInGroup[0])}</span>
+                  </span>
+                )}
+                {showChipRouting && isSelected && eligibleInGroup.length >= 2 && (
                   <Select
                     value={overrideValue || CHIP_AUTO}
                     onValueChange={(v) =>
@@ -204,28 +229,11 @@ export function GroupsListCheckbox({
                           defaultValue: 'Auto',
                         })}
                       </SelectItem>
-                      {eligibleInstances.map((inst) => {
-                        // Backend-side WAHA fails loud if a chip isn't in
-                        // the group at send time, but we still try to flag
-                        // it in the UI so the user notices before saving.
-                        const inGroup = participants.length === 0 || participants.includes(inst.id);
-                        return (
-                          <SelectItem
-                            key={inst.id}
-                            value={inst.id}
-                            disabled={!inGroup}
-                          >
-                            📱 {chipLabel(inst)}
-                            {!inGroup && (
-                              <span className="ml-1 text-[10px] text-muted-foreground">
-                                ({t('pages.offerAutomations.form.chipOverride.notInGroup', {
-                                  defaultValue: 'não é membro',
-                                })})
-                              </span>
-                            )}
-                          </SelectItem>
-                        );
-                      })}
+                      {eligibleInGroup.map((inst) => (
+                        <SelectItem key={inst.id} value={inst.id}>
+                          📱 {chipLabel(inst)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
