@@ -14,6 +14,7 @@ import { ENFORCE_GROUP_LIMITS } from '@/config/automation-categories';
 import type { RefinementState } from '@/hooks/use-automations';
 import type { CTA } from '@/entities/cta';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
+import { effectiveFriendlyName } from '@/lib/instance-label';
 import type {
   Automation,
   AutomationCoupon,
@@ -102,27 +103,33 @@ export function AutomationFormDialog({
   const { t } = useTranslation();
   const { instances } = useInstancesConnect();
 
-  // Pick which chip this automation runs on. State lives in the dialog so
-  // it resets every open/close cycle. Default-chip resolution:
-  //  - on CREATE: the user's is_default instance (or the first instance)
-  //  - on EDIT:   the chip that owns the first existing send_group, so the
-  //               user sees their saved selection right away
-  // Switching chips clears send_groups/monitor_groups (selections from the
-  // old chip wouldn't match the new chip's groups anyway).
-  //
-  // Single-chip por design: o /offer-automations dispara via UM chip por
-  // automação. O fan-out multi-chip vive em /offer-generate (049).
-  const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
+  // Quais chips esta automação usa.
+  //   - 1 chip configurado: single-select via <ChipSelector>; lista[0] = chip
+  //     escolhido. instance_id legado fica sincronizado.
+  //   - 2+ chips: multi-select estilo /offer-generate (checkbox grid). A união
+  //     dos grupos de todos os chips marcados aparece para seleção. instance_id
+  //     legado vai a null quando 2+ chips estão marcados — assim o dispatcher
+  //     do search/monitor/list cai no fallback per-group routing via chip dono
+  //     (gated por FEATURE_USE_MULTI_INSTANCE_DISPATCH, ON em prod desde 049).
+  // Resolução inicial:
+  //   - editando: instance_ids salvo > instance_id legado > inferido do
+  //     primeiro send_group > chip default
+  //   - criando:  chip is_default (em lista de 1)
+  const [selectedChipIds, setSelectedChipIds] = useState<string[]>([]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: only re-resolve on open or initial editing target
   useEffect(() => {
     if (!open) return;
     if (instances.length === 0) {
-      setSelectedChipId(null);
+      setSelectedChipIds([]);
+      return;
+    }
+    if (formData.instance_ids && formData.instance_ids.length > 0) {
+      setSelectedChipIds(formData.instance_ids);
       return;
     }
     if (formData.instance_id) {
-      setSelectedChipId(formData.instance_id);
+      setSelectedChipIds([formData.instance_id]);
       return;
     }
     const firstSendGroup = formData.send_groups?.[0];
@@ -130,51 +137,69 @@ export function AutomationFormDialog({
       ? groups.find((g) => g.wa_group_id === firstSendGroup)?.instance_id
       : undefined;
     if (fromExisting) {
-      setSelectedChipId(fromExisting);
+      setSelectedChipIds([fromExisting]);
       return;
     }
     const defaultInstance = instances.find((i) => i.is_default) ?? instances[0];
-    setSelectedChipId(defaultInstance?.id ?? null);
+    setSelectedChipIds(defaultInstance?.id ? [defaultInstance.id] : []);
   }, [open, editingId]);
 
-  // Match against participating_instance_ids (every chip whose sync has
-  // seen the group) instead of just instance_id (the single owner).
-  // Without this, a group both chips are admin in only shows under the
-  // owning chip, so the user can't pick it from the other chip's view.
-  // instance_id stays as the fallback when the array is empty (legacy
-  // rows from before migration 044).
-  const matchesChip = (g: AutomationGroup, chipId: string): boolean => {
+  // Group visibility: a group passes when at least one of the selected chips
+  // participates in it (or owns it, fallback for rows from before migration
+  // 044 where participating_instance_ids is empty). Empty selection = no
+  // filter — show everything.
+  const matchesAnyChip = (g: AutomationGroup, chipIds: string[]): boolean => {
+    if (chipIds.length === 0) return true;
     const participants = g.participating_instance_ids;
     if (participants && participants.length > 0) {
-      return participants.includes(chipId);
+      return chipIds.some((id) => participants.includes(id));
     }
-    return g.instance_id === chipId;
+    return g.instance_id ? chipIds.includes(g.instance_id) : false;
   };
 
   const filteredGroups = useMemo(() => {
-    if (!selectedChipId) return groups;
-    return groups.filter((g) => matchesChip(g, selectedChipId));
-  }, [groups, selectedChipId]);
+    if (selectedChipIds.length === 0) return groups;
+    return groups.filter((g) => matchesAnyChip(g, selectedChipIds));
+  }, [groups, selectedChipIds]);
 
   const filteredAllGroups = useMemo(() => {
-    if (!selectedChipId) return allGroups;
-    return allGroups.filter((g) => matchesChip(g, selectedChipId));
-  }, [allGroups, selectedChipId]);
+    if (selectedChipIds.length === 0) return allGroups;
+    return allGroups.filter((g) => matchesAnyChip(g, selectedChipIds));
+  }, [allGroups, selectedChipIds]);
 
-  const handleChipChange = (id: string | null) => {
-    if (id === selectedChipId) return;
-    setSelectedChipId(id);
-    // Clear group selections (they may not match the new chip) AND
-    // persist the preference into formData so the save call carries it.
-    // Mantemos instance_ids = [id] em sync pra que o backend salve a
-    // forma nova (049) consistentemente, mesmo com UI single-chip.
+  // Persiste a mudança de chips no formData. Limpa send/monitor groups (a
+  // antiga seleção pode não pertencer aos chips novos) e zera chip_overrides
+  // (chaves apontavam para grupos que saíram da seleção). instance_id legado:
+  // null quando 2+ chips (libera per-group routing); senão o único chip.
+  const persistChipSelection = (next: string[]) => {
     setFormData((prev) => ({
       ...prev,
       send_groups: [],
       monitor_groups: [],
-      instance_id: id ?? null,
-      instance_ids: id ? [id] : [],
+      instance_ids: next,
+      instance_id: next.length === 1 ? next[0] : null,
+      chip_overrides: {},
     }));
+  };
+
+  // Single-chip path (instances.length === 1). Mantém a UX antiga do
+  // <ChipSelector> dropdown — usuário troca o chip único.
+  const handleChipChange = (id: string | null) => {
+    const next = id ? [id] : [];
+    if (next.length === selectedChipIds.length && next.every((c, i) => c === selectedChipIds[i])) {
+      return;
+    }
+    setSelectedChipIds(next);
+    persistChipSelection(next);
+  };
+
+  // Multi-chip path (instances.length >= 2). Toggle de cada chip via checkbox.
+  const handleChipToggle = (chipId: string) => {
+    setSelectedChipIds((prev) => {
+      const next = prev.includes(chipId) ? prev.filter((id) => id !== chipId) : [...prev, chipId];
+      persistChipSelection(next);
+      return next;
+    });
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -304,9 +329,11 @@ export function AutomationFormDialog({
             />
           )}
 
-          {/* Chip selector — picks which WhatsApp number this automation
-              uses. Filters the group lists below to that chip's groups. */}
-          {instances.length > 0 && (
+          {/* Chip selector — picks which WhatsApp number(s) this automation
+              uses. 1 chip → dropdown legado; 2+ chips → checkbox grid igual
+              ao /offer-generate, com união dos grupos. Filtra as listas
+              abaixo. */}
+          {instances.length === 1 && (
             <div className="space-y-1.5 xs:space-y-2">
               <Label>
                 {t('pages.offerAutomations.form.chip', 'Número')} *{' '}
@@ -318,10 +345,81 @@ export function AutomationFormDialog({
                 </span>
               </Label>
               <ChipSelector
-                value={selectedChipId}
+                value={selectedChipIds[0] ?? null}
                 onChange={handleChipChange}
                 instances={instances}
               />
+            </div>
+          )}
+
+          {instances.length >= 2 && (
+            <div className="space-y-1.5 xs:space-y-2">
+              <Label>
+                {t('pages.offerAutomations.form.chips', 'Números')} *{' '}
+                <span className="text-xs text-muted-foreground">
+                  {t(
+                    'pages.offerAutomations.form.chipsHint',
+                    'Marque um ou mais números. Os grupos abaixo são a união dos selecionados.'
+                  )}
+                </span>
+              </Label>
+              <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
+                {instances.map((inst) => {
+                  const checked = selectedChipIds.includes(inst.id);
+                  const label =
+                    effectiveFriendlyName(inst) ||
+                    (inst.phone_number ? `+${inst.phone_number}` : inst.instance_id);
+                  const isOffline = inst.status !== 'connected';
+                  return (
+                    <label
+                      key={inst.id}
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer text-sm transition-colors ${
+                        checked
+                          ? 'border-[#8D2D53] bg-[rgba(141,45,83,0.08)]'
+                          : 'border-input hover:bg-muted/40'
+                      } ${isOffline ? 'opacity-70' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-[#8D2D53]"
+                        checked={checked}
+                        onChange={() => handleChipToggle(inst.id)}
+                      />
+                      <span
+                        className="inline-block h-2 w-2 rounded-full shrink-0"
+                        style={{
+                          backgroundColor:
+                            inst.status === 'connected'
+                              ? '#22c55e'
+                              : inst.status === 'pending'
+                                ? '#f59e0b'
+                                : '#ef4444',
+                        }}
+                        aria-hidden="true"
+                      />
+                      <span className="flex-1 truncate">{label}</span>
+                      {inst.is_default && (
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {t('pages.offerAutomations.form.chipDefaultBadge', 'padrão')}
+                        </span>
+                      )}
+                      {isOffline && (
+                        <span className="text-[10px] uppercase tracking-wide text-red-600 shrink-0">
+                          {t('components.chipSelector.disconnected', 'desconectado')}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+              {selectedChipIds.length === 0 && (
+                <p className="text-xs text-amber-600">
+                  {t(
+                    'pages.offerAutomations.form.chipsRequired',
+                    'Selecione pelo menos 1 número.'
+                  )}
+                </p>
+              )}
             </div>
           )}
 
