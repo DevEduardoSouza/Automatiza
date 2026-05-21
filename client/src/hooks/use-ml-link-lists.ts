@@ -19,34 +19,31 @@ function normalizeUrl(raw: string): string {
 }
 
 /**
- * Checks if a URL is from a supported product platform (Mercado Livre or Shopee).
+ * Aceita qualquer URL http(s) válida. A conversão automática para link de
+ * afiliado só roda para Shopee no backend — pra outras lojas (ML inclusive,
+ * Amazon, Magalu, etc) o user é responsável por colar o link já com a tag
+ * dele de afiliado, e o sistema dispara o URL como veio.
  */
-function isSupportedProductUrl(raw: string): boolean {
+function isValidHttpUrl(raw: string): boolean {
   try {
     const u = new URL(String(raw || '').trim());
-    const host = u.hostname.toLowerCase();
-
-    // Mercado Livre official short link — destination only known after redirect
-    if (host === 'meli.la') {
-      return true;
-    }
-
-    // Mercado Livre full domain
-    if (host.includes('mercadolivre.') || host.includes('mercadolibre.')) {
-      const path = u.pathname.toLowerCase();
-      const full = u.href.toLowerCase();
-      return path.includes('/p/') || full.includes('mlb');
-    }
-
-    // Shopee
-    if (host.includes('shopee.com') || host.includes('shp.ee')) {
-      return true;
-    }
-
-    return false;
+    return u.protocol === 'http:' || u.protocol === 'https:';
   } catch {
     return false;
   }
+}
+
+/** True quando o host casa com algum domínio do Mercado Livre. */
+function isMlUrl(u: URL): boolean {
+  const host = u.hostname.toLowerCase();
+  if (host === 'meli.la') return true;
+  return host.includes('mercadolivre.') || host.includes('mercadolibre.');
+}
+
+/** True quando o host casa com algum domínio da Shopee. */
+function isShopeeUrl(u: URL): boolean {
+  const host = u.hostname.toLowerCase();
+  return host.includes('shopee.com') || host.includes('shp.ee');
 }
 
 interface UseMlLinkListsReturn {
@@ -432,7 +429,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     if (!user || !selectedListId) return;
     const raw = String(singleUrl || '').trim();
     if (!raw) return;
-    if (!isSupportedProductUrl(raw)) {
+    if (!isValidHttpUrl(raw)) {
       toast({
         title: t('pages.mlLinkLists.errors.invalidLink'),
         description: t('pages.mlLinkLists.errors.invalidLinkMessage'),
@@ -449,14 +446,18 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     }
 
     let preview: PreviewState | null = null;
-    const isML = (() => {
-      try {
-        const host = new URL(cleanUrl).hostname.toLowerCase();
-        return host.includes('mercadolivre.') || host.includes('mercadolibre.');
-      } catch {
-        return false;
-      }
-    })();
+    // Detecção da loja via host. ML e Shopee têm preview (Shopee via API
+    // própria; ML via scraper). Outras lojas entram passthrough: o item é
+    // gravado com o URL como veio e dispara sem preview server-side — o
+    // user pode preencher título/preço/imagem manualmente depois se quiser.
+    let parsed: URL | null = null;
+    try {
+      parsed = new URL(cleanUrl);
+    } catch {
+      parsed = null;
+    }
+    const isML = parsed ? isMlUrl(parsed) : false;
+    const isShopee = parsed ? isShopeeUrl(parsed) : false;
 
     if (isML) {
       try {
@@ -479,7 +480,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
           variant: 'destructive',
         });
       }
-    } else {
+    } else if (isShopee) {
       try {
         const previewData = await shopeePreview(cleanUrl);
         if (previewData) {
@@ -495,6 +496,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
         // Shopee preview is best-effort; item will still be added
       }
     }
+    // else: outra loja — sem preview automático, item é adicionado direto.
 
     try {
       const nextOrder =
@@ -552,7 +554,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
 
       console.log('[import] lines parsed:', lines.length);
 
-      const validated = lines.filter(isSupportedProductUrl).map((l) => {
+      const validated = lines.filter(isValidHttpUrl).map((l) => {
         try {
           return normalizeUrl(l);
         } catch {
