@@ -104,18 +104,25 @@ export function AutomationFormDialog({
   const { instances } = useInstancesConnect();
 
   // Quais chips esta automação usa.
-  //   - 1 chip configurado: single-select via <ChipSelector>; lista[0] = chip
-  //     escolhido. instance_id legado fica sincronizado.
-  //   - 2+ chips: multi-select estilo /offer-generate (checkbox grid). A união
-  //     dos grupos de todos os chips marcados aparece para seleção. instance_id
-  //     legado vai a null quando 2+ chips estão marcados — assim o dispatcher
-  //     do search/monitor/list cai no fallback per-group routing via chip dono
-  //     (gated por FEATURE_USE_MULTI_INSTANCE_DISPATCH, ON em prod desde 049).
+  //   - Modo Lista (com 2+ chips conectados): multi-select estilo
+  //     /offer-generate (checkbox grid). A união dos grupos de todos os
+  //     chips marcados aparece para seleção. instance_id legado vai a null
+  //     quando 2+ chips estão marcados — o dispatcher cai no fallback
+  //     per-group routing via chip dono (gated por
+  //     FEATURE_USE_MULTI_INSTANCE_DISPATCH, ON em prod desde 049).
+  //   - Demais casos (modo buscar ou monitoramento, ou modo lista com só
+  //     1 chip): single-select via <ChipSelector> dropdown — UX clássica,
+  //     1 automação por chip.
   // Resolução inicial:
   //   - editando: instance_ids salvo > instance_id legado > inferido do
   //     primeiro send_group > chip default
   //   - criando:  chip is_default (em lista de 1)
   const [selectedChipIds, setSelectedChipIds] = useState<string[]>([]);
+
+  // Multi-chip UI só faz sentido no modo Lista com 2+ chips conectados.
+  // Buscar e monitoramento permanecem single-chip por design (1 automação
+  // por chip no dispatcher legado).
+  const multiChipUI = formData.mode === 'list' && instances.length >= 2;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: only re-resolve on open or initial editing target
   useEffect(() => {
@@ -201,6 +208,20 @@ export function AutomationFormDialog({
       return next;
     });
   };
+
+  // Trocar de modo Lista pra Buscar/Monitoramento com 2+ chips marcados
+  // colapsa pro primeiro chip. Sem isso o user veria o dropdown single
+  // (que mostra só o primeiro) mas o save persistiria a lista cheia em
+  // instance_ids — inconsistente com o que ele acabou de ver na tela.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: collapse só dispara quando o modo muda
+  useEffect(() => {
+    if (!open) return;
+    if (multiChipUI) return;
+    if (selectedChipIds.length <= 1) return;
+    const next = [selectedChipIds[0]];
+    setSelectedChipIds(next);
+    persistChipSelection(next);
+  }, [formData.mode]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen && limitReached && !editingId) {
@@ -330,10 +351,10 @@ export function AutomationFormDialog({
           )}
 
           {/* Chip selector — picks which WhatsApp number(s) this automation
-              uses. 1 chip → dropdown legado; 2+ chips → checkbox grid igual
-              ao /offer-generate, com união dos grupos. Filtra as listas
-              abaixo. */}
-          {instances.length === 1 && (
+              uses. Buscar e Monitoramento mantêm o dropdown legado em
+              qualquer cenário; só o modo Lista (com 2+ chips) abre o
+              checkbox grid multi-chip estilo /offer-generate. */}
+          {instances.length > 0 && !multiChipUI && (
             <div className="space-y-1.5 xs:space-y-2">
               <Label>
                 {t('pages.offerAutomations.form.chip', 'Número')} *{' '}
@@ -352,13 +373,13 @@ export function AutomationFormDialog({
             </div>
           )}
 
-          {instances.length >= 2 && (
+          {multiChipUI && (
             <div className="space-y-1.5 xs:space-y-2">
               <Label>
                 {t('pages.offerAutomations.form.chips', 'Números')} *{' '}
                 <span className="text-xs text-muted-foreground">
                   {t(
-                    'pages.offerAutomations.form.chipsHint',
+                    'pages.offerAutomations.form.chipsListHint',
                     'Marque um ou mais números. Os grupos abaixo são a união dos selecionados.'
                   )}
                 </span>
