@@ -120,8 +120,8 @@ func (m *mockGroupRepo) BulkUpdateGroups(ctx context.Context, userID string, gro
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
-	args := m.Called(ctx, userID, page, pageSize, adminOnly, search)
+func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*repository.GroupPaginatedResult, error) {
+	args := m.Called(ctx, userID, page, pageSize, adminOnly, search, instanceID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -144,6 +144,14 @@ func (m *mockGroupRepo) GetInstancesForGroups(ctx context.Context, userID string
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(map[string]*models.Instance), args.Error(1)
+}
+
+func (m *mockGroupRepo) GetGroupsByWAGroupIDs(ctx context.Context, userID string, waGroupIDs []string) ([]models.Group, error) {
+	args := m.Called(ctx, userID, waGroupIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.Group), args.Error(1)
 }
 
 // mockInstanceRepo implements repository.InstanceRepository for testing.
@@ -227,6 +235,11 @@ func (m *mockInstanceRepo) UpdateInstanceLabel(ctx context.Context, userID strin
 func (m *mockInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instanceID int, phoneNumber string) error {
 	args := m.Called(ctx, instanceID, phoneNumber)
 	return args.Error(0)
+}
+
+func (m *mockInstanceRepo) SupersedePriorInstances(ctx context.Context, userID string, currentInstanceID int, phoneNumber string) (int, error) {
+	args := m.Called(ctx, userID, currentInstanceID, phoneNumber)
+	return args.Int(0), args.Error(1)
 }
 
 // mockQueueClient provides a mock queue client for testing.

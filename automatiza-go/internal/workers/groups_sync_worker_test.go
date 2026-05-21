@@ -39,8 +39,8 @@ func (m *mockGroupRepo) GetUserGroups(ctx context.Context, userID string, adminO
 	return args.Get(0).([]models.Group), args.Error(1)
 }
 
-func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
-	args := m.Called(ctx, userID, page, pageSize, adminOnly, search)
+func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*repository.GroupPaginatedResult, error) {
+	args := m.Called(ctx, userID, page, pageSize, adminOnly, search, instanceID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

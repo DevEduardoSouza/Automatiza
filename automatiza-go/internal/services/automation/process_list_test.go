@@ -693,6 +693,7 @@ func TestProcessListMode_EdgeCases(t *testing.T) {
 				deps.mlService,
 				nil, nil, nil, nil,
 				nil, // couponRepo
+				nil, // couponRuleRepo
 				logger,
 			)
 

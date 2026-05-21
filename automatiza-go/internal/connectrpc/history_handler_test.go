@@ -228,6 +228,14 @@ func (m *mockGroupRepoForHistory) GetGroupByWAGroupID(ctx context.Context, userI
 	return args.Get(0).(*models.Group), args.Error(1)
 }
 
+func (m *mockGroupRepoForHistory) GetGroupsByWAGroupIDs(ctx context.Context, userID string, waGroupIDs []string) ([]models.Group, error) {
+	args := m.Called(ctx, userID, waGroupIDs)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.Group), args.Error(1)
+}
+
 func (m *mockGroupRepoForHistory) GetGroupsByIDs(ctx context.Context, userID string, groupIDs []string) ([]models.Group, error) {
 	args := m.Called(ctx, userID, groupIDs)
 	if args.Get(0) == nil {
@@ -295,8 +303,8 @@ func (m *mockGroupRepoForHistory) BulkUpdateGroups(ctx context.Context, userID s
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *mockGroupRepoForHistory) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
-	args := m.Called(ctx, userID, page, pageSize, adminOnly, search)
+func (m *mockGroupRepoForHistory) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*repository.GroupPaginatedResult, error) {
+	args := m.Called(ctx, userID, page, pageSize, adminOnly, search, instanceID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

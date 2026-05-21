@@ -725,7 +725,7 @@ func (m *mockGroupRepo) BulkUpdateGroups(ctx context.Context, userID string, gro
 	return 0, nil
 }
 
-func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
+func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*repository.GroupPaginatedResult, error) {
 	return &repository.GroupPaginatedResult{}, nil
 }
 

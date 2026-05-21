@@ -128,6 +128,7 @@ function InstanceRow({
                 placeholder={instance.instance_id}
                 className="flex-1 min-w-0 rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#8D2D53]"
                 style={{ borderColor: colors.wineBorder }}
+                // biome-ignore lint/a11y/noAutofocus: inline rename — input só monta após clique explícito no lápis, focus imediato é a UX esperada
                 autoFocus
               />
               <button

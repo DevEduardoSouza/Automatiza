@@ -352,7 +352,7 @@ func (m *mockGroupRepo) GetUserGroups(ctx context.Context, userID string, adminO
 	}
 	return []models.Group{{ID: "g1", UserID: userID, Name: "Test Group"}}, nil
 }
-func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string) (*repository.GroupPaginatedResult, error) {
+func (m *mockGroupRepo) GetUserGroupsPaginated(ctx context.Context, userID string, page, pageSize int, adminOnly bool, search string, instanceID int) (*repository.GroupPaginatedResult, error) {
 	return nil, nil
 }
 func (m *mockGroupRepo) GetGroupByID(ctx context.Context, groupID string) (*models.Group, error) {

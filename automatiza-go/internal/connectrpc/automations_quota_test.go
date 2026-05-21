@@ -48,7 +48,7 @@ func (f *fakeQuotaGroupRepo) GetInstancesForGroups(ctx context.Context, userID s
 func (f *fakeQuotaGroupRepo) GetUserGroups(context.Context, string, bool) ([]models.Group, error) {
 	panic("GetUserGroups not implemented in fakeQuotaGroupRepo")
 }
-func (f *fakeQuotaGroupRepo) GetUserGroupsPaginated(context.Context, string, int, int, bool, string) (*repository.GroupPaginatedResult, error) {
+func (f *fakeQuotaGroupRepo) GetUserGroupsPaginated(context.Context, string, int, int, bool, string, int) (*repository.GroupPaginatedResult, error) {
 	panic("GetUserGroupsPaginated not implemented in fakeQuotaGroupRepo")
 }
 func (f *fakeQuotaGroupRepo) GetGroupByID(context.Context, string) (*models.Group, error) {
