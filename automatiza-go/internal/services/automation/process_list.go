@@ -186,13 +186,12 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			continue
 		}
 
-		// Detect platform
+		// Detect platform. Shopee is the only store the backend converts to
+		// an affiliate URL on the user's behalf — ML and every other store
+		// run as passthrough: the user pasted their already-affiliated URL
+		// and (optionally) the product metadata, and we just dispatch it.
 		isML := text.IsMLLink(originURL)
 		isShopee := text.IsShopeeLink(originURL)
-		if !isML && !isShopee {
-			s.logDispatch(ctx, automation, "system", originURL, "skipped", "URL invalida (plataforma nao suportada).")
-			continue
-		}
 
 		// Fetch product preview and generate affiliate link based on platform
 		var preview *models.MLProductPreview
