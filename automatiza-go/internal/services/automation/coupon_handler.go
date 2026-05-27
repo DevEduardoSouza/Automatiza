@@ -144,58 +144,24 @@ func (h *CouponHandler) ApplyCoupon(
 	return result, nil
 }
 
-// formatCouponText formats the coupon information for inclusion in the message.
-// It builds a multi-line coupon block with the code, discount info, and any extra text.
+// formatCouponText devolve o texto livre que o operador escreveu em
+// "Mensagem do cupom" (coupon.CouponText), sem mais nada. Antes a função
+// montava um bloco auto-gerado com 🏷️ CUPOM: <código>, 💰 Desconto: X% OFF
+// e 🔗 Link do cupom: <url>; agora o operador controla 100% do que aparece
+// no disparo. Quem quiser código, desconto, emoji ou link no texto inclui
+// na própria mensagem do cupom.
 //
-// Format follows the Node.js parity:
-// - Line 1: Coupon emoji + code
-// - Line 2: Discount info (if configured)
-// - Line 3: Extra text (if configured)
-// - Line 4: Affiliate link (if configured)
+// Mantém o prefixo \n\n pra continuar separando o bloco do resto do
+// template; o RenderTemplate do dispatch colapsa newlines extras (até 2)
+// se o template já tiver espaçamento próprio.
+//
+// CouponText vazio resulta em "" — nenhum bloco é anexado e o template
+// renderiza como se a regra não tivesse casado.
 func (h *CouponHandler) formatCouponText(coupon *models.Coupon) string {
-	var lines []string
-
-	// Line 1: Coupon code (skip when empty — standalone rules may not
-	// carry a code, just a message + discount).
-	if coupon.Code != "" {
-		lines = append(lines, fmt.Sprintf("🏷️ CUPOM: %s", coupon.Code))
+	if coupon.CouponText == nil || *coupon.CouponText == "" {
+		return ""
 	}
-
-	// Line 2: Discount info (if configured)
-	if coupon.DiscountType != nil && coupon.DiscountValue != nil {
-		discountType := *coupon.DiscountType
-		discountValue := *coupon.DiscountValue
-
-		if discountType == "fixed" {
-			lines = append(lines, fmt.Sprintf("💰 Desconto: R$ %.2f OFF", discountValue))
-		} else if discountType == "percent" {
-			discountLine := fmt.Sprintf("💰 Desconto: %.0f%% OFF", discountValue)
-			if coupon.MaxDiscount != nil && *coupon.MaxDiscount > 0 {
-				discountLine += fmt.Sprintf(" (max R$ %.2f)", *coupon.MaxDiscount)
-			}
-			lines = append(lines, discountLine)
-		}
-	}
-
-	// Line 3: Extra text (if configured)
-	if coupon.CouponText != nil && *coupon.CouponText != "" {
-		lines = append(lines, fmt.Sprintf("📝 %s", *coupon.CouponText))
-	}
-
-	// Line 4: Affiliate link (if configured)
-	if coupon.AffiliateLink != nil && *coupon.AffiliateLink != "" {
-		lines = append(lines, fmt.Sprintf("🔗 Link do cupom: %s", *coupon.AffiliateLink))
-	}
-
-	// Join all lines with newlines and prefix with double newline for separation
-	result := "\n\n"
-	for i, line := range lines {
-		if i > 0 {
-			result += "\n"
-		}
-		result += line
-	}
-	return result
+	return "\n\n" + *coupon.CouponText
 }
 
 // LoadCouponOnce is a legacy optimization that pre-fetched the

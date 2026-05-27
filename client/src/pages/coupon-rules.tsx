@@ -111,27 +111,13 @@ function formatDiscount(rule: LocalCouponRule): string {
 }
 
 // Build the WhatsApp preview body from the form state. Mirrors the
-// formatter the worker uses when injecting the rule into a dispatch:
-// 🏷️ CUPOM: <code>, 💰 desconto, 📝 mensagem custom. The user sees in
-// the side panel exactly the bubble the chat will show.
+// formatter the worker uses (formatCouponText em coupon_handler.go): o
+// bloco do cupom no disparo é literalmente o que o operador digitou em
+// "Mensagem do cupom". Código, desconto e link continuam no form porque
+// alimentam preço/cálculo/analytics, mas não aparecem mais no texto
+// auto-gerado — quem quiser inclui na própria mensagem.
 function buildPreview(form: RuleFormState): string {
-  const lines: string[] = [];
-  if (form.code.trim()) lines.push(`🏷️ CUPOM: ${form.code.trim()}`);
-  if (form.discount_type && form.discount_value) {
-    const v = Number(form.discount_value);
-    if (!Number.isNaN(v) && v > 0) {
-      if (form.discount_type === 'fixed') {
-        lines.push(`💰 Desconto: R$ ${v.toFixed(2)} OFF`);
-      } else {
-        let line = `💰 Desconto: ${v.toFixed(0)}% OFF`;
-        const max = Number(form.max_discount);
-        if (!Number.isNaN(max) && max > 0) line += ` (max R$ ${max.toFixed(2)})`;
-        lines.push(line);
-      }
-    }
-  }
-  if (form.message.trim()) lines.push(`📝 ${form.message.trim()}`);
-  return lines.join('\n');
+  return form.message.trim();
 }
 
 export default function CouponRulesPage() {
@@ -463,8 +449,10 @@ export default function CouponRulesPage() {
                   onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Aparece como "🏷️ CUPOM: {'<código>'}" na mensagem. Deixe vazio
-                  se a promoção for só de mensagem (sem código).
+                  Usado pra rastreio interno (analytics, dispatch_logs) e pra
+                  casar com o cupom no checkout. Não aparece automaticamente na
+                  mensagem — se quiser exibir o código pro usuário, inclua no
+                  campo "Mensagem do cupom" abaixo.
                 </p>
               </div>
 
@@ -539,7 +527,7 @@ export default function CouponRulesPage() {
               <WhatsAppPreview
                 text={buildPreview(form)}
                 title="Preview no WhatsApp"
-                emptyHint="Preencha o código ou a mensagem para ver o preview..."
+                emptyHint="Preencha a mensagem do cupom para ver o preview..."
               />
             </section>
 
