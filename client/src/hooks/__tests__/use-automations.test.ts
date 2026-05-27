@@ -312,10 +312,10 @@ describe('use-automations', () => {
     });
 
     it('should clamp interval_minutes via clampIntervalMinutes', () => {
-      const local = createLocalAutomation({ intervalMinutes: 3 });
+      const local = createLocalAutomation({ intervalMinutes: 1 });
       const result = fromLocalAutomation(local);
 
-      expect(result.interval_minutes).toBe(10);
+      expect(result.interval_minutes).toBe(3);
     });
 
     it('should convert monitoringTextRules when present', () => {
