@@ -365,7 +365,11 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				}
 			}
 
-			// Create dispatch log BEFORE enqueueing so the worker can update its status
+			// Create dispatch log BEFORE enqueueing so the worker can update its status.
+			// Type é setado a partir de automation.Type ("list" pra esse caminho) pra
+			// que queries de analytics consigam distinguir disparos do LIST mode dos
+			// de monitoring/search/offer_generate. Sem isso o campo fica NULL e o
+			// agrupamento por tipo na UI deixa de funcionar pra esse modo.
 			var dispatchLogID *int
 			if s.dispatchLogRepo != nil {
 				featureFlags := config.GetFeatureFlags()
@@ -377,6 +381,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 						GroupID:        &groupID,
 						ProductURL:     &originURL,
 						Status:         models.DispatchLogStatusQueued,
+						Type:           automation.Type,
 						CreatedAt:      time.Now().UTC().Format(time.RFC3339),
 					}
 					created, dlErr := s.dispatchLogRepo.Create(ctx, dl)
@@ -471,7 +476,20 @@ func (s *automationService) buildListModeMessage(
 	}
 
 	if isShopee {
-		// Shopee: use ShopeeOfferVars
+		// Shopee: use ShopeeOfferVars.
+		//
+		// Info propositalmente NÃO é populado aqui. {info} é preenchido a
+		// partir da tag info[...] do body da mensagem de gatilho — fluxo
+		// que só existe no offer_generate. No LIST mode os itens vêm de
+		// uma lista pré-cadastrada sem mensagem de gatilho, então {info}
+		// no template renderiza vazio e o RenderTemplate colapsa a linha
+		// em branco resultante.
+		//
+		// Operadores que querem texto fixo no LIST mode devem incluí-lo
+		// diretamente no body do dispatch_text (ex.: trocar `{info}` por
+		// um literal). Compartilhar o mesmo dispatch_text entre
+		// /offer-generate e LIST faz a linha do {info} aparecer preenchida
+		// só nos disparos do offer_generate — comportamento esperado.
 		vars := text.ShopeeOfferVars{
 			Link:          item.OriginURL,
 			AffiliateLink: affiliateURL,

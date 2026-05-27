@@ -1143,7 +1143,13 @@ func (s *automationService) logDispatch(ctx context.Context, automation *models.
 		GroupID:        &groupID,
 		ProductURL:     &productURL,
 		Status:         status,
-		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+		// Type vem do automation pra distinguir entries por modo
+		// (list/search/monitoring) em queries de analytics. Sem isso o
+		// campo fica NULL e o agrupamento na UI quebra pra search/list.
+		// monitoring_service e offer_generate_service têm o próprio
+		// log que já preenche Type — esse helper cobre os outros modos.
+		Type:      automation.Type,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 
 	for _, opt := range opts {
