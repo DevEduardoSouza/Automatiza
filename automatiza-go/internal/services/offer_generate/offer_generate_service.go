@@ -130,7 +130,12 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 	bodyForLinks := text.StripInfoTag(msg.Body)
 	links := text.ExtractLinks(bodyForLinks)
 	if len(links) == 0 {
-		return nil
+		// Nenhum link de produto detectado: cai no modo "relay" — repassa
+		// a mensagem original (texto, foto, áudio, vídeo, documento) pros
+		// grupos de destino exatamente como veio, sem processamento de
+		// afiliado/cupom. O grupo de origem agora aceita qualquer tipo
+		// de conteúdo informativo, não só links.
+		return s.processRelay(ctx, msg)
 	}
 
 	s.logger.Info("Processing incoming message for offer generation",
@@ -874,4 +879,363 @@ func truncateStr(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// =============================================================================
+// Relay mode — repassa mensagens sem link de produto pros grupos de destino
+// =============================================================================
+
+// processRelay é o caminho alternativo ao fluxo de oferta quando a mensagem
+// que cai no grupo de origem NÃO contém link de produto Shopee/ML. Em vez
+// de ignorar (comportamento antigo), repassa o conteúdo bruto (texto solto,
+// foto, áudio, vídeo, documento) pros grupos de destino configurados.
+//
+// Compartilha as proteções de dedup com o fluxo principal (content
+// fingerprint + message ID) pra que múltiplos chips no grupo de origem não
+// disparem replays. Não há resolução de cupom/preço — relay é "pipe puro".
+func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.IncomingMessage) error {
+	s.logger.Info("Processing incoming message for relay (no product link)",
+		zap.String("instance", msg.InstanceName),
+		zap.String("group", msg.RemoteJID),
+		zap.Bool("hasMedia", msg.HasMedia),
+		zap.String("mediaType", msg.MediaType),
+		zap.String("bodyPreview", truncateStr(msg.Body, 100)))
+
+	// Content fingerprint dedup (2 min) — mesma chave do fluxo principal
+	// (buildContentKey hashea o Body). Pra mídia sem caption (Body=""),
+	// inclui a MediaURL no hash pra evitar que duas mídias sem legenda
+	// colidam na mesma janela.
+	contentKey := s.buildRelayContentKey(msg)
+	if s.isDuplicate(ctx, contentKey) {
+		s.logger.Debug("Offer relay: duplicate content, skipping")
+		return nil
+	}
+	s.markProcessed(ctx, contentKey, 2*time.Minute)
+
+	// Message ID dedup (10 min) — idêntico ao fluxo principal.
+	msgKey := fmt.Sprintf("og_relay_msg_dedup:%s:%s", msg.RemoteJID, msg.MessageID)
+	if s.isDuplicate(ctx, msgKey) {
+		s.logger.Debug("Offer relay: duplicate message ID, skipping")
+		return nil
+	}
+	s.markProcessed(ctx, msgKey, 10*time.Minute)
+
+	automations, err := s.automationRepo.GetOfferGenerateAutomationsForGroup(ctx, msg.RemoteJID)
+	if err != nil {
+		return err
+	}
+
+	var active []models.Automation
+	for _, a := range automations {
+		if a.IsActive() {
+			active = append(active, a)
+		}
+	}
+	if len(active) == 0 {
+		return nil
+	}
+
+	s.logger.Info("Found matching offer_generate automations for relay",
+		zap.Int("count", len(active)),
+		zap.String("group", msg.RemoteJID))
+
+	for i := range active {
+		if err := s.processAutomationRelay(ctx, &active[i], msg); err != nil {
+			s.logger.Warn("Failed to process offer_generate relay",
+				zap.String("automationID", active[i].ID),
+				zap.Error(err))
+		}
+	}
+
+	return nil
+}
+
+// processAutomationRelay envia a mensagem original pra cada grupo destino
+// da automação. Resolve chips e dedup do mesmo jeito que processAutomation,
+// só que não monta texto formatado — usa msg.Body + msg.MediaURL/MediaBase64
+// e dispara o método WAHA apropriado por tipo.
+func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto *models.Automation, msg *models.IncomingMessage) error {
+	// Time window
+	if auto.StartTime != nil && auto.EndTime != nil {
+		tw := &models.TimeWindow{
+			StartTime: *auto.StartTime,
+			EndTime:   *auto.EndTime,
+			Timezone:  "America/Sao_Paulo",
+		}
+		if auto.ScheduleDays != nil {
+			tw.Days = auto.ScheduleDays
+		}
+		if !tw.IsWithinWindow(time.Now()) {
+			s.logger.Info("Outside time window, skipping offer_generate relay",
+				zap.String("automationID", auto.ID))
+			return nil
+		}
+	}
+
+	// Chip resolution (same logic as processAutomation step 8).
+	instances, err := s.instanceRepo.GetUserInstances(ctx, auto.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to get user instances: %w", err)
+	}
+	connectedByID := make(map[string]string, len(instances))
+	var firstConnected string
+	for _, inst := range instances {
+		if inst.Status != "connected" {
+			continue
+		}
+		idStr := fmt.Sprintf("%d", inst.ID)
+		connectedByID[idStr] = inst.InstanceID
+		if firstConnected == "" {
+			firstConnected = inst.InstanceID
+		}
+	}
+	if firstConnected == "" {
+		s.logger.Warn("No connected WhatsApp instance for offer_generate relay",
+			zap.String("automationID", auto.ID),
+			zap.String("userID", auto.UserID))
+		return nil
+	}
+
+	preferenceIDs := make([]string, 0, len(auto.InstanceIDs)+1)
+	for _, id := range auto.InstanceIDs {
+		if _, ok := connectedByID[id]; ok {
+			preferenceIDs = append(preferenceIDs, id)
+		}
+	}
+	if len(preferenceIDs) == 0 && auto.InstanceID != nil && *auto.InstanceID != "" {
+		if _, ok := connectedByID[*auto.InstanceID]; ok {
+			preferenceIDs = append(preferenceIDs, *auto.InstanceID)
+		}
+	}
+	senderSession := firstConnected
+	if len(preferenceIDs) > 0 {
+		senderSession = connectedByID[preferenceIDs[0]]
+	}
+
+	destinationGroups := auto.SendGroups
+	if len(destinationGroups) == 0 {
+		destinationGroups = auto.GetTargetGroups()
+	}
+	if len(destinationGroups) == 0 {
+		return nil
+	}
+
+	groupParticipants := map[string][]string{}
+	if s.groupRepo != nil && len(preferenceIDs) > 0 {
+		groups, gerr := s.groupRepo.GetGroupsByWAGroupIDs(ctx, auto.UserID, destinationGroups)
+		if gerr != nil {
+			s.logger.Warn("Failed to load destination group participants — falling back to default chip",
+				zap.String("automationID", auto.ID), zap.Error(gerr))
+		} else {
+			for _, g := range groups {
+				groupParticipants[g.WAGroupID] = g.ParticipatingInstanceIDs
+			}
+		}
+	}
+
+	chipForGroup := func(waGroupID string) string {
+		return PickChipForGroup(ChipRoutingInput{
+			WaGroupID:         waGroupID,
+			PreferenceIDs:     preferenceIDs,
+			GroupParticipants: groupParticipants[waGroupID],
+			ConnectedByID:     connectedByID,
+			ChipOverrides:     auto.ChipOverrides,
+			SenderSession:     senderSession,
+		})
+	}
+
+	// Canonical key pro relay: prefixo "relay:" + hash do MessageID. O
+	// hash do MessageID é único o suficiente pra dedupar reenvios em
+	// janela curta sem fundir mensagens distintas. O prefixo distingue
+	// das chaves do fluxo de oferta em queries de analytics.
+	canonicalKey := fmt.Sprintf("relay:%s", hashStr(msg.MessageID+":"+msg.RemoteJID))
+	const dedupeWindow = 30 * time.Minute
+
+	for _, groupID := range destinationGroups {
+		if groupID == msg.RemoteJID {
+			continue
+		}
+
+		dispatchSession := chipForGroup(groupID)
+		if dispatchSession == "" {
+			s.logger.Info("No preferred chip participates in destination group, skipping relay",
+				zap.String("automationID", auto.ID),
+				zap.String("toGroup", groupID))
+			s.logDispatch(ctx, auto, groupID, "", "skipped", "no_chip_in_group", canonicalKey, "")
+			continue
+		}
+
+		if !s.claimProductSlot(ctx, auto.UserID, groupID, canonicalKey, dedupeWindow) {
+			s.logger.Info("Relay message already sent (dedup), skipping",
+				zap.String("automationID", auto.ID),
+				zap.String("toGroup", groupID),
+				zap.String("canonicalKey", canonicalKey))
+			s.logDispatch(ctx, auto, groupID, "", "skipped", "dedupe", canonicalKey, "")
+			continue
+		}
+
+		// Random 1-3s delay pra espalhar envios em fan-out — mantém
+		// paridade com o fluxo de oferta.
+		delay := 1 + rand.IntN(3)
+		if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
+			delay = *auto.DelaySeconds
+		}
+		time.Sleep(time.Duration(delay) * time.Second)
+
+		// Marca o body+mídia como nosso próprio outgoing pra que o webhook
+		// FromMe que retorna seja distinguido de um chip user postando
+		// manualmente no grupo. Pula quando Body+MediaURL ambos vazios
+		// (caso degenerado — não deveria existir webhook desse formato).
+		ownKey := msg.Body
+		if msg.MediaURL != "" {
+			ownKey += "\x00" + msg.MediaURL
+		}
+		if ownKey != "" {
+			s.markOwnOutgoing(ctx, dispatchSession, groupID, ownKey)
+		}
+
+		sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		sendErr := s.sendRelayMessage(sendCtx, dispatchSession, groupID, msg)
+		sendCancel()
+
+		if sendErr != nil {
+			s.releaseProductSlot(ctx, auto.UserID, groupID, canonicalKey)
+			s.logDispatch(ctx, auto, groupID, "", "failed", sendErr.Error(), canonicalKey, "")
+			s.logger.Error("Failed to send relay message",
+				zap.String("groupID", groupID),
+				zap.String("session", dispatchSession),
+				zap.String("mediaType", msg.MediaType),
+				zap.Error(sendErr))
+			continue
+		}
+
+		s.logDispatch(ctx, auto, groupID, "", "sent", "", canonicalKey, "")
+		s.logger.Info("Relay message sent successfully",
+			zap.String("fromGroup", msg.RemoteJID),
+			zap.String("toGroup", groupID),
+			zap.String("session", dispatchSession),
+			zap.String("automationID", auto.ID),
+			zap.String("mediaType", msg.MediaType))
+	}
+
+	return nil
+}
+
+// sendRelayMessage dispara o método WAHA correto baseado no tipo da
+// mensagem original. Pra mídia, prefere MediaURL (mais leve, sem reupload);
+// cai pra MediaBase64 quando URL não está disponível (caso comum no
+// link preview JPEG do WhatsApp). Áudio só funciona via Base64 — o input
+// SendVoiceInput não tem campo URL.
+func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, chatID string, msg *models.IncomingMessage) error {
+	// Sem mídia → texto puro
+	if !msg.HasMedia {
+		if strings.TrimSpace(msg.Body) == "" {
+			// Mensagem sem texto E sem mídia — provavelmente um evento
+			// sistema (reaction, edit, etc) que o WAHA encaminhou. Skipa.
+			return nil
+		}
+		_, err := s.waProvider.SendText(ctx, whatsapp.SendTextInput{
+			SessionName: session,
+			ChatID:      chatID,
+			Text:        msg.Body,
+		})
+		return err
+	}
+
+	switch strings.ToLower(msg.MediaType) {
+	case "image":
+		input := whatsapp.SendImageInput{
+			SessionName: session,
+			ChatID:      chatID,
+			Caption:     msg.Body,
+			Mimetype:    msg.MimeType,
+		}
+		if msg.MediaURL != "" {
+			input.ImageURL = msg.MediaURL
+		} else if msg.MediaBase64 != "" {
+			input.ImageBase64 = msg.MediaBase64
+		} else {
+			return fmt.Errorf("relay image without MediaURL or MediaBase64")
+		}
+		_, err := s.waProvider.SendImage(ctx, input)
+		return err
+
+	case "video":
+		input := whatsapp.SendVideoInput{
+			SessionName: session,
+			ChatID:      chatID,
+			Caption:     msg.Body,
+		}
+		if msg.MediaURL != "" {
+			input.MediaURL = msg.MediaURL
+		} else if msg.MediaBase64 != "" {
+			input.MediaBase64 = msg.MediaBase64
+		} else {
+			return fmt.Errorf("relay video without MediaURL or MediaBase64")
+		}
+		_, err := s.waProvider.SendVideo(ctx, input)
+		return err
+
+	case "audio", "voice", "ptt":
+		// Voice/PTT só aceita base64. Se WAHA só entregou URL, não dá
+		// pra repassar sem baixar + reencodar — fora do escopo do MVP
+		// de relay. Loga e pula.
+		if msg.MediaBase64 == "" {
+			s.logger.Warn("Relay audio skipped: SendVoice requires base64 and message has only URL",
+				zap.String("mediaType", msg.MediaType))
+			return fmt.Errorf("relay audio without MediaBase64 (URL-only not supported)")
+		}
+		mime := msg.MimeType
+		if mime == "" {
+			mime = "audio/ogg; codecs=opus"
+		}
+		_, err := s.waProvider.SendVoice(ctx, whatsapp.SendVoiceInput{
+			SessionName: session,
+			ChatID:      chatID,
+			AudioBase64: msg.MediaBase64,
+			Mimetype:    mime,
+		})
+		return err
+
+	case "document", "file":
+		input := whatsapp.SendDocumentInput{
+			SessionName: session,
+			ChatID:      chatID,
+			Caption:     msg.Body,
+		}
+		if msg.MediaURL != "" {
+			input.MediaURL = msg.MediaURL
+		} else if msg.MediaBase64 != "" {
+			input.MediaBase64 = msg.MediaBase64
+		} else {
+			return fmt.Errorf("relay document without MediaURL or MediaBase64")
+		}
+		_, err := s.waProvider.SendDocument(ctx, input)
+		return err
+
+	default:
+		// Tipo desconhecido (sticker, location, contact...): fallback pra
+		// texto se tiver Body, senão skipa com warning. Sticker em
+		// particular não tem método dedicado no provider hoje.
+		if strings.TrimSpace(msg.Body) != "" {
+			_, err := s.waProvider.SendText(ctx, whatsapp.SendTextInput{
+				SessionName: session,
+				ChatID:      chatID,
+				Text:        msg.Body,
+			})
+			return err
+		}
+		s.logger.Info("Relay skipped: unsupported media type without text fallback",
+			zap.String("mediaType", msg.MediaType))
+		return nil
+	}
+}
+
+// buildRelayContentKey é uma variante do buildContentKey que inclui a
+// MediaURL no hash. Em relay, mídias sem caption (Body="") são comuns —
+// se 3 fotos diferentes caem no grupo de origem sem texto, queremos
+// processar as 3 (não dedupar pela colisão de hash do body vazio).
+func (s *offerGenerateService) buildRelayContentKey(msg *models.IncomingMessage) string {
+	h := sha256.Sum256([]byte(msg.Body + "\x00" + msg.MediaURL + "\x00" + msg.MimeType))
+	return fmt.Sprintf("og_relay_content:%s:%s", msg.RemoteJID, hex.EncodeToString(h[:8]))
 }
