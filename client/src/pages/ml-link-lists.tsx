@@ -35,6 +35,7 @@ import {
   AlertCircle,
   Check,
   Copy,
+  Download,
   Edit,
   Link as LinkIcon,
   List,
@@ -122,14 +123,25 @@ function FileImportSection({
 
         {!csvFile ? (
           <>
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-            >
-              <Upload className="h-4 w-4 mr-2" aria-hidden="true" />
-              {t('pages.mlLinkLists.items.fileSelect')}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+              >
+                <Upload className="h-4 w-4 mr-2" aria-hidden="true" />
+                {t('pages.mlLinkLists.items.fileSelect')}
+              </Button>
+              <Button variant="outline" asChild>
+                <a
+                  href="/templates/modelo-importacao-links.csv"
+                  download="modelo-importacao-links.csv"
+                >
+                  <Download className="h-4 w-4 mr-2" aria-hidden="true" />
+                  {t('pages.mlLinkLists.items.fileTemplate')}
+                </a>
+              </Button>
+            </div>
             <div className="text-xs" style={{ color: colors.wineTextMuted }}>
               {t('pages.mlLinkLists.items.fileHint')}
             </div>

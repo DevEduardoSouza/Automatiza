@@ -1742,6 +1742,7 @@
         "fileImport": "Importar arquivo",
         "fileSelect": "Selecionar arquivo (.csv ou .txt)",
         "fileHint": "Um link por linha. Aceita CSV (primeira coluna) ou TXT.",
+        "fileTemplate": "Baixar planilha modelo",
         "fileSelected": "Arquivo: {{name}}",
         "fileImportButton": "Importar links",
         "imported": "{{count}} link(s) importado(s) com sucesso",
