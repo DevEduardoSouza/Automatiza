@@ -68,9 +68,14 @@ export const VARIABLE_MAP: Record<VariableKey, string> = {
  * @returns The rendered string with variables replaced
  */
 export function renderTemplate(template: string, vars: Record<string, string>): string {
-  return String(template || '').replace(/\{\s*([a-zA-Z0-9_]+)\s*\}/g, (m, k) => {
+  const replaced = String(template || '').replace(/\{\s*([a-zA-Z0-9_]+)\s*\}/g, (m, k) => {
     const key = String(k || '').trim();
     if (!key) return m;
     return vars[key] ?? '';
   });
+  // Paridade com automatiza-go/internal/lib/text/dispatch_template.go:
+  // RenderTemplate colapsa 3+ \n para \n\n. Sem esse passo o preview mostra
+  // espaço extra quando {cupom_bloco} (que vem com \n\n prefixado pelo Go)
+  // cai num template que já tem \n\n antes do placeholder.
+  return replaced.replace(/\n{3,}/g, '\n\n');
 }
