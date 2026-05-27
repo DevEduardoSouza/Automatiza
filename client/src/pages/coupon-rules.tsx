@@ -42,7 +42,6 @@ interface RuleFormState {
   min_price: string;
   is_active: boolean;
   official_only: boolean;
-  code: string;
   message: string;
   discount_type: '' | 'fixed' | 'percent';
   discount_value: string;
@@ -56,7 +55,6 @@ const EMPTY_FORM: RuleFormState = {
   min_price: '0',
   is_active: true,
   official_only: false,
-  code: '',
   message: '',
   discount_type: '',
   discount_value: '',
@@ -144,7 +142,6 @@ export default function CouponRulesPage() {
       min_price: String(rule.min_price ?? 0),
       is_active: rule.is_active,
       official_only: rule.official_only,
-      code: rule.code ?? '',
       message: rule.message ?? '',
       discount_type: rule.discount_type ?? '',
       discount_value: rule.discount_value != null ? String(rule.discount_value) : '',
@@ -155,7 +152,7 @@ export default function CouponRulesPage() {
 
   async function handleSave() {
     if (!form.platform) return;
-    if (!form.code.trim() && !form.message.trim()) return; // at least one must be set
+    if (!form.message.trim()) return; // mensagem é o que aparece no disparo
 
     const discountValueNum = form.discount_value ? Number(form.discount_value) : null;
     const maxDiscountNum = form.max_discount ? Number(form.max_discount) : null;
@@ -177,7 +174,11 @@ export default function CouponRulesPage() {
       // false quando a plataforma não é Shopee pra não confundir o
       // operador no banco.
       official_only: form.platform === 'shopee' && form.official_only,
-      code: form.code.trim() || null,
+      // code removido do form (PR atual): operador inclui o código na
+      // própria mensagem se quiser exibir. Backend continua aceitando o
+      // campo, então regras criadas via API ainda podem mandar — daqui
+      // sempre fica null.
+      code: null,
       message: form.message.trim() || null,
       discount_type: form.discount_type || null,
       discount_value: discountValueNum,
@@ -186,6 +187,10 @@ export default function CouponRulesPage() {
 
     try {
       if (editingId) {
+        // Code intencionalmente omitido: regras legadas com code preenchido
+        // preservam o valor (handler do backend só altera campos enviados).
+        // Pra limpar code de uma regra antiga é necessário mexer direto no
+        // banco — não é exposto na UI hoje.
         await updateRule({
           id: editingId,
           platform: payload.platform,
@@ -196,7 +201,6 @@ export default function CouponRulesPage() {
           priority: payload.priority,
           is_active: payload.is_active,
           official_only: payload.official_only,
-          code: payload.code ?? '',
           message: payload.message ?? '',
           discount_type: payload.discount_type ?? null,
           discount_value: discountValueNum ?? 0,
@@ -265,7 +269,7 @@ export default function CouponRulesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
-                    <th className="px-4 py-3 font-medium">Cupom</th>
+                    <th className="px-4 py-3 font-medium">Mensagem</th>
                     <th className="px-4 py-3 font-medium">Desconto</th>
                     <th className="px-4 py-3 font-medium">Plataforma</th>
                     <th className="px-4 py-3 font-medium">Valor mín.</th>
@@ -277,15 +281,10 @@ export default function CouponRulesPage() {
                 <tbody>
                   {rules.map((rule) => (
                     <tr key={rule.id} className="border-b">
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col">
-                          <span className="font-medium">{rule.code ?? '—'}</span>
-                          {rule.message && (
-                            <span className="text-xs text-muted-foreground line-clamp-1">
-                              {rule.message}
-                            </span>
-                          )}
-                        </div>
+                      <td className="px-4 py-3 max-w-md">
+                        <span className="text-sm line-clamp-2">
+                          {rule.message ?? '—'}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-xs">{formatDiscount(rule)}</td>
                       <td className="px-4 py-3">
@@ -439,23 +438,6 @@ export default function CouponRulesPage() {
                 Cupom a aplicar
               </h3>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="rule-code">Código do cupom</Label>
-                <Input
-                  id="rule-code"
-                  type="text"
-                  placeholder="Ex.: BLACK10"
-                  value={form.code}
-                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Usado pra rastreio interno (analytics, dispatch_logs) e pra
-                  casar com o cupom no checkout. Não aparece automaticamente na
-                  mensagem — se quiser exibir o código pro usuário, inclua no
-                  campo "Mensagem do cupom" abaixo.
-                </p>
-              </div>
-
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="rule-discount-type">Tipo</Label>
@@ -549,9 +531,7 @@ export default function CouponRulesPage() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={
-                isMutating || (!form.code.trim() && !form.message.trim())
-              }
+              disabled={isMutating || !form.message.trim()}
             >
               {editingId ? 'Salvar' : 'Criar'}
             </Button>
