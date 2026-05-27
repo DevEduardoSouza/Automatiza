@@ -4648,22 +4648,49 @@ func TestExecuteSearchAutomation_QueueClientEnqueueErrorPerGroup(t *testing.T) {
 }
 
 // =============================================================================
-// formatCouponText: empty code produces fallback return "" (line 195)
-// This is unreachable in practice since line 155 always adds the coupon code line.
-// However, we can test the function directly to confirm it always returns non-empty.
+// formatCouponText: bloco do disparo = só "Mensagem do cupom" (CouponText).
+// Code / DiscountType / AffiliateLink não montam mais linhas auto-geradas —
+// operador controla o texto inteiro pelo campo de mensagem.
 // =============================================================================
 
-func TestFormatCouponText_EmptyCode(t *testing.T) {
+func TestFormatCouponText_EmptyCouponTextReturnsEmpty(t *testing.T) {
 	t.Parallel()
 	logger := zaptest.NewLogger(t)
 	handler := &CouponHandler{logger: logger}
 
-	// Even with empty code, line 155 still appends "🏷️ CUPOM: " so lines > 0
-	coupon := &models.Coupon{Code: ""}
+	// Sem CouponText: nada anexado ao disparo, nem mesmo \n\n.
+	coupon := &models.Coupon{
+		Code:          "ANYCODE",
+		DiscountType:  strPtr("percent"),
+		DiscountValue: float64Ptr(10),
+		AffiliateLink: strPtr("https://exemplo.com"),
+	}
 	result := handler.formatCouponText(coupon)
-	// Should not be empty since the code line is always added
-	assert.NotEmpty(t, result)
-	assert.Contains(t, result, "CUPOM:")
+	assert.Empty(t, result)
+}
+
+func TestFormatCouponText_OnlyCouponTextPrefixedWithNewlines(t *testing.T) {
+	t.Parallel()
+	logger := zaptest.NewLogger(t)
+	handler := &CouponHandler{logger: logger}
+
+	// CouponText preenchido: bloco vira exatamente o texto do operador,
+	// prefixado com \n\n pra separar do resto do template (o RenderTemplate
+	// do dispatch colapsa newlines extras).
+	coupon := &models.Coupon{
+		Code:          "IGNORED",
+		DiscountType:  strPtr("percent"),
+		DiscountValue: float64Ptr(10),
+		AffiliateLink: strPtr("https://ignorado.com"),
+		CouponText:    strPtr("Use o cupom SAVE10 e ganhe 10% OFF"),
+	}
+	result := handler.formatCouponText(coupon)
+	assert.Equal(t, "\n\nUse o cupom SAVE10 e ganhe 10% OFF", result)
+	// Confirma que campos do form (code, desconto, link) não montam mais
+	// linhas auto-geradas no texto.
+	assert.NotContains(t, result, "CUPOM: IGNORED")
+	assert.NotContains(t, result, "10% OFF (max")
+	assert.NotContains(t, result, "Link do cupom:")
 }
 
 // =============================================================================
