@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -14,7 +15,7 @@ import { type LocalInstance, useInstancesConnect } from '@/hooks/use-instances-c
 import { useToast } from '@/hooks/use-toast';
 import { effectiveFriendlyName } from '@/lib/instance-label';
 import type { Automation, AutomationGroup } from '@/types/automation';
-import { Search, Star } from 'lucide-react';
+import { CheckCheck, Search, Star, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -414,6 +415,84 @@ export function SendGroupsSelector({
     });
   };
 
+  // Select-all respeita os mesmos caps do toggle individual:
+  // - MAX_SEND_GROUPS (50 por automação) quando !unlimited;
+  // - MAX_GROUPS_PER_INSTANCE (20 por chip) quando !unlimited;
+  // Itera na ordem dos `groups` recebidos e para de incluir assim que
+  // qualquer cap encheria. Se algum grupo foi cortado, mostra toast
+  // informando o número total selecionado (ajuda o operador a entender
+  // por que nem tudo virou checked).
+  const handleSelectAll = () => {
+    setFormData((prev) => {
+      const alreadySelected = new Set(prev.send_groups ?? []);
+      const nextSet = new Set(alreadySelected);
+      const perChip = new Map(countByInstance);
+
+      let capHit = false;
+      for (const g of groups) {
+        if (nextSet.has(g.wa_group_id)) continue;
+        if (!unlimited && nextSet.size >= MAX_SEND_GROUPS) {
+          capHit = true;
+          break;
+        }
+        if (!unlimited && g.instance_id) {
+          const cur = perChip.get(g.instance_id) ?? 0;
+          if (cur >= MAX_GROUPS_PER_INSTANCE) {
+            capHit = true;
+            continue; // não interrompe; outros chips ainda podem caber
+          }
+          perChip.set(g.instance_id, cur + 1);
+        }
+        nextSet.add(g.wa_group_id);
+      }
+
+      const added = nextSet.size - alreadySelected.size;
+      if (added === 0 && groups.length > 0) {
+        // Nada novo virou checked — provavelmente tudo já estava selecionado
+        // ou todos os grupos pendentes batem em algum cap.
+        toast({
+          title: t('pages.offerAutomations.form.selectAllNothingToAdd', {
+            defaultValue: 'Nada para adicionar',
+          }),
+          description: t('pages.offerAutomations.form.selectAllNothingToAddMessage', {
+            defaultValue:
+              'Todos os grupos já estão selecionados ou os limites por número/automação foram atingidos.',
+          }),
+        });
+        return prev;
+      }
+      if (capHit) {
+        toast({
+          title: t('pages.offerAutomations.form.selectAllCapped', {
+            defaultValue: 'Limite atingido',
+          }),
+          description: t('pages.offerAutomations.form.selectAllCappedMessage', {
+            count: nextSet.size,
+            max: MAX_SEND_GROUPS,
+            chipMax: MAX_GROUPS_PER_INSTANCE,
+            defaultValue:
+              '{{count}} grupos selecionados. Alguns ficaram de fora pelos limites de {{max}} por automação ou {{chipMax}} por número.',
+          }),
+        });
+      }
+      return { ...prev, send_groups: Array.from(nextSet) };
+    });
+  };
+
+  // Limpa toda a seleção de grupos. Também zera `chip_overrides` porque as
+  // chaves do mapa referenciam grupos que deixaram de estar marcados — sem
+  // isso ficariam órfãs até o próximo save.
+  const handleClearAll = () => {
+    setFormData((prev) => {
+      if ((prev.send_groups?.length ?? 0) === 0) return prev;
+      return { ...prev, send_groups: [], chip_overrides: {} };
+    });
+  };
+
+  const hasGroups = groups.length > 0;
+  const hasSelection = selectedIds.length > 0;
+  const allSelected = hasGroups && groups.every((g) => selectedIds.includes(g.wa_group_id));
+
   return (
     <div className="space-y-1.5 xs:space-y-2">
       <Label className="cursor-pointer">
@@ -431,6 +510,36 @@ export function SendGroupsSelector({
       )}
       {!unlimited && (
         <PerChipBreakdown countByInstance={countByInstance} cap={MAX_GROUPS_PER_INSTANCE} />
+      )}
+      {hasGroups && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSelectAll}
+            disabled={allSelected}
+            className="h-7 text-xs"
+          >
+            <CheckCheck className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+            {t('pages.offerAutomations.form.selectAll', {
+              defaultValue: 'Selecionar todos',
+            })}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleClearAll}
+            disabled={!hasSelection}
+            className="h-7 text-xs"
+          >
+            <X className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+            {t('pages.offerAutomations.form.clearSelection', {
+              defaultValue: 'Limpar seleção',
+            })}
+          </Button>
+        </div>
       )}
       <GroupsListCheckbox
         groups={groups}
