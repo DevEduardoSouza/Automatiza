@@ -24,6 +24,7 @@ import type { AutomationGroup } from '@/types/automation';
 import {
   ChevronDown,
   ChevronUp,
+  Info,
   Package,
   Save,
   Settings,
@@ -491,6 +492,52 @@ export default function OfferGenerate() {
                       maxGroups={1}
                       hideLabel
                     />
+
+                    {/* Aviso "qualquer tipo de mensagem": o grupo de origem
+                        aceita texto, foto, áudio e vídeo além de links de
+                        produto. Link continua disparando o fluxo de oferta
+                        (afiliado + cupom); outros tipos são repassados
+                        como vieram. Implementação do relay backend ainda
+                        pendente — banner é informativo. */}
+                    <div
+                      className="mt-3 rounded-xl border p-3 xs:p-4 flex items-start gap-2 xs:gap-3"
+                      role="note"
+                      style={{
+                        backgroundColor: 'rgba(34, 197, 94, 0.06)',
+                        borderColor: 'rgba(34, 197, 94, 0.25)',
+                      }}
+                    >
+                      <div
+                        className="p-1 rounded-lg shrink-0"
+                        style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)' }}
+                      >
+                        <Info
+                          className="w-4 h-4"
+                          style={{ color: 'rgb(22, 163, 74)' }}
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p
+                          className="text-xs xs:text-sm font-medium"
+                          style={{ color: 'rgb(22, 100, 50)' }}
+                        >
+                          {t(
+                            'pages.offerGenerate.config.sourceGroupRelayInfoTitle',
+                            'Aceita qualquer tipo de mensagem'
+                          )}
+                        </p>
+                        <p
+                          className="text-[11px] xs:text-xs leading-relaxed"
+                          style={{ color: 'rgba(22, 100, 50, 0.85)' }}
+                        >
+                          {t(
+                            'pages.offerGenerate.config.sourceGroupRelayInfoBody',
+                            'O grupo de origem aceita textos informativos, fotos, áudios e vídeos — não só links de produto. Quando um link Shopee ou Mercado Livre cair no grupo, ele segue o fluxo de oferta (link afiliado + cupom). Qualquer outra mensagem é repassada aos grupos de destino exatamente como veio.'
+                          )}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Destination Groups — no cap here. /offer-generate is a
