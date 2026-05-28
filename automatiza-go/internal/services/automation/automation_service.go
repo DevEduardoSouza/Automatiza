@@ -553,16 +553,33 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		stores = []string{"shopee"}
 	}
 
-	// Pre-fetch CTA entities if automation references cta_ids
+	// Pre-fetch CTA entities. Política:
+	//   - automation.CTAIDs preenchido → override explícito, busca só esses
+	//   - automation.CTAIDs vazio → pool inteiro de CTAs ativos do user
+	//
+	// Pool inteiro é o caminho default (paridade com affilipro): o user
+	// cadastra CTAs em /ctas e o sistema escolhe automaticamente o que casa
+	// com a plataforma do produto (search mode é Shopee-only).
 	var ctaEntities []models.CTA
-	if s.ctaRepo != nil && len(automation.CTAIDs) > 0 {
-		fetched, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, automation.CTAIDs, automation.UserID)
-		if ctaErr != nil {
-			s.logger.Warn("Failed to fetch CTA entities, falling back to inline CTAs",
-				zap.String("automationID", automation.ID),
-				zap.Error(ctaErr))
+	if s.ctaRepo != nil {
+		if len(automation.CTAIDs) > 0 {
+			fetched, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, automation.CTAIDs, automation.UserID)
+			if ctaErr != nil {
+				s.logger.Warn("Failed to fetch CTA entities by IDs, falling back to inline CTAs",
+					zap.String("automationID", automation.ID),
+					zap.Error(ctaErr))
+			} else {
+				ctaEntities = fetched
+			}
 		} else {
-			ctaEntities = fetched
+			fetched, ctaErr := s.ctaRepo.GetUserCTAs(ctx, automation.UserID, map[string]interface{}{"is_active": true})
+			if ctaErr != nil {
+				s.logger.Warn("Failed to fetch user CTA pool, falling back to inline CTAs",
+					zap.String("automationID", automation.ID),
+					zap.Error(ctaErr))
+			} else {
+				ctaEntities = fetched
+			}
 		}
 	}
 
