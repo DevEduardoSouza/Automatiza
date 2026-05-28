@@ -15,6 +15,44 @@ import (
 	"go.uber.org/zap"
 )
 
+// pickCTAForPlatform escolhe o texto do CTA aleatoriamente entre os CTAs
+// elegíveis para a plataforma do produto detectado (ML, Shopee ou
+// platform-agnostic "all"). Retorna string vazia quando nenhum CTA elegível
+// existe — chamador faz fallback para automation.CTAs inline.
+//
+// Filtros aplicados:
+//   - is_active = true
+//   - platform == platform do produto OU platform == "all"
+//
+// Sem essa filtragem, uma automation com CTAs misturados (ex.: pool com
+// "OFERTA DA SHÔ" + "ML 🔥") podia mandar o texto da Shopee num link ML.
+// Match-by-platform é o "vínculo automático" pedido pelo cliente.
+func pickCTAForPlatform(ctas []models.CTA, isML, isShopee bool) string {
+	if len(ctas) == 0 {
+		return ""
+	}
+	var targetPlatform string
+	switch {
+	case isML:
+		targetPlatform = models.CTAPlatformMercadoLivre
+	case isShopee:
+		targetPlatform = models.CTAPlatformShopee
+	}
+	candidates := make([]models.CTA, 0, len(ctas))
+	for _, c := range ctas {
+		if !c.IsActive {
+			continue
+		}
+		if c.Platform == models.CTAPlatformAll || (targetPlatform != "" && c.Platform == targetPlatform) {
+			candidates = append(candidates, c)
+		}
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	return candidates[rand.IntN(len(candidates))].Message
+}
+
 // processListMode processes LIST mode automations.
 // It fetches unconsumed items from the linked ML link list, processes each item
 // (generates affiliate links, builds messages), and sends them to configured groups.
@@ -275,7 +313,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		}
 
 		// Build message for this item
-		message := s.buildListModeMessage(automation, item, preview, shopeeProduct, affiliateURL, dispatchTemplate, isShopee, ctaEntities, couponResult)
+		message := s.buildListModeMessage(automation, item, preview, shopeeProduct, affiliateURL, dispatchTemplate, isML, isShopee, ctaEntities, couponResult)
 
 		// Get image URL if available and enabled.
 		// ML delivers .webp which WhatsApp SendImage chokes on; the LinkPreview
@@ -463,15 +501,16 @@ func (s *automationService) buildListModeMessage(
 	shopeeProduct *models.ShopeeOffer,
 	affiliateURL string,
 	dispatchTemplate string,
+	isML bool,
 	isShopee bool,
 	ctaEntities []models.CTA,
 	couponResult *CouponResult,
 ) string {
-	// Select random CTA: prefer CTA entities, fallback to inline CTAs
-	cta := ""
-	if len(ctaEntities) > 0 {
-		cta = ctaEntities[rand.IntN(len(ctaEntities))].Message
-	} else if len(automation.CTAs) > 0 {
+	// Select CTA: filtra ctaEntities pela plataforma do produto antes do
+	// sorteio (ver pickCTAForPlatform). Se não houver CTA com platform
+	// compatível, cai pros CTAs inline da automation.
+	cta := pickCTAForPlatform(ctaEntities, isML, isShopee)
+	if cta == "" && len(automation.CTAs) > 0 {
 		cta = automation.CTAs[rand.IntN(len(automation.CTAs))]
 	}
 

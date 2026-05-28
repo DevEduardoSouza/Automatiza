@@ -986,11 +986,12 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 }
 
 func (s *automationService) buildOfferMessage(template string, offer *models.ShopeeOffer, automation *models.Automation, ctaEntities []models.CTA) string {
-	// Select random CTA: prefer CTA entities, fallback to inline CTAs
-	cta := ""
-	if len(ctaEntities) > 0 {
-		cta = ctaEntities[rand.IntN(len(ctaEntities))].Message //nolint:gosec // G404: non-security random for CTA selection
-	} else if len(automation.CTAs) > 0 {
+	// Search mode é exclusivamente Shopee (offer vem do ShopeeOffer). Filtra
+	// ctaEntities por platform Shopee/all antes do sorteio — sem isso, uma
+	// automation com CTA "MERCADO LIVRE 🔥" no pool mandava o texto de ML
+	// num link Shopee. Fallback para CTAs inline da automation se nada bater.
+	cta := pickCTAForPlatform(ctaEntities, false, true)
+	if cta == "" && len(automation.CTAs) > 0 {
 		cta = automation.CTAs[rand.IntN(len(automation.CTAs))] //nolint:gosec // G404: non-security random for CTA selection
 	}
 

@@ -1191,7 +1191,7 @@ func TestBuildListModeMessage(t *testing.T) {
 			ProductImageURL: &imageURL,
 		}
 
-		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, nil, nil)
+		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, false, nil, nil)
 		assert.NotEmpty(t, message)
 		assert.Contains(t, message, "Product Title")
 	})
@@ -1229,7 +1229,7 @@ func TestBuildListModeMessage(t *testing.T) {
 			Installments:  &installments,
 		}
 
-		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", "", false, nil, nil)
+		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", "", false, false, nil, nil)
 		assert.NotEmpty(t, message)
 		assert.Contains(t, message, "Test Product Full")
 	})
@@ -1256,7 +1256,7 @@ func TestBuildListModeMessage(t *testing.T) {
 		}
 
 		template := "{{titulo}} por {{preco}} - {{link}}"
-		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", template, false, nil, nil)
+		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", template, false, false, nil, nil)
 		assert.NotEmpty(t, message)
 	})
 
@@ -1277,7 +1277,7 @@ func TestBuildListModeMessage(t *testing.T) {
 			ProductImageURL: nil,
 		}
 
-		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, nil, nil)
+		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, false, nil, nil)
 		assert.NotEmpty(t, message) // Should still render with empty/zero values
 	})
 }
@@ -4954,4 +4954,65 @@ func TestProcessListMode_URLSafetyEvaluateError_Mock(t *testing.T) {
 	// Evaluate error is logged as warning but not blocking → message still sent
 	assert.Equal(t, 1, result.MessagesSent)
 	usMock.AssertCalled(t, "Evaluate", mock.Anything, mock.Anything)
+}
+
+// =============================================================================
+// pickCTAForPlatform — smart CTA filter (vínculo automático por plataforma)
+// =============================================================================
+
+func TestPickCTAForPlatform_FiltersByPlatform(t *testing.T) {
+	t.Parallel()
+
+	shopeeCTA := models.CTA{Message: "OFERTA DA SHÔ", Platform: models.CTAPlatformShopee, IsActive: true}
+	mlCTA := models.CTA{Message: "MERCADO LIVRE 🔥", Platform: models.CTAPlatformMercadoLivre, IsActive: true}
+	allCTA := models.CTA{Message: "QUALQUER LOJA", Platform: models.CTAPlatformAll, IsActive: true}
+	inactiveShopee := models.CTA{Message: "DESATIVADA", Platform: models.CTAPlatformShopee, IsActive: false}
+
+	pool := []models.CTA{shopeeCTA, mlCTA, allCTA, inactiveShopee}
+
+	t.Run("ML product picks ML or all, never Shopee/inactive", func(t *testing.T) {
+		t.Parallel()
+		seen := map[string]bool{}
+		for i := 0; i < 200; i++ {
+			msg := pickCTAForPlatform(pool, true /*isML*/, false /*isShopee*/)
+			require.NotEmpty(t, msg)
+			seen[msg] = true
+		}
+		assert.False(t, seen[shopeeCTA.Message], "Shopee CTA picked for ML product")
+		assert.False(t, seen[inactiveShopee.Message], "inactive CTA picked")
+		assert.True(t, seen[mlCTA.Message] || seen[allCTA.Message], "ML or all CTA should appear")
+	})
+
+	t.Run("Shopee product picks Shopee or all, never ML/inactive", func(t *testing.T) {
+		t.Parallel()
+		seen := map[string]bool{}
+		for i := 0; i < 200; i++ {
+			msg := pickCTAForPlatform(pool, false /*isML*/, true /*isShopee*/)
+			require.NotEmpty(t, msg)
+			seen[msg] = true
+		}
+		assert.False(t, seen[mlCTA.Message], "ML CTA picked for Shopee product")
+		assert.False(t, seen[inactiveShopee.Message], "inactive CTA picked")
+		assert.True(t, seen[shopeeCTA.Message] || seen[allCTA.Message])
+	})
+
+	t.Run("unknown platform falls back to 'all' only", func(t *testing.T) {
+		t.Parallel()
+		msg := pickCTAForPlatform(pool, false, false)
+		assert.Equal(t, allCTA.Message, msg)
+	})
+
+	t.Run("empty pool returns empty", func(t *testing.T) {
+		t.Parallel()
+		assert.Empty(t, pickCTAForPlatform(nil, true, false))
+		assert.Empty(t, pickCTAForPlatform([]models.CTA{}, false, true))
+	})
+
+	t.Run("no matching platform returns empty (lets caller fallback)", func(t *testing.T) {
+		t.Parallel()
+		onlyShopee := []models.CTA{shopeeCTA}
+		// ML product, but pool só tem Shopee — não devolve Shopee errado,
+		// caller usa automation.CTAs inline como fallback.
+		assert.Empty(t, pickCTAForPlatform(onlyShopee, true, false))
+	})
 }
