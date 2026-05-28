@@ -26,6 +26,8 @@ interface StoreField {
   label: string;
   type: string;
   placeholder: string;
+  /** Quando true, allFieldsFilled ignora este campo (não bloqueia "conectado"). */
+  optional?: boolean;
 }
 
 interface StoreConfig {
@@ -80,6 +82,13 @@ const STORE_CONFIGS: StoreConfig[] = [
         label: 'Senha',
         type: 'password',
         placeholder: '********',
+      },
+      {
+        key: 'trackingTag',
+        label: 'Tag de rastreamento (opcional)',
+        type: 'text',
+        placeholder: 'Ex: AUTOMAISA',
+        optional: true,
       },
     ],
   },

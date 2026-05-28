@@ -256,6 +256,38 @@ func TestGetShopeeCredentials(t *testing.T) {
 // Tests: shopeeSign
 // ---------------------------------------------------------------------------
 
+func TestBuildGenerateShortLinkMutation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("without trackingTag omits subIds", func(t *testing.T) {
+		t.Parallel()
+		got := buildGenerateShortLinkMutation("https://shopee.com.br/x", "")
+		want := `mutation { generateShortLink(input: {originUrl: "https://shopee.com.br/x"}) { shortLink } }`
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("with trackingTag includes subIds", func(t *testing.T) {
+		t.Parallel()
+		got := buildGenerateShortLinkMutation("https://shopee.com.br/x", "AUTOMAISA")
+		want := `mutation { generateShortLink(input: {originUrl: "https://shopee.com.br/x", subIds: ["AUTOMAISA"]}) { shortLink } }`
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("trackingTag with special chars is quoted safely", func(t *testing.T) {
+		t.Parallel()
+		got := buildGenerateShortLinkMutation("https://shopee.com.br/x", `weird"tag`)
+		// %q escapa aspas internas — protege contra injection no GraphQL
+		want := `mutation { generateShortLink(input: {originUrl: "https://shopee.com.br/x", subIds: ["weird\"tag"]}) { shortLink } }`
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+}
+
 func TestShopeeSign(t *testing.T) {
 	tests := []struct {
 		name      string

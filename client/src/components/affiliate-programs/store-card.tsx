@@ -86,7 +86,9 @@ export function StoreCard({
   const allFieldsFilled =
     config.key === 'ml'
       ? Boolean(credential?.is_active)
-      : config.fields.every((field) => credential?.credentials?.[field.key]?.trim());
+      : config.fields.every(
+          (field) => field.optional || credential?.credentials?.[field.key]?.trim()
+        );
 
   const isMl = config.key === 'ml';
   const isAwin = config.key === 'awin';
