@@ -189,6 +189,8 @@ func (h *MlLinksHandler) ListMlLinkListItems(
 				TotalCount:    result.TotalCount,
 				HasMore:       result.HasMore,
 			},
+			AvailableCount: result.AvailableCount,
+			SentCount:      result.SentCount,
 		}), nil
 	}
 

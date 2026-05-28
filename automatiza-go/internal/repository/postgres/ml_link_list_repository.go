@@ -326,8 +326,8 @@ func (r *mlLinkListRepository) GetItemsByListID(ctx context.Context, listID stri
 
 // GetItemsByListIDPaginated retrieves items with cursor-based pagination.
 // The cursor is the item ID of the last item from the previous page.
-// Returns items, next cursor, total count, and error.
-func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, listID string, pageSize int, cursor string) (items []models.MlLinkListItem, nextCursor string, totalCount int, err error) {
+// Returns items, next cursor, total/available/sent counts, and error.
+func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, listID string, pageSize int, cursor string) (items []models.MlLinkListItem, nextCursor string, totalCount, availableCount, sentCount int, err error) {
 	// Default page size
 	if pageSize <= 0 {
 		pageSize = 20
@@ -337,13 +337,23 @@ func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, li
 		pageSize = 100
 	}
 
-	// Get total count
-	countQuery := `SELECT COUNT(*) FROM ml_link_list_items WHERE list_id = $1`
-	if err := r.db.QueryRow(ctx, countQuery, listID).Scan(&totalCount); err != nil {
+	// Counts across the entire list, not just the current page. Single
+	// scan via FILTER aggregates — counters mostrados na UI ficam fiéis
+	// mesmo quando a lista é maior que o pageSize (caso do bug pós-#142
+	// onde "Disponíveis" mostrava o count do batch carregado).
+	countQuery := `
+		SELECT
+			COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE consumed_at IS NULL AND is_active = true) AS available,
+			COUNT(*) FILTER (WHERE consumed_at IS NOT NULL) AS sent
+		FROM ml_link_list_items
+		WHERE list_id = $1
+	`
+	if err := r.db.QueryRow(ctx, countQuery, listID).Scan(&totalCount, &availableCount, &sentCount); err != nil {
 		r.logger.Error("Failed to count ML link list items",
 			zap.String("listID", listID),
 			zap.Error(err))
-		return nil, "", 0, fmt.Errorf("failed to count ML link list items: %w", err)
+		return nil, "", 0, 0, 0, fmt.Errorf("failed to count ML link list items: %w", err)
 	}
 
 	// Build query based on cursor
@@ -378,7 +388,7 @@ func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, li
 			r.logger.Error("Failed to get cursor order index",
 				zap.String("cursor", cursor),
 				zap.Error(err))
-			return nil, "", 0, fmt.Errorf("failed to get cursor position: %w", err)
+			return nil, "", 0, 0, 0, fmt.Errorf("failed to get cursor position: %w", err)
 		}
 
 		query = `
@@ -399,7 +409,7 @@ func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, li
 		r.logger.Error("Failed to get ML link list items paginated",
 			zap.String("listID", listID),
 			zap.Error(err))
-		return nil, "", 0, fmt.Errorf("failed to get ML link list items: %w", err)
+		return nil, "", 0, 0, 0, fmt.Errorf("failed to get ML link list items: %w", err)
 	}
 	defer rows.Close()
 
@@ -426,7 +436,7 @@ func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, li
 			&updatedAt,
 		)
 		if err != nil {
-			return nil, "", 0, fmt.Errorf("failed to scan ML link list item: %w", err)
+			return nil, "", 0, 0, 0, fmt.Errorf("failed to scan ML link list item: %w", err)
 		}
 
 		item.CreatedAt = createdAt.Format(time.RFC3339)
@@ -439,7 +449,7 @@ func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, li
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, "", 0, fmt.Errorf("error iterating ML link list items: %w", err)
+		return nil, "", 0, 0, 0, fmt.Errorf("error iterating ML link list items: %w", err)
 	}
 
 	// Check if there's a next page
@@ -449,7 +459,7 @@ func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, li
 		items = items[:pageSize]
 	}
 
-	return items, nextCursor, totalCount, nil
+	return items, nextCursor, totalCount, availableCount, sentCount, nil
 }
 
 // GetItemByID retrieves an ML link list item by its ID

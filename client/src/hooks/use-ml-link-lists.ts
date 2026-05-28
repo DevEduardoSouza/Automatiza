@@ -61,6 +61,7 @@ interface UseMlLinkListsReturn {
   lastPreview: PreviewState | null;
   selectedList: MlLinkList | null;
   availableCount: number;
+  sentCount: number;
   totalItemCount: number;
   hasMoreItems: boolean;
   deleteListTarget: MlLinkList | null;
@@ -160,6 +161,8 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
   const [items, setItems] = useState<MlLinkListItem[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string>('');
   const [totalItemCount, setTotalItemCount] = useState<number>(0);
+  const [serverAvailableCount, setServerAvailableCount] = useState<number>(0);
+  const [serverSentCount, setServerSentCount] = useState<number>(0);
   const [hasMoreItems, setHasMoreItems] = useState<boolean>(false);
 
   const [listDialogOpen, setListDialogOpen] = useState(false);
@@ -189,9 +192,12 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     [lists, selectedListId]
   );
 
-  const availableCount = useMemo(() => {
-    return (items || []).filter((i) => !i.consumed_at && i.is_active).length;
-  }, [items]);
+  // Backend agrega COUNT(*) FILTER em uma query só e retorna no
+  // paginated response. Contar localmente seria errado para listas
+  // maiores que o pageSize (caso real: lista de 362 itens mostrando
+  // "Disponíveis: 100" porque só 100 estavam carregados).
+  const availableCount = serverAvailableCount;
+  const sentCount = serverSentCount;
 
   const selectedListIdRef = useRef(selectedListId);
   selectedListIdRef.current = selectedListId;
@@ -220,6 +226,8 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
         setItems(result.items.map(toEntityMlLinkListItem));
         setNextPageToken(result.nextPageToken);
         setTotalItemCount(result.totalCount);
+        setServerAvailableCount(result.availableCount);
+        setServerSentCount(result.sentCount);
         setHasMoreItems(result.hasMore);
       } catch (e: unknown) {
         const errorMessage =
@@ -247,6 +255,8 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
       });
       setItems((prev) => [...prev, ...result.items.map(toEntityMlLinkListItem)]);
       setNextPageToken(result.nextPageToken);
+      setServerAvailableCount(result.availableCount);
+      setServerSentCount(result.sentCount);
       setHasMoreItems(result.hasMore);
     } catch (e: unknown) {
       const errorMessage =
@@ -683,6 +693,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     lastPreview,
     selectedList,
     availableCount,
+    sentCount,
     totalItemCount,
     hasMoreItems,
     deleteListTarget,

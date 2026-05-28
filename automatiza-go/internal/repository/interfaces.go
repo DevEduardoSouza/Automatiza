@@ -547,7 +547,7 @@ type MLLinkListRepository interface {
 
 	// Item operations
 	GetItemsByListID(ctx context.Context, listID string) ([]models.MlLinkListItem, error)
-	GetItemsByListIDPaginated(ctx context.Context, listID string, pageSize int, cursor string) (items []models.MlLinkListItem, nextCursor string, totalCount int, err error)
+	GetItemsByListIDPaginated(ctx context.Context, listID string, pageSize int, cursor string) (items []models.MlLinkListItem, nextCursor string, totalCount, availableCount, sentCount int, err error)
 	GetItemByID(ctx context.Context, itemID string) (*models.MlLinkListItem, error)
 	CreateItem(ctx context.Context, item *models.MlLinkListItem) (*models.MlLinkListItem, error)
 	BulkCreateItems(ctx context.Context, items []models.MlLinkListItem) ([]models.MlLinkListItem, error)

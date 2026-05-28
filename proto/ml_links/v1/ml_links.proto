@@ -159,6 +159,12 @@ message ListMlLinkListItemsResponse {
   repeated MlLinkListItem items = 1;
   // Pagination metadata
   common.v1.PaginationResponse pagination = 2;
+  // Total items in the list where consumed_at IS NULL AND is_active = true.
+  // Computed across all rows, not just the current page.
+  int32 available_count = 3;
+  // Total items in the list where consumed_at IS NOT NULL.
+  // Computed across all rows, not just the current page.
+  int32 sent_count = 4;
 }
 
 // ============================================================

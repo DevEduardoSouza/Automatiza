@@ -149,15 +149,25 @@ func (m *mockRepository) GetItemsByListID(ctx context.Context, listID string) ([
 	return m.itemsByList[listID], nil
 }
 
-func (m *mockRepository) GetItemsByListIDPaginated(ctx context.Context, listID string, pageSize int, cursor string) ([]models.MlLinkListItem, string, int, error) {
+func (m *mockRepository) GetItemsByListIDPaginated(ctx context.Context, listID string, pageSize int, cursor string) ([]models.MlLinkListItem, string, int, int, int, error) {
 	if m.paginatedErr != nil {
-		return nil, "", 0, m.paginatedErr
+		return nil, "", 0, 0, 0, m.paginatedErr
 	}
 	if m.getItemErr != nil {
-		return nil, "", 0, m.getItemErr
+		return nil, "", 0, 0, 0, m.getItemErr
 	}
 	items := m.itemsByList[listID]
 	total := len(items)
+	available := 0
+	sent := 0
+	for _, it := range items {
+		if it.ConsumedAt == nil && it.IsActive {
+			available++
+		}
+		if it.ConsumedAt != nil {
+			sent++
+		}
+	}
 	if pageSize > len(items) {
 		pageSize = len(items)
 	}
@@ -165,7 +175,7 @@ func (m *mockRepository) GetItemsByListIDPaginated(ctx context.Context, listID s
 	if pageSize < total {
 		nextCursor = "next-cursor"
 	}
-	return items[:pageSize], nextCursor, total, nil
+	return items[:pageSize], nextCursor, total, available, sent, nil
 }
 
 func (m *mockRepository) GetItemByID(ctx context.Context, itemID string) (*models.MlLinkListItem, error) {

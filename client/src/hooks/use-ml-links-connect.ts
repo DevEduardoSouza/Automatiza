@@ -106,6 +106,8 @@ export interface PaginatedItemsResult {
   items: LocalMlLinkListItem[];
   nextPageToken: string;
   totalCount: number;
+  availableCount: number;
+  sentCount: number;
   hasMore: boolean;
 }
 
@@ -457,6 +459,8 @@ export function useMlLinksConnect(): UseMlLinksConnectReturn {
         items: response.items.map(fromProtoMlLinkListItem),
         nextPageToken: response.pagination?.nextPageToken ?? '',
         totalCount: response.pagination?.totalCount ?? 0,
+        availableCount: response.availableCount ?? 0,
+        sentCount: response.sentCount ?? 0,
         hasMore: response.pagination?.hasMore ?? false,
       };
     },

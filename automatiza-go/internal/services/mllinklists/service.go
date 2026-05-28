@@ -246,7 +246,7 @@ func (s *service) ListItemsPaginated(ctx context.Context, listID, userID string,
 		pageSize = 100
 	}
 
-	items, nextCursor, totalCount, err := s.repo.GetItemsByListIDPaginated(ctx, listID, pageSize, pagination.PageToken)
+	items, nextCursor, totalCount, availableCount, sentCount, err := s.repo.GetItemsByListIDPaginated(ctx, listID, pageSize, pagination.PageToken)
 	if err != nil {
 		s.logger.Error("Failed to list ML link list items paginated",
 			zap.String("listID", listID),
@@ -255,10 +255,12 @@ func (s *service) ListItemsPaginated(ctx context.Context, listID, userID string,
 	}
 
 	return &ListItemsResult{
-		Items:         items,
-		NextPageToken: nextCursor,
-		TotalCount:    int32(totalCount),
-		HasMore:       nextCursor != "",
+		Items:          items,
+		NextPageToken:  nextCursor,
+		TotalCount:     int32(totalCount),
+		AvailableCount: int32(availableCount),
+		SentCount:      int32(sentCount),
+		HasMore:        nextCursor != "",
 	}, nil
 }
 
