@@ -1437,6 +1437,8 @@
     "ctas": {
       "title": "CTAs",
       "subtitle": "Gerencie seus textos de chamada para ação",
+      "autoPickBannerTitle": "Vínculo automático ativo",
+      "autoPickBannerBody": "É só cadastrar seus CTAs aqui e marcar como ativo. O sistema escolhe automaticamente o CTA certo para cada produto (Mercado Livre, Shopee, etc) em todas as suas automações — você não precisa vincular CTA a cada automação manualmente.",
       "newCTA": "Novo CTA",
       "editTitle": "Editar CTA",
       "createTitle": "Novo CTA",

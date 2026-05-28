@@ -32,7 +32,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CTA_PLATFORMS, CTA_TYPES } from '@/entities/cta';
 import { useCTAs } from '@/hooks/use-ctas';
 import { WhatsAppFormattedText } from '@/lib/whatsapp-formatter';
-import { Edit2, FileText, HelpCircle, MessageSquare, Plus, Trash2 } from 'lucide-react';
+import { Edit2, FileText, HelpCircle, Info, MessageSquare, Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const colors = {
@@ -269,6 +269,39 @@ export default function CTAs() {
                   </div>
                 </DialogContent>
               </Dialog>
+            </div>
+
+            {/* Vínculo automático — explica que basta cadastrar aqui */}
+            <div
+              className="rounded-xl xs:rounded-2xl border p-4 xs:p-5 sm:p-6"
+              style={{ backgroundColor: colors.iconBg, borderColor: colors.wineBorder }}
+            >
+              <div className="flex items-start gap-3 xs:gap-4">
+                <div
+                  className="p-1.5 xs:p-2 rounded-lg flex-shrink-0"
+                  style={{ backgroundColor: colors.iconBgHover }}
+                >
+                  <Info
+                    className="w-4 h-4 xs:w-5 xs:h-5"
+                    style={{ color: colors.wine }}
+                    aria-hidden="true"
+                  />
+                </div>
+                <div className="space-y-1 min-w-0">
+                  <p
+                    className="text-sm xs:text-base font-semibold"
+                    style={{ color: colors.wineText }}
+                  >
+                    {t('pages.ctas.autoPickBannerTitle')}
+                  </p>
+                  <p
+                    className="text-xs xs:text-sm leading-relaxed"
+                    style={{ color: colors.wineTextLight }}
+                  >
+                    {t('pages.ctas.autoPickBannerBody')}
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Filters */}
