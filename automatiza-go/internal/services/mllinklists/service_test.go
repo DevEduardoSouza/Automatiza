@@ -1463,15 +1463,14 @@ func TestBulkCreateItems_WithDuplicatesInBatch(t *testing.T) {
 		ListID: "list-1",
 		OriginURLs: []string{
 			"https://www.mercadolivre.com.br/p/MLB12345",
-			"https://www.mercadolivre.com.br/p/MLB12345", // duplicate é preservada
-			"https://www.mercadolivre.com.br/p/MLB12345", // duplicate é preservada
+			"https://www.mercadolivre.com.br/p/MLB12345", // duplicate
 		},
 	})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.CreatedCount != 3 {
-		t.Errorf("expected 3 created (duplicates preserved), got %d", result.CreatedCount)
+	if result.CreatedCount != 1 {
+		t.Errorf("expected 1 created (deduped), got %d", result.CreatedCount)
 	}
 }
 
@@ -1486,18 +1485,18 @@ func TestBulkCreateItems_WithExistingURLsInList(t *testing.T) {
 	result, err := svc.BulkCreateItems(ctx, "user-1", BulkCreateItemsInput{
 		ListID: "list-1",
 		OriginURLs: []string{
-			"https://www.mercadolivre.com.br/p/MLB12345", // also in list, but re-imported as new
-			"https://www.mercadolivre.com.br/p/MLB67890",
+			"https://www.mercadolivre.com.br/p/MLB12345", // already exists
+			"https://www.mercadolivre.com.br/p/MLB67890", // new
 		},
 	})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.CreatedCount != 2 {
-		t.Errorf("expected 2 created (no existing-list filter), got %d", result.CreatedCount)
+	if result.CreatedCount != 1 {
+		t.Errorf("expected 1 created, got %d", result.CreatedCount)
 	}
-	if result.SkippedCount != 0 {
-		t.Errorf("expected 0 skipped, got %d", result.SkippedCount)
+	if result.SkippedCount != 1 {
+		t.Errorf("expected 1 skipped (existing), got %d", result.SkippedCount)
 	}
 }
 
@@ -1568,9 +1567,22 @@ func TestBulkCreateItems_WithBaseOrderIndex(t *testing.T) {
 	}
 }
 
-// TestBulkCreateItems_GetExistingItemsError removed: BulkCreateItems no
-// longer calls GetItemsByListID because the existing-URL dedup filter was
-// removed. There's no path for that error to surface anymore.
+func TestBulkCreateItems_GetExistingItemsError(t *testing.T) {
+	t.Parallel()
+	svc, repo := setupService()
+	ctx := context.Background()
+
+	seedList(repo, "list-1", "user-1", "Test")
+	repo.getItemErr = errors.New("db error")
+
+	_, err := svc.BulkCreateItems(ctx, "user-1", BulkCreateItemsInput{
+		ListID:     "list-1",
+		OriginURLs: []string{"https://www.mercadolivre.com.br/p/MLB12345"},
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
 
 func TestBulkCreateItems_GetMaxOrderIndexError(t *testing.T) {
 	t.Parallel()
