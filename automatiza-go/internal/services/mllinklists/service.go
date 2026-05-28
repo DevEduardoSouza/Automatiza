@@ -355,53 +355,13 @@ func (s *service) BulkCreateItems(ctx context.Context, userID string, input Bulk
 	// Validate all URLs first
 	validationResult := urlvalidation.ValidateAndCategorizeURLs(input.OriginURLs)
 
-	// Dedup intra-batch + filtro contra existing são obrigatórios enquanto
-	// o schema mantiver UNIQUE (list_id, product_url) e o trigger
-	// sync_urls_trigger (copia origin_url -> product_url). Sem dedup, o
-	// INSERT viola o constraint, a transação inteira aborta e o usuário
-	// perde a importação inteira (500). Quando uma migration remover esse
-	// constraint, dá pra deixar passar duplicatas e ler o requisito de
-	// "preservar planilha como veio" sem mais hotfix.
-	uniqueURLs := urlvalidation.DeduplicateURLs(validationResult.ValidURLs)
-
-	existingItems, err := s.repo.GetItemsByListID(ctx, input.ListID)
-	if err != nil {
-		return nil, apperrors.WrapInternal(err, "getting existing items")
-	}
-
-	existingURLs := make(map[string]bool)
-	for _, item := range existingItems {
-		normalized, normErr := urlvalidation.NormalizeURL(item.OriginURL)
-		if normErr != nil {
-			observability.LogAndCapture(s.logger, sentry.LevelWarning,
-				"Failed to normalize existing item URL, using original",
-				normErr, map[string]string{
-					"module": "ml_link_lists", "operation": "bulk_create_normalize_existing",
-				})
-			normalized = item.OriginURL
-		}
-		existingURLs[normalized] = true
-	}
-
-	var newURLs []string
-	skippedDuplicates := make([]string, 0)
-	for _, rawURL := range uniqueURLs {
-		normalized, normErr := urlvalidation.NormalizeURL(rawURL)
-		if normErr != nil {
-			observability.LogAndCapture(s.logger, sentry.LevelWarning,
-				"Failed to normalize URL for dedup check, using original",
-				normErr, map[string]string{
-					"module": "ml_link_lists", "operation": "bulk_create_normalize_dedup",
-				})
-			normalized = rawURL
-		}
-		if existingURLs[normalized] {
-			skippedDuplicates = append(skippedDuplicates, rawURL)
-		} else {
-			newURLs = append(newURLs, rawURL)
-			existingURLs[normalized] = true
-		}
-	}
+	// Dedup intencionalmente removido. A planilha é a fonte da verdade:
+	// se o cliente colocou o mesmo link N vezes, é porque quer N envios.
+	// Também não filtramos contra itens já existentes na lista —
+	// re-importar uma planilha gera novas entradas. A migration 051
+	// removeu UNIQUE (list_id, product_url) que tornava esse comportamento
+	// impossível no nível do banco.
+	newURLs := validationResult.ValidURLs
 
 	// Get base order index
 	baseOrderIndex := 0
@@ -448,11 +408,12 @@ func (s *service) BulkCreateItems(ctx context.Context, userID string, input Bulk
 		}
 	}
 
-	allSkipped := make([]string, 0)
+	// Skipped agora contém apenas URLs inválidas (não-http(s), unparseable,
+	// vazias) — dedup foi removido, duplicatas viram itens.
+	allSkipped := make([]string, 0, len(validationResult.InvalidURLs))
 	for url := range validationResult.InvalidURLs {
 		allSkipped = append(allSkipped, url)
 	}
-	allSkipped = append(allSkipped, skippedDuplicates...)
 
 	result := &BulkCreateResult{
 		CreatedCount: len(createdItems),
