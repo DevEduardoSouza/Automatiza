@@ -11,6 +11,7 @@ import (
 	"automatiza-go/internal/config"
 	bpLib "automatiza-go/internal/lib/backpressure"
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/ctapicker"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/models"
@@ -1007,7 +1008,7 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 	// ctaEntities por platform Shopee/all antes do sorteio — sem isso, uma
 	// automation com CTA "MERCADO LIVRE 🔥" no pool mandava o texto de ML
 	// num link Shopee. Fallback para CTAs inline da automation se nada bater.
-	cta := pickCTAForPlatform(ctaEntities, false, true)
+	cta := ctapicker.PickByPlatform(ctaEntities, false, true)
 	if cta == "" && len(automation.CTAs) > 0 {
 		cta = automation.CTAs[rand.IntN(len(automation.CTAs))] //nolint:gosec // G404: non-security random for CTA selection
 	}

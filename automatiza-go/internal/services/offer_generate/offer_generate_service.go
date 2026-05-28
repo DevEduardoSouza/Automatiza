@@ -12,6 +12,7 @@ import (
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/ctapicker"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
@@ -286,13 +287,47 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		return nil
 	}
 
-	// 6. Load CTA entities and pick a random one
-	ctaText := ""
-	if len(auto.CTAIDs) > 0 {
-		ctaEntities, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, auto.CTAIDs, auto.UserID)
-		if ctaErr == nil && len(ctaEntities) > 0 {
-			ctaText = ctaEntities[rand.IntN(len(ctaEntities))].Message
+	// 6. Load CTA pool. Política espelha automation_service:
+	//   - auto.CTAIDs preenchido → override explícito, busca só esses
+	//   - auto.CTAIDs vazio → pool inteiro de CTAs ativos do user
+	//
+	// O texto do CTA é selecionado mais tarde via ctapicker.PickByPlatform,
+	// já que aqui ainda não sabemos se o link vai resolver para Shopee ou ML
+	// (definido nos branches mais abaixo). Manter a busca uma vez fora do
+	// branch evita N+1 quando processa muitos links da mesma message.
+	var ctaPool []models.CTA
+	if s.ctaRepo != nil {
+		if len(auto.CTAIDs) > 0 {
+			fetched, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, auto.CTAIDs, auto.UserID)
+			if ctaErr != nil {
+				s.logger.Warn("Failed to fetch CTA entities by IDs",
+					zap.String("automationID", auto.ID),
+					zap.Error(ctaErr))
+			} else {
+				ctaPool = fetched
+			}
+		} else {
+			fetched, ctaErr := s.ctaRepo.GetUserCTAs(ctx, auto.UserID, map[string]interface{}{"is_active": true})
+			if ctaErr != nil {
+				s.logger.Warn("Failed to fetch user CTA pool",
+					zap.String("automationID", auto.ID),
+					zap.Error(ctaErr))
+			} else {
+				ctaPool = fetched
+			}
 		}
+	}
+
+	// pickCTA escolhe pela plataforma resolvida (Shopee/ML) e cai pros
+	// inline auto.CTAs como fallback se o pool não tiver match.
+	pickCTA := func(isML, isShopee bool) string {
+		if text := ctapicker.PickByPlatform(ctaPool, isML, isShopee); text != "" {
+			return text
+		}
+		if len(auto.CTAs) > 0 {
+			return auto.CTAs[rand.IntN(len(auto.CTAs))] //nolint:gosec // G404: non-security random for CTA selection
+		}
+		return ""
 	}
 
 	// 7. Coupon resolution (rules engine + discount-tag fallback).
@@ -454,7 +489,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			Image:         imageURL,
 			Category:      product.Category,
 			Store:         "Shopee",
-			CTA:           ctaText,
+			CTA:           pickCTA(false, true),
 			CouponBlock:   couponBlock,
 			Info:          infoText,
 		})
@@ -554,7 +589,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			SoldCount:     soldCount,
 			Rating:        rating,
 			ReviewCount:   reviewCount,
-			CTA:           ctaText,
+			CTA:           pickCTA(true, false),
 			CouponBlock:   couponBlock,
 			Info:          infoText,
 		})
