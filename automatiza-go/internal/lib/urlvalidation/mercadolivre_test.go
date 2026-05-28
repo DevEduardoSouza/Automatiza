@@ -383,11 +383,14 @@ func TestValidateAndNormalizeURL(t *testing.T) {
 			want: "https://meli.la/28fhqrh",
 		},
 		{
-			name:    "invalid domain returns validation error",
-			url:     "https://www.amazon.com.br/dp/B123",
-			want:    "",
-			wantErr: true,
-			errCode: apperrors.ErrInvalidURL,
+			name: "amazon URL is now accepted (any http(s) host)",
+			url:  "https://www.amazon.com.br/dp/B123",
+			want: "https://www.amazon.com.br/dp/B123",
+		},
+		{
+			name: "magazineluiza URL is now accepted",
+			url:  "https://www.magazineluiza.com.br/produto/12345",
+			want: "https://www.magazineluiza.com.br/produto/12345",
 		},
 		{
 			name:    "empty URL returns validation error",
@@ -397,11 +400,18 @@ func TestValidateAndNormalizeURL(t *testing.T) {
 			errCode: apperrors.ErrInvalidURL,
 		},
 		{
-			name:    "unsupported domain returns validation error",
-			url:     "https://www.magazineluiza.com.br/produto/12345",
+			name:    "ftp scheme returns validation error",
+			url:     "ftp://example.com/file",
 			want:    "",
 			wantErr: true,
 			errCode: apperrors.ErrInvalidURL,
+		},
+		{
+			name:    "URL without host returns validation error",
+			url:     "https:///nohost",
+			want:    "",
+			wantErr: true,
+			errCode: apperrors.ErrInvalidURLFormat,
 		},
 	}
 
@@ -438,17 +448,19 @@ func TestFilterValidURLs(t *testing.T) {
 		wantURLs []string
 	}{
 		{
-			name: "keeps only valid ML URLs",
+			name: "keeps URLs from any http(s) host",
 			urls: []string{
 				"https://www.mercadolivre.com.br/p/MLB1",
 				"https://www.amazon.com.br/dp/B123",
 				"https://www.mercadolivre.com.br/p/MLB2",
 				"https://www.google.com",
 			},
-			wantLen: 2,
+			wantLen: 4,
 			wantURLs: []string{
 				"https://www.mercadolivre.com.br/p/MLB1",
+				"https://www.amazon.com.br/dp/B123",
 				"https://www.mercadolivre.com.br/p/MLB2",
+				"https://www.google.com",
 			},
 		},
 		{
@@ -460,11 +472,11 @@ func TestFilterValidURLs(t *testing.T) {
 			wantLen: 2,
 		},
 		{
-			name: "all invalid URLs returns empty",
+			name: "rejects only truly invalid URLs (non-http, unparseable)",
 			urls: []string{
-				"https://www.amazon.com.br/dp/B123",
-				"https://www.google.com",
+				"ftp://example.com",
 				"invalid-url",
+				"https:///nohost",
 			},
 			wantLen: 0,
 		},
@@ -537,7 +549,7 @@ func TestValidateURLs(t *testing.T) {
 			name: "mix of valid and invalid",
 			urls: []string{
 				"https://www.mercadolivre.com.br/p/MLB1",
-				"https://www.amazon.com.br/dp/B123",
+				"ftp://example.com",
 				"https://produto.mercadolivre.com.br/MLB-999-item",
 				"",
 			},
@@ -556,7 +568,7 @@ func TestValidateURLs(t *testing.T) {
 		{
 			name: "all invalid",
 			urls: []string{
-				"https://www.amazon.com.br/dp/B1",
+				"ftp://example.com",
 				"",
 				"invalid",
 			},
@@ -606,7 +618,7 @@ func TestValidateURLs_ErrorMapping(t *testing.T) {
 
 	urls := []string{
 		"https://www.mercadolivre.com.br/p/MLB1",
-		"https://www.amazon.com.br/dp/B123",
+		"ftp://example.com",
 	}
 
 	results := ValidateURLs(urls)
@@ -642,7 +654,7 @@ func TestValidateAndCategorizeURLs(t *testing.T) {
 			name: "categorizes valid and invalid",
 			urls: []string{
 				"https://www.mercadolivre.com.br/p/MLB1",
-				"https://www.amazon.com.br/dp/B123",
+				"ftp://example.com",
 				"https://www.mercadolivre.com.br/p/MLB2",
 				"invalid",
 			},
@@ -653,7 +665,7 @@ func TestValidateAndCategorizeURLs(t *testing.T) {
 				"https://www.mercadolivre.com.br/p/MLB2",
 			},
 			wantInvalidKeys: []string{
-				"https://www.amazon.com.br/dp/B123",
+				"ftp://example.com",
 				"invalid",
 			},
 		},
@@ -669,7 +681,7 @@ func TestValidateAndCategorizeURLs(t *testing.T) {
 		{
 			name: "all invalid",
 			urls: []string{
-				"https://www.google.com",
+				"ftp://example.com",
 				"",
 			},
 			wantValid:   0,
@@ -734,7 +746,7 @@ func TestValidateAndCategorizeURLs_ErrorMessages(t *testing.T) {
 	t.Parallel()
 
 	result := ValidateAndCategorizeURLs([]string{
-		"https://www.amazon.com.br/dp/B123",
+		"ftp://example.com",
 		"",
 	})
 

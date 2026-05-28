@@ -1746,6 +1746,7 @@
         "fileSelected": "Arquivo: {{name}}",
         "fileImportButton": "Importar links",
         "imported": "{{count}} link(s) importado(s) com sucesso",
+        "skipped": "{{count}} link(s) descartado(s) (URLs inválidas)",
         "total": "Total:",
         "loaded": "{{count}} carregados",
         "available": "Disponíveis:",

@@ -68,8 +68,13 @@ func ValidateMercadoLivreURL(rawURL string) error {
 	return nil
 }
 
-// ValidateProductURL validates that a URL is a valid product URL from a supported platform.
-// Supported platforms: Mercado Livre, Shopee
+// ValidateProductURL validates that the input is a parseable http/https URL.
+// Store/marketplace filtering was intentionally removed: o frontend já
+// documenta que para lojas diferentes de Shopee (que tem conversão de
+// afiliado no backend) o usuário cola o link já com sua tag de afiliado.
+// Aceitar qualquer URL http(s) preserva ML, meli.la, Shopee, Amazon,
+// Magalu, AliExpress e quaisquer outras lojas sem perda silenciosa no
+// import.
 func ValidateProductURL(rawURL string) error {
 	trimmed := strings.TrimSpace(rawURL)
 	if trimmed == "" {
@@ -91,38 +96,23 @@ func ValidateProductURL(rawURL string) error {
 		)
 	}
 
-	host := strings.ToLower(u.Hostname())
-
-	// Check Mercado Livre (full domain or official short link "meli.la")
-	isMLShort := host == "meli.la"
-	isML := isMLShort || strings.Contains(host, "mercadolivre.") || strings.Contains(host, "mercadolibre.")
-	// Check Shopee
-	isShopee := strings.Contains(host, "shopee.com") || strings.Contains(host, "shp.ee")
-
-	if !isML && !isShopee {
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
 		return apperrors.NewMLLinksFieldError(
 			apperrors.ErrInvalidURL.Error(),
-			"URL must be from Mercado Livre or Shopee",
+			"URL must use http or https scheme",
 			"origin_url",
 			apperrors.ErrInvalidURL,
 		)
 	}
 
-	// Short links (meli.la) and Shopee URLs skip the product-path check —
-	// the destination is only known after following the redirect.
-	if isML && !isMLShort {
-		path := strings.ToLower(u.Path)
-		fullURL := strings.ToLower(rawURL)
-		hasProductPath := strings.Contains(path, "/p/")
-		hasMLBCode := strings.Contains(fullURL, "mlb")
-		if !hasProductPath && !hasMLBCode {
-			return apperrors.NewMLLinksFieldError(
-				apperrors.ErrInvalidURL.Error(),
-				"URL must be a product page (contain /p/ or mlb)",
-				"origin_url",
-				apperrors.ErrInvalidURL,
-			)
-		}
+	if u.Host == "" {
+		return apperrors.NewMLLinksFieldError(
+			apperrors.ErrInvalidURLFormat.Error(),
+			"URL must have a host",
+			"origin_url",
+			apperrors.ErrInvalidURLFormat,
+		)
 	}
 
 	return nil
