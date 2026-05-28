@@ -554,6 +554,10 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
 
       console.log('[import] lines parsed:', lines.length);
 
+      // Preserva ordem da planilha e mantém duplicatas — não usa Set.
+      // A planilha é a fonte da verdade: se o cliente repetiu o mesmo
+      // link 3x, queremos 3 itens. Validação só elimina linhas que não
+      // são URLs http(s) parseáveis.
       const validated = lines.filter(isValidHttpUrl).map((l) => {
         try {
           return normalizeUrl(l);
@@ -564,8 +568,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
 
       console.log('[import] valid URLs:', validated.length);
 
-      const uniq = Array.from(new Set(validated));
-      if (uniq.length === 0) {
+      if (validated.length === 0) {
         toast({
           title: t('pages.mlLinkLists.errors.noValidLinks'),
           description: t('pages.mlLinkLists.errors.noValidLinksMessage'),
@@ -577,13 +580,30 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
       const baseOrder =
         items.length > 0 ? Math.max(...items.map((i) => i.order_index || 0)) + 1 : 0;
 
-      console.log('[import] sending', uniq.length, 'URLs to backend');
-      const result = await mlLinksConnect.bulkCreateMlLinkListItems(selectedListId, uniq, baseOrder);
+      console.log('[import] sending', validated.length, 'URLs to backend');
+      const result = await mlLinksConnect.bulkCreateMlLinkListItems(
+        selectedListId,
+        validated,
+        baseOrder
+      );
       console.log('[import] result:', result);
       await loadItems(selectedListId);
       toast({
-        title: t('pages.mlLinkLists.items.imported', { count: uniq.length }),
+        title: t('pages.mlLinkLists.items.imported', { count: result.createdCount }),
       });
+
+      // Avisa o cliente se alguma linha foi descartada — backend é
+      // permissivo (qualquer http(s)), então só caem aqui linhas
+      // realmente inválidas (não-http, malformadas, scheme estranho).
+      if (result.skippedCount > 0) {
+        const preview = result.skippedUrls.slice(0, 5).join(', ');
+        const more = result.skippedUrls.length > 5 ? ` (+${result.skippedUrls.length - 5})` : '';
+        toast({
+          title: t('pages.mlLinkLists.items.skipped', { count: result.skippedCount }),
+          description: `${preview}${more}`,
+          variant: 'destructive',
+        });
+      }
     } catch (e: unknown) {
       console.error('[import] error:', e);
       const errorMessage =

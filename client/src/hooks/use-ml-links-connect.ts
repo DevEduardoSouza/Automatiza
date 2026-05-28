@@ -131,7 +131,12 @@ interface UseMlLinksConnectReturn {
     listId: string,
     originUrls: string[],
     baseOrderIndex?: number
-  ) => Promise<{ createdCount: number; items: LocalMlLinkListItem[] }>;
+  ) => Promise<{
+    createdCount: number;
+    skippedCount: number;
+    skippedUrls: string[];
+    items: LocalMlLinkListItem[];
+  }>;
   updateMlLinkListItem: (params: UpdateMlLinkListItemParams) => Promise<LocalMlLinkListItem>;
   deleteMlLinkListItem: (id: string) => Promise<void>;
   resetConsumedItems: (listId: string) => Promise<number>;
@@ -536,6 +541,8 @@ export function useMlLinksConnect(): UseMlLinksConnectReturn {
 
       return {
         createdCount: response.createdCount,
+        skippedCount: response.skippedCount,
+        skippedUrls: response.skippedUrls,
         items: response.items.map(fromProtoMlLinkListItem),
       };
     },
@@ -754,7 +761,12 @@ export function useMlLinksConnect(): UseMlLinksConnectReturn {
       listId: string,
       originUrls: string[],
       baseOrderIndex?: number
-    ): Promise<{ createdCount: number; items: LocalMlLinkListItem[] }> => {
+    ): Promise<{
+      createdCount: number;
+      skippedCount: number;
+      skippedUrls: string[];
+      items: LocalMlLinkListItem[];
+    }> => {
       return bulkCreateItemsMutation.mutateAsync({ listId, originUrls, baseOrderIndex });
     },
     [bulkCreateItemsMutation]
