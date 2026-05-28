@@ -12,7 +12,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { ChipSelector } from '@/components/whatsapp/chip-selector';
 import { ENFORCE_GROUP_LIMITS } from '@/config/automation-categories';
 import type { RefinementState } from '@/hooks/use-automations';
-import type { CTA } from '@/entities/cta';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { effectiveFriendlyName } from '@/lib/instance-label';
 import type {
@@ -29,7 +28,6 @@ import { useTranslation } from 'react-i18next';
 
 import { Switch } from '@/components/ui/switch';
 import {
-  CTASelector,
   CategoriesSection,
   DispatchTextSelector,
   FiltersSection,
@@ -56,7 +54,6 @@ interface AutomationFormDialogProps {
   allGroups: AutomationGroup[];
   activeStores: StoreKey[];
   availableCoupons: AutomationCoupon[];
-  availableCTAs: CTA[];
   dispatchTexts: DispatchText[];
   mlLinkLists: MlLinkList[];
   loadingMlLinkLists: boolean;
@@ -84,7 +81,6 @@ export function AutomationFormDialog({
   allGroups,
   activeStores,
   availableCoupons,
-  availableCTAs,
   dispatchTexts,
   mlLinkLists,
   loadingMlLinkLists,
@@ -521,14 +517,10 @@ export function AutomationFormDialog({
             />
           </div>
 
-          {/* CTA Selection (search + list mode) */}
-          {(formData.mode === 'search' || formData.mode === 'list') && (
-            <CTASelector
-              formData={formData}
-              setFormData={setFormData}
-              availableCTAs={availableCTAs}
-            />
-          )}
+          {/* CTA selection removed: o sistema agora usa automaticamente
+              o pool inteiro de CTAs ativos do user, filtrado por platform
+              do produto. Veja /ctas para gerenciar. Override via cta_ids
+              ainda existe no backend mas não está exposto na UI. */}
 
           {/* Categories (only for search mode) */}
           {formData.mode === 'search' && (
