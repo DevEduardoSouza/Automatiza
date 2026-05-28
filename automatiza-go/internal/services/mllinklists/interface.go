@@ -85,8 +85,10 @@ type PaginationInput struct {
 
 // ListItemsResult contains the paginated result of listing items.
 type ListItemsResult struct {
-	Items         []models.MlLinkListItem
-	NextPageToken string
-	TotalCount    int32
-	HasMore       bool
+	Items          []models.MlLinkListItem
+	NextPageToken  string
+	TotalCount     int32
+	AvailableCount int32
+	SentCount      int32
+	HasMore        bool
 }

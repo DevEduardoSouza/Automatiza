@@ -203,6 +203,7 @@ export default function MlLinkLists() {
     lastPreview,
     selectedList,
     availableCount,
+    sentCount,
     totalItemCount,
     hasMoreItems,
     deleteListTarget,
@@ -635,8 +636,7 @@ export default function MlLinkLists() {
                           className="inline-flex items-center rounded-full border px-2 py-0.5 xs:px-2.5 text-[11px] xs:text-xs font-medium"
                           style={{ borderColor: colors.wineBorder, color: colors.wineTextLight }}
                         >
-                          {t('pages.mlLinkLists.items.sent')}{' '}
-                          {(items || []).filter((i) => Boolean(i.consumed_at)).length}
+                          {t('pages.mlLinkLists.items.sent')} {sentCount}
                         </span>
                       </div>
                     </div>

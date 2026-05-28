@@ -809,7 +809,13 @@ type ListMlLinkListItemsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Items []*MlLinkListItem      `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
 	// Pagination metadata
-	Pagination    *v1.PaginationResponse `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	Pagination *v1.PaginationResponse `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	// Total items in the list where consumed_at IS NULL AND is_active = true.
+	// Computed across all rows, not just the current page.
+	AvailableCount int32 `protobuf:"varint,3,opt,name=available_count,json=availableCount,proto3" json:"available_count,omitempty"`
+	// Total items in the list where consumed_at IS NOT NULL.
+	// Computed across all rows, not just the current page.
+	SentCount     int32 `protobuf:"varint,4,opt,name=sent_count,json=sentCount,proto3" json:"sent_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -856,6 +862,20 @@ func (x *ListMlLinkListItemsResponse) GetPagination() *v1.PaginationResponse {
 		return x.Pagination
 	}
 	return nil
+}
+
+func (x *ListMlLinkListItemsResponse) GetAvailableCount() int32 {
+	if x != nil {
+		return x.AvailableCount
+	}
+	return 0
+}
+
+func (x *ListMlLinkListItemsResponse) GetSentCount() int32 {
+	if x != nil {
+		return x.SentCount
+	}
+	return 0
 }
 
 type CreateMlLinkListItemRequest struct {
@@ -1573,12 +1593,15 @@ const file_ml_links_v1_ml_links_proto_rawDesc = "" +
 	"\alist_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06listId\x12<\n" +
 	"\n" +
 	"pagination\x18\x02 \x01(\v2\x1c.common.v1.PaginationRequestR\n" +
-	"pagination\"\x8f\x01\n" +
+	"pagination\"\xd7\x01\n" +
 	"\x1bListMlLinkListItemsResponse\x121\n" +
 	"\x05items\x18\x01 \x03(\v2\x1b.ml_links.v1.MlLinkListItemR\x05items\x12=\n" +
 	"\n" +
 	"pagination\x18\x02 \x01(\v2\x1d.common.v1.PaginationResponseR\n" +
-	"pagination\"\xba\x03\n" +
+	"pagination\x12'\n" +
+	"\x0favailable_count\x18\x03 \x01(\x05R\x0eavailableCount\x12\x1d\n" +
+	"\n" +
+	"sent_count\x18\x04 \x01(\x05R\tsentCount\"\xba\x03\n" +
 	"\x1bCreateMlLinkListItemRequest\x12 \n" +
 	"\alist_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06listId\x12&\n" +
 	"\n" +

@@ -592,23 +592,27 @@ describe('useMlLinkLists', () => {
   });
 
   describe('computed values', () => {
-    it('should compute availableCount correctly', async () => {
+    it('should use server-provided availableCount (whole list, not just loaded page)', async () => {
       mockLists.push(createMockList({ id: 'list-001' }));
+      // Server may return only a page of items but the count is for the
+      // whole list (computed via COUNT(*) FILTER no banco).
       mockFunctions.listMlLinkListItemsPaginated.mockResolvedValue({
         items: [
           createMockItem({ id: '1', is_active: true, consumed_at: undefined }),
           createMockItem({ id: '2', is_active: true, consumed_at: '2026-01-20T15:00:00Z' }),
-          createMockItem({ id: '3', is_active: false, consumed_at: undefined }),
-          createMockItem({ id: '4', is_active: true, consumed_at: undefined }),
         ],
         nextPageToken: '',
-        totalCount: 4,
-        hasMore: false,
+        totalCount: 100,
+        availableCount: 50,
+        sentCount: 50,
+        hasMore: true,
       });
 
       const { result } = renderHook(() => useMlLinkLists());
 
-      await waitFor(() => expect(result.current.availableCount).toBe(2));
+      await waitFor(() => expect(result.current.availableCount).toBe(50));
+      expect(result.current.sentCount).toBe(50);
+      expect(result.current.totalItemCount).toBe(100);
     });
   });
 });
