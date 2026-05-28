@@ -4956,63 +4956,6 @@ func TestProcessListMode_URLSafetyEvaluateError_Mock(t *testing.T) {
 	usMock.AssertCalled(t, "Evaluate", mock.Anything, mock.Anything)
 }
 
-// =============================================================================
-// pickCTAForPlatform — smart CTA filter (vínculo automático por plataforma)
-// =============================================================================
-
-func TestPickCTAForPlatform_FiltersByPlatform(t *testing.T) {
-	t.Parallel()
-
-	shopeeCTA := models.CTA{Message: "OFERTA DA SHÔ", Platform: models.CTAPlatformShopee, IsActive: true}
-	mlCTA := models.CTA{Message: "MERCADO LIVRE 🔥", Platform: models.CTAPlatformMercadoLivre, IsActive: true}
-	allCTA := models.CTA{Message: "QUALQUER LOJA", Platform: models.CTAPlatformAll, IsActive: true}
-	inactiveShopee := models.CTA{Message: "DESATIVADA", Platform: models.CTAPlatformShopee, IsActive: false}
-
-	pool := []models.CTA{shopeeCTA, mlCTA, allCTA, inactiveShopee}
-
-	t.Run("ML product picks ML or all, never Shopee/inactive", func(t *testing.T) {
-		t.Parallel()
-		seen := map[string]bool{}
-		for i := 0; i < 200; i++ {
-			msg := pickCTAForPlatform(pool, true /*isML*/, false /*isShopee*/)
-			require.NotEmpty(t, msg)
-			seen[msg] = true
-		}
-		assert.False(t, seen[shopeeCTA.Message], "Shopee CTA picked for ML product")
-		assert.False(t, seen[inactiveShopee.Message], "inactive CTA picked")
-		assert.True(t, seen[mlCTA.Message] || seen[allCTA.Message], "ML or all CTA should appear")
-	})
-
-	t.Run("Shopee product picks Shopee or all, never ML/inactive", func(t *testing.T) {
-		t.Parallel()
-		seen := map[string]bool{}
-		for i := 0; i < 200; i++ {
-			msg := pickCTAForPlatform(pool, false /*isML*/, true /*isShopee*/)
-			require.NotEmpty(t, msg)
-			seen[msg] = true
-		}
-		assert.False(t, seen[mlCTA.Message], "ML CTA picked for Shopee product")
-		assert.False(t, seen[inactiveShopee.Message], "inactive CTA picked")
-		assert.True(t, seen[shopeeCTA.Message] || seen[allCTA.Message])
-	})
-
-	t.Run("unknown platform falls back to 'all' only", func(t *testing.T) {
-		t.Parallel()
-		msg := pickCTAForPlatform(pool, false, false)
-		assert.Equal(t, allCTA.Message, msg)
-	})
-
-	t.Run("empty pool returns empty", func(t *testing.T) {
-		t.Parallel()
-		assert.Empty(t, pickCTAForPlatform(nil, true, false))
-		assert.Empty(t, pickCTAForPlatform([]models.CTA{}, false, true))
-	})
-
-	t.Run("no matching platform returns empty (lets caller fallback)", func(t *testing.T) {
-		t.Parallel()
-		onlyShopee := []models.CTA{shopeeCTA}
-		// ML product, but pool só tem Shopee — não devolve Shopee errado,
-		// caller usa automation.CTAs inline como fallback.
-		assert.Empty(t, pickCTAForPlatform(onlyShopee, true, false))
-	})
-}
+// Smart CTA filter tests movidos para internal/lib/ctapicker/ctapicker_test.go
+// quando a função foi extraída pra ser compartilhada entre automation e
+// offer_generate.
