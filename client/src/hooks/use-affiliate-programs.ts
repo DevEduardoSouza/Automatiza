@@ -83,13 +83,6 @@ const STORE_CONFIGS: StoreConfig[] = [
         type: 'password',
         placeholder: '********',
       },
-      {
-        key: 'trackingTag',
-        label: 'Tag de rastreamento (opcional)',
-        type: 'text',
-        placeholder: 'Ex: AUTOMAISA',
-        optional: true,
-      },
     ],
   },
   {

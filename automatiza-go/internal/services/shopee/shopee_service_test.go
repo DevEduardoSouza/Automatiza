@@ -288,6 +288,16 @@ func TestBuildGenerateShortLinkMutation(t *testing.T) {
 	})
 }
 
+func TestShopeeSubIDDefault_LockedToAutomatisa(t *testing.T) {
+	t.Parallel()
+	// Lock test — qualquer mudança nessa string muda a atribuição no relatório
+	// da Shopee de todos os links em produção, pra todos os usuários. Trocar
+	// requer alinhamento com produto.
+	if shopeeSubIDDefault != "AUTOMATISA" {
+		t.Errorf("shopeeSubIDDefault changed to %q — atribuição de afiliado quebra silenciosamente em prod", shopeeSubIDDefault)
+	}
+}
+
 func TestShopeeSign(t *testing.T) {
 	tests := []struct {
 		name      string
