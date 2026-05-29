@@ -86,6 +86,11 @@ export interface Automation {
   // means the worker matches global CouponRules on every dispatch.
   // false silences cupom injection for this automation entirely.
   apply_coupon_rules?: boolean;
+  // LIST mode: quando true (default), o backend reseta automaticamente
+  // os items consumidos da lista quando todos foram enviados e a
+  // automation continua rodando em loop. Quando false, a automation
+  // para após esgotar.
+  repeat_when_finished?: boolean;
 }
 
 export interface AutomationGroup {

@@ -94,6 +94,24 @@ export function ListModeConfig({
           }
         />
       </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+        <div className="space-y-1">
+          <Label htmlFor="repeat-when-finished" className="cursor-pointer">
+            {t('pages.offerAutomations.form.repeatWhenFinished')}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {t('pages.offerAutomations.form.repeatWhenFinishedHint')}
+          </p>
+        </div>
+        <Switch
+          id="repeat-when-finished"
+          checked={Boolean(formData.repeat_when_finished ?? true)}
+          onCheckedChange={(v) =>
+            setFormData((prev) => ({ ...prev, repeat_when_finished: Boolean(v) }))
+          }
+        />
+      </div>
     </div>
   );
 }

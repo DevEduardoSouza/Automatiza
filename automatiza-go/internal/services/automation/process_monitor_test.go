@@ -645,6 +645,7 @@ func TestProcessMonitorMode_EdgeCases(t *testing.T) {
 				deps.settingsRepo,
 				deps.profileRepo,
 				deps.mlLinkListItemRepo,
+				nil, // mlLinkListRepo
 				nil, // ctaRepo
 				deps.shopeeService,
 				deps.mlService,

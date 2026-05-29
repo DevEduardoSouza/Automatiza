@@ -228,6 +228,13 @@ message Automation {
   // to the automatic algorithm (sticky hash across instance_ids).
   // Empty map = full automatic mode.
   map<string, string> chip_overrides = 35;
+
+  // LIST mode: quando true, o backend reseta automaticamente os items
+  // consumidos da lista quando todos foram enviados, e a automation
+  // continua rodando em loop. Quando false, a automation para após
+  // esgotar (cliente precisa clicar "Resetar enviados" manualmente).
+  // Default true em novas automations (migration 052).
+  bool repeat_when_finished = 36;
 }
 
 /**
@@ -338,6 +345,9 @@ message CreateAutomationRequest {
   // Manual chip routing per group (migration 050). See Automation
   // message for semantics.
   map<string, string> chip_overrides = 30;
+  // LIST mode: ver Automation.repeat_when_finished. Unset = default
+  // do server (true).
+  optional bool repeat_when_finished = 31;
 }
 
 message CreateAutomationResponse {
@@ -392,6 +402,9 @@ message UpdateAutomationRequest {
   // can't distinguish "empty" from "absent" for maps — we treat empty
   // as "clear" since the UI sends the full desired map on save).
   map<string, string> chip_overrides = 31;
+  // LIST mode: ver Automation.repeat_when_finished. Unset = leave
+  // unchanged (proto3 optional semantics).
+  optional bool repeat_when_finished = 32;
 }
 
 message UpdateAutomationResponse {

@@ -542,8 +542,14 @@ type Automation struct {
 	// to the automatic algorithm (sticky hash across instance_ids).
 	// Empty map = full automatic mode.
 	ChipOverrides map[string]string `protobuf:"bytes,35,rep,name=chip_overrides,json=chipOverrides,proto3" json:"chip_overrides,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// LIST mode: quando true, o backend reseta automaticamente os items
+	// consumidos da lista quando todos foram enviados, e a automation
+	// continua rodando em loop. Quando false, a automation para após
+	// esgotar (cliente precisa clicar "Resetar enviados" manualmente).
+	// Default true em novas automations (migration 052).
+	RepeatWhenFinished bool `protobuf:"varint,36,opt,name=repeat_when_finished,json=repeatWhenFinished,proto3" json:"repeat_when_finished,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Automation) Reset() {
@@ -819,6 +825,13 @@ func (x *Automation) GetChipOverrides() map[string]string {
 		return x.ChipOverrides
 	}
 	return nil
+}
+
+func (x *Automation) GetRepeatWhenFinished() bool {
+	if x != nil {
+		return x.RepeatWhenFinished
+	}
+	return false
 }
 
 //*
@@ -1204,8 +1217,11 @@ type CreateAutomationRequest struct {
 	// Manual chip routing per group (migration 050). See Automation
 	// message for semantics.
 	ChipOverrides map[string]string `protobuf:"bytes,30,rep,name=chip_overrides,json=chipOverrides,proto3" json:"chip_overrides,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// LIST mode: ver Automation.repeat_when_finished. Unset = default
+	// do server (true).
+	RepeatWhenFinished *bool `protobuf:"varint,31,opt,name=repeat_when_finished,json=repeatWhenFinished,proto3,oneof" json:"repeat_when_finished,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CreateAutomationRequest) Reset() {
@@ -1448,6 +1464,13 @@ func (x *CreateAutomationRequest) GetChipOverrides() map[string]string {
 	return nil
 }
 
+func (x *CreateAutomationRequest) GetRepeatWhenFinished() bool {
+	if x != nil && x.RepeatWhenFinished != nil {
+		return *x.RepeatWhenFinished
+	}
+	return false
+}
+
 type CreateAutomationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Automation    *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
@@ -1537,8 +1560,11 @@ type UpdateAutomationRequest struct {
 	// can't distinguish "empty" from "absent" for maps — we treat empty
 	// as "clear" since the UI sends the full desired map on save).
 	ChipOverrides map[string]string `protobuf:"bytes,31,rep,name=chip_overrides,json=chipOverrides,proto3" json:"chip_overrides,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// LIST mode: ver Automation.repeat_when_finished. Unset = leave
+	// unchanged (proto3 optional semantics).
+	RepeatWhenFinished *bool `protobuf:"varint,32,opt,name=repeat_when_finished,json=repeatWhenFinished,proto3,oneof" json:"repeat_when_finished,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *UpdateAutomationRequest) Reset() {
@@ -1786,6 +1812,13 @@ func (x *UpdateAutomationRequest) GetChipOverrides() map[string]string {
 		return x.ChipOverrides
 	}
 	return nil
+}
+
+func (x *UpdateAutomationRequest) GetRepeatWhenFinished() bool {
+	if x != nil && x.RepeatWhenFinished != nil {
+		return *x.RepeatWhenFinished
+	}
+	return false
 }
 
 type UpdateAutomationResponse struct {
@@ -2579,7 +2612,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x16\n" +
 	"\x06suffix\x18\x04 \x01(\tR\x06suffix\x12!\n" +
 	"\fclean_phones\x18\x05 \x01(\bR\vcleanPhones\x12%\n" +
-	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xc9\x0e\n" +
+	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xfb\x0e\n" +
 	"\n" +
 	"Automation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -2625,7 +2658,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"instanceId\x88\x01\x01\x12,\n" +
 	"\x12apply_coupon_rules\x18! \x01(\bR\x10applyCouponRules\x12!\n" +
 	"\finstance_ids\x18\" \x03(\tR\vinstanceIds\x12T\n" +
-	"\x0echip_overrides\x18# \x03(\v2-.automations.v1.Automation.ChipOverridesEntryR\rchipOverrides\x1a@\n" +
+	"\x0echip_overrides\x18# \x03(\v2-.automations.v1.Automation.ChipOverridesEntryR\rchipOverrides\x120\n" +
+	"\x14repeat_when_finished\x18$ \x01(\bR\x12repeatWhenFinished\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x13\n" +
@@ -2676,7 +2710,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x15GetAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xa2\r\n" +
+	"automation\"\xf2\r\n" +
 	"\x17CreateAutomationRequest\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x04name\x122\n" +
@@ -2716,7 +2750,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"instanceId\x88\x01\x01\x121\n" +
 	"\x12apply_coupon_rules\x18\x1c \x01(\bH\fR\x10applyCouponRules\x88\x01\x01\x12!\n" +
 	"\finstance_ids\x18\x1d \x03(\tR\vinstanceIds\x12a\n" +
-	"\x0echip_overrides\x18\x1e \x03(\v2:.automations.v1.CreateAutomationRequest.ChipOverridesEntryR\rchipOverrides\x1a@\n" +
+	"\x0echip_overrides\x18\x1e \x03(\v2:.automations.v1.CreateAutomationRequest.ChipOverridesEntryR\rchipOverrides\x125\n" +
+	"\x14repeat_when_finished\x18\x1f \x01(\bH\rR\x12repeatWhenFinished\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x13\n" +
@@ -2735,11 +2770,12 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x13_list_include_imageB\x15\n" +
 	"\x13_list_send_as_imageB\x0e\n" +
 	"\f_instance_idB\x15\n" +
-	"\x13_apply_coupon_rules\"V\n" +
+	"\x13_apply_coupon_rulesB\x17\n" +
+	"\x15_repeat_when_finished\"V\n" +
 	"\x18CreateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xb1\x0e\n" +
+	"automation\"\x81\x0f\n" +
 	"\x17UpdateAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
 	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x127\n" +
@@ -2779,7 +2815,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"instanceId\x88\x01\x01\x121\n" +
 	"\x12apply_coupon_rules\x18\x1d \x01(\bH\x14R\x10applyCouponRules\x88\x01\x01\x12!\n" +
 	"\finstance_ids\x18\x1e \x03(\tR\vinstanceIds\x12a\n" +
-	"\x0echip_overrides\x18\x1f \x03(\v2:.automations.v1.UpdateAutomationRequest.ChipOverridesEntryR\rchipOverrides\x1a@\n" +
+	"\x0echip_overrides\x18\x1f \x03(\v2:.automations.v1.UpdateAutomationRequest.ChipOverridesEntryR\rchipOverrides\x125\n" +
+	"\x14repeat_when_finished\x18  \x01(\bH\x15R\x12repeatWhenFinished\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\a\n" +
@@ -2806,7 +2843,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x13_list_include_imageB\x15\n" +
 	"\x13_list_send_as_imageB\x0e\n" +
 	"\f_instance_idB\x15\n" +
-	"\x13_apply_coupon_rules\"V\n" +
+	"\x13_apply_coupon_rulesB\x17\n" +
+	"\x15_repeat_when_finished\"V\n" +
 	"\x18UpdateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +

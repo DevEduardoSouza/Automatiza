@@ -435,6 +435,7 @@ func main() {
 		settingsRepo,
 		profileRepo,
 		repos.MlLinkListItem,
+		repos.MLLinkList,
 		ctaRepo,
 		shopeeService,
 		mlService,

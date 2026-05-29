@@ -607,6 +607,9 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 	// Coupon rule engine opt-out (default true server-side)
 	proto.ApplyCouponRules = a.ApplyCouponRules
 
+	// Auto-repeat de lista LIST mode (default true server-side, migration 052).
+	proto.RepeatWhenFinished = a.RepeatWhenFinished
+
 	// Convert stores
 	for _, store := range a.Stores {
 		proto.Stores = append(proto.Stores, modelStoreToProto(store))
@@ -944,6 +947,13 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.ApplyCouponRules = true
 	}
 
+	// Auto-repeat de lista (default true quando o client não envia).
+	if msg.RepeatWhenFinished != nil {
+		automation.RepeatWhenFinished = *msg.RepeatWhenFinished
+	} else {
+		automation.RepeatWhenFinished = true
+	}
+
 	// Convert stores
 	for _, store := range msg.GetStores() {
 		if s := protoStoreToModel(store); s != "" {
@@ -1088,6 +1098,11 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 	// Coupon rule engine opt-out
 	if msg.ApplyCouponRules != nil {
 		updates["apply_coupon_rules"] = *msg.ApplyCouponRules
+	}
+
+	// Auto-repeat de lista (LIST mode)
+	if msg.RepeatWhenFinished != nil {
+		updates["repeat_when_finished"] = *msg.RepeatWhenFinished
 	}
 
 	// Monitoring text rules
