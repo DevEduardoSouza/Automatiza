@@ -87,13 +87,17 @@ func getShopeeCredentials(creds *models.AffiliateCredentials) (appID, secret str
 	return
 }
 
+// shopeeSubIDDefault é o Sub ID fixo enviado pra Shopee em todo link
+// gerado pela plataforma. Identifica a Automatisa como fonte da venda no
+// relatório de afiliado, sem expor configuração ao usuário final — todo
+// usuário recebe a mesma tag. Granularidade adicional (ex.: sub_id por
+// user/automation) pode vir num próximo PR usando os outros 4 slots de
+// subIds que a API aceita.
+const shopeeSubIDDefault = "AUTOMATISA"
+
 // buildGenerateShortLinkMutation monta o GraphQL mutation da Shopee para
-// generateShortLink, opcionalmente incluindo subIds para rastreamento de
-// afiliado (Sub ID). Tag vazia → omite subIds.
-//
-// A API aceita até 5 sub_ids; passamos só uma string (a "trackingTag" do
-// user) como sub_id1 — MVP do feature pedido pelo cliente para identificar
-// que a venda veio da Automaísa nos relatórios da Shopee.
+// generateShortLink, opcionalmente incluindo subIds. Tag vazia → omite
+// subIds. Em produção, callers passam shopeeSubIDDefault.
 func buildGenerateShortLinkMutation(originURL, trackingTag string) string {
 	if trackingTag == "" {
 		return fmt.Sprintf(`mutation { generateShortLink(input: {originUrl: %q}) { shortLink } }`, originURL)
@@ -506,15 +510,15 @@ func (s *shopeeService) generateNonProductAffiliateLink(ctx context.Context, ori
 		return nil, fmt.Errorf("shopee credentials not configured")
 	}
 	appID, secret := getShopeeCredentials(creds)
-	trackingTag := creds.GetCredential("trackingTag")
 
 	s.logger.Info("Generating affiliate link for non-product Shopee URL",
 		zap.String("original", originalURL),
 		zap.String("expanded", expandedURL),
 		zap.String("userID", userID))
 
-	// Use generateShortLink mutation — works with any Shopee URL
-	shortLinkQuery := buildGenerateShortLinkMutation(expandedURL, trackingTag)
+	// Use generateShortLink mutation — works with any Shopee URL.
+	// Sub ID fixo em shopeeSubIDDefault — não configurável pelo user.
+	shortLinkQuery := buildGenerateShortLinkMutation(expandedURL, shopeeSubIDDefault)
 	shortPayload, marshalErr := json.Marshal(map[string]string{"query": shortLinkQuery})
 	if marshalErr != nil {
 		return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", marshalErr)
@@ -594,7 +598,6 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		return nil, fmt.Errorf("shopee credentials not configured")
 	}
 	appID, secret := getShopeeCredentials(creds)
-	trackingTag := creds.GetCredential("trackingTag")
 
 	s.logger.Info("AffiliateLink API call",
 		zap.Int64("itemID", itemID),
@@ -639,7 +642,8 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 	// Fallback to generateShortLink if productOfferV2 didn't return an offerLink
 	if affiliateLink == "" {
 		originURL := fmt.Sprintf("https://shopee.com.br/product/%d/%d", shopID, itemID)
-		shortLinkQuery := buildGenerateShortLinkMutation(originURL, trackingTag)
+		// Sub ID fixo em shopeeSubIDDefault — não configurável pelo user.
+		shortLinkQuery := buildGenerateShortLinkMutation(originURL, shopeeSubIDDefault)
 		shortPayload, shortMarshalErr := json.Marshal(map[string]string{"query": shortLinkQuery})
 		if shortMarshalErr != nil {
 			return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", shortMarshalErr)
