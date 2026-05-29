@@ -190,6 +190,7 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     chip_overrides: local.chipOverrides ?? {},
     apply_coupon_rules: local.applyCouponRules ?? true,
     repeat_when_finished: local.repeatWhenFinished ?? true,
+    start_date: local.startDate,
   };
 }
 
@@ -636,6 +637,7 @@ export function useAutomations(): UseAutomationsReturn {
           chipOverrides: formData.chip_overrides ?? {},
           applyCouponRules: formData.apply_coupon_rules,
           repeatWhenFinished: formData.repeat_when_finished,
+          startDate: formData.start_date,
         };
 
         await automationsConnect.updateAutomation(updateParams);
@@ -697,6 +699,8 @@ export function useAutomations(): UseAutomationsReturn {
           // Default true: lista LIST mode roda em loop por padrão
           // (auto-reseta items consumidos quando esgota).
           repeatWhenFinished: formData.repeat_when_finished ?? true,
+          // Data de agendamento (LIST mode). Empty = sem agendamento.
+          startDate: formData.start_date,
         };
 
         await automationsConnect.createAutomation(createParams);

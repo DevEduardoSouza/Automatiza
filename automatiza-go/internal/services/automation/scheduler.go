@@ -72,6 +72,13 @@ func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
 			continue
 		}
 
+		// Check if automation's start_date is reached (migration 053).
+		// NULL/empty start_date = sem agendamento, roda imediatamente.
+		if !s.isStartDateReached(automation, now) {
+			skippedCount++
+			continue
+		}
+
 		// Check if automation is within time window
 		if !s.isInTimeWindow(automation, now) {
 			skippedCount++
@@ -116,6 +123,30 @@ func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
 		zap.Int("errors", errorCount))
 
 	return nil
+}
+
+// isStartDateReached returns true se o scheduler pode considerar essa
+// automation pra execução hoje. StartDate é uma data calendário no
+// formato YYYY-MM-DD (vinda do scanner). NULL/empty = sem restrição.
+//
+// Comparação é por dia (server-local time). Antes da data, automation
+// é pulada silenciosamente — não loga erro nem dispatcha skipped, só
+// fica fora do batch desta tick (paridade com a janela horária).
+func (s *Scheduler) isStartDateReached(automation *models.Automation, now time.Time) bool {
+	if automation.StartDate == nil || *automation.StartDate == "" {
+		return true
+	}
+	start, err := time.Parse("2006-01-02", *automation.StartDate)
+	if err != nil {
+		s.logger.Warn("Failed to parse start_date, ignoring schedule gate",
+			zap.String("automationID", automation.ID),
+			zap.String("startDate", *automation.StartDate),
+			zap.Error(err))
+		return true
+	}
+	// Compara só a data (descarta hora). today >= start_date → libera.
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	return !today.Before(start)
 }
 
 // isInTimeWindow checks if the current time is within the automation's configured time window.

@@ -110,6 +110,8 @@ export interface LocalAutomation {
   // LIST mode auto-repeat: true (default) reseta items consumidos quando
   // todos foram enviados, mantendo a automation em loop.
   repeatWhenFinished?: boolean;
+  // Data de início (YYYY-MM-DD). Empty/undef = sem agendamento.
+  startDate?: string;
 }
 
 export interface LocalDiagnosticStep {
@@ -165,6 +167,7 @@ export interface CreateAutomationParams {
   chipOverrides?: Record<string, string>;
   applyCouponRules?: boolean;
   repeatWhenFinished?: boolean;
+  startDate?: string;
 }
 
 export interface UpdateAutomationParams {
@@ -207,6 +210,7 @@ export interface UpdateAutomationParams {
   chipOverrides?: Record<string, string>;
   applyCouponRules?: boolean;
   repeatWhenFinished?: boolean;
+  startDate?: string;
 }
 
 export interface LocalRunAutomationResult {
@@ -419,6 +423,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     chipOverrides: { ...(automation.chipOverrides ?? {}) },
     applyCouponRules: automation.applyCouponRules,
     repeatWhenFinished: automation.repeatWhenFinished,
+    startDate: automation.startDate,
   };
 }
 
@@ -568,6 +573,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           chipOverrides: params.chipOverrides ?? {},
           applyCouponRules: params.applyCouponRules,
           repeatWhenFinished: params.repeatWhenFinished,
+          startDate: params.startDate,
         })
       );
 
@@ -641,6 +647,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           chipOverrides: params.chipOverrides ?? {},
           applyCouponRules: params.applyCouponRules,
           repeatWhenFinished: params.repeatWhenFinished,
+          startDate: params.startDate,
         })
       );
 

@@ -235,6 +235,13 @@ message Automation {
   // esgotar (cliente precisa clicar "Resetar enviados" manualmente).
   // Default true em novas automations (migration 052).
   bool repeat_when_finished = 36;
+
+  // start_date (migration 053): data calendário (YYYY-MM-DD) a partir
+  // da qual o scheduler ativa a automation. Empty/unset = sem
+  // agendamento, roda imediatamente. Antes da data, scheduler pula
+  // silenciosamente. Usado primariamente no LIST mode (paridade
+  // affilipro), mas o schema não restringe a tipo.
+  optional string start_date = 37;
 }
 
 /**
@@ -348,6 +355,9 @@ message CreateAutomationRequest {
   // LIST mode: ver Automation.repeat_when_finished. Unset = default
   // do server (true).
   optional bool repeat_when_finished = 31;
+  // start_date (YYYY-MM-DD). Unset/empty = sem agendamento. Ver
+  // Automation.start_date.
+  optional string start_date = 32;
 }
 
 message CreateAutomationResponse {
@@ -405,6 +415,9 @@ message UpdateAutomationRequest {
   // LIST mode: ver Automation.repeat_when_finished. Unset = leave
   // unchanged (proto3 optional semantics).
   optional bool repeat_when_finished = 32;
+  // start_date (YYYY-MM-DD). Unset = leave unchanged; empty string
+  // explicitly clears (volta a rodar imediatamente).
+  optional string start_date = 33;
 }
 
 message UpdateAutomationResponse {

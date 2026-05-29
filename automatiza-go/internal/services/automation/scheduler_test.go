@@ -351,6 +351,45 @@ func TestProcessActiveAutomations_MixedAutomations(t *testing.T) {
 }
 
 // =============================================================================
+// isStartDateReached Tests
+// =============================================================================
+
+func TestIsStartDateReached(t *testing.T) {
+	t.Parallel()
+	logger := zaptest.NewLogger(t)
+	scheduler := NewScheduler(nil, nil, logger)
+
+	dateStr := func(s string) *string { return &s }
+
+	tests := []struct {
+		name      string
+		startDate *string
+		now       time.Time
+		want      bool
+	}{
+		{name: "nil start_date — always allowed", now: time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC), want: true},
+		{name: "empty start_date — always allowed", startDate: dateStr(""), now: time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC), want: true},
+		{name: "today equals start_date — allowed", startDate: dateStr("2026-05-29"), now: time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC), want: true},
+		{name: "today after start_date — allowed", startDate: dateStr("2026-05-29"), now: time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC), want: true},
+		{name: "today before start_date — blocked", startDate: dateStr("2026-05-29"), now: time.Date(2026, 5, 28, 23, 59, 0, 0, time.UTC), want: false},
+		{name: "today months before — blocked", startDate: dateStr("2026-12-01"), now: time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC), want: false},
+		{name: "malformed start_date — fail-open (allow)", startDate: dateStr("not-a-date"), now: time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC), want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			auto := &models.Automation{StartDate: tt.startDate}
+			got := scheduler.isStartDateReached(auto, tt.now)
+			if got != tt.want {
+				t.Errorf("isStartDateReached(%v, %v) = %v, want %v",
+					tt.startDate, tt.now, got, tt.want)
+			}
+		})
+	}
+}
+
+// =============================================================================
 // isInTimeWindow Tests
 // =============================================================================
 

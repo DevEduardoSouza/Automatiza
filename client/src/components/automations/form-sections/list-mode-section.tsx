@@ -1,3 +1,4 @@
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -111,6 +112,26 @@ export function ListModeConfig({
             setFormData((prev) => ({ ...prev, repeat_when_finished: Boolean(v) }))
           }
         />
+      </div>
+
+      <div className="space-y-1.5 xs:space-y-2">
+        <Label htmlFor="start-date" className="cursor-pointer">
+          {t('pages.offerAutomations.form.startDate')}
+        </Label>
+        <Input
+          id="start-date"
+          type="date"
+          value={formData.start_date ?? ''}
+          onChange={(e) =>
+            setFormData((prev) => ({
+              ...prev,
+              start_date: e.target.value || undefined,
+            }))
+          }
+        />
+        <p className="text-xs text-muted-foreground">
+          {t('pages.offerAutomations.form.startDateHint')}
+        </p>
       </div>
     </div>
   );

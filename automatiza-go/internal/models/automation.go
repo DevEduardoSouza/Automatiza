@@ -37,6 +37,11 @@ type Automation struct {
 	StartTime       *string  `json:"start_time,omitempty" db:"start_time"`
 	EndTime         *string  `json:"end_time,omitempty" db:"end_time"`
 	IntervalMinutes *int     `json:"interval_minutes,omitempty" db:"interval_minutes"`
+	// StartDate: calendar date (YYYY-MM-DD) a partir da qual o scheduler
+	// ativa a automation. NULL/empty = sem agendamento, roda imediatamente.
+	// Usado primariamente no LIST mode (paridade affilipro), mas o schema
+	// não restringe a tipo.
+	StartDate *string `json:"start_date,omitempty" db:"start_date"`
 	LastRunAt       *string  `json:"last_run_at,omitempty" db:"last_run_at"`
 	NextRunAt       *string  `json:"next_run_at,omitempty" db:"next_run_at"`
 

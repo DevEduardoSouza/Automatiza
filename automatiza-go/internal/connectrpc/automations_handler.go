@@ -610,6 +610,11 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 	// Auto-repeat de lista LIST mode (default true server-side, migration 052).
 	proto.RepeatWhenFinished = a.RepeatWhenFinished
 
+	// Data de agendamento (migration 053). Empty/unset = sem agendamento.
+	if a.StartDate != nil && *a.StartDate != "" {
+		proto.StartDate = a.StartDate
+	}
+
 	// Convert stores
 	for _, store := range a.Stores {
 		proto.Stores = append(proto.Stores, modelStoreToProto(store))
@@ -954,6 +959,11 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.RepeatWhenFinished = true
 	}
 
+	// Data de agendamento. Empty string = sem agendamento (column NULL).
+	if msg.StartDate != nil && *msg.StartDate != "" {
+		automation.StartDate = msg.StartDate
+	}
+
 	// Convert stores
 	for _, store := range msg.GetStores() {
 		if s := protoStoreToModel(store); s != "" {
@@ -1103,6 +1113,15 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 	// Auto-repeat de lista (LIST mode)
 	if msg.RepeatWhenFinished != nil {
 		updates["repeat_when_finished"] = *msg.RepeatWhenFinished
+	}
+
+	// Data de agendamento (LIST mode). Empty string = clear (NULL).
+	if msg.StartDate != nil {
+		if *msg.StartDate == "" {
+			updates["start_date"] = nil
+		} else {
+			updates["start_date"] = *msg.StartDate
+		}
 	}
 
 	// Monitoring text rules
