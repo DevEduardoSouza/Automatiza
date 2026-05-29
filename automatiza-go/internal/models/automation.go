@@ -51,6 +51,9 @@ type Automation struct {
 	ListItemsPerRun  *int    `json:"list_items_per_run,omitempty" db:"list_items_per_run"`
 	ListIncludeImage *bool   `json:"list_include_image,omitempty" db:"list_include_image"`
 	ListSendAsImage  *bool   `json:"list_send_as_image,omitempty" db:"list_send_as_image"`
+	// RepeatWhenFinished (LIST mode): true = reseta items consumidos automaticamente
+	// quando a lista esgota e continua o loop. Default TRUE (definido no schema).
+	RepeatWhenFinished bool `json:"repeat_when_finished" db:"repeat_when_finished"`
 
 	// Priority and filter settings
 	PriorityType *string `json:"priority_type,omitempty" db:"priority_type"` // "discount" | "price" | "commission"

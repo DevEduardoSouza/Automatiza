@@ -107,6 +107,9 @@ export interface LocalAutomation {
   chipOverrides?: Record<string, string>;
   // Per-automation opt-out for the coupon rule engine.
   applyCouponRules?: boolean;
+  // LIST mode auto-repeat: true (default) reseta items consumidos quando
+  // todos foram enviados, mantendo a automation em loop.
+  repeatWhenFinished?: boolean;
 }
 
 export interface LocalDiagnosticStep {
@@ -161,6 +164,7 @@ export interface CreateAutomationParams {
   // override references a chip not in the list.
   chipOverrides?: Record<string, string>;
   applyCouponRules?: boolean;
+  repeatWhenFinished?: boolean;
 }
 
 export interface UpdateAutomationParams {
@@ -202,6 +206,7 @@ export interface UpdateAutomationParams {
   // effective instanceIds after the update applies.
   chipOverrides?: Record<string, string>;
   applyCouponRules?: boolean;
+  repeatWhenFinished?: boolean;
 }
 
 export interface LocalRunAutomationResult {
@@ -413,6 +418,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     // fresh dict to keep LocalAutomation immutable from the wire response.
     chipOverrides: { ...(automation.chipOverrides ?? {}) },
     applyCouponRules: automation.applyCouponRules,
+    repeatWhenFinished: automation.repeatWhenFinished,
   };
 }
 
@@ -561,6 +567,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           instanceIds: params.instanceIds ?? [],
           chipOverrides: params.chipOverrides ?? {},
           applyCouponRules: params.applyCouponRules,
+          repeatWhenFinished: params.repeatWhenFinished,
         })
       );
 
@@ -633,6 +640,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           instanceIds: params.instanceIds ?? [],
           chipOverrides: params.chipOverrides ?? {},
           applyCouponRules: params.applyCouponRules,
+          repeatWhenFinished: params.repeatWhenFinished,
         })
       );
 

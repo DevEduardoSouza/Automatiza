@@ -133,6 +133,33 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		return nil, fmt.Errorf("failed to get unconsumed items: %w", err)
 	}
 
+	// Auto-repeat: quando a lista esgota (todos consumidos) E a flag está
+	// ligada, reseta consumed_at em massa e refetch. Permite que automation
+	// LIST rode em loop sem intervenção manual. Default TRUE (no schema).
+	//
+	// Sem auto-repeat, a automation para silenciosamente e o usuário precisa
+	// clicar "Resetar enviados" na UI — fricção desnecessária para o caso
+	// comum em que a lista deve ciclar.
+	if len(items) == 0 && automation.RepeatWhenFinished {
+		resetCount, resetErr := s.mlLinkListRepo.ResetConsumedItems(ctx, listID)
+		if resetErr != nil {
+			s.logger.Warn("Failed to auto-reset consumed items, list remains empty",
+				zap.String("listID", listID),
+				zap.Error(resetErr))
+		} else if resetCount > 0 {
+			s.logger.Info("List exhausted — auto-reset triggered (repeat_when_finished=true)",
+				zap.String("listID", listID),
+				zap.Int64("resetCount", resetCount))
+			items, err = s.mlLinkListItemRepo.GetNextUnconsumed(ctx, listID, itemsPerRun)
+			if err != nil {
+				s.logger.Error("Failed to refetch unconsumed items after auto-reset",
+					zap.String("listID", listID),
+					zap.Error(err))
+				return nil, fmt.Errorf("failed to refetch unconsumed items: %w", err)
+			}
+		}
+	}
+
 	if len(items) == 0 {
 		infoMsg := "Lista sem itens disponiveis (todos consumidos ou inativos)."
 		s.logger.Info("No unconsumed items in list",

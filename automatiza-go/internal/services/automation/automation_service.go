@@ -66,6 +66,7 @@ type automationService struct {
 	settingsRepo       repository.SettingsRepository
 	profileRepo        repository.ProfileRepository
 	mlLinkListItemRepo repository.MlLinkListItemRepository
+	mlLinkListRepo     repository.MLLinkListRepository
 	ctaRepo            repository.CTARepository
 
 	shopeeService    shopee.Service
@@ -94,6 +95,7 @@ func NewAutomationService(
 	settingsRepo repository.SettingsRepository,
 	profileRepo repository.ProfileRepository,
 	mlLinkListItemRepo repository.MlLinkListItemRepository,
+	mlLinkListRepo repository.MLLinkListRepository,
 	ctaRepo repository.CTARepository,
 	shopeeService shopee.Service,
 	mlService mercadolivre.Service,
@@ -115,6 +117,7 @@ func NewAutomationService(
 		settingsRepo:       settingsRepo,
 		profileRepo:        profileRepo,
 		mlLinkListItemRepo: mlLinkListItemRepo,
+		mlLinkListRepo:     mlLinkListRepo,
 		ctaRepo:            ctaRepo,
 		shopeeService:      shopeeService,
 		mlService:          mlService,

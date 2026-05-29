@@ -189,6 +189,7 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     instance_ids: local.instanceIds ?? [],
     chip_overrides: local.chipOverrides ?? {},
     apply_coupon_rules: local.applyCouponRules ?? true,
+    repeat_when_finished: local.repeatWhenFinished ?? true,
   };
 }
 
@@ -634,6 +635,7 @@ export function useAutomations(): UseAutomationsReturn {
           instanceIds: formData.instance_ids ?? [],
           chipOverrides: formData.chip_overrides ?? {},
           applyCouponRules: formData.apply_coupon_rules,
+          repeatWhenFinished: formData.repeat_when_finished,
         };
 
         await automationsConnect.updateAutomation(updateParams);
@@ -692,6 +694,9 @@ export function useAutomations(): UseAutomationsReturn {
           // new automation here starts with the rule engine OFF, so the
           // user opts in explicitly when they want coupon injection.
           applyCouponRules: formData.apply_coupon_rules ?? false,
+          // Default true: lista LIST mode roda em loop por padrão
+          // (auto-reseta items consumidos quando esgota).
+          repeatWhenFinished: formData.repeat_when_finished ?? true,
         };
 
         await automationsConnect.createAutomation(createParams);
