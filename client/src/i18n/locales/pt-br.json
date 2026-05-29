@@ -2197,6 +2197,8 @@
         "repeatWhenFinishedHint": "Quando todos os links da lista forem enviados, reseta automaticamente e começa de novo do início. Desative para a automação parar ao esgotar a lista (precisa clicar em 'Resetar enviados' manualmente em Lista de Links).",
         "startDate": "Data de início (opcional)",
         "startDateHint": "Data em que o agendamento deve começar. Antes dessa data, a automação fica pausada. Deixe em branco para começar imediatamente.",
+        "endDate": "Data de fim (opcional)",
+        "endDateHint": "Data até a qual o agendamento dispara. Após essa data, a automação para de enviar (sem mudar o status). Deixe em branco para nunca expirar.",
         "textProcessing": "Processamento de Texto (Monitoramento)",
         "textProcessingHint": "Personalize a mensagem original antes de enviar para os grupos de destino.",
         "prefix": "Prefixo (topo)",

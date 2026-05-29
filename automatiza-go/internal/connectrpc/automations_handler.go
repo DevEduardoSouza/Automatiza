@@ -615,6 +615,11 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 		proto.StartDate = a.StartDate
 	}
 
+	// Data de expiração (migration 054). Empty/unset = sem expiração.
+	if a.EndDate != nil && *a.EndDate != "" {
+		proto.EndDate = a.EndDate
+	}
+
 	// Convert stores
 	for _, store := range a.Stores {
 		proto.Stores = append(proto.Stores, modelStoreToProto(store))
@@ -964,6 +969,11 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.StartDate = msg.StartDate
 	}
 
+	// Data de expiração. Empty string = sem expiração (column NULL).
+	if msg.EndDate != nil && *msg.EndDate != "" {
+		automation.EndDate = msg.EndDate
+	}
+
 	// Convert stores
 	for _, store := range msg.GetStores() {
 		if s := protoStoreToModel(store); s != "" {
@@ -1121,6 +1131,15 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 			updates["start_date"] = nil
 		} else {
 			updates["start_date"] = *msg.StartDate
+		}
+	}
+
+	// Data de expiração. Empty string = clear (NULL).
+	if msg.EndDate != nil {
+		if *msg.EndDate == "" {
+			updates["end_date"] = nil
+		} else {
+			updates["end_date"] = *msg.EndDate
 		}
 	}
 

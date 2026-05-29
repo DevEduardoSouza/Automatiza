@@ -242,6 +242,11 @@ message Automation {
   // silenciosamente. Usado primariamente no LIST mode (paridade
   // affilipro), mas o schema não restringe a tipo.
   optional string start_date = 37;
+
+  // end_date (migration 054): data calendário (YYYY-MM-DD) até a qual
+  // o scheduler ativa. Empty/unset = sem expiração. Após o end_date,
+  // scheduler pula silenciosamente (status não muda).
+  optional string end_date = 38;
 }
 
 /**
@@ -358,6 +363,9 @@ message CreateAutomationRequest {
   // start_date (YYYY-MM-DD). Unset/empty = sem agendamento. Ver
   // Automation.start_date.
   optional string start_date = 32;
+  // end_date (YYYY-MM-DD). Unset/empty = sem expiração. Ver
+  // Automation.end_date.
+  optional string end_date = 33;
 }
 
 message CreateAutomationResponse {
@@ -418,6 +426,9 @@ message UpdateAutomationRequest {
   // start_date (YYYY-MM-DD). Unset = leave unchanged; empty string
   // explicitly clears (volta a rodar imediatamente).
   optional string start_date = 33;
+  // end_date (YYYY-MM-DD). Unset = leave unchanged; empty string
+  // explicitly clears (volta a rodar sem expiração).
+  optional string end_date = 34;
 }
 
 message UpdateAutomationResponse {

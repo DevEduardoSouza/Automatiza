@@ -79,6 +79,13 @@ func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
 			continue
 		}
 
+		// Check if automation's end_date is not exceeded (migration 054).
+		// NULL/empty end_date = sem expiração.
+		if s.isEndDateExceeded(automation, now) {
+			skippedCount++
+			continue
+		}
+
 		// Check if automation is within time window
 		if !s.isInTimeWindow(automation, now) {
 			skippedCount++
@@ -147,6 +154,30 @@ func (s *Scheduler) isStartDateReached(automation *models.Automation, now time.T
 	// Compara só a data (descarta hora). today >= start_date → libera.
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	return !today.Before(start)
+}
+
+// isEndDateExceeded retorna true se HOJE > end_date (automation já
+// expirou). NULL/empty end_date = sem expiração, retorna false.
+// Comparação por dia (server-local), mesmo padrão do start_date.
+//
+// Quando true, scheduler pula a automation silenciosamente — não muda
+// status (cliente vê a automation como ativa, mas ela não dispara).
+// Decisão consciente: alterar status='paused' aqui criaria loop com
+// quem reativar manualmente sem atualizar end_date.
+func (s *Scheduler) isEndDateExceeded(automation *models.Automation, now time.Time) bool {
+	if automation.EndDate == nil || *automation.EndDate == "" {
+		return false
+	}
+	end, err := time.Parse("2006-01-02", *automation.EndDate)
+	if err != nil {
+		s.logger.Warn("Failed to parse end_date, ignoring expiration gate",
+			zap.String("automationID", automation.ID),
+			zap.String("endDate", *automation.EndDate),
+			zap.Error(err))
+		return false
+	}
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	return today.After(end)
 }
 
 // isInTimeWindow checks if the current time is within the automation's configured time window.

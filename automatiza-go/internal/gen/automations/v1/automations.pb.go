@@ -553,7 +553,11 @@ type Automation struct {
 	// agendamento, roda imediatamente. Antes da data, scheduler pula
 	// silenciosamente. Usado primariamente no LIST mode (paridade
 	// affilipro), mas o schema não restringe a tipo.
-	StartDate     *string `protobuf:"bytes,37,opt,name=start_date,json=startDate,proto3,oneof" json:"start_date,omitempty"`
+	StartDate *string `protobuf:"bytes,37,opt,name=start_date,json=startDate,proto3,oneof" json:"start_date,omitempty"`
+	// end_date (migration 054): data calendário (YYYY-MM-DD) até a qual
+	// o scheduler ativa. Empty/unset = sem expiração. Após o end_date,
+	// scheduler pula silenciosamente (status não muda).
+	EndDate       *string `protobuf:"bytes,38,opt,name=end_date,json=endDate,proto3,oneof" json:"end_date,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -843,6 +847,13 @@ func (x *Automation) GetRepeatWhenFinished() bool {
 func (x *Automation) GetStartDate() string {
 	if x != nil && x.StartDate != nil {
 		return *x.StartDate
+	}
+	return ""
+}
+
+func (x *Automation) GetEndDate() string {
+	if x != nil && x.EndDate != nil {
+		return *x.EndDate
 	}
 	return ""
 }
@@ -1235,7 +1246,10 @@ type CreateAutomationRequest struct {
 	RepeatWhenFinished *bool `protobuf:"varint,31,opt,name=repeat_when_finished,json=repeatWhenFinished,proto3,oneof" json:"repeat_when_finished,omitempty"`
 	// start_date (YYYY-MM-DD). Unset/empty = sem agendamento. Ver
 	// Automation.start_date.
-	StartDate     *string `protobuf:"bytes,32,opt,name=start_date,json=startDate,proto3,oneof" json:"start_date,omitempty"`
+	StartDate *string `protobuf:"bytes,32,opt,name=start_date,json=startDate,proto3,oneof" json:"start_date,omitempty"`
+	// end_date (YYYY-MM-DD). Unset/empty = sem expiração. Ver
+	// Automation.end_date.
+	EndDate       *string `protobuf:"bytes,33,opt,name=end_date,json=endDate,proto3,oneof" json:"end_date,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1494,6 +1508,13 @@ func (x *CreateAutomationRequest) GetStartDate() string {
 	return ""
 }
 
+func (x *CreateAutomationRequest) GetEndDate() string {
+	if x != nil && x.EndDate != nil {
+		return *x.EndDate
+	}
+	return ""
+}
+
 type CreateAutomationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Automation    *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
@@ -1588,7 +1609,10 @@ type UpdateAutomationRequest struct {
 	RepeatWhenFinished *bool `protobuf:"varint,32,opt,name=repeat_when_finished,json=repeatWhenFinished,proto3,oneof" json:"repeat_when_finished,omitempty"`
 	// start_date (YYYY-MM-DD). Unset = leave unchanged; empty string
 	// explicitly clears (volta a rodar imediatamente).
-	StartDate     *string `protobuf:"bytes,33,opt,name=start_date,json=startDate,proto3,oneof" json:"start_date,omitempty"`
+	StartDate *string `protobuf:"bytes,33,opt,name=start_date,json=startDate,proto3,oneof" json:"start_date,omitempty"`
+	// end_date (YYYY-MM-DD). Unset = leave unchanged; empty string
+	// explicitly clears (volta a rodar sem expiração).
+	EndDate       *string `protobuf:"bytes,34,opt,name=end_date,json=endDate,proto3,oneof" json:"end_date,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1850,6 +1874,13 @@ func (x *UpdateAutomationRequest) GetRepeatWhenFinished() bool {
 func (x *UpdateAutomationRequest) GetStartDate() string {
 	if x != nil && x.StartDate != nil {
 		return *x.StartDate
+	}
+	return ""
+}
+
+func (x *UpdateAutomationRequest) GetEndDate() string {
+	if x != nil && x.EndDate != nil {
+		return *x.EndDate
 	}
 	return ""
 }
@@ -2645,7 +2676,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x16\n" +
 	"\x06suffix\x18\x04 \x01(\tR\x06suffix\x12!\n" +
 	"\fclean_phones\x18\x05 \x01(\bR\vcleanPhones\x12%\n" +
-	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xae\x0f\n" +
+	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xdb\x0f\n" +
 	"\n" +
 	"Automation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -2694,7 +2725,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x0echip_overrides\x18# \x03(\v2-.automations.v1.Automation.ChipOverridesEntryR\rchipOverrides\x120\n" +
 	"\x14repeat_when_finished\x18$ \x01(\bR\x12repeatWhenFinished\x12\"\n" +
 	"\n" +
-	"start_date\x18% \x01(\tH\x10R\tstartDate\x88\x01\x01\x1a@\n" +
+	"start_date\x18% \x01(\tH\x10R\tstartDate\x88\x01\x01\x12\x1e\n" +
+	"\bend_date\x18& \x01(\tH\x11R\aendDate\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x13\n" +
@@ -2717,7 +2749,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x13_list_include_imageB\x15\n" +
 	"\x13_list_send_as_imageB\x0e\n" +
 	"\f_instance_idB\r\n" +
-	"\v_start_date\"w\n" +
+	"\v_start_dateB\v\n" +
+	"\t_end_date\"w\n" +
 	"\x0eDiagnosticStep\x12\x12\n" +
 	"\x04step\x18\x01 \x01(\tR\x04step\x12\x0e\n" +
 	"\x02ok\x18\x02 \x01(\bR\x02ok\x12\x16\n" +
@@ -2746,7 +2779,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x15GetAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xa5\x0e\n" +
+	"automation\"\xd2\x0e\n" +
 	"\x17CreateAutomationRequest\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x04name\x122\n" +
@@ -2789,7 +2822,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x0echip_overrides\x18\x1e \x03(\v2:.automations.v1.CreateAutomationRequest.ChipOverridesEntryR\rchipOverrides\x125\n" +
 	"\x14repeat_when_finished\x18\x1f \x01(\bH\rR\x12repeatWhenFinished\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"start_date\x18  \x01(\tH\x0eR\tstartDate\x88\x01\x01\x1a@\n" +
+	"start_date\x18  \x01(\tH\x0eR\tstartDate\x88\x01\x01\x12\x1e\n" +
+	"\bend_date\x18! \x01(\tH\x0fR\aendDate\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x13\n" +
@@ -2810,11 +2844,12 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\f_instance_idB\x15\n" +
 	"\x13_apply_coupon_rulesB\x17\n" +
 	"\x15_repeat_when_finishedB\r\n" +
-	"\v_start_date\"V\n" +
+	"\v_start_dateB\v\n" +
+	"\t_end_date\"V\n" +
 	"\x18CreateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xb4\x0f\n" +
+	"automation\"\xe1\x0f\n" +
 	"\x17UpdateAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
 	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x127\n" +
@@ -2857,7 +2892,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x0echip_overrides\x18\x1f \x03(\v2:.automations.v1.UpdateAutomationRequest.ChipOverridesEntryR\rchipOverrides\x125\n" +
 	"\x14repeat_when_finished\x18  \x01(\bH\x15R\x12repeatWhenFinished\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"start_date\x18! \x01(\tH\x16R\tstartDate\x88\x01\x01\x1a@\n" +
+	"start_date\x18! \x01(\tH\x16R\tstartDate\x88\x01\x01\x12\x1e\n" +
+	"\bend_date\x18\" \x01(\tH\x17R\aendDate\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\a\n" +
@@ -2886,7 +2922,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\f_instance_idB\x15\n" +
 	"\x13_apply_coupon_rulesB\x17\n" +
 	"\x15_repeat_when_finishedB\r\n" +
-	"\v_start_date\"V\n" +
+	"\v_start_dateB\v\n" +
+	"\t_end_date\"V\n" +
 	"\x18UpdateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +

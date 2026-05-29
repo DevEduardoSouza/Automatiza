@@ -1,5 +1,5 @@
 export { ModeSection } from './mode-section';
-export { TimeWindowInputs, IntervalSelector } from './timing-section';
+export { TimeWindowInputs, DateWindowInputs, IntervalSelector } from './timing-section';
 export { MonitorDelayInput } from './monitor-delay-section';
 export { ListModeConfig } from './list-mode-section';
 export { SendGroupsSelector, MonitorGroupsSelector, GroupsListCheckbox } from './groups-section';

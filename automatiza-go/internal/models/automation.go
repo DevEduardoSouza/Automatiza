@@ -42,6 +42,11 @@ type Automation struct {
 	// Usado primariamente no LIST mode (paridade affilipro), mas o schema
 	// não restringe a tipo.
 	StartDate *string `json:"start_date,omitempty" db:"start_date"`
+	// EndDate: calendar date (YYYY-MM-DD) até a qual o scheduler ativa.
+	// NULL/empty = sem expiração. Quando setado e hoje > end_date,
+	// scheduler para de disparar (silencioso, não muda status).
+	// Útil para campanhas temporárias.
+	EndDate *string `json:"end_date,omitempty" db:"end_date"`
 	LastRunAt       *string  `json:"last_run_at,omitempty" db:"last_run_at"`
 	NextRunAt       *string  `json:"next_run_at,omitempty" db:"next_run_at"`
 
