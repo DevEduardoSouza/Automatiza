@@ -29,6 +29,7 @@ import { useTranslation } from 'react-i18next';
 import { Switch } from '@/components/ui/switch';
 import {
   CategoriesSection,
+  DateWindowInputs,
   DispatchTextSelector,
   FiltersSection,
   IntervalSelector,
@@ -316,6 +317,11 @@ export function AutomationFormDialog({
               placeholder={t('pages.offerAutomations.form.namePlaceholder')}
             />
           </div>
+
+          {/* Date Window (search + list mode) — agendar por data calendário */}
+          {(formData.mode === 'search' || formData.mode === 'list') && (
+            <DateWindowInputs formData={formData} setFormData={setFormData} />
+          )}
 
           {/* Time Window */}
           <TimeWindowInputs formData={formData} setFormData={setFormData} />

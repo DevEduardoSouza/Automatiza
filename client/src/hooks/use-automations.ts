@@ -191,6 +191,7 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     apply_coupon_rules: local.applyCouponRules ?? true,
     repeat_when_finished: local.repeatWhenFinished ?? true,
     start_date: local.startDate,
+    end_date: local.endDate,
   };
 }
 
@@ -638,6 +639,7 @@ export function useAutomations(): UseAutomationsReturn {
           applyCouponRules: formData.apply_coupon_rules,
           repeatWhenFinished: formData.repeat_when_finished,
           startDate: formData.start_date,
+          endDate: formData.end_date,
         };
 
         await automationsConnect.updateAutomation(updateParams);
@@ -701,6 +703,8 @@ export function useAutomations(): UseAutomationsReturn {
           repeatWhenFinished: formData.repeat_when_finished ?? true,
           // Data de agendamento (LIST mode). Empty = sem agendamento.
           startDate: formData.start_date,
+          // Data de expiração (LIST mode). Empty = sem expiração.
+          endDate: formData.end_date,
         };
 
         await automationsConnect.createAutomation(createParams);

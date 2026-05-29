@@ -94,6 +94,10 @@ export interface Automation {
   // Data calendário (YYYY-MM-DD) a partir da qual o scheduler ativa.
   // Empty/unset = sem agendamento, roda imediatamente.
   start_date?: string;
+  // Data calendário (YYYY-MM-DD) até a qual o scheduler ativa.
+  // Empty/unset = sem expiração. Após esta data, scheduler pula
+  // silenciosamente (status não muda).
+  end_date?: string;
 }
 
 export interface AutomationGroup {

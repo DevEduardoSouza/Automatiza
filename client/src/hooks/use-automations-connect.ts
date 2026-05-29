@@ -112,6 +112,8 @@ export interface LocalAutomation {
   repeatWhenFinished?: boolean;
   // Data de início (YYYY-MM-DD). Empty/undef = sem agendamento.
   startDate?: string;
+  // Data de expiração (YYYY-MM-DD). Empty/undef = sem expiração.
+  endDate?: string;
 }
 
 export interface LocalDiagnosticStep {
@@ -168,6 +170,7 @@ export interface CreateAutomationParams {
   applyCouponRules?: boolean;
   repeatWhenFinished?: boolean;
   startDate?: string;
+  endDate?: string;
 }
 
 export interface UpdateAutomationParams {
@@ -211,6 +214,7 @@ export interface UpdateAutomationParams {
   applyCouponRules?: boolean;
   repeatWhenFinished?: boolean;
   startDate?: string;
+  endDate?: string;
 }
 
 export interface LocalRunAutomationResult {
@@ -424,6 +428,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     applyCouponRules: automation.applyCouponRules,
     repeatWhenFinished: automation.repeatWhenFinished,
     startDate: automation.startDate,
+    endDate: automation.endDate,
   };
 }
 
@@ -574,6 +579,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           applyCouponRules: params.applyCouponRules,
           repeatWhenFinished: params.repeatWhenFinished,
           startDate: params.startDate,
+          endDate: params.endDate,
         })
       );
 
@@ -648,6 +654,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           applyCouponRules: params.applyCouponRules,
           repeatWhenFinished: params.repeatWhenFinished,
           startDate: params.startDate,
+          endDate: params.endDate,
         })
       );
 
