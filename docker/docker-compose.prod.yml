@@ -55,7 +55,11 @@ services:
   # WAHA Plus (WhatsApp API)
   # =============================================================================
   waha:
-    image: devlikeapro/waha-plus:gows
+    # Pinned to an explicit version instead of the moving `:gows` tag so that a
+    # `docker compose pull` never silently upgrades WAHA and triggers a one-way
+    # migration of the on-disk GOWS session databases. Same image currently in
+    # prod (digest sha256:6e66718b37f1...). Bump deliberately during maintenance.
+    image: devlikeapro/waha-plus:gows-2026.3.2
     container_name: automatiza-waha
     restart: unless-stopped
     environment:
