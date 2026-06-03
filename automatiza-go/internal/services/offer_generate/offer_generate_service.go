@@ -3,6 +3,7 @@ package offer_generate
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"math/rand/v2"
@@ -1177,18 +1178,39 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		return err
 	}
 
+	// A mídia do relay vem do store interno do WAHA (/api/files), protegido
+	// por API key. Se passarmos essa URL no sendImage/sendVideo, o WAHA tenta
+	// buscá-la sozinho (fileToMedia) SEM a key e leva 401 → 500. Então baixamos
+	// a mídia aqui (DownloadMediaByURL reescreve o host e autentica com
+	// X-Api-Key) e mandamos como base64. URL fica só como último recurso.
+	mediaB64 := msg.MediaBase64
+	mediaMime := msg.MimeType
+	if mediaB64 == "" && msg.MediaURL != "" {
+		if res, derr := s.waProvider.DownloadMediaByURL(ctx, msg.MediaURL); derr == nil && res != nil && len(res.Data) > 0 {
+			mediaB64 = base64.StdEncoding.EncodeToString(res.Data)
+			if mediaMime == "" {
+				mediaMime = res.Mimetype
+			}
+		} else if derr != nil {
+			s.logger.Warn("Relay: failed to download media for base64, falling back to URL",
+				zap.String("mediaURL", msg.MediaURL),
+				zap.String("mediaType", msg.MediaType),
+				zap.Error(derr))
+		}
+	}
+
 	switch strings.ToLower(msg.MediaType) {
 	case "image":
 		input := whatsapp.SendImageInput{
 			SessionName: session,
 			ChatID:      chatID,
 			Caption:     msg.Body,
-			Mimetype:    msg.MimeType,
+			Mimetype:    mediaMime,
 		}
-		if msg.MediaURL != "" {
+		if mediaB64 != "" {
+			input.ImageBase64 = mediaB64
+		} else if msg.MediaURL != "" {
 			input.ImageURL = msg.MediaURL
-		} else if msg.MediaBase64 != "" {
-			input.ImageBase64 = msg.MediaBase64
 		} else {
 			return fmt.Errorf("relay image without MediaURL or MediaBase64")
 		}
@@ -1201,10 +1223,10 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 			ChatID:      chatID,
 			Caption:     msg.Body,
 		}
-		if msg.MediaURL != "" {
+		if mediaB64 != "" {
+			input.MediaBase64 = mediaB64
+		} else if msg.MediaURL != "" {
 			input.MediaURL = msg.MediaURL
-		} else if msg.MediaBase64 != "" {
-			input.MediaBase64 = msg.MediaBase64
 		} else {
 			return fmt.Errorf("relay video without MediaURL or MediaBase64")
 		}
@@ -1212,22 +1234,21 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		return err
 
 	case "audio", "voice", "ptt":
-		// Voice/PTT só aceita base64. Se WAHA só entregou URL, não dá
-		// pra repassar sem baixar + reencodar — fora do escopo do MVP
-		// de relay. Loga e pula.
-		if msg.MediaBase64 == "" {
-			s.logger.Warn("Relay audio skipped: SendVoice requires base64 and message has only URL",
+		// Voice/PTT só aceita base64. Como agora baixamos a mídia do WAHA
+		// quando só veio URL, o caso URL-only também passa a funcionar.
+		if mediaB64 == "" {
+			s.logger.Warn("Relay audio skipped: no base64 available (download failed?)",
 				zap.String("mediaType", msg.MediaType))
-			return fmt.Errorf("relay audio without MediaBase64 (URL-only not supported)")
+			return fmt.Errorf("relay audio without base64")
 		}
-		mime := msg.MimeType
+		mime := mediaMime
 		if mime == "" {
 			mime = "audio/ogg; codecs=opus"
 		}
 		_, err := s.waProvider.SendVoice(ctx, whatsapp.SendVoiceInput{
 			SessionName: session,
 			ChatID:      chatID,
-			AudioBase64: msg.MediaBase64,
+			AudioBase64: mediaB64,
 			Mimetype:    mime,
 		})
 		return err
@@ -1238,10 +1259,10 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 			ChatID:      chatID,
 			Caption:     msg.Body,
 		}
-		if msg.MediaURL != "" {
+		if mediaB64 != "" {
+			input.MediaBase64 = mediaB64
+		} else if msg.MediaURL != "" {
 			input.MediaURL = msg.MediaURL
-		} else if msg.MediaBase64 != "" {
-			input.MediaBase64 = msg.MediaBase64
 		} else {
 			return fmt.Errorf("relay document without MediaURL or MediaBase64")
 		}
@@ -1250,21 +1271,21 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 
 	default:
 		// Mídia com tipo não resolvido (mediaType e mime ausentes/desconhecidos).
-		// Defesa em profundidade: se ainda temos os bytes/URL da mídia, tenta
-		// enviar como imagem — de longe o caso mais comum no relay — em vez de
-		// degradar pra texto puro e perder a mídia silenciosamente. Se o envio
-		// falhar, o erro propaga e o dispatch fica logado como "failed".
-		if msg.HasMedia && (msg.MediaURL != "" || msg.MediaBase64 != "") {
+		// Defesa em profundidade: se temos os bytes/URL, tenta enviar como imagem
+		// — de longe o caso mais comum no relay — em vez de degradar pra texto
+		// puro e perder a mídia silenciosamente. Se falhar, o erro propaga e o
+		// dispatch fica logado como "failed".
+		if msg.HasMedia && (mediaB64 != "" || msg.MediaURL != "") {
 			input := whatsapp.SendImageInput{
 				SessionName: session,
 				ChatID:      chatID,
 				Caption:     msg.Body,
-				Mimetype:    msg.MimeType,
+				Mimetype:    mediaMime,
 			}
-			if msg.MediaURL != "" {
-				input.ImageURL = msg.MediaURL
+			if mediaB64 != "" {
+				input.ImageBase64 = mediaB64
 			} else {
-				input.ImageBase64 = msg.MediaBase64
+				input.ImageURL = msg.MediaURL
 			}
 			s.logger.Warn("Relay media with unresolved type — sending as image (fallback)",
 				zap.String("mediaType", msg.MediaType),
