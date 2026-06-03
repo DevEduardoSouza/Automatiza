@@ -5,19 +5,21 @@ import (
 	"testing"
 )
 
-// HTML sintético espelhando a estrutura real da página /social do afiliado:
-// og:title/og:image + lista de cards (title -> seller -> price). O 1º card é o
-// produto-alvo (com desconto: previous_price + value). Há um 2º card depois pra
-// garantir que pegamos o preço do PRIMEIRO, não de outro.
+// HTML sintético espelhando a estrutura REAL da página /social do afiliado:
+// o objeto price tem previous_price (original), current_price (ATUAL), discount
+// ({"value":31} = % de desconto) e installments ({"value":31.83} = parcela).
+// O parser DEVE pegar current_price (190.98), nunca o discount (31) nem a
+// parcela (31.83) — regressão real vista em prod. Há um 2º card depois pra
+// garantir que pegamos o preço do PRIMEIRO card (produto-alvo).
 const socialFixtureDiscount = `<html><head>` +
-	`<meta property="og:title" content="Capacete Moto Fechado Pro Tork R8 Fosco Feminino Masculino"/>` +
-	`<meta property="og:image" content="https://http2.mlstatic.com/D_NQ_capacete.webp"/>` +
+	`<meta property="og:title" content="Body Spray Carolina Herrera 212 Vip Rose Feminino 250ml"/>` +
+	`<meta property="og:image" content="https://http2.mlstatic.com/D_NQ_ch.webp"/>` +
 	`</head><body><script>{"components":[` +
-	`{"type":"title","title":{"text":"Capacete Moto Fechado Pro Tork R8 Fosco Feminino Masculino"}},` +
-	`{"type":"seller","seller":{"text":"Por Sportbay"}},` +
-	`{"type":"price","price":{"previous_price":{"value":186.9,"currency":"BRL","decimal_style":"normal"},"value":170.92,"currency":"BRL"}},` +
+	`{"type":"title","title":{"text":"Body Spray Carolina Herrera 212 Vip Rose Feminino 250ml"}},` +
+	`{"type":"seller","seller":{"text":"Por Loja Oficial"}},` +
+	`{"type":"price","price":{"previous_price":{"value":278.9,"currency":"BRL","decimal_style":"normal"},"current_price":{"value":190.98,"currency":"BRL","decimal_style":"superscript"},"discount":{"value":31},"installments":{"text":"6x {price} sem juros","no_interest":true,"values":[{"value":31.83,"currency":"BRL"}]}}},` +
 	`{"type":"title","title":{"text":"Outro Produto Qualquer"}},` +
-	`{"type":"price","price":{"value":99.9,"currency":"BRL"}}` +
+	`{"type":"price","price":{"current_price":{"value":99.9,"currency":"BRL"}}}` +
 	`]}</script></body></html>`
 
 // Sem desconto: 1º card só com "value" (sem previous_price).
@@ -36,19 +38,16 @@ func TestParseAffiliateSocialHTML_Discount(t *testing.T) {
 	if p == nil {
 		t.Fatal("retornou nil")
 	}
-	if p.Title != "Capacete Moto Fechado Pro Tork R8 Fosco Feminino Masculino" {
-		t.Errorf("Title = %q", p.Title)
+	if !almostEqual(p.Price, 190.98) {
+		t.Errorf("Price = %v, want 190.98 (current_price — NÃO 31 discount, NÃO 31.83 parcela, NÃO 99.9 do 2º card)", p.Price)
 	}
-	if !almostEqual(p.Price, 170.92) {
-		t.Errorf("Price = %v, want 170.92 (preço atual, não o original nem o do 2º card)", p.Price)
+	if p.OriginalPrice == nil || !almostEqual(*p.OriginalPrice, 278.9) {
+		t.Errorf("OriginalPrice = %v, want 278.9", p.OriginalPrice)
 	}
-	if p.OriginalPrice == nil || !almostEqual(*p.OriginalPrice, 186.9) {
-		t.Errorf("OriginalPrice = %v, want 186.9", p.OriginalPrice)
+	if p.DiscountPercent == nil || *p.DiscountPercent < 31 || *p.DiscountPercent > 32 {
+		t.Errorf("DiscountPercent = %v, want ~31.5", p.DiscountPercent)
 	}
-	if p.DiscountPercent == nil || *p.DiscountPercent < 8 || *p.DiscountPercent > 9 {
-		t.Errorf("DiscountPercent = %v, want ~8.55", p.DiscountPercent)
-	}
-	if p.Image != "https://http2.mlstatic.com/D_NQ_capacete.webp" {
+	if p.Image != "https://http2.mlstatic.com/D_NQ_ch.webp" {
 		t.Errorf("Image = %q", p.Image)
 	}
 	if p.Permalink != "https://meli.la/2Uh8z3c" {

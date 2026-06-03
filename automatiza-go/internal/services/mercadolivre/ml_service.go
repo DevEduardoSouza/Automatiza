@@ -435,12 +435,20 @@ func (s *mlService) GetProductPreview(ctx context.Context, originURL, userID str
 // não ser tratado como bot óbvio.
 const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
 
-// affiliatePriceRe extrai o preço do PRIMEIRO objeto "price" do documento — que,
-// na página /social do afiliado, é sempre o card do produto-alvo (1º card).
-// Grupo 1 (opcional) = original (previous_price.value); grupo 2 = preço atual.
-// Atenção: o value dentro de previous_price também tem currency:BRL, por isso a
-// regex consome o bloco previous_price explicitamente antes do value externo.
-var affiliatePriceRe = regexp.MustCompile(`"price":\{(?:"previous_price":\{"value":([0-9.]+)[^}]*?\},)?"value":([0-9.]+)`)
+// Extração de preço do 1º objeto "price" da página /social (produto-alvo = 1º
+// card). O objeto tem previous_price (original), current_price (ATUAL), e também
+// discount ({"value":31} = % de desconto) e installments ({"value":31.83} =
+// parcela) — por isso miramos current_price explicitamente; pegar um "value"
+// genérico traria o % de desconto ou a parcela (bug visto em prod: R$31 no
+// lugar de R$190).
+var (
+	// current_price.value = preço ATUAL (formato atual do ML).
+	affiliateCurrentPriceRe = regexp.MustCompile(`"current_price":\{"value":([0-9.]+)`)
+	// previous_price.value = preço ORIGINAL (quando há desconto).
+	affiliatePrevPriceRe = regexp.MustCompile(`"previous_price":\{"value":([0-9.]+)`)
+	// Fallback p/ produto sem desconto: "price":{"value":N} direto.
+	affiliateBareValueRe = regexp.MustCompile(`"price":\{"value":([0-9.]+)`)
+)
 
 // isAffiliateURL detecta links de afiliado ML (meli.la/XXX, .../sec/XXX), que não
 // têm o MLB id na URL e precisam ser resolvidos pela página /social.
@@ -544,11 +552,29 @@ func parseAffiliateSocialHTML(html, finalURL string) *models.MLProductPreview {
 		Image:     extractMeta(html, "og:image"),
 	}
 
-	if m := affiliatePriceRe.FindStringSubmatch(html); m != nil {
-		if v, err := strconv.ParseFloat(m[2], 64); err == nil {
-			preview.Price = v
+	// Escopa ao 1º objeto "price" (produto-alvo = 1º card). Janela de ~800 chars
+	// cobre um price object (previous/current/discount/installments) sem invadir
+	// o card seguinte.
+	if i := strings.Index(html, `"price":{`); i >= 0 {
+		end := i + 800
+		if end > len(html) {
+			end = len(html)
 		}
-		if m[1] != "" {
+		seg := html[i:end]
+
+		// Preço atual: current_price.value; fallback p/ "price":{"value":N} (sem desconto).
+		if m := affiliateCurrentPriceRe.FindStringSubmatch(seg); m != nil {
+			if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+				preview.Price = v
+			}
+		} else if m := affiliateBareValueRe.FindStringSubmatch(seg); m != nil {
+			if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+				preview.Price = v
+			}
+		}
+
+		// Preço original: previous_price.value.
+		if m := affiliatePrevPriceRe.FindStringSubmatch(seg); m != nil {
 			if op, err := strconv.ParseFloat(m[1], 64); err == nil && op > 0 {
 				preview.OriginalPrice = &op
 			}
