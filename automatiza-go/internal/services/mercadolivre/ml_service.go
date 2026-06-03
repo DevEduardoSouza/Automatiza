@@ -540,6 +540,21 @@ func (s *mlService) getAffiliateProductPreview(ctx context.Context, affiliateURL
 // o 1º card (produto que o link de afiliado destaca), então pegamos o 1º objeto
 // "price" do documento — evitando casar título (que quebra com acentos no JSON).
 // Falha graciosamente: sem og:title retorna nil; sem preço retorna o que tiver.
+// upgradeMLImageURL troca a variante de baixa resolução do mlstatic
+// (D_NQ_NP_...) pela 2X (retina), dobrando a resolução. O og:image vem pequeno
+// (ex.: 146px de largura) e fica pixelado no WhatsApp; a 2X mantém o mesmo
+// recorte/proporção, só com o dobro de pixels. No-op p/ URLs que não casam ou
+// que já são 2X.
+func upgradeMLImageURL(u string) string {
+	if u == "" {
+		return u
+	}
+	if strings.Contains(u, "mlstatic.com/D_NQ_NP_") && !strings.Contains(u, "_2X_") {
+		return strings.Replace(u, "/D_NQ_NP_", "/D_NQ_NP_2X_", 1)
+	}
+	return u
+}
+
 func parseAffiliateSocialHTML(html, finalURL string) *models.MLProductPreview {
 	title := extractMeta(html, "og:title")
 	if title == "" {
@@ -549,7 +564,7 @@ func parseAffiliateSocialHTML(html, finalURL string) *models.MLProductPreview {
 		Title:     title,
 		Currency:  "BRL",
 		Permalink: finalURL,
-		Image:     extractMeta(html, "og:image"),
+		Image:     upgradeMLImageURL(extractMeta(html, "og:image")),
 	}
 
 	// Escopa ao 1º objeto "price" (produto-alvo = 1º card). Janela de ~800 chars

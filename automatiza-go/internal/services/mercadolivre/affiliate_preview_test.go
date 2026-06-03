@@ -13,7 +13,7 @@ import (
 // garantir que pegamos o preço do PRIMEIRO card (produto-alvo).
 const socialFixtureDiscount = `<html><head>` +
 	`<meta property="og:title" content="Body Spray Carolina Herrera 212 Vip Rose Feminino 250ml"/>` +
-	`<meta property="og:image" content="https://http2.mlstatic.com/D_NQ_ch.webp"/>` +
+	`<meta property="og:image" content="https://http2.mlstatic.com/D_NQ_NP_839289-MLA93823127015_092025-O.webp"/>` +
 	`</head><body><script>{"components":[` +
 	`{"type":"title","title":{"text":"Body Spray Carolina Herrera 212 Vip Rose Feminino 250ml"}},` +
 	`{"type":"seller","seller":{"text":"Por Loja Oficial"}},` +
@@ -47,8 +47,9 @@ func TestParseAffiliateSocialHTML_Discount(t *testing.T) {
 	if p.DiscountPercent == nil || *p.DiscountPercent < 31 || *p.DiscountPercent > 32 {
 		t.Errorf("DiscountPercent = %v, want ~31.5", p.DiscountPercent)
 	}
-	if p.Image != "https://http2.mlstatic.com/D_NQ_ch.webp" {
-		t.Errorf("Image = %q", p.Image)
+	// Imagem deve ser promovida pra 2X (alta resolução).
+	if p.Image != "https://http2.mlstatic.com/D_NQ_NP_2X_839289-MLA93823127015_092025-O.webp" {
+		t.Errorf("Image = %q, want a variante 2X", p.Image)
 	}
 	if p.Permalink != "https://meli.la/2Uh8z3c" {
 		t.Errorf("Permalink = %q", p.Permalink)
@@ -88,6 +89,23 @@ func TestIsAffiliateURL(t *testing.T) {
 	for u, want := range cases {
 		if got := isAffiliateURL(u); got != want {
 			t.Errorf("isAffiliateURL(%q) = %v, want %v", u, got, want)
+		}
+	}
+}
+
+func TestUpgradeMLImageURL(t *testing.T) {
+	cases := map[string]string{
+		// D_NQ_NP_ vira 2X
+		"https://http2.mlstatic.com/D_NQ_NP_839289-MLA9382_092025-O.webp": "https://http2.mlstatic.com/D_NQ_NP_2X_839289-MLA9382_092025-O.webp",
+		// já 2X: no-op
+		"https://http2.mlstatic.com/D_NQ_NP_2X_839289-MLA9382_092025-O.webp": "https://http2.mlstatic.com/D_NQ_NP_2X_839289-MLA9382_092025-O.webp",
+		// outro host/formato: no-op
+		"https://cf.shopee.com.br/file/abc": "https://cf.shopee.com.br/file/abc",
+		"": "",
+	}
+	for in, want := range cases {
+		if got := upgradeMLImageURL(in); got != want {
+			t.Errorf("upgradeMLImageURL(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
