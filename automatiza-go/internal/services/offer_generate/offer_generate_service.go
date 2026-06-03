@@ -1249,9 +1249,31 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		return err
 
 	default:
-		// Tipo desconhecido (sticker, location, contact...): fallback pra
-		// texto se tiver Body, senão skipa com warning. Sticker em
-		// particular não tem método dedicado no provider hoje.
+		// Mídia com tipo não resolvido (mediaType e mime ausentes/desconhecidos).
+		// Defesa em profundidade: se ainda temos os bytes/URL da mídia, tenta
+		// enviar como imagem — de longe o caso mais comum no relay — em vez de
+		// degradar pra texto puro e perder a mídia silenciosamente. Se o envio
+		// falhar, o erro propaga e o dispatch fica logado como "failed".
+		if msg.HasMedia && (msg.MediaURL != "" || msg.MediaBase64 != "") {
+			input := whatsapp.SendImageInput{
+				SessionName: session,
+				ChatID:      chatID,
+				Caption:     msg.Body,
+				Mimetype:    msg.MimeType,
+			}
+			if msg.MediaURL != "" {
+				input.ImageURL = msg.MediaURL
+			} else {
+				input.ImageBase64 = msg.MediaBase64
+			}
+			s.logger.Warn("Relay media with unresolved type — sending as image (fallback)",
+				zap.String("mediaType", msg.MediaType),
+				zap.String("mimeType", msg.MimeType))
+			_, err := s.waProvider.SendImage(ctx, input)
+			return err
+		}
+		// Sticker/location/contact sem método dedicado: fallback pra texto se
+		// tiver Body, senão skipa com warning.
 		if strings.TrimSpace(msg.Body) != "" {
 			_, err := s.waProvider.SendText(ctx, whatsapp.SendTextInput{
 				SessionName: session,

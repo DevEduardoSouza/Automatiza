@@ -286,6 +286,14 @@ func (p *MonitoringMessageProcessor) parsePayload(
 		msg.MimeType = mimeType
 	}
 
+	// Quando o WAHA (GOWS) entrega a mídia só como hasMedia + media.url/mimetype,
+	// sem o campo mediaType nem um type mapeável, inferimos o tipo do mime. Sem
+	// isso o relay do offer_generate cai no default e manda só o texto, perdendo
+	// a imagem. Ver inferMediaTypeFromMime.
+	if msg.HasMedia && msg.MediaType == "" && msg.MimeType != "" {
+		msg.MediaType = inferMediaTypeFromMime(msg.MimeType)
+	}
+
 	// Parse quoted message if present
 	if quotedMsg, ok := payload["quotedMsg"].(map[string]interface{}); ok {
 		msg.QuotedMsg = p.parseQuotedMessage(quotedMsg)
@@ -388,6 +396,12 @@ func (p *MonitoringMessageProcessor) parseMessageObject(
 		if mediaMime, ok := extractStringFromPayload(mediaObj, "mimetype"); ok && mediaMime != "" {
 			msg.MimeType = mediaMime
 		}
+	}
+
+	// Infere o MediaType do mime quando o webhook trouxe a mídia sem type
+	// explícito (mesmo motivo do parsePayload).
+	if msg.HasMedia && msg.MediaType == "" && msg.MimeType != "" {
+		msg.MediaType = inferMediaTypeFromMime(msg.MimeType)
 	}
 
 	// Push name
@@ -598,6 +612,27 @@ func extractInt64FromPayload(m map[string]interface{}, key string) (int64, bool)
 		return int64(n), true
 	default:
 		return 0, false
+	}
+}
+
+// inferMediaTypeFromMime deriva o MediaType ("image"/"video"/"audio"/"document")
+// a partir do MimeType. Usado quando o webhook do WAHA traz a mídia (hasMedia +
+// media.url/mimetype) mas sem o campo mediaType nem um type mapeável — caso comum
+// no engine GOWS. Sem essa inferência o relay do offer_generate trata a mensagem
+// como texto puro e descarta a imagem. Retorna "" quando o mime é vazio.
+func inferMediaTypeFromMime(mime string) string {
+	mime = strings.ToLower(strings.TrimSpace(mime))
+	switch {
+	case strings.HasPrefix(mime, "image/"):
+		return "image"
+	case strings.HasPrefix(mime, "video/"):
+		return "video"
+	case strings.HasPrefix(mime, "audio/"):
+		return "audio"
+	case mime != "":
+		return "document"
+	default:
+		return ""
 	}
 }
 
