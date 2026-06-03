@@ -478,6 +478,29 @@ func main() {
 			}
 			return nil
 		})
+
+		// Reconciliação de status de instância: corrige instâncias travadas em
+		// 'pending'/'disconnected' no banco quando a sessão está WORKING no WAHA
+		// (acontece a cada restart/deploy, quando eventos session.status se
+		// perdem). Sem isso, dispatches dos clientes afetados ficam bloqueados.
+		statusReconciler := reconciliation.NewInstanceStatusReconciler(
+			instanceRepo,
+			concreteAdapter,
+			config.NewModuleLogger(logger, "status-reconcile"),
+		)
+		// Periódico (2 min) — pega qualquer drift contínuo.
+		cronService.RegisterTask("reconcile_instance_statuses", 2*time.Minute, func(ctx context.Context) error {
+			_, err := statusReconciler.Reconcile(ctx)
+			return err
+		})
+		// No boot — fecha a janela do deploy (eventos perdidos durante o restart).
+		observability.SafeGo("startup.reconcile-instance-statuses", func() {
+			sctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			if _, err := statusReconciler.Reconcile(sctx); err != nil {
+				logger.Warn("startup instance-status reconcile failed", zap.Error(err))
+			}
+		})
 	}
 
 	monitoringService := monitoring.NewMonitoringService(
