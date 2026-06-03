@@ -361,6 +361,9 @@ func TestIsStartDateReached(t *testing.T) {
 
 	dateStr := func(s string) *string { return &s }
 
+	// BRT (UTC-3). FixedZone evita depender de tzdata no CI/Windows.
+	brt := time.FixedZone("BRT", -3*60*60)
+
 	tests := []struct {
 		name      string
 		startDate *string
@@ -374,6 +377,12 @@ func TestIsStartDateReached(t *testing.T) {
 		{name: "today before start_date — blocked", startDate: dateStr("2026-05-29"), now: time.Date(2026, 5, 28, 23, 59, 0, 0, time.UTC), want: false},
 		{name: "today months before — blocked", startDate: dateStr("2026-12-01"), now: time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC), want: false},
 		{name: "malformed start_date — fail-open (allow)", startDate: dateStr("not-a-date"), now: time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC), want: true},
+
+		// Regressão #154 — mesmo fuso (BRT) usado no end_date. start_date
+		// = hoje deve liberar; véspera deve bloquear, comparando por dia
+		// no fuso local (não em UTC).
+		{name: "BRT: start_date = today, just after midnight — allowed", startDate: dateStr("2026-06-02"), now: time.Date(2026, 6, 2, 0, 30, 0, 0, brt), want: true},
+		{name: "BRT: start_date = tomorrow, late tonight — blocked", startDate: dateStr("2026-06-03"), now: time.Date(2026, 6, 2, 23, 30, 0, 0, brt), want: false},
 	}
 
 	for _, tt := range tests {
@@ -400,6 +409,9 @@ func TestIsEndDateExceeded(t *testing.T) {
 
 	dateStr := func(s string) *string { return &s }
 
+	// BRT (UTC-3). FixedZone evita depender de tzdata no CI/Windows.
+	brt := time.FixedZone("BRT", -3*60*60)
+
 	tests := []struct {
 		name    string
 		endDate *string
@@ -413,6 +425,14 @@ func TestIsEndDateExceeded(t *testing.T) {
 		{name: "today after end_date — exceeded", endDate: dateStr("2026-05-29"), now: time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC), want: true},
 		{name: "today months after — exceeded", endDate: dateStr("2026-01-01"), now: time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC), want: true},
 		{name: "malformed end_date — fail-open (not exceeded)", endDate: dateStr("not-a-date"), now: time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC), want: false},
+
+		// Regressão #154 — timezone off-by-one. Em fuso negativo (BRT), a
+		// meia-noite local cai 3h depois da meia-noite UTC, então end_date
+		// = hoje era tratado como expirado o dia todo. Estes falham com o
+		// time.Parse (UTC) antigo e passam com ParseInLocation.
+		{name: "BRT: end_date = today, evening — NOT exceeded", endDate: dateStr("2026-06-02"), now: time.Date(2026, 6, 2, 19, 50, 0, 0, brt), want: false},
+		{name: "BRT: end_date = today, just after midnight — NOT exceeded", endDate: dateStr("2026-06-02"), now: time.Date(2026, 6, 2, 0, 30, 0, 0, brt), want: false},
+		{name: "BRT: end_date = yesterday — exceeded", endDate: dateStr("2026-06-02"), now: time.Date(2026, 6, 3, 0, 30, 0, 0, brt), want: true},
 	}
 
 	for _, tt := range tests {

@@ -143,7 +143,12 @@ func (s *Scheduler) isStartDateReached(automation *models.Automation, now time.T
 	if automation.StartDate == nil || *automation.StartDate == "" {
 		return true
 	}
-	start, err := time.Parse("2006-01-02", *automation.StartDate)
+	// Parse no MESMO fuso de `now` (now.Location()). Usar time.Parse aqui
+	// retornaria meia-noite UTC, enquanto `today` é meia-noite local — em
+	// fusos negativos (ex.: America/Sao_Paulo, UTC-3) a meia-noite local
+	// cai depois da meia-noite UTC do mesmo dia, deslocando a comparação
+	// em 1 dia. ParseInLocation alinha os dois lados.
+	start, err := time.ParseInLocation("2006-01-02", *automation.StartDate, now.Location())
 	if err != nil {
 		s.logger.Warn("Failed to parse start_date, ignoring schedule gate",
 			zap.String("automationID", automation.ID),
@@ -168,7 +173,10 @@ func (s *Scheduler) isEndDateExceeded(automation *models.Automation, now time.Ti
 	if automation.EndDate == nil || *automation.EndDate == "" {
 		return false
 	}
-	end, err := time.Parse("2006-01-02", *automation.EndDate)
+	// Parse no MESMO fuso de `now` — ver nota em isStartDateReached. Sem
+	// isso, end_date = hoje era tratado como expirado o dia inteiro em
+	// fuso negativo (today local 00:00 = 03:00 UTC > end 00:00 UTC).
+	end, err := time.ParseInLocation("2006-01-02", *automation.EndDate, now.Location())
 	if err != nil {
 		s.logger.Warn("Failed to parse end_date, ignoring expiration gate",
 			zap.String("automationID", automation.ID),
