@@ -493,12 +493,24 @@ func main() {
 			_, err := statusReconciler.Reconcile(ctx)
 			return err
 		})
-		// No boot — fecha a janela do deploy (eventos perdidos durante o restart).
+		// No boot, faz polling curto: as sessões do WAHA podem levar alguns
+		// minutos pra voltar a WORKING após o restart, e o cron só inicia tarde
+		// na init (depois do backfill). Uma única passada cedo demais pega 0.
+		// Reconcilia a cada 30s por ~6 min pra fechar a janela do deploy; depois
+		// o cron periódico (2 min) assume.
 		observability.SafeGo("startup.reconcile-instance-statuses", func() {
-			sctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			defer cancel()
-			if _, err := statusReconciler.Reconcile(sctx); err != nil {
-				logger.Warn("startup instance-status reconcile failed", zap.Error(err))
+			deadline := time.Now().Add(6 * time.Minute)
+			for {
+				sctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				_, err := statusReconciler.Reconcile(sctx)
+				cancel()
+				if err != nil {
+					logger.Warn("startup instance-status reconcile failed", zap.Error(err))
+				}
+				if !time.Now().Before(deadline) {
+					return
+				}
+				time.Sleep(30 * time.Second)
 			}
 		})
 	}
