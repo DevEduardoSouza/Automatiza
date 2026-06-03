@@ -684,6 +684,71 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMediaObjectOverridesMedia
 	mockSvc.AssertExpectations(t)
 }
 
+// --- MediaType inference from mime (regressão: relay perdia a imagem) ---
+
+// Reproduz o caso real: WAHA/GOWS entrega a imagem com hasMedia + media.url +
+// mimetype, mas SEM o campo mediaType nem type=image. Antes do fix o MediaType
+// ficava "" e o relay do offer_generate mandava só o texto, descartando a imagem.
+func TestMonitoringMessageProcessor_ProcessMessage_InfersMediaTypeFromMime(t *testing.T) {
+	logger := zap.NewNop()
+	mockSvc := new(mockMonitoringService)
+	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+
+	payload := map[string]interface{}{
+		"id":       "msg-mime-infer",
+		"from":     "120363xxxxx@g.us",
+		"body":     "AGORA É A HORA DE COMPRAR OS COREANOS AMIGAS",
+		"fromMe":   false,
+		"hasMedia": true,
+		// sem "type" nem "mediaType" — só o objeto media com mimetype
+		"media": map[string]interface{}{
+			"url":      "https://waha.local/media/coreanos-123",
+			"mimetype": "image/jpeg",
+		},
+	}
+
+	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
+		return msg.MessageID == "msg-mime-infer" &&
+			msg.HasMedia == true &&
+			msg.MediaType == "image" &&
+			msg.MediaURL == "https://waha.local/media/coreanos-123"
+	})).Return(nil)
+
+	err := processor.ProcessMessage(context.Background(), "session1", payload)
+
+	assert.NoError(t, err)
+	mockSvc.AssertExpectations(t)
+}
+
+// Mime de vídeo sem type explícito → MediaType "video".
+func TestMonitoringMessageProcessor_ProcessMessage_InfersVideoFromMime(t *testing.T) {
+	logger := zap.NewNop()
+	mockSvc := new(mockMonitoringService)
+	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+
+	payload := map[string]interface{}{
+		"id":       "msg-mime-video",
+		"from":     "120363xxxxx@g.us",
+		"fromMe":   false,
+		"hasMedia": true,
+		"media": map[string]interface{}{
+			"url":      "https://waha.local/media/vid-1",
+			"mimetype": "video/mp4",
+		},
+	}
+
+	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
+		return msg.MessageID == "msg-mime-video" &&
+			msg.MediaType == "video" &&
+			msg.HasMedia == true
+	})).Return(nil)
+
+	err := processor.ProcessMessage(context.Background(), "session1", payload)
+
+	assert.NoError(t, err)
+	mockSvc.AssertExpectations(t)
+}
+
 // --- extractInt64FromPayload branch coverage ---
 
 func TestMonitoringMessageProcessor_ProcessMessage_TimestampIntType(t *testing.T) {
