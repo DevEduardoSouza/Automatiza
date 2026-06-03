@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -329,6 +330,13 @@ func (s *mlService) GetProductPreview(ctx context.Context, originURL, userID str
 	// Extract product ID
 	productID, err := s.ExtractProductID(cleanURL)
 	if err != nil {
+		// Links de afiliado (meli.la/XXX, mercadolivre.com/sec/XXX) não têm o
+		// MLB id na URL. Eles redirecionam pra página /social do afiliado, que
+		// é pública (sem o anti-bot das páginas de produto) e traz os dados do
+		// produto-alvo no JSON embutido. Ver issue #158.
+		if isAffiliateURL(cleanURL) {
+			return s.getAffiliateProductPreview(ctx, cleanURL, userID)
+		}
 		return nil, fmt.Errorf("invalid mercadolivre URL: %w", err)
 	}
 
@@ -421,6 +429,144 @@ func (s *mlService) GetProductPreview(ctx context.Context, originURL, userID str
 	}
 
 	return preview, nil
+}
+
+// browserUserAgent é o UA usado nas requisições HTML (preview/afiliado) pra
+// não ser tratado como bot óbvio.
+const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
+
+// affiliatePriceRe extrai o preço do PRIMEIRO objeto "price" do documento — que,
+// na página /social do afiliado, é sempre o card do produto-alvo (1º card).
+// Grupo 1 (opcional) = original (previous_price.value); grupo 2 = preço atual.
+// Atenção: o value dentro de previous_price também tem currency:BRL, por isso a
+// regex consome o bloco previous_price explicitamente antes do value externo.
+var affiliatePriceRe = regexp.MustCompile(`"price":\{(?:"previous_price":\{"value":([0-9.]+)[^}]*?\},)?"value":([0-9.]+)`)
+
+// isAffiliateURL detecta links de afiliado ML (meli.la/XXX, .../sec/XXX), que não
+// têm o MLB id na URL e precisam ser resolvidos pela página /social.
+func isAffiliateURL(rawURL string) bool {
+	l := strings.ToLower(rawURL)
+	return strings.Contains(l, "meli.la/") ||
+		strings.Contains(l, "mercadolivre.com/sec/") ||
+		strings.Contains(l, "mercadolivre.com.br/sec/")
+}
+
+// affiliateShortCode devolve o último segmento do path do link de afiliado
+// (ex.: meli.la/2Uh8z3c -> "2Uh8z3c"), usado como chave de cache.
+func affiliateShortCode(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	p := strings.Trim(u.Path, "/")
+	if i := strings.LastIndex(p, "/"); i >= 0 {
+		p = p[i+1:]
+	}
+	if p == "" {
+		return rawURL
+	}
+	return p
+}
+
+// getAffiliateProductPreview resolve um link de afiliado seguindo o redirect até
+// a página /social do afiliado (pública, sem o anti-bot das páginas de produto)
+// e extrai o produto-alvo do JSON embutido. Ver issue #158 e a memória do projeto.
+func (s *mlService) getAffiliateProductPreview(ctx context.Context, affiliateURL, userID string) (*models.MLProductPreview, error) {
+	cacheKey := "ml:preview:aff:v1:" + userID + ":" + affiliateShortCode(affiliateURL)
+	if s.cache != nil {
+		var cached models.MLProductPreview
+		if err := s.cache.GetJSON(ctx, cacheKey, &cached); err == nil {
+			return &cached, nil
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, affiliateURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	req.Header.Set("User-Agent", browserUserAgent)
+
+	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("GET "+affiliateURL))
+	span.SetTag("external_service", "mercadolivre")
+	span.SetTag("endpoint", "affiliatePreview")
+	resp, err := s.httpClient.Do(req)
+	span.Finish()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch affiliate page: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Não é erro fatal — devolve preview vazio (lista segue sem preço).
+		return &models.MLProductPreview{Permalink: affiliateURL, Currency: "BRL"}, nil
+	}
+
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
+	if readErr != nil {
+		return nil, fmt.Errorf("failed to read affiliate page: %w", readErr)
+	}
+
+	preview := parseAffiliateSocialHTML(string(body), affiliateURL)
+	if preview == nil {
+		preview = &models.MLProductPreview{Permalink: affiliateURL, Currency: "BRL"}
+	}
+
+	if s.cache != nil {
+		ttl := previewCacheTTLEmpty
+		if preview.Title != "" || preview.Price > 0 {
+			ttl = previewCacheTTLUseful
+		}
+		if cacheErr := s.cache.SetJSON(ctx, cacheKey, preview, ttl); cacheErr != nil {
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to cache ML affiliate preview", cacheErr, map[string]string{
+				"external_service": "mercadolivre",
+				"endpoint":        "cache_set_affiliate_preview",
+			})
+		}
+	}
+	return preview, nil
+}
+
+// parseAffiliateSocialHTML extrai título, preço, preço original e imagem do
+// produto-alvo a partir do HTML da página /social do afiliado. O alvo é sempre
+// o 1º card (produto que o link de afiliado destaca), então pegamos o 1º objeto
+// "price" do documento — evitando casar título (que quebra com acentos no JSON).
+// Falha graciosamente: sem og:title retorna nil; sem preço retorna o que tiver.
+func parseAffiliateSocialHTML(html, finalURL string) *models.MLProductPreview {
+	title := extractMeta(html, "og:title")
+	if title == "" {
+		return nil
+	}
+	preview := &models.MLProductPreview{
+		Title:     title,
+		Currency:  "BRL",
+		Permalink: finalURL,
+		Image:     extractMeta(html, "og:image"),
+	}
+
+	if m := affiliatePriceRe.FindStringSubmatch(html); m != nil {
+		if v, err := strconv.ParseFloat(m[2], 64); err == nil {
+			preview.Price = v
+		}
+		if m[1] != "" {
+			if op, err := strconv.ParseFloat(m[1], 64); err == nil && op > 0 {
+				preview.OriginalPrice = &op
+			}
+		}
+	}
+
+	if preview.Image != "" {
+		preview.Thumbnail = preview.Image
+		preview.Pictures = []string{preview.Image}
+	}
+
+	if preview.OriginalPrice != nil && *preview.OriginalPrice > preview.Price && preview.Price > 0 {
+		d := ((*preview.OriginalPrice - preview.Price) / *preview.OriginalPrice) * 100
+		preview.DiscountPercent = &d
+		preview.Discount = d
+	}
+
+	return preview
 }
 
 // normalizeURL normalizes a URL for consistent caching
