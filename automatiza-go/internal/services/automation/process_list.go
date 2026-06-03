@@ -246,11 +246,12 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		affiliateURL := originURL
 
 		if isML {
-			// ML: the item already holds an affiliate URL the user pasted and
-			// (optionally) the product metadata they entered. We do not call
-			// the ML API here — no credentials flow, no affiliate generation
-			// server-side. OriginURL is sent as-is; ProductTitle/Price/Image
-			// populate the synthetic preview used for message + link preview.
+			// ML: metadata que o usuário preencheu no item tem prioridade
+			// (override manual). Quando NÃO há metadata — caso típico de import
+			// em massa de links de afiliado — buscamos via mlService, que
+			// resolve o link (meli.la/sec) pela página /social do afiliado e
+			// extrai preço/título/imagem. Tem cache, então não refaz a cada
+			// disparo. Ver issue #158.
 			if item.ProductTitle != nil || item.ProductPrice != nil || item.ProductImageURL != nil {
 				p := &models.MLProductPreview{}
 				if item.ProductTitle != nil {
@@ -263,6 +264,15 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 					p.Image = *item.ProductImageURL
 				}
 				preview = p
+			} else if s.mlService != nil {
+				fetched, perr := s.mlService.GetProductPreview(ctx, originURL, automation.UserID)
+				if perr != nil {
+					s.logger.Warn("Failed to enrich ML list item via affiliate preview",
+						zap.String("originURL", originURL),
+						zap.Error(perr))
+				} else if fetched != nil && (fetched.Title != "" || fetched.Price > 0) {
+					preview = fetched
+				}
 			}
 		} else if isShopee && s.shopeeService != nil {
 			// Shopee: generate affiliate link + fetch product details
