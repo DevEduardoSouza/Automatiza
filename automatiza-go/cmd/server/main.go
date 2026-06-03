@@ -482,7 +482,7 @@ func main() {
 		// Reconciliação de status de instância: corrige instâncias travadas em
 		// 'pending'/'disconnected' no banco quando a sessão está WORKING no WAHA
 		// (acontece a cada restart/deploy, quando eventos session.status se
-		// perdem). Sem isso, dispatches dos clientes afetados ficam bloqueados.
+		// perdem). Sem isso, os envios afetados ficam bloqueados.
 		statusReconciler := reconciliation.NewInstanceStatusReconciler(
 			instanceRepo,
 			concreteAdapter,

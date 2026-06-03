@@ -39,7 +39,7 @@ func NewInstanceStatusReconciler(instances instanceStore, sessions sessionLister
 
 // ReconcileStats resume o resultado de uma rodada.
 type ReconcileStats struct {
-	ConnectedSessions int // sessões WORKING no WAHA com instância correspondente
+	ConnectedSessions int // sessões WORKING no WAHA com instância no banco
 	Fixed             int // instâncias promovidas pra 'connected'
 }
 
@@ -66,7 +66,7 @@ func (r *InstanceStatusReconciler) Reconcile(ctx context.Context) (ReconcileStat
 
 		inst, err := r.instances.GetInstanceByName(ctx, s.Name)
 		if err != nil || inst == nil {
-			// Sessão sem instância correspondente no banco (órfã) — ignora.
+			// Sessão sem instância no banco (órfã) — ignora.
 			continue
 		}
 		stats.ConnectedSessions++
