@@ -99,7 +99,7 @@ func TestReconcile_IgnoraSessaoNaoConnectedEOrfa(t *testing.T) {
 	store.byName["session_failed"] = &models.Instance{ID: 5, InstanceID: "session_failed", Status: models.InstanceStatusConnected}
 
 	lister := &fakeSessionLister{sessions: []whatsapp.SessionInfo{
-		{Name: "session_failed", Status: whatsapp.SessionStatusFailed}, // não-connected → ignora (conservador)
+		{Name: "session_failed", Status: whatsapp.SessionStatusFailed},  // não-connected → ignora (conservador)
 		{Name: "session_orfa", Status: whatsapp.SessionStatusConnected}, // sem instância no banco → ignora
 	}}
 	r := NewInstanceStatusReconciler(store, lister, zap.NewNop())
