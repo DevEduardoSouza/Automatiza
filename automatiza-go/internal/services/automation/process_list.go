@@ -246,13 +246,25 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		affiliateURL := originURL
 
 		if isML {
-			// ML: metadata que o usuário preencheu no item tem prioridade
-			// (override manual). Quando NÃO há metadata — caso típico de import
-			// em massa de links de afiliado — buscamos via mlService, que
-			// resolve o link (meli.la/sec) pela página /social do afiliado e
-			// extrai preço/título/imagem. Tem cache, então não refaz a cada
-			// disparo. Ver issue #158.
-			if item.ProductTitle != nil || item.ProductPrice != nil || item.ProductImageURL != nil {
+			// ML: preferimos o preview FRESCO (mlService), pois ele traz preço
+			// atual + ORIGINAL + desconto + imagem — o metadata gravado no item
+			// só tem o preço atual (sem original), então o "De X por Y" sairia
+			// quebrado. Resolve o link (meli.la/sec) pela página /social. Tem
+			// cache (10min), então não refaz a cada disparo. Ver issue #158.
+			if s.mlService != nil {
+				fetched, perr := s.mlService.GetProductPreview(ctx, originURL, automation.UserID)
+				if perr != nil {
+					s.logger.Warn("Failed to enrich ML list item via affiliate preview",
+						zap.String("originURL", originURL),
+						zap.Error(perr))
+				} else if fetched != nil && (fetched.Title != "" || fetched.Price > 0) {
+					preview = fetched
+				}
+			}
+			// Fallback pro metadata gravado no item quando a busca não trouxe
+			// dados (ex.: link ML direto bloqueado por anti-bot, ou preço
+			// preenchido manualmente).
+			if preview == nil && (item.ProductTitle != nil || item.ProductPrice != nil || item.ProductImageURL != nil) {
 				p := &models.MLProductPreview{}
 				if item.ProductTitle != nil {
 					p.Title = *item.ProductTitle
@@ -264,15 +276,6 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 					p.Image = *item.ProductImageURL
 				}
 				preview = p
-			} else if s.mlService != nil {
-				fetched, perr := s.mlService.GetProductPreview(ctx, originURL, automation.UserID)
-				if perr != nil {
-					s.logger.Warn("Failed to enrich ML list item via affiliate preview",
-						zap.String("originURL", originURL),
-						zap.Error(perr))
-				} else if fetched != nil && (fetched.Title != "" || fetched.Price > 0) {
-					preview = fetched
-				}
 			}
 		} else if isShopee && s.shopeeService != nil {
 			// Shopee: generate affiliate link + fetch product details
