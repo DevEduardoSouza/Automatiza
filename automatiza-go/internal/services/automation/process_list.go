@@ -278,10 +278,28 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				preview = p
 			}
 		} else if isShopee && s.shopeeService != nil {
-			// Shopee: generate affiliate link + fetch product details
-			link, err := s.shopeeService.GenerateAffiliateLink(ctx, originURL, automation.UserID)
+			// Shopee: generate affiliate link + fetch product details.
+			//
+			// Retry 1x: o ExpandURL/afiliado falha por timeout transitório do
+			// Shopee de vez em quando (context deadline exceeded). Sem retry, a
+			// oferta saía degradada (link cru, sem imagem/preço). A 2ª tentativa
+			// quase sempre passa — basta uma pausa curta.
+			var link *models.ShopeeAffiliateLink
+			var err error
+			for attempt := 0; attempt < 2; attempt++ {
+				link, err = s.shopeeService.GenerateAffiliateLink(ctx, originURL, automation.UserID)
+				if err == nil {
+					break
+				}
+				if attempt == 0 {
+					s.logger.Warn("Shopee affiliate link failed, retrying once",
+						zap.String("originURL", originURL),
+						zap.Error(err))
+					time.Sleep(800 * time.Millisecond)
+				}
+			}
 			if err != nil {
-				s.logger.Warn("Failed to create Shopee affiliate link, using origin URL",
+				s.logger.Warn("Failed to create Shopee affiliate link after retry, using origin URL",
 					zap.String("originURL", originURL),
 					zap.Error(err))
 			} else if link != nil && link.AffiliateLink != "" {
@@ -307,6 +325,32 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 					}
 				}
 			}
+		}
+
+		// Skip de oferta degradada (Shopee): se o item é de produto Shopee mas
+		// o enriquecimento não trouxe o produto (shopeeProduct nil, mesmo após
+		// o retry acima), não temos preço nem imagem — enviar geraria uma
+		// oferta quebrada (texto cru, sem preço/imagem) no grupo de destino.
+		// Melhor pular esse envio.
+		//
+		// Consumimos o item mesmo assim, de propósito: GetNextUnconsumed
+		// devolve sempre o próximo NÃO-consumido por ordem, então deixá-lo
+		// pendente travaria a lista nesse item a cada ciclo (item ruim/404
+		// nunca avançaria). Como listas com repeat_when_finished re-incluem
+		// tudo no próximo ciclo completo, o item é tentado de novo depois —
+		// nada se perde de vez, e nenhuma oferta quebrada sai no grupo.
+		if isShopee && shopeeProduct == nil {
+			s.logger.Warn("Skipping degraded Shopee list item — no product after retry (avoiding priceless/imageless offer)",
+				zap.String("automationID", automation.ID),
+				zap.String("originURL", originURL))
+			s.logDispatch(ctx, automation, "system", originURL, "skipped",
+				"enriquecimento Shopee falhou (sem preco/imagem) - item pulado")
+			if err := s.mlLinkListItemRepo.MarkAsConsumed(ctx, []string{item.ID}, automation.ID, nil); err != nil {
+				s.logger.Error("Failed to mark skipped item as consumed",
+					zap.String("itemID", item.ID),
+					zap.Error(err))
+			}
+			continue
 		}
 
 		// Resolve a coupon for this specific item via the rules engine.
