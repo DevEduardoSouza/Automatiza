@@ -337,8 +337,8 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		// devolve sempre o próximo NÃO-consumido por ordem, então deixá-lo
 		// pendente travaria a lista nesse item a cada ciclo (item ruim/404
 		// nunca avançaria). Como listas com repeat_when_finished re-incluem
-		// tudo no próximo ciclo completo, o item volta a ser tentado depois —
-		// nada é perdido em definitivo, e nenhuma oferta quebrada é postada.
+		// tudo no próximo ciclo completo, o item é tentado de novo depois —
+		// nada se perde de vez, e nenhuma oferta quebrada sai no grupo.
 		if isShopee && shopeeProduct == nil {
 			s.logger.Warn("Skipping degraded Shopee list item — no product after retry (avoiding priceless/imageless offer)",
 				zap.String("automationID", automation.ID),
