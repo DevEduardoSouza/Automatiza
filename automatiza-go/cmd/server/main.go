@@ -1313,6 +1313,10 @@ func runWorker(
 		Logger:            config.NewModuleLogger(logger, "webhook-consumer"),
 		StatusProcessor:   statusProcessor,  // SSE notifications for status changes
 		MessageProcessor:  messageProcessor, // MONITOR mode automation processing
+		// Rejeita eventos session.status atrasados/fora de ordem confirmando
+		// o status vivo no WAHA antes de rebaixar (evita instância travada
+		// em 'pending' por race de WORKING vs STARTING).
+		SessionStatusChecker: wahaAdapter,
 	})
 
 	// Create reconciliation worker for processing queued reconciliation tasks

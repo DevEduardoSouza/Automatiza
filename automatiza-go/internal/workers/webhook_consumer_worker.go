@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/metrics"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
@@ -68,6 +69,14 @@ type GroupEventWebhookProcessor interface {
 	ProcessGroupEvent(ctx context.Context, sessionName, eventType string, payload map[string]interface{}) error
 }
 
+// SessionStatusChecker re-reads the live session status from the WhatsApp
+// provider (WAHA). Used to reject stale/out-of-order session.status downgrades
+// that would otherwise clobber a session that is actually WORKING.
+// *whatsapp.WahaAdapter implements it. Optional — when nil the guard is skipped.
+type SessionStatusChecker interface {
+	GetSessionStatus(ctx context.Context, sessionName string) (*whatsapp.SessionInfo, error)
+}
+
 // =============================================================================
 // Errors
 // =============================================================================
@@ -111,6 +120,10 @@ type WebhookConsumerWorker struct {
 	statusProcessor     StatusWebhookProcessor
 	groupEventProcessor GroupEventWebhookProcessor
 
+	// sessionStatusChecker re-checks live WAHA status to reject stale
+	// session.status downgrades (optional).
+	sessionStatusChecker SessionStatusChecker
+
 	// connectedSessions caches sessions known to be connected to avoid
 	// redundant DB checks on every message event. Self-healing: if we
 	// receive messages from a session, it must be WORKING in WAHA.
@@ -129,6 +142,9 @@ type WebhookConsumerWorkerConfig struct {
 	MessageProcessor    MessageWebhookProcessor
 	StatusProcessor     StatusWebhookProcessor
 	GroupEventProcessor GroupEventWebhookProcessor
+	// SessionStatusChecker re-checks live WAHA status to reject stale
+	// session.status downgrades (optional).
+	SessionStatusChecker SessionStatusChecker
 }
 
 // NewWebhookConsumerWorker creates a new webhook consumer worker.
@@ -147,16 +163,17 @@ type WebhookConsumerWorkerConfig struct {
 //   - groupEventProcessor: Handler for group events
 func NewWebhookConsumerWorker(config WebhookConsumerWorkerConfig) *WebhookConsumerWorker {
 	return &WebhookConsumerWorker{
-		webhookEventsRepo:   config.WebhookEventsRepo,
-		reconcileSvc:        config.ReconcileSvc,
-		instanceRepo:        config.InstanceRepo,
-		groupRepo:           config.GroupRepo,
-		queueClient:         config.QueueClient,
-		logger:              config.Logger.Named("webhook-consumer"),
-		metrics:             config.Metrics,
-		messageProcessor:    config.MessageProcessor,
-		statusProcessor:     config.StatusProcessor,
-		groupEventProcessor: config.GroupEventProcessor,
+		webhookEventsRepo:    config.WebhookEventsRepo,
+		reconcileSvc:         config.ReconcileSvc,
+		instanceRepo:         config.InstanceRepo,
+		groupRepo:            config.GroupRepo,
+		queueClient:          config.QueueClient,
+		logger:               config.Logger.Named("webhook-consumer"),
+		metrics:              config.Metrics,
+		messageProcessor:     config.MessageProcessor,
+		statusProcessor:      config.StatusProcessor,
+		groupEventProcessor:  config.GroupEventProcessor,
+		sessionStatusChecker: config.SessionStatusChecker,
 	}
 }
 
@@ -413,6 +430,31 @@ func (w *WebhookConsumerWorker) handleSessionStatusEvent(ctx context.Context, da
 				zap.Error(err))
 		} else if instance != nil {
 			dbStatus := mapWAHAStatusToDBStatus(status)
+
+			// Race guard contra eventos session.status fora de ordem.
+			//
+			// Numa reconexão, o WAHA emite STARTING e WORKING quase juntos; o
+			// worker processa os webhooks concorrentemente, sem ordem garantida.
+			// Se o evento de rebaixamento (STARTING/SCAN_QR/FAILED → pending/
+			// disconnected) for aplicado DEPOIS do WORKING, ele sobrescreve o
+			// status pra não-connected mesmo a sessão estando viva — e a
+			// instância fica travada bloqueando todos os envios da conta.
+			//
+			// Antes de aplicar um rebaixamento, confirma o status VIVO no WAHA
+			// (fonte da verdade). Se a sessão está de fato connected, ignora o
+			// evento atrasado. Em erro de checagem, segue o caminho normal
+			// (aplica o evento) — o reconciliador periódico corrige depois.
+			if dbStatus != models.InstanceStatusConnected && w.sessionStatusChecker != nil {
+				if live, lerr := w.sessionStatusChecker.GetSessionStatus(ctx, data.Session); lerr == nil &&
+					live != nil && live.Status == whatsapp.SessionStatusConnected {
+					w.logger.Info("Ignoring stale session.status downgrade — WAHA reports session connected",
+						zap.String("session", data.Session),
+						zap.Int("instanceID", instance.ID),
+						zap.String("eventStatus", status))
+					w.connectedSessions.Store(data.Session, true)
+					return nil
+				}
+			}
 
 			// Invalidate connected-sessions cache when status changes away from connected
 			if dbStatus != models.InstanceStatusConnected {
