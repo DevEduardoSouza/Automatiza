@@ -724,3 +724,44 @@ func TestExecuteTask_ClearsErrorOnSuccess(t *testing.T) {
 		t.Errorf("expected lastError=nil after success, got %v", task.lastError)
 	}
 }
+
+// Regressão: tasks registradas ANTES de Start() (ex.: reconcile_instance_statuses
+// fiada no main.go) entravam no mapa mas nunca tinham goroutine criada, porque
+// RegisterTask só dispara quando running==true e Start() não iterava as
+// pré-existentes. Efeito em prod: o reconciliador de status de instância nunca
+// rodava e instâncias ficavam travadas em 'pending', bloqueando dispatches.
+// runTask executa imediatamente no start da goroutine, então um task pré-
+// registrado deve incrementar o contador logo após Start().
+func TestStart_RunsTasksRegisteredBeforeStart(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	svc := NewCronService(&mockJobsService{}, logger).(*cronService)
+
+	var ran atomic.Int32
+	// Intervalo longo: garante UMA execução imediata e nenhuma repetição
+	// durante o teste — isola a asserção do "run on start".
+	svc.RegisterTask("preregistered-task", 1*time.Hour, func(_ context.Context) error {
+		ran.Add(1)
+		return nil
+	})
+
+	// Antes de Start(): não deve ter rodado (sem goroutine).
+	if got := ran.Load(); got != 0 {
+		t.Fatalf("task não deveria rodar antes de Start(), rodou %d vez(es)", got)
+	}
+
+	svc.Start()
+	defer svc.Stop()
+
+	// Aguarda a execução imediata da goroutine (até ~2s).
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if ran.Load() >= 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if got := ran.Load(); got < 1 {
+		t.Fatalf("task pré-registrada não executou após Start() (contador=%d) — goroutine não foi criada", got)
+	}
+}
