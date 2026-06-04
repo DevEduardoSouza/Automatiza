@@ -748,3 +748,62 @@ func TestProcessListMode_EdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// Regressão (incidente isaa_deoliveira@hotmail.com, 04/06 13:52): o
+// enriquecimento Shopee (ExpandURL/afiliado) dava timeout transitório e o
+// modo lista enviava a oferta degradada — texto cru, sem imagem e sem preço.
+// Fix: retry 1x; se ainda falhar, pula o envio (sem postar oferta quebrada)
+// e consome o item pra lista avançar (senão GetNextUnconsumed devolveria o
+// mesmo item todo ciclo e travaria a lista num item ruim).
+func TestProcessListMode_ShopeeEnrichTimeout_RetriesThenSkips(t *testing.T) {
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	listType := "list"
+	listID := "list-123"
+	shopeeURL := "https://s.shopee.com.br/8fPcxpGjSs"
+	auto := &models.Automation{
+		ID:           "auto-123",
+		UserID:       "user-1",
+		Name:         "List Shopee",
+		Status:       models.AutomationStatusActive,
+		Type:         &listType,
+		MlLinkListID: &listID,
+		GroupIDs:     []string{"group1@g.us"},
+		Stores:       []string{"shopee"},
+	}
+	connected := []models.Instance{{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"}}
+	items := []*models.MlLinkListItem{
+		{ID: "item-1", ListID: listID, OriginURL: shopeeURL, IsActive: true},
+	}
+	lockTime := time.Now().Add(10 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", mock.Anything, "auto-123", "user-1").Return(auto, nil)
+	deps.automationRunRepo.On("GetLock", mock.Anything, "auto-123").Return(nil, nil)
+	deps.automationRunRepo.On("AcquireLock", mock.Anything, "auto-123", mock.AnythingOfType("time.Duration")).Return(&lockTime, nil)
+	deps.automationRunRepo.On("ReleaseLock", mock.Anything, "auto-123").Return(nil)
+	deps.historyRepo.On("Create", mock.Anything, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
+	deps.historyRepo.On("Update", mock.Anything, "history-1", mock.Anything).Return(nil)
+	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").Return(connected, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).Return(items, nil)
+	deps.settingsRepo.On("GetActiveDispatchTextByID", mock.Anything, mock.AnythingOfType("string"), "user-1").Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+
+	// Enriquecimento Shopee falha (timeout) em TODAS as tentativas.
+	deps.shopeeService.On("GenerateAffiliateLink", mock.Anything, shopeeURL, "user-1").
+		Return((*models.ShopeeAffiliateLink)(nil), errors.New("failed to expand short URL: context deadline exceeded"))
+
+	// Skip degradado consome o item pra lista avançar.
+	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-123", mock.Anything).Return(nil)
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 0, result.MessagesSent, "oferta degradada (sem preco/imagem) nao deve ser enviada")
+	// Retry: GenerateAffiliateLink chamado 2x.
+	deps.shopeeService.AssertNumberOfCalls(t, "GenerateAffiliateLink", 2)
+	// Item consumido p/ a lista nao travar nele.
+	deps.mlLinkListItemRepo.AssertCalled(t, "MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-123", mock.Anything)
+}
