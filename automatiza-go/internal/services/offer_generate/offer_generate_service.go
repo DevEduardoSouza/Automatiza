@@ -417,6 +417,20 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			link = expandedURL
 		}
 
+		// Link de cupom/campanha/voucher (ex. shopee.com.br/m/super-ofertas):
+		// não é página de produto, então não há o que enriquecer/gerar como
+		// oferta. A mensagem ainda é informativa (anúncio de cupom) e o cliente
+		// espera que chegue nos grupos destino — repassa como veio (relay) em
+		// vez de descartar silenciosamente. Gateamos pela URL *expandida* já
+		// conhecida como não-produto pra não relayar falhas transitórias de
+		// ExpandURL/parse de links de produto legítimos.
+		if isNonProductShopeeURL(link) {
+			s.logger.Info("Shopee link is coupon/campaign (non-product), relaying original message",
+				zap.String("automationID", auto.ID),
+				zap.String("link", link))
+			return s.processAutomationRelay(ctx, auto, msg)
+		}
+
 		// Extract product IDs and get product details
 		shopID, itemID, idErr := s.shopeeService.ExtractProductIDs(link)
 		if idErr != nil {
@@ -750,6 +764,26 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 func (s *offerGenerateService) buildContentKey(group, body string) string {
 	h := sha256.Sum256([]byte(body))
 	return fmt.Sprintf("og_content:%s:%s", group, hex.EncodeToString(h[:8]))
+}
+
+// isNonProductShopeeURL detecta links Shopee que NÃO são página de produto
+// (cupom, campanha/super-ofertas, mall, flash sale, voucher, perfil de loja).
+// Esses links não têm shopID/itemID extraíveis, então o fluxo de oferta não
+// consegue enriquecê-los — devem cair no relay (repasse como veio).
+//
+// Espelha shopee.isNonProductShopeeURL (shopee_service.go). Mantido em
+// paralelo de propósito: expor isso como método na interface shopee.Service
+// obrigaria atualizar os vários fakes que a implementam nos testes. Se a
+// lista canônica mudar lá, atualizar aqui também.
+func isNonProductShopeeURL(expandedURL string) bool {
+	lower := strings.ToLower(expandedURL)
+	return strings.Contains(lower, "shopee.com.br/m/") ||
+		strings.Contains(lower, "shopee.com.br/mall/") ||
+		strings.Contains(lower, "shopee.com.br/flash_sale") ||
+		strings.Contains(lower, "shopee.com.br/daily_discover") ||
+		strings.Contains(lower, "shopee.com.br/voucher") ||
+		strings.Contains(lower, "shopee.com.br/user/") ||
+		strings.Contains(lower, "shopee.com.br/oficial")
 }
 
 // buildSelfSendKey identifies an outgoing message hash we just sent so the
