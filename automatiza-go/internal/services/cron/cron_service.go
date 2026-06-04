@@ -134,10 +134,10 @@ func (s *cronService) Start() {
 
 	// Tasks registradas ANTES de Start() (ex.: cleanup_waha_failed_sessions e
 	// reconcile_instance_statuses, fiadas no main.go) já estão no mapa mas nunca
-	// tiveram goroutine: RegisterTask só dispara quando running==true, e naquele
-	// momento ainda era false. Sem isso, ficavam contadas em "tasks" mas mortas —
-	// foi o que deixou o reconciliador de status de instância sem rodar, travando
-	// dispatches de clientes em 'pending' por horas. Sobe as goroutines delas aqui.
+	// tiveram goroutine: RegisterTask só dispara quando running==true, e ali
+	// ainda era false. Sem isso, ficavam contadas em "tasks" mas inertes — foi
+	// o que deixou o reconciliador de status de instância sem rodar, travando
+	// envios em 'pending' por horas. Sobe as goroutines delas aqui.
 	// (registerDefaultTasks roda logo abaixo com running==true, então as default
 	// se auto-disparam via RegisterTask — sem duplicar estas.)
 	preregistered := make([]*cronTask, 0, len(s.tasks))
