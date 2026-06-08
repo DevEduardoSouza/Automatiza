@@ -66,7 +66,7 @@ func TestSessionPacer_IndependentPerSession(t *testing.T) {
 
 	// Outra sessao começa do zero — não herda o slot da sessao-A.
 	if d := p.reserve(ctx, "sessao-B"); d != 0 {
-		t.Fatalf("sessao independente deve começar sem atraso, veio %v", d)
+		t.Fatalf("outra sessao deve começar sem atraso, veio %v", d)
 	}
 
 	// Sessao vazia => 0.
