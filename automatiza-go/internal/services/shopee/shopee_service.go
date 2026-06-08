@@ -614,7 +614,12 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		return nil, fmt.Errorf("failed to marshal productOfferV2 payload: %w", marshalErr)
 	}
 
-	var affiliateLink string
+	// productOfferV2 serve aqui só para obter a imagem (e o offerLink como
+	// ultimo recurso). O LINK de afiliado vem do generateShortLink abaixo,
+	// porque o offerLink do productOfferV2 NÃO carrega subIds custom — só o
+	// generateShortLink aplica o sub_id (confirmado na doc da Shopee). Sem isso
+	// o tracking por sub_id (AUTOMATISA) nunca chegava aos links de produto.
+	var offerLinkFallback string
 	var imageURL string
 
 	data, err := s.shopeeGraphQL(ctx, appID, secret, string(payload))
@@ -630,39 +635,49 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		if unmarshalErr := json.Unmarshal(data, &offerResult); unmarshalErr == nil &&
 			len(offerResult.ProductOfferV2.Nodes) > 0 {
 			node := offerResult.ProductOfferV2.Nodes[0]
-			affiliateLink = node.OfferLink
+			offerLinkFallback = node.OfferLink
 			imageURL = node.ImageURL
 		}
 	} else {
-		s.logger.Warn("productOfferV2 failed, will try generateShortLink fallback",
+		s.logger.Warn("productOfferV2 failed, generating link via generateShortLink",
 			zap.Int64("itemID", itemID),
 			zap.Error(err))
 	}
 
-	// Fallback to generateShortLink if productOfferV2 didn't return an offerLink
-	if affiliateLink == "" {
-		originURL := fmt.Sprintf("https://shopee.com.br/product/%d/%d", shopID, itemID)
-		// Sub ID fixo em shopeeSubIDDefault — não configurável pelo user.
-		shortLinkQuery := buildGenerateShortLinkMutation(originURL, shopeeSubIDDefault)
-		shortPayload, shortMarshalErr := json.Marshal(map[string]string{"query": shortLinkQuery})
-		if shortMarshalErr != nil {
-			return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", shortMarshalErr)
-		}
-
-		shortData, shortErr := s.shopeeGraphQL(ctx, appID, secret, string(shortPayload))
-		if shortErr != nil {
-			return nil, fmt.Errorf("failed to generate affiliate link: %w", shortErr)
-		}
-
+	// Gera o link SEMPRE via generateShortLink para que o sub_id (AUTOMATISA)
+	// seja aplicado em todo link de produto.
+	var affiliateLink string
+	originURL := fmt.Sprintf("https://shopee.com.br/product/%d/%d", shopID, itemID)
+	// Sub ID fixo em shopeeSubIDDefault — não configurável pelo user.
+	shortLinkQuery := buildGenerateShortLinkMutation(originURL, shopeeSubIDDefault)
+	shortPayload, shortMarshalErr := json.Marshal(map[string]string{"query": shortLinkQuery})
+	if shortMarshalErr != nil {
+		return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", shortMarshalErr)
+	}
+	shortData, shortErr := s.shopeeGraphQL(ctx, appID, secret, string(shortPayload))
+	if shortErr != nil {
+		s.logger.Warn("generateShortLink failed, falling back to productOfferV2 offerLink (sem sub_id)",
+			zap.Int64("itemID", itemID),
+			zap.Error(shortErr))
+	} else {
 		var shortResult struct {
 			GenerateShortLink struct {
 				ShortLink string `json:"shortLink"`
 			} `json:"generateShortLink"`
 		}
 		if unmarshalErr := json.Unmarshal(shortData, &shortResult); unmarshalErr != nil {
-			return nil, fmt.Errorf("failed to parse generateShortLink response: %w", unmarshalErr)
+			s.logger.Warn("failed to parse generateShortLink response, falling back to offerLink",
+				zap.Int64("itemID", itemID),
+				zap.Error(unmarshalErr))
+		} else {
+			affiliateLink = shortResult.GenerateShortLink.ShortLink
 		}
-		affiliateLink = shortResult.GenerateShortLink.ShortLink
+	}
+
+	// Se o generateShortLink falhou, usa o offerLink do productOfferV2 como
+	// ultimo recurso (sem sub_id, mas melhor que não enviar a oferta).
+	if affiliateLink == "" {
+		affiliateLink = offerLinkFallback
 	}
 
 	if affiliateLink == "" {
