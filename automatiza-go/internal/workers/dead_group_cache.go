@@ -7,8 +7,8 @@ import (
 
 // deadGroupTTL é por quanto tempo um par (sessão, grupo) fica marcado como
 // "morto" depois que o WAHA recusa o envio com "you're not participating in
-// that group". Curto de forma intencional: se o bot for readicionado ao grupo, o
-// proximo ciclo apos o TTL volta a tentar normalmente — sem intervenção e sem
+// that group". O TTL é curto: se o bot for readicionado ao grupo, o ciclo
+// seguinte (apos o TTL) volta a tentar normalmente — sem intervenção e sem
 // mutar a config de grupos da automação do usuário.
 const deadGroupTTL = 30 * time.Minute
 
