@@ -1003,7 +1003,8 @@ func TestSearchOffers(t *testing.T) {
 func TestGenerateAffiliateLink(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("success via productOfferV2 with imageUrl", func(t *testing.T) {
+	t.Run("link via generateShortLink with sub_id, image via productOfferV2", func(t *testing.T) {
+		var shortLinkBody string
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, _ := readBody(r)
 			w.Header().Set("Content-Type", "application/json")
@@ -1019,8 +1020,16 @@ func TestGenerateAffiliateLink(t *testing.T) {
 					},
 				}
 				fmt.Fprint(w, graphqlResponse(resp))
+			} else if strings.Contains(body, "generateShortLink") {
+				shortLinkBody = body
+				resp := map[string]interface{}{
+					"generateShortLink": map[string]interface{}{
+						"shortLink": "https://s.shopee.com.br/subid-link",
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
 			} else {
-				t.Error("unexpected API call — expected productOfferV2")
+				t.Errorf("unexpected API call: %s", body)
 			}
 		}))
 		defer server.Close()
@@ -1036,11 +1045,18 @@ func TestGenerateAffiliateLink(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result.AffiliateLink != "https://s.shopee.com.br/offer-link" {
-			t.Errorf("affiliateLink = %q, want %q", result.AffiliateLink, "https://s.shopee.com.br/offer-link")
+		// O link de afiliado vem do generateShortLink (com sub_id), nao do
+		// offerLink do productOfferV2 — que nao carrega subIds custom.
+		if result.AffiliateLink != "https://s.shopee.com.br/subid-link" {
+			t.Errorf("affiliateLink = %q, want generateShortLink result", result.AffiliateLink)
 		}
+		// A imagem continua vindo do productOfferV2.
 		if result.ImageURL != "https://cf.shopee.com.br/file/product-image.jpg" {
-			t.Errorf("imageURL = %q, want %q", result.ImageURL, "https://cf.shopee.com.br/file/product-image.jpg")
+			t.Errorf("imageURL = %q, want productOfferV2 image", result.ImageURL)
+		}
+		// O sub_id AUTOMATISA tem que aparecer no generateShortLink.
+		if !strings.Contains(shortLinkBody, "AUTOMATISA") {
+			t.Errorf("generateShortLink deve incluir o sub_id AUTOMATISA, body: %s", shortLinkBody)
 		}
 		if result.ItemID != 456 {
 			t.Errorf("itemID = %d, want 456", result.ItemID)
