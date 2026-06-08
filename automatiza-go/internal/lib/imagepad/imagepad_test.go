@@ -106,6 +106,18 @@ func TestPadToSafeAspect_PadIsWhite(t *testing.T) {
 	}
 }
 
+// PNG input must decode and normalize too (image.Decode needs the png decoder).
+func TestPadToSafeAspect_PNGInput(t *testing.T) {
+	out, err := PadToSafeAspectJPEG(makeImage(t, 300, 600, "png")) // tall PNG → square
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	w, h := decodedSize(t, out)
+	if w != h || h != 600 {
+		t.Fatalf("expected 600x600 square from PNG, got %dx%d", w, h)
+	}
+}
+
 func TestPadToSafeAspect_BadInput(t *testing.T) {
 	if _, err := PadToSafeAspectJPEG([]byte("not an image")); err == nil {
 		t.Fatal("expected error for undecodable input")

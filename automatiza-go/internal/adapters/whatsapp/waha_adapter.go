@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"automatiza-go/internal/lib/imagepad"
 	"automatiza-go/internal/observability"
 
 	"github.com/getsentry/sentry-go"
@@ -1159,6 +1160,25 @@ func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*Mes
 		zap.Int("captionLen", len(input.Caption)),
 		zap.String("imageURL", input.ImageURL),
 		zap.Bool("hasBase64", input.ImageBase64 != ""))
+
+	// Normalize the image to WhatsApp's safe aspect window so portrait product
+	// photos aren't center-cropped ("zoomed") in the chat bubble. This is the
+	// single chokepoint every send path flows through (list, monitoring,
+	// offer-generate, search, scheduled jobs), so all of them are covered here
+	// instead of per-producer. Only the send-by-URL case is touched; on any
+	// failure (download/decode, e.g. webp) we fall back to the original URL so
+	// sends never break.
+	if input.ImageURL != "" && input.ImageBase64 == "" {
+		if b64, perr := imagepad.FetchAndPadToSafeAspectJPEGBase64(ctx, input.ImageURL); perr == nil {
+			input.ImageBase64 = b64
+			input.Mimetype = "image/jpeg"
+			input.ImageURL = ""
+		} else {
+			a.logger.Warn("Image aspect-normalize failed, sending original URL",
+				zap.String("imageURL", input.ImageURL),
+				zap.Error(perr))
+		}
+	}
 
 	payload := a.mapper.SendImageToWaha(&input)
 
