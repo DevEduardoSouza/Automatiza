@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
@@ -73,20 +74,41 @@ type WebhookJobData struct {
 type QueueClient struct {
 	client *asynq.Client
 	logger *zap.Logger
+	pacer  *sessionPacer
+	rdb    *redis.Client // só quando o pacer está ligado (para Close)
 }
 
-// NewQueueClient creates a new queue client
+// NewQueueClient creates a new queue client.
+//
+// Quando SESSION_PACE_MS > 0, liga o pacer por sessão: abre uma conexão Redis
+// própria (mesmo endereço do asynq) e passa a espaçar os envios da mesma sessão
+// do WhatsApp. Default desligado (0) — comportamento inalterado.
 func NewQueueClient(redisAddr string, logger *zap.Logger) *QueueClient {
 	client := asynq.NewClient(asynq.RedisClientOpt{Addr: redisAddr})
-	return &QueueClient{
+
+	q := &QueueClient{
 		client: client,
 		logger: logger,
 	}
+
+	if ms := sessionPaceMsFromEnv(); ms > 0 {
+		q.rdb = redis.NewClient(&redis.Options{Addr: redisAddr})
+		q.pacer = newSessionPacer(q.rdb, time.Duration(ms)*time.Millisecond, logger)
+		logger.Info("session pacer enabled", zap.Int("spacingMs", ms))
+	}
+
+	return q
 }
 
 // Close closes the queue client
 func (q *QueueClient) Close() error {
-	return q.client.Close()
+	err := q.client.Close()
+	if q.rdb != nil {
+		if rerr := q.rdb.Close(); rerr != nil && err == nil {
+			err = rerr
+		}
+	}
+	return err
 }
 
 // EnqueueMessage enqueues a message sending job
@@ -101,6 +123,16 @@ func (q *QueueClient) EnqueueMessage(ctx context.Context, data *MessageJobData, 
 	payload, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
+	}
+
+	// Pacer por sessão: empurra o agendamento para suavizar rajadas à mesma
+	// sessão. Usa max() para não desfazer o espaçamento por grupo já calculado
+	// pelo chamador — só atrasa além disso quando a sessão está saturada.
+	// Fail-open: reserve() devolve 0 em qualquer erro.
+	if q.pacer != nil {
+		if paceDelay := q.pacer.reserve(ctx, data.InstanceName); paceDelay > delay {
+			delay = paceDelay
+		}
 	}
 
 	opts := []asynq.Option{
