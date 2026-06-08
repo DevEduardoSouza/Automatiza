@@ -12,6 +12,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// perAutomationTimeout caps a single automation's execution inside a
+// ProcessActiveAutomations tick. Normal runs finish in well under this; the
+// cap exists so a run stuck on a degraded dependency can't consume the shared
+// 5-minute cron context and starve the rest of the (serial) batch.
+const perAutomationTimeout = 90 * time.Second
+
 // Scheduler implements the cron.AutomationScheduler interface.
 // It processes active automations based on their schedule configuration.
 type Scheduler struct {
@@ -105,7 +111,14 @@ func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
 			zap.String("type", automation.GetType()),
 			zap.String("userID", automation.UserID))
 
-		result, err := s.service.RunAutomation(ctx, automation.ID, automation.UserID)
+		// Per-automation timeout: cap each run with its own deadline so one
+		// slow automation (e.g. hanging on a degraded external API) can't eat
+		// the whole shared tick budget and starve the automations after it in
+		// this serial loop. Derived from the tick ctx, so shutdown still
+		// cancels promptly.
+		autoCtx, cancel := context.WithTimeout(ctx, perAutomationTimeout)
+		result, err := s.service.RunAutomation(autoCtx, automation.ID, automation.UserID)
+		cancel()
 		if err != nil {
 			s.logger.Error("Failed to run automation",
 				zap.String("id", automation.ID),
