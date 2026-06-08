@@ -14,6 +14,7 @@ import (
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/deadgroup"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
@@ -69,6 +70,39 @@ func NewMonitoringService(
 		waProvider:      waProvider,
 		cache:           cache,
 		logger:          logger,
+	}
+}
+
+// deadGroupTTL: por quanto tempo um par (sessao, grupo) fica marcado como morto
+// apos um erro "not participating". Curto: se o bot voltar ao grupo, o monitor
+// volta a tentar apos o TTL, sem intervencao.
+const deadGroupTTL = 30 * time.Minute
+
+func deadGroupKey(session, groupID string) string {
+	return "deadgroup:" + session + ":" + groupID
+}
+
+// isDeadGroup informa se a sessao foi marcada como nao e membro do grupo
+// dentro do TTL. Fail-open: cache ausente/erro => false (tenta enviar normal).
+func (s *monitoringService) isDeadGroup(ctx context.Context, session, groupID string) bool {
+	if s.cache == nil || session == "" || groupID == "" {
+		return false
+	}
+	ok, err := s.cache.Exists(ctx, deadGroupKey(session, groupID))
+	if err != nil {
+		return false
+	}
+	return ok
+}
+
+// markDeadGroup marca a sessao como nao e membro do grupo por deadGroupTTL.
+func (s *monitoringService) markDeadGroup(ctx context.Context, session, groupID string) {
+	if s.cache == nil || session == "" || groupID == "" {
+		return
+	}
+	if err := s.cache.Set(ctx, deadGroupKey(session, groupID), "1", deadGroupTTL); err != nil {
+		s.logger.Warn("Failed to set dead-group cache key",
+			zap.String("session", session), zap.String("groupID", groupID), zap.Error(err))
 	}
 }
 
@@ -449,6 +483,19 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			}
 		}
 
+		// Pula grupos onde a sessao sabidamente nao e mais membro. Sem isso, o
+		// monitor re-mira o grupo morto a cada mensagem do canal de origem, o
+		// WAHA responde 500 "not participating" e o produto e marcado failed
+		// (com release do slot -> retry eterno). Marcado no envio que falhar
+		// abaixo, com TTL curto: se o bot voltar ao grupo, volta a tentar.
+		if s.isDeadGroup(ctx, senderSession, groupID) {
+			s.logger.Warn("Skipping group — session not participating (cached)",
+				zap.String("automationID", automation.ID),
+				zap.String("toGroup", groupID))
+			s.logDispatch(ctx, automation, groupID, links[0], "skipped", "bot nao participa do grupo", canonicalKey, store)
+			continue
+		}
+
 		// Atomic dedup claim: SetNX + DB fallback (prevents race conditions)
 		if !s.claimProductSlot(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
 			s.logger.Info("Product already sent (dedup), skipping",
@@ -524,6 +571,17 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		sendCancel()
 
 		if err != nil {
+			// Bot removido do grupo: nao adianta retentar e nem manter o slot
+			// para retry. Marca o grupo como morto (TTL curto) para os proximos
+			// produtos saltarem cedo no early-skip acima, e registra skipped.
+			if deadgroup.IsNotParticipatingError(err) {
+				s.markDeadGroup(ctx, senderSession, groupID)
+				s.logDispatch(ctx, automation, groupID, links[0], "skipped", "bot nao participa do grupo", canonicalKey, store)
+				s.logger.Warn("Session not participating in group, marking dead (no retry)",
+					zap.String("automationID", automation.ID),
+					zap.String("groupID", groupID))
+				continue
+			}
 			// Release dedup slot so the product can be retried on the next cycle
 			s.releaseProductSlot(ctx, automation.UserID, groupID, canonicalKey)
 			s.logDispatch(ctx, automation, groupID, links[0], "failed", err.Error(), canonicalKey, store)
