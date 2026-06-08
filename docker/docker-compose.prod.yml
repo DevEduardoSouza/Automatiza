@@ -1,3 +1,22 @@
+# Default log rotation for all services. Sem isto o driver json-file cresce
+# sem limite — o log do worker chegou a 33GB num arquivo (driver default,
+# sem rotacao), pressionando o disco da VPS. Cada servico fica limitado a
+# max-size * max-file. Aplicado no proximo `docker compose up -d` (recria os
+# containers para o novo driver valer).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "5"
+
+# O worker emite muito mais log que os demais (fallbacks de envio, retries),
+# entao recebe uma janela maior para preservar historico util de debug.
+x-logging-worker: &worker-logging
+  driver: json-file
+  options:
+    max-size: "200m"
+    max-file: "10"
+
 services:
   # =============================================================================
   # PostgreSQL Database
@@ -6,6 +25,7 @@ services:
     image: postgres:16-alpine
     container_name: automatiza-postgres
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${DB_USER:-automatiza}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -38,6 +58,7 @@ services:
     image: redis:7-alpine
     container_name: automatiza-redis
     restart: unless-stopped
+    logging: *default-logging
     command: redis-server --appendonly yes --maxmemory 1024mb --maxmemory-policy volatile-lru
     volumes:
       - redis_data:/data
@@ -62,6 +83,7 @@ services:
     image: devlikeapro/waha-plus:gows-2026.3.2
     container_name: automatiza-waha
     restart: unless-stopped
+    logging: *default-logging
     environment:
       WHATSAPP_API_KEY: ${WAHA_API_KEY}
       WHATSAPP_DEFAULT_ENGINE: GOWS
@@ -120,6 +142,7 @@ services:
     image: ${BACKEND_IMAGE:-ghcr.io/deveduardosouza/automatiza/backend:latest}
     container_name: automatiza-server
     restart: unless-stopped
+    logging: *default-logging
     env_file: .env
     environment:
       # Docker networking overrides (not in .env)
@@ -150,6 +173,7 @@ services:
     image: ${BACKEND_IMAGE:-ghcr.io/deveduardosouza/automatiza/backend:latest}
     container_name: automatiza-worker
     restart: unless-stopped
+    logging: *worker-logging
     command: ["./server", "--worker"]
     env_file: .env
     environment:
@@ -176,6 +200,7 @@ services:
     image: ${FRONTEND_IMAGE:-ghcr.io/deveduardosouza/automatiza/frontend:latest}
     container_name: automatiza-frontend
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:8000:80"
     healthcheck:
