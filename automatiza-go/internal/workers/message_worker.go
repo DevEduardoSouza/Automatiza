@@ -10,6 +10,7 @@ import (
 
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
+	"automatiza-go/internal/lib/imagepad"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/observability"
@@ -198,7 +199,20 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 			SessionName: data.InstanceName,
 			ChatID:      data.GroupID,
 			Caption:     normalizedMessage,
-			ImageURL:    *data.ImageURL,
+		}
+		// Normalize the image to WhatsApp's safe aspect window so it isn't
+		// center-cropped (zoomed) in the chat bubble — only tall/wide images
+		// get minimal white padding; in-range images go through rectangular and
+		// untouched. On any failure (download/decode, e.g. webp) fall back to
+		// the raw URL so sends are never blocked by this step.
+		if b64, perr := imagepad.FetchAndPadToSafeAspectJPEGBase64(ctx, *data.ImageURL); perr == nil {
+			imageInput.ImageBase64 = b64
+			imageInput.Mimetype = "image/jpeg"
+		} else {
+			w.logger.Warn("Image pad failed, sending original URL",
+				zap.String("imageURL", *data.ImageURL),
+				zap.Error(perr))
+			imageInput.ImageURL = *data.ImageURL
 		}
 		_, sendErr = w.whatsappProvider.SendImage(ctx, imageInput)
 
