@@ -425,7 +425,7 @@ func isTimeoutError(err error) bool {
 }
 
 // isNotParticipatingError detecta a resposta do WAHA/GOWS quando a sessão não é
-// mais participante do grupo de destino ("you're not participating in that
+// mais membro do grupo de destino ("you're not participating in that
 // group" / "failed to get group members"). Casa no texto do erro porque vem
 // embrulhado como erro genérico (WAHA error 500), não como ProviderError.
 func isNotParticipatingError(err error) bool {
