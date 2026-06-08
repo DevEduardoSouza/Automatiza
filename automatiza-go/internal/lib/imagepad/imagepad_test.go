@@ -1,0 +1,113 @@
+package imagepad
+
+import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
+	"testing"
+)
+
+// makeImage builds a solid-color image of the given size, encoded as jpeg or png.
+func makeImage(t *testing.T, w, h int, format string) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{R: 10, G: 120, B: 200, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	var err error
+	switch format {
+	case "png":
+		err = png.Encode(&buf, img)
+	default:
+		err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90})
+	}
+	if err != nil {
+		t.Fatalf("encode %s: %v", format, err)
+	}
+	return buf.Bytes()
+}
+
+func decodedSize(t *testing.T, data []byte) (int, int) {
+	t.Helper()
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	return cfg.Width, cfg.Height
+}
+
+// In-range images (square→landscape) must pass through unchanged (no padding).
+func TestPadToSafeAspect_InRangeUnchanged(t *testing.T) {
+	cases := [][2]int{
+		{1000, 885}, // landscape ~1.13 — the real ML sample
+		{500, 500},  // square, exactly minAspect
+		{1000, 600}, // wide ~1.67
+	}
+	for _, c := range cases {
+		out, err := PadToSafeAspectJPEG(makeImage(t, c[0], c[1], "jpeg"))
+		if err != nil {
+			t.Fatalf("%dx%d: %v", c[0], c[1], err)
+		}
+		w, h := decodedSize(t, out)
+		if w != c[0] || h != c[1] {
+			t.Fatalf("in-range %dx%d should be unchanged, got %dx%d", c[0], c[1], w, h)
+		}
+	}
+}
+
+// Any portrait (below 1:1) must be padded up to a square — WhatsApp crops
+// portrait bubbles even at 4:5, so the floor is 1.0.
+func TestPadToSafeAspect_PortraitBecomesSquare(t *testing.T) {
+	for _, c := range [][2]int{{500, 1000}, {854, 1200}, {281, 1000}} {
+		out, err := PadToSafeAspectJPEG(makeImage(t, c[0], c[1], "jpeg"))
+		if err != nil {
+			t.Fatalf("%dx%d: %v", c[0], c[1], err)
+		}
+		w, h := decodedSize(t, out)
+		if w != h || h != c[1] {
+			t.Fatalf("portrait %dx%d should pad to %dx%d square, got %dx%d", c[0], c[1], c[1], c[1], w, h)
+		}
+	}
+}
+
+// Too-wide landscape must be heightened to maxAspect.
+func TestPadToSafeAspect_WideLandscapeHeightened(t *testing.T) {
+	out, err := PadToSafeAspectJPEG(makeImage(t, 1910, 500, "jpeg")) // 3.82 aspect
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	w, h := decodedSize(t, out)
+	if w != 1910 {
+		t.Fatalf("width should be unchanged at 1910, got %d", w)
+	}
+	if h != 1000 { // 1910 / 1.91
+		t.Fatalf("height should be padded to 1000 (maxAspect), got %d", h)
+	}
+}
+
+// Padding gutters must be white.
+func TestPadToSafeAspect_PadIsWhite(t *testing.T) {
+	out, err := PadToSafeAspectJPEG(makeImage(t, 100, 300, "jpeg")) // very tall → wide gutters
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	img, err := jpeg.Decode(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("decode out: %v", err)
+	}
+	r, g, b, _ := img.At(2, img.Bounds().Dy()/2).RGBA() // left gutter, mid-height
+	if r>>8 < 240 || g>>8 < 240 || b>>8 < 240 {
+		t.Fatalf("expected near-white padding, got rgb(%d,%d,%d)", r>>8, g>>8, b>>8)
+	}
+}
+
+func TestPadToSafeAspect_BadInput(t *testing.T) {
+	if _, err := PadToSafeAspectJPEG([]byte("not an image")); err == nil {
+		t.Fatal("expected error for undecodable input")
+	}
+}
