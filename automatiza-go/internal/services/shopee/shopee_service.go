@@ -42,6 +42,7 @@ type shopeeService struct {
 	baseURL       string
 	categoryMap   map[string][]int
 	logger        *zap.Logger
+	breaker       *circuitBreaker
 }
 
 // NewShopeeService creates a new Shopee service
@@ -53,7 +54,12 @@ func NewShopeeService(
 ) Service {
 	return &shopeeService{
 		httpClient: &http.Client{
-			Timeout:   30 * time.Second,
+			// 8s (was 30s): Shopee GraphQL normally responds in <2s. A 30s
+			// timeout means each call to a DOWN Shopee hangs 30s; in the serial
+			// automation scheduler that burns the shared 5min tick budget after
+			// ~10 hung calls, starving every other automation (ML lists, etc).
+			// Fail fast and let the circuit breaker take over.
+			Timeout:   8 * time.Second,
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 		cache:         cache,
@@ -62,6 +68,8 @@ func NewShopeeService(
 		baseURL:       "https://open-api.affiliate.shopee.com.br",
 		categoryMap:   initCategoryMapping(),
 		logger:        logger,
+		// Open after 5 consecutive infra failures, stay open 30s, then probe.
+		breaker: newCircuitBreaker(5, 30*time.Second),
 	}
 }
 
@@ -115,6 +123,16 @@ func shopeeSign(appID, timestamp, payload, secret string) string {
 
 // shopeeGraphQL executes an authenticated GraphQL request to the Shopee Open API.
 func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payload string) (json.RawMessage, error) {
+	// Circuit breaker: when Shopee has been failing, short-circuit instantly
+	// instead of hanging up to the HTTP timeout. This is what keeps a Shopee
+	// outage from cascading into the shared automation-scheduler context and
+	// stalling ML / list / offer automations for everyone.
+	if !s.breaker.canRequest() {
+		s.logger.Warn("Shopee circuit breaker open, skipping GraphQL call",
+			zap.String("external_service", "shopee"))
+		return nil, ErrShopeeUnavailable
+	}
+
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	sig := shopeeSign(appID, ts, payload, secret)
 
@@ -132,6 +150,8 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 	resp, err := s.httpClient.Do(req)
 	span.Finish()
 	if err != nil {
+		// Network error / timeout / context deadline = infra failure → trip breaker.
+		s.breaker.recordFailure()
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee GraphQL HTTP request failed", err, map[string]string{
 			"external_service": "shopee",
 			"endpoint":         "graphql",
@@ -142,6 +162,7 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20)) // 2MB limit
 	if err != nil {
+		s.breaker.recordFailure()
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to read Shopee GraphQL response body", err, map[string]string{
 			"external_service": "shopee",
 			"endpoint":         "graphql",
@@ -150,6 +171,13 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		// 5xx = server-side outage → trip breaker. 4xx is a request/config
+		// problem (bad creds, bad query): the endpoint is up, don't trip.
+		if resp.StatusCode >= 500 {
+			s.breaker.recordFailure()
+		} else {
+			s.breaker.recordSuccess()
+		}
 		httpErr := fmt.Errorf("shopee API error %d: %s", resp.StatusCode, string(body))
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee GraphQL returned non-200 status", httpErr, map[string]string{
 			"external_service": "shopee",
@@ -158,6 +186,10 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 		})
 		return nil, httpErr
 	}
+
+	// Reached the endpoint and got 200 — Shopee is up. GraphQL-level errors
+	// below (e.g. invalid signature) are config issues, not an outage.
+	s.breaker.recordSuccess()
 
 	// Check for GraphQL errors
 	var gqlResp struct {
