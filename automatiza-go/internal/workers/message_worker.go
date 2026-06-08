@@ -31,6 +31,7 @@ type MessageWorker struct {
 	historyRepo      repository.ActionHistoryRepository
 	dispatchLogRepo  repository.DispatchLogRepository
 	logger           *zap.Logger
+	deadGroups       *deadGroupCache
 }
 
 // NewMessageWorker creates a new message worker.
@@ -48,6 +49,7 @@ func NewMessageWorker(
 		historyRepo:      historyRepo,
 		dispatchLogRepo:  dispatchLogRepo,
 		logger:           logger,
+		deadGroups:       newDeadGroupCache(),
 	}
 }
 
@@ -65,6 +67,24 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		zap.Bool("hasImage", data.ImageURL != nil && *data.ImageURL != ""),
 		zap.Bool("hasAudio", data.AudioBase64 != nil && *data.AudioBase64 != ""),
 		zap.Int("messageLen", len(data.Message)))
+
+	// 0. Skip grupos onde a sessão sabidamente não participa mais.
+	// Quando o bot é removido de um grupo, o WAHA responde 500 "you're not
+	// participating in that group" a cada envio — e como a automação re-mira o
+	// mesmo grupo a cada ciclo (e por produto), isso vira um storm de 500 +
+	// fallback texto + retries do asynq. O primeiro envio que falhar marca o
+	// grupo nesse cache (TTL curto); os seguintes saem aqui sem tocar o WAHA.
+	if w.deadGroups.isDead(data.InstanceName, data.GroupID, time.Now()) {
+		w.logger.Warn("Skipping dispatch — session not participating in group (cached)",
+			zap.String("automationID", data.AutomationID),
+			zap.String("instanceName", data.InstanceName),
+			zap.String("groupId", data.GroupID))
+		w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
+			"status": "skipped",
+			"error":  "bot nao participa do grupo",
+		})
+		return nil // Terminal: não adianta enviar nem retentar
+	}
 
 	// 1. URL Safety Check
 	if w.urlSafetyService != nil {
@@ -324,6 +344,23 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 			return sendErr // Retry
 		}
 
+		// Bot removido do grupo: WAHA responde 500 "you're not participating in
+		// that group". Não adianta retentar (nem o fallback texto resolve), e
+		// re-mirar o grupo todo ciclo só gera ruido. Marca no cache para os
+		// próximos envios saírem cedo (passo 0) e encerra sem retry.
+		if isNotParticipatingError(sendErr) {
+			w.deadGroups.markDead(data.InstanceName, data.GroupID, time.Now())
+			w.logger.Warn("Session not participating in group, skipping (no retry)",
+				zap.String("automationID", data.AutomationID),
+				zap.String("instanceName", data.InstanceName),
+				zap.String("groupId", data.GroupID))
+			w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
+				"status": "skipped",
+				"error":  "bot nao participa do grupo",
+			})
+			return nil // Terminal
+		}
+
 		// Other errors: retry
 		w.logger.Error("Failed to send message",
 			zap.String("automationID", data.AutomationID),
@@ -385,6 +422,19 @@ func isTimeoutError(err error) bool {
 	errStr := strings.ToLower(err.Error())
 	return strings.Contains(errStr, "timeout") ||
 		strings.Contains(errStr, "context deadline exceeded")
+}
+
+// isNotParticipatingError detecta a resposta do WAHA/GOWS quando a sessão não é
+// mais participante do grupo de destino ("you're not participating in that
+// group" / "failed to get group members"). Casa no texto do erro porque vem
+// embrulhado como erro genérico (WAHA error 500), não como ProviderError.
+func isNotParticipatingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "not participating in that group") ||
+		strings.Contains(errStr, "failed to get group members")
 }
 
 func is404Error(err error) bool {
