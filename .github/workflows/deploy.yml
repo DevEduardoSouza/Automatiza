@@ -142,6 +142,7 @@ jobs:
           AI_API_KEY=${{ secrets.AI_API_KEY }}
           AI_MODEL=${{ vars.AI_MODEL }}
           FEATURE_USE_MULTI_INSTANCE_DISPATCH=${{ vars.FEATURE_USE_MULTI_INSTANCE_DISPATCH }}
+          SESSION_PACE_MS=${{ vars.SESSION_PACE_MS }}
           EOF
           # Remove leading whitespace from heredoc
           sed 's/^          //' /tmp/.env.deploy > /tmp/.env.clean
