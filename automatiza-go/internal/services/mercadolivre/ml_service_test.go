@@ -594,6 +594,26 @@ func TestCreateAffiliateLink(t *testing.T) {
 		}
 	})
 
+	t.Run("affiliate short link is returned as-is (no error, no creds)", func(t *testing.T) {
+		// meli.la/sec short links are already affiliate links and have no MLB id;
+		// they must not error (that used to drop the whole offer in offer_generate).
+		for _, u := range []string{"https://meli.la/2dKTwgt", "https://www.mercadolivre.com.br/sec/2dKTwgt"} {
+			svc := NewMLService(nil, &mockMLCredsRepo{
+				GetFn: func(_ context.Context, _ string) (*models.MLCredentialsDB, error) {
+					return nil, fmt.Errorf("creds must NOT be needed for affiliate short links")
+				},
+			}, &mockMLLinkRepo{}, testEncryptionKey, logger)
+
+			result, err := svc.CreateAffiliateLink(context.Background(), u, "user1")
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", u, err)
+			}
+			if result == nil || result.AffiliateLink != u {
+				t.Fatalf("%s: AffiliateLink = %v, want the URL itself", u, result)
+			}
+		}
+	})
+
 	t.Run("existing link in DB returns cached", func(t *testing.T) {
 		svc := NewMLService(nil, &mockMLCredsRepo{
 			GetFn: func(_ context.Context, _ string) (*models.MLCredentialsDB, error) {
