@@ -1,3 +1,5 @@
+import { Code, ConnectError } from '@connectrpc/connect';
+
 import {
   GENERAL_CATEGORY,
   clampIntervalMinutes,
@@ -716,6 +718,18 @@ export function useAutomations(): UseAutomationsReturn {
       loadAutomations();
     } catch (error: unknown) {
       captureHookError(error, 'useAutomations', 'handleSave');
+      // Plan group-limit (and other quota) blocks come back as ResourceExhausted
+      // with a user-facing message from the backend (e.g. "Limite de 5 grupos do
+      // seu plano atingido…"). Surface that instead of the generic save error so
+      // the user knows to reduce groups or upgrade.
+      if (error instanceof ConnectError && error.code === Code.ResourceExhausted) {
+        toast({
+          title: t('pages.offerAutomations.limits.groupsReached'),
+          description: error.rawMessage,
+          variant: 'destructive',
+        });
+        return;
+      }
       toast({
         title: t('pages.offerAutomations.errors.save'),
         description: t('pages.offerAutomations.errors.saveMessage'),

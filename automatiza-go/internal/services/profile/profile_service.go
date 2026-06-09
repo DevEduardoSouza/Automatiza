@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"automatiza-go/internal/models"
@@ -84,11 +85,44 @@ func (s *ProfileService) GetUserLimits(ctx context.Context, userID string) (*Use
 		maxAutomations = GetMaxAutomationsForPlan(profile.Plan)
 	}
 
+	// Distinct destination groups across ACTIVE automations — mirrors the
+	// per-plan group cap (see AutomationsHandler.validatePlanGroupLimit) so the
+	// dashboard "X / N grupos" matches what the enforcement actually counts.
+	groupSet := make(map[string]struct{})
+	for i := range automations {
+		a := &automations[i]
+		if !a.IsActive() {
+			continue
+		}
+		for _, g := range a.GetTargetGroups() {
+			groupSet[g] = struct{}{}
+		}
+	}
+
 	return &UserLimits{
 		AutomationsCount:        int32(len(automations)),
 		MaxAutomations:          maxAutomations,
 		ConnectedInstancesCount: connectedCount,
+		GroupLimit:              GetGroupLimitForPlan(profile.Plan),
+		GroupsUsed:              int32(len(groupSet)),
 	}, nil
+}
+
+// GetGroupLimitForPlan returns the distinct-group cap for a plan slug. The
+// tiered plans encode the limit in the slug itself ("grupos-5" → 5,
+// "grupos-200" → 200), so we derive it directly — no DB lookup and no risk of
+// drifting from the seeded values. Any non-tiered slug (free/starter/pro/
+// enterprise/elite/empty) returns 0 = unlimited (grandfathered).
+func GetGroupLimitForPlan(plan string) int32 {
+	const prefix = "grupos-"
+	if !strings.HasPrefix(plan, prefix) {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimPrefix(plan, prefix))
+	if err != nil || n < 0 || n > 100000 {
+		return 0
+	}
+	return int32(n) //nolint:gosec // n is bounded to [0,100000] above; fits int32
 }
 
 // UpdateProfile updates user profile fields

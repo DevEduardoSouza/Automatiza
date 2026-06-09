@@ -160,8 +160,12 @@ type UserLimits struct {
 	MaxAutomations *int32 `protobuf:"varint,2,opt,name=max_automations,json=maxAutomations,proto3,oneof" json:"max_automations,omitempty"`
 	// Connected WhatsApp instances count
 	ConnectedInstancesCount int32 `protobuf:"varint,3,opt,name=connected_instances_count,json=connectedInstancesCount,proto3" json:"connected_instances_count,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// Max distinct destination groups the plan allows (0 = unlimited)
+	GroupLimit int32 `protobuf:"varint,4,opt,name=group_limit,json=groupLimit,proto3" json:"group_limit,omitempty"`
+	// Current distinct destination groups used across active automations
+	GroupsUsed    int32 `protobuf:"varint,5,opt,name=groups_used,json=groupsUsed,proto3" json:"groups_used,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UserLimits) Reset() {
@@ -211,6 +215,20 @@ func (x *UserLimits) GetMaxAutomations() int32 {
 func (x *UserLimits) GetConnectedInstancesCount() int32 {
 	if x != nil {
 		return x.ConnectedInstancesCount
+	}
+	return 0
+}
+
+func (x *UserLimits) GetGroupLimit() int32 {
+	if x != nil {
+		return x.GroupLimit
+	}
+	return 0
+}
+
+func (x *UserLimits) GetGroupsUsed() int32 {
+	if x != nil {
+		return x.GroupsUsed
 	}
 	return 0
 }
@@ -1420,12 +1438,16 @@ const file_profiles_v1_profiles_proto_rawDesc = "" +
 	"\r_phone_numberB\x12\n" +
 	"\x10_max_automationsB\x1a\n" +
 	"\x18_billing_next_payment_atB\x14\n" +
-	"\x12_plan_access_until\"\xb7\x01\n" +
+	"\x12_plan_access_until\"\xf9\x01\n" +
 	"\n" +
 	"UserLimits\x12+\n" +
 	"\x11automations_count\x18\x01 \x01(\x05R\x10automationsCount\x12,\n" +
 	"\x0fmax_automations\x18\x02 \x01(\x05H\x00R\x0emaxAutomations\x88\x01\x01\x12:\n" +
-	"\x19connected_instances_count\x18\x03 \x01(\x05R\x17connectedInstancesCountB\x12\n" +
+	"\x19connected_instances_count\x18\x03 \x01(\x05R\x17connectedInstancesCount\x12\x1f\n" +
+	"\vgroup_limit\x18\x04 \x01(\x05R\n" +
+	"groupLimit\x12\x1f\n" +
+	"\vgroups_used\x18\x05 \x01(\x05R\n" +
+	"groupsUsedB\x12\n" +
 	"\x10_max_automations\"\x13\n" +
 	"\x11GetProfileRequest\"D\n" +
 	"\x12GetProfileResponse\x12.\n" +

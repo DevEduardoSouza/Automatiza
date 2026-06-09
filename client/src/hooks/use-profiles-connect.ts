@@ -50,6 +50,10 @@ export interface LocalUserLimits {
   automations_count: number;
   max_automations?: number;
   connected_instances_count: number;
+  /** Max distinct destination groups the plan allows (0 = unlimited). */
+  group_limit: number;
+  /** Current distinct destination groups used across active automations. */
+  groups_used: number;
 }
 
 export interface UpdateProfileParams {
@@ -125,6 +129,8 @@ function fromProtoUserLimits(limits: UserLimits): LocalUserLimits {
     automations_count: limits.automationsCount,
     max_automations: limits.maxAutomations,
     connected_instances_count: limits.connectedInstancesCount,
+    group_limit: limits.groupLimit,
+    groups_used: limits.groupsUsed,
   };
 }
 
