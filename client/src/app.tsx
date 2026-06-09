@@ -1,4 +1,5 @@
-import { AccountSuspendedBanner } from '@/components/billing';
+import { AccountSuspendedBanner, AccountSuspendedNotice } from '@/components/billing';
+import { useAccountSuspended } from '@/hooks/use-account-suspended';
 import { ErrorFallback } from '@/components/error-boundary';
 import { AppSidebar, MobileHeader } from '@/components/layout';
 import { AdminRoute, ProtectedRoute } from '@/components/routing';
@@ -90,18 +91,28 @@ const queryClient = new QueryClient({
   },
 });
 
-const AppLayout = ({ children }: { children: React.ReactNode }) => (
-  <SidebarProvider>
-    <div className="flex min-h-screen w-full">
-      <AppSidebar />
-      <main className="flex-1 flex flex-col">
-        <MobileHeader />
-        <AccountSuspendedBanner />
-        <div className="flex-1 p-4 nav:p-8 lg:p-10 xl:p-12">{children}</div>
-      </main>
-    </div>
-  </SidebarProvider>
-);
+const AppLayout = ({ children }: { children: React.ReactNode }) => {
+  // When suspended, render the notice instead of the page. This stops the
+  // page's data hooks/pollers (instances, automations, etc.) from mounting —
+  // those endpoints return PermissionDenied while suspended and were being
+  // retried in a tight loop (e.g. /offer-automations, /offer-generate).
+  const { suspended } = useAccountSuspended();
+
+  return (
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full">
+        <AppSidebar />
+        <main className="flex-1 flex flex-col">
+          <MobileHeader />
+          <AccountSuspendedBanner />
+          <div className="flex-1 p-4 nav:p-8 lg:p-10 xl:p-12">
+            {suspended ? <AccountSuspendedNotice /> : children}
+          </div>
+        </main>
+      </div>
+    </SidebarProvider>
+  );
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
