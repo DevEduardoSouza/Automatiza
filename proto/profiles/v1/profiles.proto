@@ -57,6 +57,12 @@ message UserLimits {
 
   // Connected WhatsApp instances count
   int32 connected_instances_count = 3;
+
+  // Max distinct destination groups the plan allows (0 = unlimited)
+  int32 group_limit = 4;
+
+  // Current distinct destination groups used across active automations
+  int32 groups_used = 5;
 }
 
 // ============================================================

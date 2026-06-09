@@ -109,6 +109,8 @@ func (h *ProfilesHandler) GetUserLimits(
 			AutomationsCount:        limits.AutomationsCount,
 			MaxAutomations:          maxAutomations,
 			ConnectedInstancesCount: limits.ConnectedInstancesCount,
+			GroupLimit:              limits.GroupLimit,
+			GroupsUsed:              limits.GroupsUsed,
 		},
 	}), nil
 }

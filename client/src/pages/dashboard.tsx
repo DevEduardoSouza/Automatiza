@@ -1,3 +1,4 @@
+import { PlanGroupUsageCard } from '@/components/dashboard/plan-group-usage-card';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDashboard } from '@/hooks/use-dashboard';
@@ -379,6 +380,11 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+
+          {/* Plan group usage (only shown for tiered group plans) */}
+          <div className="mb-5 xs:mb-6 sm:mb-8 lg:mb-10">
+            <PlanGroupUsageCard />
+          </div>
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 xs:gap-4 sm:gap-5 lg:gap-5 xl:gap-6 mb-5 xs:mb-6 sm:mb-8 lg:mb-10">

@@ -41,6 +41,12 @@ type UserLimits struct {
 	AutomationsCount        int32
 	MaxAutomations          int32
 	ConnectedInstancesCount int32
+	// GroupLimit is the max distinct destination groups the user's plan allows
+	// across active automations. 0 = unlimited (legacy plans / no tiered plan).
+	GroupLimit int32
+	// GroupsUsed is the current distinct destination-group count across the
+	// user's ACTIVE automations (mirrors the per-plan enforcement count).
+	GroupsUsed int32
 }
 
 // ProfilesPage contains a page of profiles for admin listing
