@@ -143,6 +143,7 @@ jobs:
           AI_MODEL=${{ vars.AI_MODEL }}
           FEATURE_USE_MULTI_INSTANCE_DISPATCH=${{ vars.FEATURE_USE_MULTI_INSTANCE_DISPATCH }}
           SESSION_PACE_MS=${{ vars.SESSION_PACE_MS }}
+          FEATURE_ENFORCE_PLAN_GROUP_LIMITS=${{ vars.FEATURE_ENFORCE_PLAN_GROUP_LIMITS }}
           EOF
           # Remove leading whitespace from heredoc
           sed 's/^          //' /tmp/.env.deploy > /tmp/.env.clean
