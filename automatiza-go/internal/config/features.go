@@ -46,6 +46,15 @@ type FeatureFlags struct {
 	// Flip to true to re-enable the WhatsApp-ban-protection cap.
 	// Environment variable: FEATURE_ENFORCE_GROUP_LIMITS
 	EnforceGroupLimits bool
+
+	// EnforcePlanGroupLimits gates the per-PLAN total group cap: a user may only
+	// target up to their plan's group_limit distinct groups across all their
+	// active automations (send_groups). When true, Create/Update automation is
+	// rejected if it would push the distinct-group total over the limit. When
+	// false (default), no plan limit is enforced — existing users are unaffected
+	// (grandfathered), so this can ship dark and be flipped on after validation.
+	// Environment variable: FEATURE_ENFORCE_PLAN_GROUP_LIMITS
+	EnforcePlanGroupLimits bool
 }
 
 var (
@@ -71,6 +80,7 @@ func LoadFeatureFlags() *FeatureFlags {
 			UseGoReconciliation:      getEnvBool("FEATURE_USE_GO_RECONCILIATION", true),
 			UseMultiInstanceDispatch: getEnvBool("FEATURE_USE_MULTI_INSTANCE_DISPATCH", false),
 			EnforceGroupLimits:       getEnvBool("FEATURE_ENFORCE_GROUP_LIMITS", false),
+			EnforcePlanGroupLimits:   getEnvBool("FEATURE_ENFORCE_PLAN_GROUP_LIMITS", false),
 		}
 
 		// Log feature flag values on load
@@ -79,7 +89,8 @@ func LoadFeatureFlags() *FeatureFlags {
 				zap.Bool("useGoDispatchLogs", globalFeatureFlags.UseGoDispatchLogs),
 				zap.Bool("useGoReconciliation", globalFeatureFlags.UseGoReconciliation),
 				zap.Bool("useMultiInstanceDispatch", globalFeatureFlags.UseMultiInstanceDispatch),
-				zap.Bool("enforceGroupLimits", globalFeatureFlags.EnforceGroupLimits))
+				zap.Bool("enforceGroupLimits", globalFeatureFlags.EnforceGroupLimits),
+				zap.Bool("enforcePlanGroupLimits", globalFeatureFlags.EnforcePlanGroupLimits))
 		}
 	})
 

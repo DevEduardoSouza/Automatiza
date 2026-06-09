@@ -29,6 +29,8 @@ type AutomationsHandler struct {
 	automationRepo    repository.AutomationRepository
 	dispatchLogRepo   repository.DispatchLogRepository
 	groupRepo         repository.GroupRepository
+	profileRepo       repository.ProfileRepository
+	planRepo          repository.PlanRepository
 	automationService automation.Service
 	jobsService       jobs.Service
 	logger            *zap.Logger
@@ -37,10 +39,14 @@ type AutomationsHandler struct {
 // NewAutomationsHandler creates a new automations handler.
 // groupRepo is optional: when nil, the per-chip group quota check is skipped
 // (callers like older test setups can opt out without touching every fixture).
+// profileRepo/planRepo are optional too: when either is nil, the per-plan
+// group-limit check is skipped (fail-open).
 func NewAutomationsHandler(
 	automationRepo repository.AutomationRepository,
 	dispatchLogRepo repository.DispatchLogRepository,
 	groupRepo repository.GroupRepository,
+	profileRepo repository.ProfileRepository,
+	planRepo repository.PlanRepository,
 	automationService automation.Service,
 	jobsService jobs.Service,
 	logger *zap.Logger,
@@ -49,6 +55,8 @@ func NewAutomationsHandler(
 		automationRepo:    automationRepo,
 		dispatchLogRepo:   dispatchLogRepo,
 		groupRepo:         groupRepo,
+		profileRepo:       profileRepo,
+		planRepo:          planRepo,
 		automationService: automationService,
 		jobsService:       jobsService,
 		logger:            logger,
@@ -112,6 +120,87 @@ func (h *AutomationsHandler) validateAutomationGroupQuota(ctx context.Context, u
 		}
 	}
 	return quota.CheckAutomationGroupsPerInstance(countByInstance)
+}
+
+// validatePlanGroupLimit enforces the per-PLAN total cap: a user may target at
+// most plan.group_limit DISTINCT groups across all their active automations
+// (destination/send groups). automationID is the automation being created
+// ("" for create) or updated; newSend is its resulting send_groups. Returns a
+// CodeResourceExhausted connect error only when the operation would push the
+// distinct total OVER the limit AND increase it (grandfather: users already
+// above the limit keep working and can edit/remove, just not add more).
+//
+// Fail-open by design: flag off, missing repos, unresolved plan, or any repo
+// error → nil (never blocks a legitimate save on infra hiccups). Ships dark.
+func (h *AutomationsHandler) validatePlanGroupLimit(ctx context.Context, userID, automationID string, newSend []string) error {
+	if !config.GetFeatureFlags().EnforcePlanGroupLimits {
+		return nil
+	}
+	if h.profileRepo == nil || h.planRepo == nil {
+		return nil
+	}
+
+	profile, err := h.profileRepo.GetProfile(ctx, userID)
+	if err != nil || profile == nil || profile.Plan == "" {
+		return nil // can't resolve user's plan → grandfather (no limit)
+	}
+	plan, err := h.planRepo.GetBySlug(ctx, profile.Plan)
+	if err != nil || plan == nil || plan.GroupLimit <= 0 {
+		return nil // no matching plan / no limit → grandfather
+	}
+	limit := int(plan.GroupLimit)
+
+	autos, err := h.automationRepo.GetUserAutomations(ctx, userID)
+	if err != nil {
+		return nil // fail-open on repo error
+	}
+
+	if exceeded, after := planGroupLimitExceeded(limit, autos, automationID, newSend); exceeded {
+		return connect.NewError(connect.CodeResourceExhausted, fmt.Errorf(
+			"Limite de %d grupos do seu plano atingido (você está usando %d). Faça upgrade do plano para adicionar mais grupos.",
+			limit, after))
+	}
+	return nil
+}
+
+// planGroupLimitExceeded is the pure counting core of the per-plan group cap.
+// It returns whether applying newSend to automationID ("" = create) would push
+// the user's DISTINCT destination-group total over `limit` AND increase it
+// (grandfather: users already above the limit aren't blocked unless they add
+// more). `after` is the resulting distinct total, for the error message.
+func planGroupLimitExceeded(limit int, autos []models.Automation, automationID string, newSend []string) (exceeded bool, after int) {
+	before := make(map[string]struct{})
+	afterSet := make(map[string]struct{})
+	for i := range autos {
+		a := &autos[i]
+		isTarget := automationID != "" && a.ID == automationID
+		// Non-target paused automations don't consume the quota. The target is
+		// always counted (it's being saved with groups → treat as in use), so
+		// editing a paused automation can't sneak past the cap.
+		if !isTarget && !a.IsActive() {
+			continue
+		}
+		if isTarget {
+			for _, g := range a.GetTargetGroups() {
+				before[g] = struct{}{}
+			}
+			for _, g := range newSend {
+				afterSet[g] = struct{}{}
+			}
+			continue
+		}
+		for _, g := range a.GetTargetGroups() {
+			before[g] = struct{}{}
+			afterSet[g] = struct{}{}
+		}
+	}
+	if automationID == "" {
+		// Create: the new automation isn't in the repo yet.
+		for _, g := range newSend {
+			afterSet[g] = struct{}{}
+		}
+	}
+	return len(afterSet) > limit && len(afterSet) > len(before), len(afterSet)
 }
 
 // ListAutomations returns all automations for the authenticated user.
@@ -213,6 +302,12 @@ func (h *AutomationsHandler) CreateAutomation(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
+	// Per-plan total group cap (flag-gated; fail-open). Counts distinct
+	// destination groups across the user's active automations plus this new one.
+	if err := h.validatePlanGroupLimit(ctx, user.ID, "", automation.SendGroups); err != nil {
+		return nil, err
+	}
+
 	created, err := h.automationRepo.CreateAutomation(ctx, user.ID, automation)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create automation: %w", err))
@@ -268,6 +363,10 @@ func (h *AutomationsHandler) UpdateAutomation(
 					fmt.Errorf("Limite de %d grupos por chip atingido nesta automação. Distribua os grupos entre mais chips ou remova alguns", quota.MaxGroupsPerInstance))
 			}
 			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+		// Per-plan total group cap (flag-gated; fail-open).
+		if err := h.validatePlanGroupLimit(ctx, user.ID, req.Msg.GetId(), newSend); err != nil {
+			return nil, err
 		}
 	}
 	if newMonitor, ok := updates["monitor_group_ids"].([]string); ok {
