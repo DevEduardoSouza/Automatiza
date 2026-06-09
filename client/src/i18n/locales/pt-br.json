@@ -2307,7 +2307,8 @@
         "automationsReached": "Limite de automações atingido",
         "automationsReachedMessage": "Você já possui {{count}} automações. Seu limite atual é {{max}}. Apague uma automação ou fale com o suporte para aumentar seu limite.",
         "reachedMessage": "Você atingiu o limite de {{max}} automações no seu plano. Apague uma automação para criar outra, ou fale com o suporte para aumentar seu limite.",
-        "nearMessage": "Você está perto do limite ({{count}}/{{max}}). Se precisar, apague automações antigas."
+        "nearMessage": "Você está perto do limite ({{count}}/{{max}}). Se precisar, apague automações antigas.",
+        "groupsReached": "Limite de grupos do plano atingido"
       },
       "success": {
         "created": "Automação criada com sucesso!",
