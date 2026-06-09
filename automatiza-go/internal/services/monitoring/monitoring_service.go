@@ -604,21 +604,38 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 }
 
 func (s *monitoringService) findMatchingAutomations(ctx context.Context, instanceName, groupJID string) ([]models.Automation, error) {
-	// Get all monitoring automations for this group
+	// Get all monitoring automations for this group (across ALL users).
 	automations, err := s.automationRepo.GetMonitoringAutomationsForGroup(ctx, groupJID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Filter to active ones with matching instance
+	// A popular source group is delivered by EVERY member's session, so a
+	// webhook for it can fire automations of users whose own chip isn't in the
+	// group anymore — they'd keep "copying" a group they already left (real bug
+	// reported by paollas2kaiber). Scope the match to the user whose session
+	// actually delivered this message (= whose chip is in the source group).
+	ownerUserID := ""
+	if inst, ierr := s.instanceRepo.GetInstanceByName(ctx, instanceName); ierr == nil && inst != nil {
+		ownerUserID = inst.UserID
+	} else {
+		// Couldn't resolve the session owner — fail open (group-only match)
+		// rather than drop a legitimate relay. Rare; logged for visibility.
+		s.logger.Warn("Could not resolve session owner for monitoring match; matching by group only",
+			zap.String("instance", instanceName),
+			zap.String("group", groupJID))
+	}
+
 	var matching []models.Automation
 	for _, auto := range automations {
 		if !auto.IsActive() {
 			continue
 		}
-
-		// Check if instance matches (if we can determine)
-		// For now, accept all active monitoring automations for this group
+		// Only the owner of the delivering session — i.e. the user whose chip is
+		// actually in the source group — should fire here.
+		if ownerUserID != "" && auto.UserID != ownerUserID {
+			continue
+		}
 		matching = append(matching, auto)
 	}
 
