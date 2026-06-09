@@ -55,6 +55,14 @@ type FeatureFlags struct {
 	// (grandfathered), so this can ship dark and be flipped on after validation.
 	// Environment variable: FEATURE_ENFORCE_PLAN_GROUP_LIMITS
 	EnforcePlanGroupLimits bool
+
+	// EnforceKiwifyStrictSignature, when true, REJECTS Kiwify webhooks whose
+	// HMAC-SHA1 signature (over the raw body, keyed by KIWIFY_WEBHOOK_TOKEN)
+	// does not match. When false (default), the signature is only logged
+	// (observe). Kiwify signs with HMAC-SHA1 (confirmed from real purchase +
+	// refund webhooks). Ship dark, flip on after confirming legit webhooks pass.
+	// Environment variable: FEATURE_KIWIFY_STRICT_SIGNATURE
+	EnforceKiwifyStrictSignature bool
 }
 
 var (
@@ -76,11 +84,12 @@ func SetFeatureFlagsLogger(logger *zap.Logger) {
 func LoadFeatureFlags() *FeatureFlags {
 	featureFlagsOnce.Do(func() {
 		globalFeatureFlags = &FeatureFlags{
-			UseGoDispatchLogs:        getEnvBool("FEATURE_USE_GO_DISPATCH_LOGS", true),
-			UseGoReconciliation:      getEnvBool("FEATURE_USE_GO_RECONCILIATION", true),
-			UseMultiInstanceDispatch: getEnvBool("FEATURE_USE_MULTI_INSTANCE_DISPATCH", false),
-			EnforceGroupLimits:       getEnvBool("FEATURE_ENFORCE_GROUP_LIMITS", false),
-			EnforcePlanGroupLimits:   getEnvBool("FEATURE_ENFORCE_PLAN_GROUP_LIMITS", false),
+			UseGoDispatchLogs:            getEnvBool("FEATURE_USE_GO_DISPATCH_LOGS", true),
+			UseGoReconciliation:          getEnvBool("FEATURE_USE_GO_RECONCILIATION", true),
+			UseMultiInstanceDispatch:     getEnvBool("FEATURE_USE_MULTI_INSTANCE_DISPATCH", false),
+			EnforceGroupLimits:           getEnvBool("FEATURE_ENFORCE_GROUP_LIMITS", false),
+			EnforcePlanGroupLimits:       getEnvBool("FEATURE_ENFORCE_PLAN_GROUP_LIMITS", false),
+			EnforceKiwifyStrictSignature: getEnvBool("FEATURE_KIWIFY_STRICT_SIGNATURE", false),
 		}
 
 		// Log feature flag values on load
@@ -90,7 +99,8 @@ func LoadFeatureFlags() *FeatureFlags {
 				zap.Bool("useGoReconciliation", globalFeatureFlags.UseGoReconciliation),
 				zap.Bool("useMultiInstanceDispatch", globalFeatureFlags.UseMultiInstanceDispatch),
 				zap.Bool("enforceGroupLimits", globalFeatureFlags.EnforceGroupLimits),
-				zap.Bool("enforcePlanGroupLimits", globalFeatureFlags.EnforcePlanGroupLimits))
+				zap.Bool("enforcePlanGroupLimits", globalFeatureFlags.EnforcePlanGroupLimits),
+				zap.Bool("enforceKiwifyStrictSignature", globalFeatureFlags.EnforceKiwifyStrictSignature))
 		}
 	})
 
