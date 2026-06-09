@@ -119,10 +119,10 @@ func GetGroupLimitForPlan(plan string) int32 {
 		return 0
 	}
 	n, err := strconv.Atoi(strings.TrimPrefix(plan, prefix))
-	if err != nil || n < 0 {
+	if err != nil || n < 0 || n > 100000 {
 		return 0
 	}
-	return int32(n)
+	return int32(n) //nolint:gosec // n is bounded to [0,100000] above; fits int32
 }
 
 // UpdateProfile updates user profile fields
