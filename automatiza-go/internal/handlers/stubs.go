@@ -7,7 +7,13 @@ import (
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/services/coupons"
 	"context"
+	"crypto/hmac"
+	"crypto/sha1" //nolint:gosec // diagnostic only: detect whether Kiwify signs with HMAC-SHA1
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -305,9 +311,20 @@ func (h *WebhooksHandler) Kiwify(c *gin.Context) {
 		zap.String("contentType", c.ContentType()),
 	)
 
-	// Parse the webhook payload
+	// Read the raw body (needed for HMAC) then unmarshal — ShouldBindJSON would
+	// consume the stream and leave nothing to sign.
+	rawBody, readErr := io.ReadAll(c.Request.Body)
+	if readErr != nil {
+		h.deps.Logger.Error("Failed to read Kiwify webhook body", zap.Error(readErr))
+		c.JSON(http.StatusBadRequest, models.KiwifyWebhookResult{
+			Success: false,
+			Message: "Failed to read webhook body",
+		})
+		return
+	}
+
 	var payload models.KiwifyWebhookPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
+	if err := json.Unmarshal(rawBody, &payload); err != nil {
 		h.deps.Logger.Error("Failed to parse Kiwify webhook payload",
 			zap.Error(err))
 		c.JSON(http.StatusBadRequest, models.KiwifyWebhookResult{
@@ -322,6 +339,13 @@ func (h *WebhooksHandler) Kiwify(c *gin.Context) {
 	if signature == "" {
 		signature = payload.Signature
 	}
+
+	// OBSERVE-ONLY: log whether the signature matches HMAC-SHA256/SHA1 of the
+	// raw body with the configured token. Does NOT reject — this lets us confirm
+	// Kiwify's actual algorithm from real webhooks before turning on strict
+	// validation in a follow-up (turning strict on blindly with the wrong algo
+	// would reject every purchase).
+	h.observeKiwifySignature(rawBody, signature)
 
 	// Check if Kiwify service is configured
 	if h.deps.KiwifyService == nil {
@@ -346,6 +370,45 @@ func (h *WebhooksHandler) Kiwify(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// observeKiwifySignature logs (without rejecting) whether the received
+// signature matches HMAC-SHA256 or HMAC-SHA1 of the raw body with the
+// configured Kiwify token. Diagnostic step toward strict validation: the
+// signature length + which algo matches reveal Kiwify's scheme from real
+// webhooks. sha256-hex = 64 chars, sha1-hex = 40 chars.
+func (h *WebhooksHandler) observeKiwifySignature(rawBody []byte, signature string) {
+	if h.deps.Config == nil {
+		return
+	}
+	token := h.deps.Config.KiwifyWebhookToken
+	if token == "" || signature == "" {
+		h.deps.Logger.Warn("Kiwify signature observe: skipped",
+			zap.Bool("hasToken", token != ""),
+			zap.Bool("hasSignature", signature != ""))
+		return
+	}
+
+	sha256mac := hmac.New(sha256.New, []byte(token))
+	sha256mac.Write(rawBody)
+	sha256hex := hex.EncodeToString(sha256mac.Sum(nil))
+
+	sha1mac := hmac.New(sha1.New, []byte(token))
+	sha1mac.Write(rawBody)
+	sha1hex := hex.EncodeToString(sha1mac.Sum(nil))
+
+	matched := "none"
+	switch {
+	case hmac.Equal([]byte(strings.ToLower(signature)), []byte(sha256hex)):
+		matched = "sha256"
+	case hmac.Equal([]byte(strings.ToLower(signature)), []byte(sha1hex)):
+		matched = "sha1"
+	}
+
+	h.deps.Logger.Info("Kiwify signature observe",
+		zap.String("matched", matched),
+		zap.Int("receivedSigLen", len(signature)),
+		zap.Int("bodyLen", len(rawBody)))
 }
 
 func (h *WebhooksHandler) KiwifySimulate(c *gin.Context) {
