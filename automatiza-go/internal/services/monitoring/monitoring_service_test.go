@@ -556,6 +556,61 @@ func newTestService(t *testing.T, opts ...func(*monitoringService)) *monitoringS
 }
 
 // ---------------------------------------------------------------------------
+// findMatchingAutomations — session-owner scoping (cross-user leak fix)
+// ---------------------------------------------------------------------------
+
+func TestFindMatchingAutomations_ScopesToSessionOwner(t *testing.T) {
+	autos := []models.Automation{
+		{ID: "a-owner", Status: "active", UserID: "userA"},
+		{ID: "a-other", Status: "active", UserID: "userB"},
+	}
+
+	t.Run("only fires automation owned by the delivering session's user", func(t *testing.T) {
+		svc := newTestService(t, func(s *monitoringService) {
+			s.automationRepo = &mockAutomationRepo{
+				GetMonitoringAutomationsForGroupFn: func(_ context.Context, _ string) ([]models.Automation, error) {
+					return autos, nil
+				},
+			}
+			s.instanceRepo = &mockInstanceRepo{
+				GetInstanceByNameFn: func(_ context.Context, _ string) (*models.Instance, error) {
+					return &models.Instance{UserID: "userA"}, nil
+				},
+			}
+		})
+		got, err := svc.findMatchingAutomations(context.Background(), "sessA", "group@g.us")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 1 || got[0].ID != "a-owner" {
+			t.Fatalf("expected only a-owner (userA), got %v", got)
+		}
+	})
+
+	t.Run("fails open (group-only match) when session owner can't be resolved", func(t *testing.T) {
+		svc := newTestService(t, func(s *monitoringService) {
+			s.automationRepo = &mockAutomationRepo{
+				GetMonitoringAutomationsForGroupFn: func(_ context.Context, _ string) ([]models.Automation, error) {
+					return autos, nil
+				},
+			}
+			s.instanceRepo = &mockInstanceRepo{
+				GetInstanceByNameFn: func(_ context.Context, _ string) (*models.Instance, error) {
+					return nil, fmt.Errorf("not found")
+				},
+			}
+		})
+		got, err := svc.findMatchingAutomations(context.Background(), "sessX", "group@g.us")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("expected fail-open to return both automations, got %d", len(got))
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // ProcessIncomingMessage
 // ---------------------------------------------------------------------------
 

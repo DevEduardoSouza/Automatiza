@@ -175,18 +175,31 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 	}
 	s.markProcessed(ctx, msgKey, 10*time.Minute)
 
-	// 5. Find matching offer_generate automations for this group
+	// 5. Find matching offer_generate automations for this group (all users).
 	automations, err := s.automationRepo.GetOfferGenerateAutomationsForGroup(ctx, msg.RemoteJID)
 	if err != nil {
 		return err
 	}
 
-	// Filter to active only
+	// Scope to the user whose session actually delivered this message — i.e.
+	// whose chip is in the source group. A popular source group is delivered by
+	// EVERY member's session, so without this a user who LEFT the group keeps
+	// relaying it as long as anyone else's chip remains (cross-user leak).
+	ownerUserID := ""
+	if inst, ierr := s.instanceRepo.GetInstanceByName(ctx, msg.InstanceName); ierr == nil && inst != nil {
+		ownerUserID = inst.UserID
+	}
+
+	// Filter to active, owned-by-delivering-session automations.
 	var active []models.Automation
 	for _, a := range automations {
-		if a.IsActive() {
-			active = append(active, a)
+		if !a.IsActive() {
+			continue
 		}
+		if ownerUserID != "" && a.UserID != ownerUserID {
+			continue
+		}
+		active = append(active, a)
 	}
 
 	if len(active) == 0 {
@@ -985,11 +998,22 @@ func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.Inc
 		return err
 	}
 
+	// Scope to the user whose session delivered this message (chip in the source
+	// group) — see the product-link path above; prevents the cross-user leak.
+	ownerUserID := ""
+	if inst, ierr := s.instanceRepo.GetInstanceByName(ctx, msg.InstanceName); ierr == nil && inst != nil {
+		ownerUserID = inst.UserID
+	}
+
 	var active []models.Automation
 	for _, a := range automations {
-		if a.IsActive() {
-			active = append(active, a)
+		if !a.IsActive() {
+			continue
 		}
+		if ownerUserID != "" && a.UserID != ownerUserID {
+			continue
+		}
+		active = append(active, a)
 	}
 	if len(active) == 0 {
 		return nil
