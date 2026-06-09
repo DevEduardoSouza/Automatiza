@@ -73,6 +73,21 @@ const (
 )
 
 func (s *mlService) CreateAffiliateLink(ctx context.Context, originURL, userID string) (*models.MLAffiliateLink, error) {
+	// Affiliate short links (meli.la/XXX, mercadolivre.com/sec/XXX) are ALREADY
+	// affiliate links and carry no MLB id in the URL, so ExtractProductID can't
+	// parse them — which previously errored and made offer_generate/monitoring
+	// DROP the whole offer (e.g. meli.la posted in a "grupo gerador" never
+	// relayed). They're already affiliated, so just relay them as-is instead of
+	// trying to re-shorten. (Re-attributing a third party's affiliate short link
+	// to this user would require resolving the product and is out of scope.)
+	if isAffiliateURL(originURL) {
+		return &models.MLAffiliateLink{
+			OriginalURL:   originURL,
+			AffiliateLink: originURL,
+			ProductID:     affiliateShortCode(originURL),
+		}, nil
+	}
+
 	// Extract product ID
 	productID, err := s.ExtractProductID(originURL)
 	if err != nil {

@@ -521,16 +521,18 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			return nil
 		}
 
-		// Generate affiliate link
+		// Generate affiliate link. Credential errors pause the automation (the
+		// user must fix their ML login). Any OTHER failure must NOT drop the
+		// offer — we relay it with the originally posted link instead of losing
+		// it entirely (the preview already succeeded, so price/image are there).
 		affLink, affErr := s.mlService.CreateAffiliateLink(ctx, link, auto.UserID)
-		if affErr != nil {
-			if isCredentialError(affErr) {
-				s.pauseWithError(ctx, auto, "Credenciais ML inválidas - automação pausada")
-				return nil
-			}
-			s.logger.Warn("Failed to generate ML affiliate link",
-				zap.String("link", link), zap.Error(affErr))
+		if affErr != nil && isCredentialError(affErr) {
+			s.pauseWithError(ctx, auto, "Credenciais ML inválidas - automação pausada")
 			return nil
+		}
+		if affErr != nil {
+			s.logger.Warn("ML affiliate link generation failed, relaying original link",
+				zap.String("link", link), zap.Error(affErr))
 		}
 
 		affiliateURL := link
