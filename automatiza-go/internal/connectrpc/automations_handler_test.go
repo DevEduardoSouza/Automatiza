@@ -113,7 +113,7 @@ func createTestUserContextForAutomations(userID string) context.Context {
 // Only dispatchLogRepo is needed for ListDispatchLogs tests; other dependencies are nil
 // (groupRepo is nil so the per-chip quota check short-circuits).
 func createTestAutomationsHandler(dispatchLogRepo repository.DispatchLogRepository) *AutomationsHandler {
-	return NewAutomationsHandler(nil, dispatchLogRepo, nil, nil, nil, zap.NewNop())
+	return NewAutomationsHandler(nil, dispatchLogRepo, nil, nil, nil, nil, nil, zap.NewNop())
 }
 
 // autoTestStr returns a pointer to the given string.

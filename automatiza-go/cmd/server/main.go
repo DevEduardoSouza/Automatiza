@@ -762,7 +762,7 @@ func main() {
 	connectServer.RegisterService(groupsPath, groupsHTTPHandler)
 
 	// Register automations service handler (requires auth)
-	automationsHandler := connectrpc.NewAutomationsHandler(automationRepo, dispatchLogRepo, groupRepo, automationService, jobsService, logger)
+	automationsHandler := connectrpc.NewAutomationsHandler(automationRepo, dispatchLogRepo, groupRepo, profileRepo, repos.Plan, automationService, jobsService, logger)
 	automationsPath, automationsHTTPHandler := automationsv1connect.NewAutomationsServiceHandler(
 		automationsHandler,
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),

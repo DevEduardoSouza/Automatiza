@@ -122,6 +122,40 @@ func itoa(i int) string {
 	return string(rune('0'+i/10)) + string(rune('0'+i%10))
 }
 
+func planAuto(id, status string, groups ...string) models.Automation {
+	return models.Automation{ID: id, Status: status, SendGroups: groups}
+}
+
+func TestPlanGroupLimitExceeded(t *testing.T) {
+	active := models.AutomationStatusActive
+	tests := []struct {
+		name         string
+		limit        int
+		autos        []models.Automation
+		automationID string
+		newSend      []string
+		wantExceeded bool
+		wantAfter    int
+	}{
+		{"create within limit", 5, nil, "", []string{"g1", "g2", "g3"}, false, 3},
+		{"create exceeds", 5, []models.Automation{planAuto("a1", active, "g1", "g2", "g3", "g4")}, "", []string{"g5", "g6"}, true, 6},
+		{"distinct dedup across automations (shared group counts once)", 3, []models.Automation{planAuto("a1", active, "g1", "g2")}, "", []string{"g2", "g3"}, false, 3},
+		{"paused non-target automation excluded from count", 2, []models.Automation{planAuto("a1", "paused", "g1", "g2", "g3")}, "", []string{"g4"}, false, 1},
+		{"grandfather: over limit but reducing is allowed", 5, []models.Automation{planAuto("t", active, "g1", "g2", "g3", "g4", "g5", "g6", "g7")}, "t", []string{"g1", "g2", "g3", "g4", "g5", "g6"}, false, 6},
+		{"grandfather: over limit, adding more is blocked", 5, []models.Automation{planAuto("t", active, "g1", "g2", "g3", "g4", "g5", "g6", "g7")}, "t", []string{"g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"}, true, 8},
+		{"update target stays within limit", 5, []models.Automation{planAuto("t", active, "g1", "g2"), planAuto("o", active, "g3")}, "t", []string{"g1", "g2", "g4"}, false, 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotExceeded, gotAfter := planGroupLimitExceeded(tt.limit, tt.autos, tt.automationID, tt.newSend)
+			if gotExceeded != tt.wantExceeded || gotAfter != tt.wantAfter {
+				t.Fatalf("planGroupLimitExceeded = (exceeded=%v, after=%d), want (exceeded=%v, after=%d)",
+					gotExceeded, gotAfter, tt.wantExceeded, tt.wantAfter)
+			}
+		})
+	}
+}
+
 func TestValidateAutomationGroupQuota_NilRepoIsNoOp(t *testing.T) {
 	h := &AutomationsHandler{} // groupRepo nil
 	groups := []string{"a@g.us", "b@g.us"}
