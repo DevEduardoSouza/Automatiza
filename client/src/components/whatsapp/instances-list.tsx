@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { AddChipModal } from './add-chip-modal';
 import { ReconnectChipModal } from './reconnect-chip-modal';
 
-const MAX_INSTANCES_PER_USER = 10;
+const MAX_INSTANCES_PER_USER = 15;
 
 const colors = {
   wine: '#8D2D53',

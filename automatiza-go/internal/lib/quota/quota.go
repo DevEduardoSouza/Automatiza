@@ -11,7 +11,7 @@ import (
 
 const (
 	// MaxInstancesPerUser caps how many WhatsApp chips a single user can connect.
-	MaxInstancesPerUser = 10
+	MaxInstancesPerUser = 15
 
 	// MaxGroupsPerInstance caps how many groups can be bound to one chip.
 	// Mirrors the operational guidance from competitor research and matches
