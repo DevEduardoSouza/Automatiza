@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	couponsv1 "automatiza-go/internal/gen/coupons/v1"
 	"automatiza-go/internal/models"
@@ -394,6 +395,31 @@ func (h *CouponsHandler) requireRules() error {
 	return nil
 }
 
+// validateRulePeriod rejects a period whose end is not strictly after its
+// start. A zero-length (end == start) or inverted window silently matches
+// no product at all — the rule looks active in the UI but never fires.
+// This bit a real customer: a daily catch-all rule saved with end == start
+// stopped every product below the next price tier from getting a coupon,
+// while the same rule worked on the reference tool. The UI sends both
+// bounds in RFC3339; open-ended bounds (nil/empty) stay valid.
+func validateRulePeriod(start, end *string) error {
+	if start == nil || end == nil || *start == "" || *end == "" {
+		return nil
+	}
+	s, err := time.Parse(time.RFC3339, *start)
+	if err != nil {
+		return nil // malformed timestamps are surfaced downstream, not here
+	}
+	e, err := time.Parse(time.RFC3339, *end)
+	if err != nil {
+		return nil
+	}
+	if !e.After(s) {
+		return fmt.Errorf("period_end must be after period_start")
+	}
+	return nil
+}
+
 func (h *CouponsHandler) ListCouponRules(
 	ctx context.Context,
 	_ *connect.Request[couponsv1.ListCouponRulesRequest],
@@ -488,6 +514,9 @@ func (h *CouponsHandler) CreateCouponRule(
 	if v := req.Msg.MaxDiscount; v != nil {
 		rule.MaxDiscount = v
 	}
+	if err := validateRulePeriod(rule.PeriodStart, rule.PeriodEnd); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	created, err := h.couponRuleRepo.CreateCouponRule(ctx, user.ID, rule)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create coupon rule: %w", err))
@@ -566,6 +595,12 @@ func (h *CouponsHandler) UpdateCouponRule(
 	}
 	if v := req.Msg.MaxDiscount; v != nil {
 		updates["max_discount"] = *v
+	}
+	// Only validates when the request carries both bounds (the UI always
+	// does); a partial update touching one bound can't be cross-checked
+	// against the stored value here and is left to pass through.
+	if err := validateRulePeriod(req.Msg.PeriodStart, req.Msg.PeriodEnd); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if err := h.couponRuleRepo.UpdateCouponRule(ctx, req.Msg.GetId(), user.ID, updates); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update coupon rule: %w", err))
