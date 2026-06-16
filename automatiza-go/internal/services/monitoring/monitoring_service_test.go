@@ -227,11 +227,11 @@ func (m *mockInstanceRepo) SupersedePriorInstances(ctx context.Context, userID s
 }
 
 type mockDispatchLogRepo struct {
-	CreateFn                   func(ctx context.Context, log *models.DispatchLog) (*models.DispatchLog, error)
-	UpdateFn                   func(ctx context.Context, logID int, updates map[string]interface{}) error
-	GetRecentByCanonicalKeyFn  func(ctx context.Context, userID, groupID, canonicalKey string, window time.Duration) (*models.DispatchLog, error)
-	GetUserLogsFn              func(ctx context.Context, userID string, limit, offset int) ([]models.DispatchLog, error)
-	DeleteRecentByAutomationFn func(ctx context.Context, automationID string, sinceDays int) (int64, error)
+	CreateFn                     func(ctx context.Context, log *models.DispatchLog) (*models.DispatchLog, error)
+	UpdateFn                     func(ctx context.Context, logID int, updates map[string]interface{}) error
+	GetRecentByCanonicalKeyFn    func(ctx context.Context, userID, groupID, canonicalKey string, window time.Duration) (*models.DispatchLog, error)
+	GetUserLogsFn                func(ctx context.Context, userID string, limit, offset int) ([]models.DispatchLog, error)
+	DeleteRecentByAutomationFn   func(ctx context.Context, automationID string, sinceDays int) (int64, error)
 	GetByAutomationIDWithCountFn func(ctx context.Context, automationID, userID string, limit, offset int) ([]repository.DispatchLogWithGroup, int, error)
 	GetUserLogsWithFiltersFn     func(ctx context.Context, userID string, filters *models.DispatchLogFilters, limit, offset int) ([]repository.DispatchLogWithGroup, int64, error)
 	ExistsByCanonicalKeyFn       func(ctx context.Context, userID, groupID, canonicalKey string, hours int) (bool, error)
@@ -794,10 +794,10 @@ func TestCategorizeLinks(t *testing.T) {
 	svc := newTestService(t)
 
 	tests := []struct {
-		name        string
-		links       []string
-		wantShopee  int
-		wantML      int
+		name       string
+		links      []string
+		wantShopee int
+		wantML     int
 	}{
 		{
 			name:       "shopee.com.br link",
@@ -820,6 +820,18 @@ func TestCategorizeLinks(t *testing.T) {
 		{
 			name:       "meli.co short link",
 			links:      []string{"https://meli.co/short123"},
+			wantShopee: 0,
+			wantML:     1,
+		},
+		{
+			name:       "meli.la short link (official ML affiliate domain)",
+			links:      []string{"https://meli.la/1PQkeS1"},
+			wantShopee: 0,
+			wantML:     1,
+		},
+		{
+			name:       "ml.com.br legacy short link",
+			links:      []string{"https://ml.com.br/abc"},
 			wantShopee: 0,
 			wantML:     1,
 		},

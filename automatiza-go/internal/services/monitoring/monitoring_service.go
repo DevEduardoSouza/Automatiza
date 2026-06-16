@@ -214,7 +214,14 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	if !storeSet["shopee"] {
 		shopeeLinks = nil
 	}
+	// When mercadolivre isn't enabled, ML is blocked for this automation:
+	// drop the ML links from affiliate generation and remember them so we can
+	// strip them from the forwarded body below. The relay forwards msg.Body
+	// as-is (only swapping links we affiliated), so an ML link the source
+	// included would otherwise be repassed even with ML disabled.
+	var blockedMLLinks []string
 	if !storeSet["mercadolivre"] {
+		blockedMLLinks = mlLinks
 		mlLinks = nil
 	}
 
@@ -323,6 +330,14 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	// 6. Replace original links with affiliate links
 	for orig, aff := range affiliateLinks {
 		processedText = strings.ReplaceAll(processedText, orig, aff)
+	}
+
+	// 6b. Block ML relay: strip any ML links the source posted when this
+	// automation has mercadolivre disabled. Pure-ML messages were already
+	// dropped by the store filter above; this covers mixed messages where a
+	// Shopee link keeps the relay alive but an ML link rode along in the body.
+	for _, mlLink := range blockedMLLinks {
+		processedText = strings.ReplaceAll(processedText, mlLink, "")
 	}
 
 	// 7. Normalize text
@@ -645,7 +660,11 @@ func (s *monitoringService) findMatchingAutomations(ctx context.Context, instanc
 var (
 	httpURLRegex   = regexp.MustCompile(`https?://[^\s\n\r*_~` + "`" + `]+`)
 	shopeeURLRegex = regexp.MustCompile(`(?i)(shopee\.com\.br|shope\.ee|shp\.ee)`)
-	mlURLRegex     = regexp.MustCompile(`(?i)(mercadolivre\.com\.br|mercadolibre\.com|meli\.co)`)
+	// Keep in sync with text.IsMLLink. meli.la is the official ML affiliate
+	// short domain (meli.co was an outdated guess that almost never appears);
+	// ml.com.br is the legacy short host. Missing meli.la here let ML offers
+	// slip past the per-automation store filter in monitoring relays.
+	mlURLRegex = regexp.MustCompile(`(?i)(mercadolivre\.com\.br|mercadolibre\.com|ml\.com\.br|meli\.la|meli\.co)`)
 )
 
 func (s *monitoringService) extractLinks(text string) []string {
