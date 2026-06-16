@@ -1253,3 +1253,56 @@ func TestModelStoreToProtoCoupon_EmptyString(t *testing.T) {
 	result := modelStoreToProtoCoupon("")
 	assert.Equal(t, couponsv1.Store_STORE_UNSPECIFIED, result)
 }
+
+func TestValidateRulePeriod(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		start   *string
+		end     *string
+		wantErr bool
+	}{
+		{name: "both nil (open-ended)", start: nil, end: nil, wantErr: false},
+		{name: "both empty (open-ended)", start: ptrString(""), end: ptrString(""), wantErr: false},
+		{name: "only start set", start: ptrString("2026-06-15T03:00:00Z"), end: nil, wantErr: false},
+		{name: "only end set", start: nil, end: ptrString("2026-06-16T02:59:00Z"), wantErr: false},
+		{
+			name:    "end after start",
+			start:   ptrString("2026-06-15T03:00:00Z"),
+			end:     ptrString("2026-06-16T02:59:00Z"),
+			wantErr: false,
+		},
+		{
+			name:    "end equal to start (zero window)",
+			start:   ptrString("2026-06-15T03:07:00Z"),
+			end:     ptrString("2026-06-15T03:07:00Z"),
+			wantErr: true,
+		},
+		{
+			name:    "end before start (inverted)",
+			start:   ptrString("2026-06-16T02:59:00Z"),
+			end:     ptrString("2026-06-15T03:00:00Z"),
+			wantErr: true,
+		},
+		{
+			name:    "malformed start tolerated (surfaced downstream)",
+			start:   ptrString("not-a-date"),
+			end:     ptrString("2026-06-16T02:59:00Z"),
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateRulePeriod(tt.start, tt.end)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

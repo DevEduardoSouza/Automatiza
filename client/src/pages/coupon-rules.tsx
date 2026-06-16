@@ -125,16 +125,19 @@ export default function CouponRulesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<RuleFormState>(EMPTY_FORM);
+  const [periodError, setPeriodError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   function openCreate() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setPeriodError(null);
     setDialogOpen(true);
   }
 
   function openEdit(rule: LocalCouponRule) {
     setEditingId(rule.id);
+    setPeriodError(null);
     setForm({
       platform: rule.platform,
       period_start: rfc3339ToLocal(rule.period_start),
@@ -154,13 +157,23 @@ export default function CouponRulesPage() {
     if (!form.platform) return;
     if (!form.message.trim()) return; // mensagem é o que aparece no disparo
 
+    const startRFC = localToRFC3339(form.period_start) ?? null;
+    const endRFC = localToRFC3339(form.period_end) ?? null;
+    // Janela inválida (fim <= início) salva uma regra que nunca dispara: ela
+    // aparece ativa mas não casa nenhum produto. Bloqueia antes de enviar.
+    if (startRFC && endRFC && new Date(endRFC) <= new Date(startRFC)) {
+      setPeriodError('O fim do período deve ser depois do início.');
+      return;
+    }
+    setPeriodError(null);
+
     const discountValueNum = form.discount_value ? Number(form.discount_value) : null;
     const maxDiscountNum = form.max_discount ? Number(form.max_discount) : null;
 
     const payload: CreateCouponRuleParams = {
       platform: form.platform,
-      period_start: localToRFC3339(form.period_start) ?? null,
-      period_end: localToRFC3339(form.period_end) ?? null,
+      period_start: startRFC,
+      period_end: endRFC,
       min_price: Number(form.min_price) || 0,
       // Priority foi removido do form em PR #128-ish — todas as regras
       // criadas/editadas pela UI gravam 0. Backend ainda tem a coluna e
@@ -386,7 +399,10 @@ export default function CouponRulesPage() {
                     id="rule-start"
                     type="datetime-local"
                     value={form.period_start}
-                    onChange={(e) => setForm((f) => ({ ...f, period_start: e.target.value }))}
+                    onChange={(e) => {
+                      setPeriodError(null);
+                      setForm((f) => ({ ...f, period_start: e.target.value }));
+                    }}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -395,10 +411,19 @@ export default function CouponRulesPage() {
                     id="rule-end"
                     type="datetime-local"
                     value={form.period_end}
-                    onChange={(e) => setForm((f) => ({ ...f, period_end: e.target.value }))}
+                    aria-invalid={periodError ? true : undefined}
+                    onChange={(e) => {
+                      setPeriodError(null);
+                      setForm((f) => ({ ...f, period_end: e.target.value }));
+                    }}
                   />
                 </div>
               </div>
+              {periodError && (
+                <p className="text-xs text-red-500" role="alert">
+                  {periodError}
+                </p>
+              )}
 
               <div className="space-y-1.5">
                 <Label htmlFor="rule-min-price">Valor mín. produto (R$)</Label>
@@ -531,7 +556,7 @@ export default function CouponRulesPage() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={isMutating || !form.message.trim()}
+              disabled={isMutating || !form.message.trim() || !!periodError}
             >
               {editingId ? 'Salvar' : 'Criar'}
             </Button>
