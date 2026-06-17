@@ -109,10 +109,18 @@ func isRetryableStatusCode(statusCode int) bool {
 }
 
 // transientUploadCodes are the upstream WhatsApp media-upload status codes that
-// WAHA wraps inside an HTTP 500 and that are worth retrying: 429 is rate
-// limiting, 5xx are upstream blips. A 400 (malformed/rejected media) is
-// intentionally excluded — retrying a bad image never succeeds.
+// WAHA wraps inside an HTTP 500 and that get the full retry budget: 429 is rate
+// limiting, 5xx are upstream blips. A wrapped 400 is handled separately, with a
+// capped retry — see isTransientUpload400.
 var transientUploadCodes = []string{"429", "500", "502", "503", "504"}
+
+// softUploadMaxRetries caps how many times a wrapped-400 media upload (see
+// isTransientUpload400) is retried, independent of the full retry budget used
+// for 429/5xx. Kept at 1 because 400 is by far the highest-volume upload
+// failure, and retrying every one at full budget would pile upload load onto
+// the already-saturated single WAHA container — risking the 429s the full
+// retry path is meant to relieve.
+const softUploadMaxRetries = 1
 
 // isTransientWahaUploadError reports whether a WAHA HTTP 500 response wraps a
 // transient WhatsApp media-upload failure, e.g.:
@@ -136,6 +144,24 @@ func isTransientWahaUploadError(statusCode int, body []byte) bool {
 		}
 	}
 	return false
+}
+
+// isTransientUpload400 reports whether a WAHA HTTP 500 wraps a WhatsApp
+// media-upload 400, e.g.:
+//
+//	{"statusCode":500,...,"message":"2 UNKNOWN: upload failed with status code 400"}
+//
+// The original retry path deliberately excluded 400 on the assumption it meant
+// malformed/rejected media. Production data contradicts that: the *same* valid
+// JPEG uploads fine 100+ times and 400s only occasionally under load — i.e.
+// WhatsApp's media server returns a transient 400, not a permanent rejection,
+// and the send drops to the text-only fallback ("promoção sem foto") for no
+// good reason. So these get a (capped, see softUploadMaxRetries) retry. A
+// genuinely bad image still exhausts the retry and falls back to text, exactly
+// as before — only a few wasted attempts later.
+func isTransientUpload400(statusCode int, body []byte) bool {
+	return statusCode == http.StatusInternalServerError &&
+		strings.Contains(string(body), "upload failed with status code 400")
 }
 
 // backoffDelay calculates the delay for a given retry attempt using exponential backoff with jitter.
@@ -495,13 +521,21 @@ func (a *WahaAdapter) doRequest(ctx context.Context, method, path string, body i
 
 		// Retry on transient HTTP status codes (429, 502, 503, 504), and on
 		// HTTP 500 responses that wrap a transient upstream media-upload
-		// failure (e.g. "upload failed with status code 429"). The latter is
-		// the dominant cause of images being dropped to the text-only fallback
+		// failure (e.g. "upload failed with status code 429"). These are the
+		// dominant cause of images being dropped to the text-only fallback
 		// under load.
-		if a.retryEnabled && attempt < maxAttempts-1 &&
-			(isRetryableStatusCode(resp.StatusCode) || isTransientWahaUploadError(resp.StatusCode, respBody)) {
-			lastErr = fmt.Errorf("transient HTTP %d from WAHA", resp.StatusCode)
-			continue
+		if a.retryEnabled && attempt < maxAttempts-1 {
+			if isRetryableStatusCode(resp.StatusCode) || isTransientWahaUploadError(resp.StatusCode, respBody) {
+				lastErr = fmt.Errorf("transient HTTP %d from WAHA", resp.StatusCode)
+				continue
+			}
+			// Wrapped media-upload 400: transient on WhatsApp's side too, but
+			// the highest-volume failure, so retried at most softUploadMaxRetries
+			// times to recover without overloading WAHA.
+			if attempt < softUploadMaxRetries && isTransientUpload400(resp.StatusCode, respBody) {
+				lastErr = fmt.Errorf("transient wrapped-400 media upload from WAHA")
+				continue
+			}
 		}
 
 		// Log response for all send operations
