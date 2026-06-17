@@ -2,6 +2,7 @@ package imagepad
 
 import (
 	"bytes"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -121,5 +122,43 @@ func TestPadToSafeAspect_PNGInput(t *testing.T) {
 func TestPadToSafeAspect_BadInput(t *testing.T) {
 	if _, err := PadToSafeAspectJPEG([]byte("not an image")); err == nil {
 		t.Fatal("expected error for undecodable input")
+	}
+}
+
+// The base64 entry point (used by the relay path) must normalize a wide banner
+// the same way the byte-slice path does — this is the coupon-banner crop fix.
+func TestPadToSafeAspectJPEGBase64_WideBanner(t *testing.T) {
+	b64 := base64.StdEncoding.EncodeToString(makeImage(t, 1910, 500, "jpeg")) // 3.82
+	out, err := PadToSafeAspectJPEGBase64(b64)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(out)
+	if err != nil {
+		t.Fatalf("result not valid base64: %v", err)
+	}
+	w, h := decodedSize(t, raw)
+	if w != 1910 || h != 1000 { // heightened to maxAspect 1.91
+		t.Fatalf("wide banner should be padded to 1910x1000, got %dx%d", w, h)
+	}
+}
+
+// A "data:<mime>;base64,<payload>" prefix must be tolerated and stripped.
+func TestPadToSafeAspectJPEGBase64_DataURLPrefix(t *testing.T) {
+	b64 := "data:image/png;base64," + base64.StdEncoding.EncodeToString(makeImage(t, 300, 600, "png"))
+	out, err := PadToSafeAspectJPEGBase64(b64)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	raw, _ := base64.StdEncoding.DecodeString(out)
+	w, h := decodedSize(t, raw)
+	if w != h || h != 600 {
+		t.Fatalf("tall data-URL image should pad to 600x600 square, got %dx%d", w, h)
+	}
+}
+
+func TestPadToSafeAspectJPEGBase64_BadInput(t *testing.T) {
+	if _, err := PadToSafeAspectJPEGBase64("!!!not base64!!!"); err == nil {
+		t.Fatal("expected error for undecodable base64")
 	}
 }
