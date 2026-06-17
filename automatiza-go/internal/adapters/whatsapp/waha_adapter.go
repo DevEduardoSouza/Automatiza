@@ -217,6 +217,17 @@ type WahaAdapter struct {
 	// Controlled by WAHA_RETRY_ENABLED env var (default: true).
 	retryEnabled bool
 	retryCfg     retryConfig
+
+	// uploadPacer, when set, spaces media uploads per session before they hit
+	// WAHA, to keep them under WhatsApp's media-server rate limit. nil = off.
+	uploadPacer UploadPacer
+}
+
+// SetUploadPacer installs (or clears, with nil) the per-session media-upload
+// pacer. Wired at startup from MEDIA_PACE_MS; off by default. Safe to call once
+// before the adapter starts serving.
+func (a *WahaAdapter) SetUploadPacer(p UploadPacer) {
+	a.uploadPacer = p
 }
 
 // circuitBreaker implements circuit breaker pattern for status checks.
@@ -1212,6 +1223,22 @@ func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*Mes
 			a.logger.Warn("Image aspect-normalize failed, sending original URL",
 				zap.String("imageURL", input.ImageURL),
 				zap.Error(perr))
+		}
+	}
+
+	// Pace the upload per session to stay under WhatsApp's media-server rate
+	// limit (the source of the wrapped 429/400 that drop offers to text-only).
+	// Fail-open: Reserve returns 0 on a nil pacer or any backend error.
+	if a.uploadPacer != nil {
+		if delay := a.uploadPacer.Reserve(ctx, input.SessionName); delay > 0 {
+			a.logger.Debug("pacing media upload",
+				zap.String("session", input.SessionName),
+				zap.Duration("delay", delay))
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return nil, NewProviderError(ErrCodeTimeout, "canceled while pacing media upload", ctx.Err())
+			}
 		}
 	}
 
