@@ -108,6 +108,36 @@ func isRetryableStatusCode(statusCode int) bool {
 	}
 }
 
+// transientUploadCodes are the upstream WhatsApp media-upload status codes that
+// WAHA wraps inside an HTTP 500 and that are worth retrying: 429 is rate
+// limiting, 5xx are upstream blips. A 400 (malformed/rejected media) is
+// intentionally excluded — retrying a bad image never succeeds.
+var transientUploadCodes = []string{"429", "500", "502", "503", "504"}
+
+// isTransientWahaUploadError reports whether a WAHA HTTP 500 response wraps a
+// transient WhatsApp media-upload failure, e.g.:
+//
+//	{"statusCode":500,...,"message":"2 UNKNOWN: upload failed with status code 429"}
+//
+// These surface as HTTP 500 from WAHA, so the plain status-code retry check
+// (isRetryableStatusCode) misses them and the send fails immediately —
+// dropping the image and forcing the message worker into its text-only
+// fallback ("promoção sem foto"). Matching the wrapped upstream code lets the
+// existing backoff retry recover the upload. "not participating in that group"
+// 500s do not match this pattern, so dead-group sends are unaffected.
+func isTransientWahaUploadError(statusCode int, body []byte) bool {
+	if statusCode != http.StatusInternalServerError {
+		return false
+	}
+	s := string(body)
+	for _, code := range transientUploadCodes {
+		if strings.Contains(s, "upload failed with status code "+code) {
+			return true
+		}
+	}
+	return false
+}
+
 // backoffDelay calculates the delay for a given retry attempt using exponential backoff with jitter.
 func backoffDelay(attempt int, cfg retryConfig) time.Duration {
 	delay := float64(cfg.baseDelay) * math.Pow(2, float64(attempt))
@@ -463,8 +493,13 @@ func (a *WahaAdapter) doRequest(ctx context.Context, method, path string, body i
 			return nil, NewProviderError(ErrCodeNetworkError, "failed to read response", readErr)
 		}
 
-		// Retry on transient HTTP status codes (429, 502, 503, 504)
-		if a.retryEnabled && attempt < maxAttempts-1 && isRetryableStatusCode(resp.StatusCode) {
+		// Retry on transient HTTP status codes (429, 502, 503, 504), and on
+		// HTTP 500 responses that wrap a transient upstream media-upload
+		// failure (e.g. "upload failed with status code 429"). The latter is
+		// the dominant cause of images being dropped to the text-only fallback
+		// under load.
+		if a.retryEnabled && attempt < maxAttempts-1 &&
+			(isRetryableStatusCode(resp.StatusCode) || isTransientWahaUploadError(resp.StatusCode, respBody)) {
 			lastErr = fmt.Errorf("transient HTTP %d from WAHA", resp.StatusCode)
 			continue
 		}
