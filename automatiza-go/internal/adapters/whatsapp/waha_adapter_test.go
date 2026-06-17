@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -388,6 +389,97 @@ func TestWahaAdapter_SendImage(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "msg-456", result.ID)
+	})
+}
+
+func TestIsTransientWahaUploadError(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		want       bool
+	}{
+		{"500 wrapping upstream 429", http.StatusInternalServerError, `{"statusCode":500,"message":"2 UNKNOWN: upload failed with status code 429"}`, true},
+		{"500 wrapping upstream 500", http.StatusInternalServerError, `{"message":"upload failed with status code 500"}`, true},
+		{"500 wrapping upstream 503", http.StatusInternalServerError, `{"message":"upload failed with status code 503"}`, true},
+		{"500 wrapping upstream 400 (bad media) not retried", http.StatusInternalServerError, `{"message":"upload failed with status code 400"}`, false},
+		{"500 not-participating not retried", http.StatusInternalServerError, `{"message":"you're not participating in that group"}`, false},
+		{"non-500 status ignored", http.StatusServiceUnavailable, `{"message":"upload failed with status code 429"}`, false},
+		{"empty body", http.StatusInternalServerError, ``, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isTransientWahaUploadError(tc.statusCode, []byte(tc.body)))
+		})
+	}
+}
+
+// TestWahaAdapter_SendImage_RetriesTransientUpload verifies that a WAHA HTTP 500
+// wrapping a transient upstream media-upload failure (429) is retried by
+// doRequest and recovers, while a wrapped 400 (bad media) fails fast without
+// retry — so the image isn't pointlessly re-uploaded when it can never succeed.
+func TestWahaAdapter_SendImage_RetriesTransientUpload(t *testing.T) {
+	ctx := context.Background()
+
+	statusHandler := func(w http.ResponseWriter, r *http.Request) bool {
+		if strings.Contains(r.URL.Path, "/api/sessions/") && r.Method == http.MethodGet {
+			jsonResponse(t, http.StatusOK, map[string]interface{}{"name": "s", "status": "WORKING"})(w, r)
+			return true
+		}
+		return false
+	}
+
+	t.Run("retries wrapped 429 then succeeds", func(t *testing.T) {
+		var sendCalls int32
+		adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+			if statusHandler(w, r) {
+				return
+			}
+			n := atomic.AddInt32(&sendCalls, 1)
+			if n == 1 {
+				jsonResponse(t, http.StatusInternalServerError, map[string]interface{}{
+					"statusCode": 500,
+					"message":    "2 UNKNOWN: upload failed with status code 429",
+				})(w, r)
+				return
+			}
+			jsonResponse(t, http.StatusOK, map[string]interface{}{"id": "msg-ok"})(w, r)
+		})
+
+		result, err := adapter.SendImage(ctx, SendImageInput{
+			SessionName: "s",
+			ChatID:      "group@g.us",
+			Caption:     "promo",
+			ImageBase64: "base64data",
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, "msg-ok", result.ID)
+		assert.Equal(t, int32(2), atomic.LoadInt32(&sendCalls), "should retry the wrapped 429 exactly once")
+	})
+
+	t.Run("does not retry wrapped 400 (bad media)", func(t *testing.T) {
+		var sendCalls int32
+		adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+			if statusHandler(w, r) {
+				return
+			}
+			atomic.AddInt32(&sendCalls, 1)
+			jsonResponse(t, http.StatusInternalServerError, map[string]interface{}{
+				"statusCode": 500,
+				"message":    "2 UNKNOWN: upload failed with status code 400",
+			})(w, r)
+		})
+
+		_, err := adapter.SendImage(ctx, SendImageInput{
+			SessionName: "s",
+			ChatID:      "group@g.us",
+			Caption:     "promo",
+			ImageBase64: "base64data",
+		})
+
+		require.Error(t, err)
+		assert.Equal(t, int32(1), atomic.LoadInt32(&sendCalls), "bad-media 400 must fail fast, no retry")
 	})
 }
 
