@@ -276,6 +276,21 @@ func main() {
 			os.Exit(1)
 		}
 		wahaAdapter = adapter
+
+		// Media-upload pacer: spaces WhatsApp media uploads per session so they
+		// stay under the media-server rate limit that surfaces as wrapped
+		// 429/400 and drops offers to the text-only fallback ("promoção sem
+		// foto"). Shared Redis so the server (relay) and worker (queued sends)
+		// don't both upload for the same session at once. Off by default
+		// (MEDIA_PACE_MS unset/0); tune in prod without a redeploy.
+		if ms := whatsapp.MediaPaceMsFromEnv(); ms > 0 && redisClient != nil {
+			adapter.SetUploadPacer(whatsapp.NewRedisUploadPacer(
+				redisClient.Client,
+				time.Duration(ms)*time.Millisecond,
+				config.NewModuleLogger(logger, "media-pacer"),
+			))
+			logger.Info("media upload pacer enabled", zap.Int("spacingMs", ms))
+		}
 	} else {
 		logger.Warn("WAHA not configured, WhatsApp adapter disabled")
 	}
