@@ -102,9 +102,13 @@ function isIdempotentMethod(methodName: string): boolean {
  * Checks if an error code is retryable (transient failure).
  */
 function isRetryableError(code: Code): boolean {
+  // ResourceExhausted is intentionally NOT retried: the backend uses it for
+  // quota limits (chips, grupos, automações), which never clear on their own —
+  // the user must remove an item or upgrade. Auto-retrying just spins (e.g. the
+  // QR dialog re-firing CreateInstance) and hides the real reason. There is no
+  // request-rate limiter in the backend, so no transient ResourceExhausted exists.
   return (
     code === Code.Unavailable ||
-    code === Code.ResourceExhausted ||
     code === Code.Aborted ||
     code === Code.DeadlineExceeded
   );
@@ -150,6 +154,9 @@ export interface ConnectErrorInfo {
 export function mapConnectError(error: ConnectError): ConnectErrorInfo {
   const code = error.code;
   const message = error.message;
+  // rawMessage is the server's message without the "[code]" prefix that
+  // ConnectError.message carries — used to surface real quota reasons to users.
+  const rawMessage = error.rawMessage;
 
   switch (code) {
     case Code.InvalidArgument:
@@ -199,12 +206,20 @@ export function mapConnectError(error: ConnectError): ConnectErrorInfo {
       };
 
     case Code.ResourceExhausted:
+      // The backend only emits ResourceExhausted for quota limits, each with a
+      // specific user-facing PT message ("Remova um chip antes de adicionar
+      // outro", "Limite de N grupos do seu plano atingido", etc.). Surface that
+      // real reason instead of the old generic "Limite de requisições atingido.
+      // Aguarde um momento.", which was misleading (there is no request-rate
+      // limiter) and implied the error would clear by waiting. Not retryable.
       return {
         code,
         message,
-        userMessage: 'Limite de requisições atingido. Aguarde um momento.',
+        userMessage: rawMessage?.trim()
+          ? rawMessage
+          : 'Limite do plano atingido. Remova um item ou faça upgrade.',
         action: 'toast',
-        retryable: true,
+        retryable: false,
       };
 
     case Code.FailedPrecondition:

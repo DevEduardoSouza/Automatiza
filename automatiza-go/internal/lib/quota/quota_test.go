@@ -127,8 +127,8 @@ func TestCheckCanAddGroups_NilRepo(t *testing.T) {
 
 func TestQuotaConstants(t *testing.T) {
 	// Sanity guard: tests downstream rely on these specific values.
-	if quota.MaxInstancesPerUser != 15 {
-		t.Errorf("MaxInstancesPerUser = %d, want 15", quota.MaxInstancesPerUser)
+	if quota.MaxInstancesPerUser != 30 {
+		t.Errorf("MaxInstancesPerUser = %d, want 30", quota.MaxInstancesPerUser)
 	}
 	if quota.MaxGroupsPerInstance != 20 {
 		t.Errorf("MaxGroupsPerInstance = %d, want 20", quota.MaxGroupsPerInstance)
