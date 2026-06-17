@@ -1241,14 +1241,17 @@ func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*Mes
 		zap.String("imageURL", input.ImageURL),
 		zap.Bool("hasBase64", input.ImageBase64 != ""))
 
-	// Normalize the image to WhatsApp's safe aspect window so portrait product
-	// photos aren't center-cropped ("zoomed") in the chat bubble. This is the
-	// single chokepoint every send path flows through (list, monitoring,
+	// Normalize the image to WhatsApp's safe aspect window so wide banners and
+	// tall portraits aren't center-cropped ("zoomed") in the chat bubble. This
+	// is the single chokepoint every send path flows through (list, monitoring,
 	// offer-generate, search, scheduled jobs), so all of them are covered here
-	// instead of per-producer. Only the send-by-URL case is touched; on any
-	// failure (download/decode, e.g. webp) we fall back to the original URL so
-	// sends never break.
-	if input.ImageURL != "" && input.ImageBase64 == "" {
+	// instead of per-producer. Both inputs are normalized: send-by-URL (most
+	// product photos) and send-by-base64 (the offer-generate/monitor RELAY,
+	// which downloads source media and forwards base64 — a wide coupon banner
+	// relayed this way used to ship raw and get cropped). Fail-open on any
+	// download/decode error (e.g. webp): keep the original so sends never break.
+	switch {
+	case input.ImageURL != "" && input.ImageBase64 == "":
 		if b64, perr := imagepad.FetchAndPadToSafeAspectJPEGBase64(ctx, input.ImageURL); perr == nil {
 			input.ImageBase64 = b64
 			input.Mimetype = "image/jpeg"
@@ -1256,6 +1259,14 @@ func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*Mes
 		} else {
 			a.logger.Warn("Image aspect-normalize failed, sending original URL",
 				zap.String("imageURL", input.ImageURL),
+				zap.Error(perr))
+		}
+	case input.ImageBase64 != "":
+		if b64, perr := imagepad.PadToSafeAspectJPEGBase64(input.ImageBase64); perr == nil {
+			input.ImageBase64 = b64
+			input.Mimetype = "image/jpeg"
+		} else {
+			a.logger.Warn("Image aspect-normalize (base64) failed, sending original",
 				zap.Error(perr))
 		}
 	}

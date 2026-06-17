@@ -25,6 +25,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -122,6 +123,34 @@ func FetchAndPadToSafeAspectJPEGBase64(ctx context.Context, url string) (string,
 		return "", fmt.Errorf("read image: %w", err)
 	}
 
+	padded, err := PadToSafeAspectJPEG(raw)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(padded), nil
+}
+
+// PadToSafeAspectJPEGBase64 normalizes an already-base64-encoded image (JPEG or
+// PNG, with or without a "data:<mime>;base64," prefix) to WhatsApp's safe aspect
+// window and returns it as a plain base64 JPEG string.
+//
+// It exists for senders that already hold base64 rather than a URL — chiefly
+// the offer-generate/monitor RELAY, which downloads source media from WAHA and
+// forwards it as ImageBase64. Those bypassed the URL-only normalization in
+// SendImage, so a wide relayed banner (e.g. a Shopee coupon card) went out raw
+// and WhatsApp center-cropped its sides. Routing base64 through here closes that
+// gap. Fail-open: callers should send the original base64 on any error.
+func PadToSafeAspectJPEGBase64(b64 string) (string, error) {
+	// Strip an optional data-URL prefix ("data:image/png;base64,<payload>").
+	if strings.HasPrefix(b64, "data:") {
+		if i := strings.IndexByte(b64, ','); i >= 0 {
+			b64 = b64[i+1:]
+		}
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(b64))
+	if err != nil {
+		return "", fmt.Errorf("decode base64: %w", err)
+	}
 	padded, err := PadToSafeAspectJPEG(raw)
 	if err != nil {
 		return "", err

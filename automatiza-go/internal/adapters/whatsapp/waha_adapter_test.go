@@ -1,9 +1,15 @@
 package whatsapp
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -390,6 +396,51 @@ func TestWahaAdapter_SendImage(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "msg-456", result.ID)
 	})
+}
+
+// TestWahaAdapter_SendImage_NormalizesBase64WideBanner verifies the relay fix:
+// an image supplied as base64 (the offer-generate/monitor relay path, which
+// bypassed the URL-only aspect normalization) is now padded to WhatsApp's safe
+// window before upload — so a wide coupon banner reaches the group in full
+// instead of being center-cropped.
+func TestWahaAdapter_SendImage_NormalizesBase64WideBanner(t *testing.T) {
+	ctx := context.Background()
+
+	// 1910x500 (3.82:1) — well outside the 1.91 ceiling, so it must be heightened.
+	var src bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 1910, 500))
+	draw.Draw(img, img.Bounds(), &image.Uniform{C: color.RGBA{R: 10, G: 120, B: 200, A: 255}}, image.Point{}, draw.Src)
+	require.NoError(t, jpeg.Encode(&src, img, &jpeg.Options{Quality: 90}))
+	wideB64 := base64.StdEncoding.EncodeToString(src.Bytes())
+
+	var gotW, gotH int
+	adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/api/sessions/") && r.Method == http.MethodGet {
+			jsonResponse(t, http.StatusOK, map[string]interface{}{"name": "s", "status": "WORKING"})(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]interface{}
+		require.NoError(t, json.Unmarshal(body, &payload))
+		file, _ := payload["file"].(map[string]interface{})
+		data, _ := file["data"].(string)
+		raw, derr := base64.StdEncoding.DecodeString(data)
+		require.NoError(t, derr)
+		cfg, _, cerr := image.DecodeConfig(bytes.NewReader(raw))
+		require.NoError(t, cerr)
+		gotW, gotH = cfg.Width, cfg.Height
+		jsonResponse(t, http.StatusOK, map[string]interface{}{"id": "ok"})(w, r)
+	})
+
+	_, err := adapter.SendImage(ctx, SendImageInput{
+		SessionName: "s",
+		ChatID:      "g@g.us",
+		Caption:     "promo",
+		ImageBase64: wideB64,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1910, gotW, "width must be unchanged")
+	assert.Equal(t, 1000, gotH, "wide base64 banner must be heightened to 1.91 (1910x1000), not shipped raw")
 }
 
 func TestIsTransientWahaUploadError(t *testing.T) {
