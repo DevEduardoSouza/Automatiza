@@ -25,6 +25,8 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -33,14 +35,34 @@ const (
 	fetchTimeout  = 8 * time.Second
 	maxImageBytes = 12 << 20 // 12 MiB cap on downloaded images
 	jpegQuality   = 88
-
-	// Safe aspect window (width/height) WhatsApp renders without cropping in a
-	// group bubble. Measured empirically: portrait below 1:1 gets center-
-	// cropped (even 4:5), but square shows in full — so the portrait floor is
-	// 1.0 (tall images pad to square). Landscape up to ~1.91 shows untouched.
-	minAspect = 1.0
-	maxAspect = 1.91
 )
+
+// Safe aspect window (width/height) WhatsApp renders without cropping. The
+// FULLSCREEN view tolerates up to ~1.91 landscape, but the GROUP BUBBLE
+// thumbnail crops wide images to a near-portrait shape (it cut the sides off a
+// wide coupon banner — the badge/icon vanished in-bubble while the full image
+// still opened on tap). The exact bubble ceiling sits between 1.0 (square,
+// shown in full) and 1.91 (cropped), so both bounds are overridable via
+// IMAGE_MIN_ASPECT / IMAGE_MAX_ASPECT to calibrate against the real bubble
+// without a rebuild. Defaults preserve the prior behavior.
+var (
+	minAspect = aspectFromEnv("IMAGE_MIN_ASPECT", 1.0)
+	maxAspect = aspectFromEnv("IMAGE_MAX_ASPECT", 1.91)
+)
+
+// aspectFromEnv reads a positive float from env, falling back to def when the
+// var is absent, unparseable, or non-positive.
+func aspectFromEnv(key string, def float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || f <= 0 {
+		return def
+	}
+	return f
+}
 
 // defaultClient is reused across calls so we don't allocate a client (and its
 // transport/connection pool) per image.

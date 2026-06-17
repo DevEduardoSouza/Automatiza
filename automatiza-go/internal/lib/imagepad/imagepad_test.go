@@ -125,6 +125,24 @@ func TestPadToSafeAspect_BadInput(t *testing.T) {
 	}
 }
 
+func TestAspectFromEnv(t *testing.T) {
+	if got := aspectFromEnv("IMAGE_ASPECT_UNSET_XYZ", 1.91); got != 1.91 {
+		t.Fatalf("absent env should fall back to default, got %v", got)
+	}
+	t.Setenv("IMAGE_ASPECT_TEST", "1.3")
+	if got := aspectFromEnv("IMAGE_ASPECT_TEST", 1.91); got != 1.3 {
+		t.Fatalf("env override should win, got %v", got)
+	}
+	t.Setenv("IMAGE_ASPECT_TEST", "garbage")
+	if got := aspectFromEnv("IMAGE_ASPECT_TEST", 1.91); got != 1.91 {
+		t.Fatalf("unparseable env should fall back to default, got %v", got)
+	}
+	t.Setenv("IMAGE_ASPECT_TEST", "-1")
+	if got := aspectFromEnv("IMAGE_ASPECT_TEST", 1.91); got != 1.91 {
+		t.Fatalf("non-positive env should fall back to default, got %v", got)
+	}
+}
+
 // The base64 entry point (used by the relay path) must normalize a wide banner
 // the same way the byte-slice path does — this is the coupon-banner crop fix.
 func TestPadToSafeAspectJPEGBase64_WideBanner(t *testing.T) {
