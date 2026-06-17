@@ -11,7 +11,10 @@ import (
 
 const (
 	// MaxInstancesPerUser caps how many WhatsApp chips a single user can connect.
-	MaxInstancesPerUser = 15
+	// Raised 10→15 (#191) and 15→30 for high-volume operators who run many chips.
+	// Each chip is a WAHA session; the WAHA engine (GOWS) is multi-core and the
+	// box has ample headroom, so 30 is comfortably within capacity.
+	MaxInstancesPerUser = 30
 
 	// MaxGroupsPerInstance caps how many groups can be bound to one chip.
 	// Mirrors the operational guidance from competitor research and matches
