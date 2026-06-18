@@ -69,28 +69,36 @@ func aspectFromEnv(key string, def float64) float64 {
 var defaultClient = &http.Client{Timeout: fetchTimeout}
 
 // safeCanvasSize returns the canvas dimensions needed to bring a w×h image
-// inside the [minAspect, maxAspect] window. If the image is already in range,
-// it returns w, h unchanged (no padding). Otherwise it grows the short axis:
-// too tall → wider canvas; too wide → taller canvas. The image itself is never
-// scaled, only centered on the (possibly larger) canvas.
-func safeCanvasSize(w, h int) (int, int) {
+// inside the [minA, maxA] window. If the image is already in range, it returns
+// w, h unchanged (no padding). Otherwise it grows the short axis: too tall →
+// wider canvas; too wide → taller canvas. The image itself is never scaled,
+// only centered on the (possibly larger) canvas.
+func safeCanvasSize(w, h int, minA, maxA float64) (int, int) {
 	aspect := float64(w) / float64(h)
 	switch {
-	case aspect < minAspect:
-		return int(math.Round(float64(h) * minAspect)), h
-	case aspect > maxAspect:
-		return w, int(math.Round(float64(w) / maxAspect))
+	case aspect < minA:
+		return int(math.Round(float64(h) * minA)), h
+	case aspect > maxA:
+		return w, int(math.Round(float64(w) / maxA))
 	default:
 		return w, h
 	}
 }
 
 // PadToSafeAspectJPEG decodes src (JPEG or PNG) and, if its aspect ratio is
-// outside WhatsApp's safe window, composites it centered on a white canvas just
-// large enough to bring it into range; otherwise it re-encodes the image as-is
-// (rectangular, no gutters). Returns an error if src can't be decoded — callers
-// should fall back to sending the original image untouched.
+// outside WhatsApp's safe window [minAspect, maxAspect], composites it centered
+// on a white canvas just large enough to bring it into range; otherwise it
+// re-encodes the image as-is (rectangular, no gutters). Returns an error if src
+// can't be decoded — callers should fall back to the original image untouched.
 func PadToSafeAspectJPEG(src []byte) ([]byte, error) {
+	return padToAspectJPEG(src, minAspect, maxAspect)
+}
+
+// padToAspectJPEG is the shared core: it pads src into the [minA, maxA] window.
+// Callers pick the window — the default safe window for URL/product images, or
+// the tighter relay window (square) for forwarded media that lands in the group
+// bubble.
+func padToAspectJPEG(src []byte, minA, maxA float64) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(src))
 	if err != nil {
 		return nil, fmt.Errorf("decode image: %w", err)
@@ -102,7 +110,7 @@ func PadToSafeAspectJPEG(src []byte) ([]byte, error) {
 		return nil, fmt.Errorf("invalid image bounds %dx%d", w, h)
 	}
 
-	cw, ch := safeCanvasSize(w, h)
+	cw, ch := safeCanvasSize(w, h, minA, maxA)
 
 	canvas := image.NewRGBA(image.Rect(0, 0, cw, ch))
 	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
@@ -163,7 +171,46 @@ func FetchAndPadToSafeAspectJPEGBase64(ctx context.Context, url string) (string,
 // and WhatsApp center-cropped its sides. Routing base64 through here closes that
 // gap. Fail-open: callers should send the original base64 on any error.
 func PadToSafeAspectJPEGBase64(b64 string) (string, error) {
-	// Strip an optional data-URL prefix ("data:image/png;base64,<payload>").
+	raw, err := decodeBase64Image(b64)
+	if err != nil {
+		return "", err
+	}
+	padded, err := padToAspectJPEG(raw, minAspect, maxAspect)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(padded), nil
+}
+
+// relayMaxAspect bounds RELAYED/forwarded images, which go out as base64 and
+// land in the group bubble. Unlike the fullscreen view (which tolerates up to
+// maxAspect), the group bubble on mobile only shows a SQUARE image in full —
+// anything wider is side-cropped, so a relayed coupon banner lost its badge and
+// icon in-bubble. Relayed media is therefore squared by default (1.0).
+// Overridable via IMAGE_RELAY_MAX_ASPECT if the bubble tolerance ever changes.
+// This is intentionally separate from maxAspect so product photos sent by URL
+// (list/search/generated offers) keep their natural rectangular shape.
+var relayMaxAspect = aspectFromEnv("IMAGE_RELAY_MAX_ASPECT", 1.0)
+
+// PadToSquareJPEGBase64 normalizes a base64 image (JPEG/PNG, with or without a
+// "data:" prefix) into the relay window [minAspect, relayMaxAspect] — square by
+// default — so forwarded banners show in full in the group bubble instead of
+// being side-cropped. Fail-open: callers should send the original on any error.
+func PadToSquareJPEGBase64(b64 string) (string, error) {
+	raw, err := decodeBase64Image(b64)
+	if err != nil {
+		return "", err
+	}
+	padded, err := padToAspectJPEG(raw, minAspect, relayMaxAspect)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(padded), nil
+}
+
+// decodeBase64Image decodes a base64 image payload, tolerating an optional
+// "data:<mime>;base64," prefix and surrounding whitespace.
+func decodeBase64Image(b64 string) ([]byte, error) {
 	if strings.HasPrefix(b64, "data:") {
 		if i := strings.IndexByte(b64, ','); i >= 0 {
 			b64 = b64[i+1:]
@@ -171,11 +218,7 @@ func PadToSafeAspectJPEGBase64(b64 string) (string, error) {
 	}
 	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(b64))
 	if err != nil {
-		return "", fmt.Errorf("decode base64: %w", err)
+		return nil, fmt.Errorf("decode base64: %w", err)
 	}
-	padded, err := PadToSafeAspectJPEG(raw)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(padded), nil
+	return raw, nil
 }
