@@ -398,15 +398,16 @@ func TestWahaAdapter_SendImage(t *testing.T) {
 	})
 }
 
-// TestWahaAdapter_SendImage_NormalizesBase64WideBanner verifies the relay fix:
-// an image supplied as base64 (the offer-generate/monitor relay path, which
-// bypassed the URL-only aspect normalization) is now padded to WhatsApp's safe
-// window before upload — so a wide coupon banner reaches the group in full
-// instead of being center-cropped.
-func TestWahaAdapter_SendImage_NormalizesBase64WideBanner(t *testing.T) {
+// TestWahaAdapter_SendImage_SquaresBase64Relay verifies the relay fix: an image
+// supplied as base64 (the offer-generate/monitor relay path) is padded to a
+// SQUARE before upload — the group bubble on mobile only shows square images in
+// full, so a wide coupon banner must be squared (white top/bottom) to reach the
+// group without WhatsApp side-cropping its badge/icon. Product photos sent by
+// URL keep their rectangular shape (separate path).
+func TestWahaAdapter_SendImage_SquaresBase64Relay(t *testing.T) {
 	ctx := context.Background()
 
-	// 1910x500 (3.82:1) — well outside the 1.91 ceiling, so it must be heightened.
+	// 1910x500 (3.82:1) wide banner → must come out square (1910x1910).
 	var src bytes.Buffer
 	img := image.NewRGBA(image.Rect(0, 0, 1910, 500))
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: color.RGBA{R: 10, G: 120, B: 200, A: 255}}, image.Point{}, draw.Src)
@@ -439,8 +440,8 @@ func TestWahaAdapter_SendImage_NormalizesBase64WideBanner(t *testing.T) {
 		ImageBase64: wideB64,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, 1910, gotW, "width must be unchanged")
-	assert.Equal(t, 1000, gotH, "wide base64 banner must be heightened to 1.91 (1910x1000), not shipped raw")
+	assert.Equal(t, gotW, gotH, "relayed base64 banner must be squared for the group bubble")
+	assert.Equal(t, 1910, gotW, "square side should match the banner width (1910x1910)")
 }
 
 func TestIsTransientWahaUploadError(t *testing.T) {

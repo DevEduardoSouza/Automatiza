@@ -180,3 +180,36 @@ func TestPadToSafeAspectJPEGBase64_BadInput(t *testing.T) {
 		t.Fatal("expected error for undecodable base64")
 	}
 }
+
+// The relay path squares forwarded banners (default relayMaxAspect=1.0), because
+// the group bubble only shows square images in full.
+func TestPadToSquareJPEGBase64(t *testing.T) {
+	cases := [][2]int{
+		{1910, 500}, // wide banner → square
+		{500, 1910}, // tall → square
+		{800, 800},  // already square → unchanged
+	}
+	for _, c := range cases {
+		b64 := base64.StdEncoding.EncodeToString(makeImage(t, c[0], c[1], "jpeg"))
+		out, err := PadToSquareJPEGBase64(b64)
+		if err != nil {
+			t.Fatalf("%dx%d: %v", c[0], c[1], err)
+		}
+		raw, derr := base64.StdEncoding.DecodeString(out)
+		if derr != nil {
+			t.Fatalf("%dx%d: result not base64: %v", c[0], c[1], derr)
+		}
+		w, h := decodedSize(t, raw)
+		if w != h {
+			t.Fatalf("%dx%d relay output must be square, got %dx%d", c[0], c[1], w, h)
+		}
+		// Square side = the larger original dimension (image never scaled).
+		want := c[0]
+		if c[1] > want {
+			want = c[1]
+		}
+		if w != want {
+			t.Fatalf("%dx%d square side should be %d, got %d", c[0], c[1], want, w)
+		}
+	}
+}

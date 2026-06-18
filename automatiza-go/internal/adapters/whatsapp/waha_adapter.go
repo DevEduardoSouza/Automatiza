@@ -1262,11 +1262,16 @@ func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*Mes
 				zap.Error(perr))
 		}
 	case input.ImageBase64 != "":
-		if b64, perr := imagepad.PadToSafeAspectJPEGBase64(input.ImageBase64); perr == nil {
+		// Base64 here means forwarded/relayed media (offer-generate & monitor
+		// relay). It lands in the group bubble, which on mobile only shows a
+		// SQUARE image in full — wider banners get side-cropped (badge/icon
+		// lost). So square it, separately from the URL path above which keeps
+		// product photos rectangular. Fail-open: keep the original on error.
+		if b64, perr := imagepad.PadToSquareJPEGBase64(input.ImageBase64); perr == nil {
 			input.ImageBase64 = b64
 			input.Mimetype = "image/jpeg"
 		} else {
-			a.logger.Warn("Image aspect-normalize (base64) failed, sending original",
+			a.logger.Warn("Image square-normalize (base64) failed, sending original",
 				zap.Error(perr))
 		}
 	}
