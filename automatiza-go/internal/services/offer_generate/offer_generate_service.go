@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"strings"
+	"sync"
 	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
@@ -666,12 +667,18 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 	// monitor) e os webhooks Redis SetNX duplicados em segundos.
 	const dedupeWindow = 30 * time.Minute
 
+	// Fan out in PARALLEL BY CHIP. Each destination group is hosted by exactly
+	// one of the user's chips; the old single serial loop sent to one group at
+	// a time, so with 131 groups × delay the LAST group only got the offer
+	// after minutes — while the other 12 chips sat idle. Grouping by chip lets
+	// every chip fan out at once. The per-group delay still paces EACH chip
+	// independently, so per-chip anti-ban behavior is unchanged; only the
+	// cross-chip waiting is removed (≈ Nchips× faster for the last group).
+	chipGroups := make(map[string][]string)
 	for _, groupID := range destinationGroups {
-		// Skip source group
 		if groupID == msg.RemoteJID {
-			continue
+			continue // skip source group
 		}
-
 		dispatchSession := chipForGroup(groupID)
 		if dispatchSession == "" {
 			s.logger.Info("No preferred chip participates in destination group, skipping",
@@ -680,71 +687,81 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			s.logDispatch(ctx, auto, groupID, links[0], "skipped", "no_chip_in_group", canonicalKey, store)
 			continue
 		}
-
-		// Dedup by (userID, groupID, canonicalKey)
-		if !s.claimProductSlot(ctx, auto.UserID, groupID, canonicalKey, dedupeWindow) {
-			s.logger.Info("Product already sent (dedup), skipping",
-				zap.String("automationID", auto.ID),
-				zap.String("toGroup", groupID),
-				zap.String("canonicalKey", canonicalKey))
-			s.logDispatch(ctx, auto, groupID, links[0], "skipped", "dedupe", canonicalKey, store)
-			continue
-		}
-
-		// Apply delay
-		delay := 1 + rand.IntN(3)
-		if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
-			delay = *auto.DelaySeconds
-		}
-		time.Sleep(time.Duration(delay) * time.Second)
-
-		// Mark this body as our own outgoing BEFORE sending. The webhook
-		// for our send arrives with FromMe=true; ProcessIncomingMessage
-		// looks for this key to distinguish "real loop" from "user posted
-		// manually." 60s TTL is far longer than any reasonable webhook
-		// delay; if the send fails, the orphan key is harmless. Indexed
-		// by the actual sending session so multi-chip fan-out doesn't
-		// share keys across chips.
-		s.markOwnOutgoing(ctx, dispatchSession, groupID, renderedMessage)
-
-		// Send via WhatsApp
-		sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		var sendErr error
-		if imageURL != "" {
-			_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
-				SessionName: dispatchSession,
-				ChatID:      groupID,
-				Caption:     renderedMessage,
-				ImageURL:    imageURL,
-			})
-		} else {
-			_, sendErr = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
-				SessionName: dispatchSession,
-				ChatID:      groupID,
-				Text:        renderedMessage,
-			})
-		}
-		sendCancel()
-
-		if sendErr != nil {
-			s.releaseProductSlot(ctx, auto.UserID, groupID, canonicalKey)
-			s.logDispatch(ctx, auto, groupID, links[0], "failed", sendErr.Error(), canonicalKey, store)
-			s.logger.Error("Failed to send offer",
-				zap.String("groupID", groupID),
-				zap.String("session", dispatchSession),
-				zap.Error(sendErr))
-			continue
-		}
-
-		s.logDispatch(ctx, auto, groupID, links[0], "sent", "", canonicalKey, store)
-
-		s.logger.Info("Offer generated and sent successfully",
-			zap.String("fromGroup", msg.RemoteJID),
-			zap.String("toGroup", groupID),
-			zap.String("session", dispatchSession),
-			zap.String("automationID", auto.ID),
-			zap.String("canonicalKey", canonicalKey))
+		chipGroups[dispatchSession] = append(chipGroups[dispatchSession], groupID)
 	}
+
+	var wg sync.WaitGroup
+	for dispatchSession, groupIDs := range chipGroups {
+		wg.Add(1)
+		go func(dispatchSession string, groupIDs []string) {
+			defer wg.Done()
+			for _, groupID := range groupIDs {
+				// Dedup by (userID, groupID, canonicalKey). claimProductSlot,
+				// logDispatch, markOwnOutgoing and the provider sends are all
+				// concurrency-safe (Redis SetNX / DB / per-session HTTP), and
+				// every shared value read here is read-only.
+				if !s.claimProductSlot(ctx, auto.UserID, groupID, canonicalKey, dedupeWindow) {
+					s.logger.Info("Product already sent (dedup), skipping",
+						zap.String("automationID", auto.ID),
+						zap.String("toGroup", groupID),
+						zap.String("canonicalKey", canonicalKey))
+					s.logDispatch(ctx, auto, groupID, links[0], "skipped", "dedupe", canonicalKey, store)
+					continue
+				}
+
+				// Per-chip pacing (anti-ban): space this chip's own sends.
+				delay := 1 + rand.IntN(3)
+				if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
+					delay = *auto.DelaySeconds
+				}
+				time.Sleep(time.Duration(delay) * time.Second)
+
+				// Mark this body as our own outgoing BEFORE sending so the
+				// FromMe webhook for our send is recognized (loop guard).
+				// Indexed by the sending session so chips don't share keys.
+				s.markOwnOutgoing(ctx, dispatchSession, groupID, renderedMessage)
+
+				// Send via WhatsApp
+				sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				var sendErr error
+				if imageURL != "" {
+					_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
+						SessionName: dispatchSession,
+						ChatID:      groupID,
+						Caption:     renderedMessage,
+						ImageURL:    imageURL,
+					})
+				} else {
+					_, sendErr = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
+						SessionName: dispatchSession,
+						ChatID:      groupID,
+						Text:        renderedMessage,
+					})
+				}
+				sendCancel()
+
+				if sendErr != nil {
+					s.releaseProductSlot(ctx, auto.UserID, groupID, canonicalKey)
+					s.logDispatch(ctx, auto, groupID, links[0], "failed", sendErr.Error(), canonicalKey, store)
+					s.logger.Error("Failed to send offer",
+						zap.String("groupID", groupID),
+						zap.String("session", dispatchSession),
+						zap.Error(sendErr))
+					continue
+				}
+
+				s.logDispatch(ctx, auto, groupID, links[0], "sent", "", canonicalKey, store)
+
+				s.logger.Info("Offer generated and sent successfully",
+					zap.String("fromGroup", msg.RemoteJID),
+					zap.String("toGroup", groupID),
+					zap.String("session", dispatchSession),
+					zap.String("automationID", auto.ID),
+					zap.String("canonicalKey", canonicalKey))
+			}
+		}(dispatchSession, groupIDs)
+	}
+	wg.Wait()
 
 	return nil
 }
@@ -1136,11 +1153,15 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 	canonicalKey := fmt.Sprintf("relay:%s", hashStr(msg.MessageID+":"+msg.RemoteJID))
 	const dedupeWindow = 30 * time.Minute
 
+	// Fan out in PARALLEL BY CHIP — same rationale as the offer flow: group the
+	// destinations by their hosting chip so every chip relays at once instead
+	// of one group at a time, with the per-group delay pacing each chip on its
+	// own (anti-ban unchanged).
+	chipGroups := make(map[string][]string)
 	for _, groupID := range destinationGroups {
 		if groupID == msg.RemoteJID {
 			continue
 		}
-
 		dispatchSession := chipForGroup(groupID)
 		if dispatchSession == "" {
 			s.logger.Info("No preferred chip participates in destination group, skipping relay",
@@ -1149,59 +1170,68 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 			s.logDispatch(ctx, auto, groupID, "", "skipped", "no_chip_in_group", canonicalKey, "")
 			continue
 		}
-
-		if !s.claimProductSlot(ctx, auto.UserID, groupID, canonicalKey, dedupeWindow) {
-			s.logger.Info("Relay message already sent (dedup), skipping",
-				zap.String("automationID", auto.ID),
-				zap.String("toGroup", groupID),
-				zap.String("canonicalKey", canonicalKey))
-			s.logDispatch(ctx, auto, groupID, "", "skipped", "dedupe", canonicalKey, "")
-			continue
-		}
-
-		// Random 1-3s delay pra espalhar envios em fan-out — mantém
-		// paridade com o fluxo de oferta.
-		delay := 1 + rand.IntN(3)
-		if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
-			delay = *auto.DelaySeconds
-		}
-		time.Sleep(time.Duration(delay) * time.Second)
-
-		// Marca o body+mídia como nosso próprio outgoing pra que o webhook
-		// FromMe que retorna seja distinguido de um chip user postando
-		// manualmente no grupo. Pula quando Body+MediaURL ambos vazios
-		// (caso degenerado — não deveria existir webhook desse formato).
-		ownKey := msg.Body
-		if msg.MediaURL != "" {
-			ownKey += "\x00" + msg.MediaURL
-		}
-		if ownKey != "" {
-			s.markOwnOutgoing(ctx, dispatchSession, groupID, ownKey)
-		}
-
-		sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		sendErr := s.sendRelayMessage(sendCtx, dispatchSession, groupID, msg)
-		sendCancel()
-
-		if sendErr != nil {
-			s.releaseProductSlot(ctx, auto.UserID, groupID, canonicalKey)
-			s.logDispatch(ctx, auto, groupID, "", "failed", sendErr.Error(), canonicalKey, "")
-			s.logger.Error("Failed to send relay message",
-				zap.String("groupID", groupID),
-				zap.String("session", dispatchSession),
-				zap.String("mediaType", msg.MediaType),
-				zap.Error(sendErr))
-			continue
-		}
-
-		s.logDispatch(ctx, auto, groupID, "", "sent", "", canonicalKey, "")
-		s.logger.Info("Relay message sent successfully",
-			zap.String("fromGroup", msg.RemoteJID),
-			zap.String("toGroup", groupID),
-			zap.String("session", dispatchSession),
-			zap.String("automationID", auto.ID),
-			zap.String("mediaType", msg.MediaType))
+		chipGroups[dispatchSession] = append(chipGroups[dispatchSession], groupID)
 	}
+
+	var wg sync.WaitGroup
+	for dispatchSession, groupIDs := range chipGroups {
+		wg.Add(1)
+		go func(dispatchSession string, groupIDs []string) {
+			defer wg.Done()
+			for _, groupID := range groupIDs {
+				if !s.claimProductSlot(ctx, auto.UserID, groupID, canonicalKey, dedupeWindow) {
+					s.logger.Info("Relay message already sent (dedup), skipping",
+						zap.String("automationID", auto.ID),
+						zap.String("toGroup", groupID),
+						zap.String("canonicalKey", canonicalKey))
+					s.logDispatch(ctx, auto, groupID, "", "skipped", "dedupe", canonicalKey, "")
+					continue
+				}
+
+				// Per-chip pacing (anti-ban).
+				delay := 1 + rand.IntN(3)
+				if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
+					delay = *auto.DelaySeconds
+				}
+				time.Sleep(time.Duration(delay) * time.Second)
+
+				// Marca o body+mídia como nosso próprio outgoing pra que o
+				// webhook FromMe que retorna seja distinguido de um chip user
+				// postando manualmente. Pula quando Body+MediaURL ambos vazios.
+				ownKey := msg.Body
+				if msg.MediaURL != "" {
+					ownKey += "\x00" + msg.MediaURL
+				}
+				if ownKey != "" {
+					s.markOwnOutgoing(ctx, dispatchSession, groupID, ownKey)
+				}
+
+				sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				sendErr := s.sendRelayMessage(sendCtx, dispatchSession, groupID, msg)
+				sendCancel()
+
+				if sendErr != nil {
+					s.releaseProductSlot(ctx, auto.UserID, groupID, canonicalKey)
+					s.logDispatch(ctx, auto, groupID, "", "failed", sendErr.Error(), canonicalKey, "")
+					s.logger.Error("Failed to send relay message",
+						zap.String("groupID", groupID),
+						zap.String("session", dispatchSession),
+						zap.String("mediaType", msg.MediaType),
+						zap.Error(sendErr))
+					continue
+				}
+
+				s.logDispatch(ctx, auto, groupID, "", "sent", "", canonicalKey, "")
+				s.logger.Info("Relay message sent successfully",
+					zap.String("fromGroup", msg.RemoteJID),
+					zap.String("toGroup", groupID),
+					zap.String("session", dispatchSession),
+					zap.String("automationID", auto.ID),
+					zap.String("mediaType", msg.MediaType))
+			}
+		}(dispatchSession, groupIDs)
+	}
+	wg.Wait()
 
 	return nil
 }
