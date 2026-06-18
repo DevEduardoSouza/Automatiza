@@ -589,6 +589,43 @@ func TestWahaAdapter_SendImage_RetriesTransientUpload(t *testing.T) {
 	})
 }
 
+// TestWahaAdapter_SendImage_RetriesRequestTimeout verifies that a per-request
+// httpClient timeout (WAHA/WhatsApp media upload momentarily slow) is retried
+// once — while the caller's ctx still has budget — instead of dropping the
+// image to the text-only fallback. Once 429/400 codes are retried, this timeout
+// is the dominant remaining "sem foto" cause.
+func TestWahaAdapter_SendImage_RetriesRequestTimeout(t *testing.T) {
+	ctx := context.Background()
+
+	var sendCalls int32
+	adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/api/sessions/") && r.Method == http.MethodGet {
+			jsonResponse(t, http.StatusOK, map[string]interface{}{"name": "s", "status": "WORKING"})(w, r)
+			return
+		}
+		n := atomic.AddInt32(&sendCalls, 1)
+		if n == 1 {
+			time.Sleep(400 * time.Millisecond) // hang past the client timeout
+			return
+		}
+		jsonResponse(t, http.StatusOK, map[string]interface{}{"id": "msg-ok"})(w, r)
+	})
+	// Shorten the per-request timeout so the test is fast; the caller ctx
+	// (Background, no deadline) stays alive, so the timeout must be retried.
+	adapter.httpClient.Timeout = 120 * time.Millisecond
+
+	result, err := adapter.SendImage(ctx, SendImageInput{
+		SessionName: "s",
+		ChatID:      "group@g.us",
+		Caption:     "promo",
+		ImageBase64: "base64data",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "msg-ok", result.ID)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&sendCalls), "a request timeout should be retried exactly once")
+}
+
 // =============================================================================
 // Group Manager Tests
 // =============================================================================

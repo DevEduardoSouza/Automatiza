@@ -138,7 +138,11 @@ func (q *QueueClient) EnqueueMessage(ctx context.Context, data *MessageJobData, 
 	opts := []asynq.Option{
 		asynq.MaxRetry(3),
 		asynq.Queue("default"),
-		asynq.Timeout(60 * time.Second),
+		// 120s (was 60s) so a SendImage that hits the 30s httpClient timeout
+		// still has budget for the adapter's single timeout-retry before the
+		// task deadline cuts it — otherwise the retry that recovers a "sem
+		// foto" upload would be truncated.
+		asynq.Timeout(120 * time.Second),
 	}
 
 	if delay > 0 {
