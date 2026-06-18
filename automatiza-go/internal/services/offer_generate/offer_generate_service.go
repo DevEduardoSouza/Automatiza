@@ -160,20 +160,18 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 	// mesmo que esse pré-dedup falhe (Redis offline), nunca há
 	// duplicação real no destino.
 	contentKey := s.buildContentKey(msg.RemoteJID, msg.Body)
-	if s.isDuplicate(ctx, contentKey) {
+	if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
 		s.logger.Debug("Offer generate: duplicate content, skipping")
 		return nil
 	}
-	s.markProcessed(ctx, contentKey, 2*time.Minute)
 
 	// 4. Message ID dedup (10 min window). Mesma motivação do (3) —
 	// keyed por (group, msgID), não por instance.
 	msgKey := fmt.Sprintf("og_msg_dedup:%s:%s", msg.RemoteJID, msg.MessageID)
-	if s.isDuplicate(ctx, msgKey) {
+	if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
 		s.logger.Debug("Offer generate: duplicate message ID, skipping")
 		return nil
 	}
-	s.markProcessed(ctx, msgKey, 10*time.Minute)
 
 	// 5. Find matching offer_generate automations for this group (all users).
 	automations, err := s.automationRepo.GetOfferGenerateAutomationsForGroup(ctx, msg.RemoteJID)
@@ -829,26 +827,31 @@ func (s *offerGenerateService) isOwnOutgoing(ctx context.Context, instance, grou
 	return val != ""
 }
 
-func (s *offerGenerateService) isDuplicate(ctx context.Context, key string) bool {
+// claimOnce atomically marks `key` as processed for `ttl` and returns true only
+// for the FIRST caller within that window. It replaces the old isDuplicate()
+// (GET) + markProcessed() (SET) pair, whose check-then-set GAP let concurrent
+// duplicate deliveries all slip through: the same source message seen by N
+// chips in a monitor group (WAHA fires one webhook per chip) — or a double
+// webhook — would each pass the GET before any of them ran the SET, so all N
+// processings fanned the same offer out to the destination groups, producing
+// the same-second duplicate sends. SetNX closes that gap (cache.go does a real
+// Redis SETNX).
+//
+// Fail-open: with no cache, or on a Redis error, returns true (process) so a
+// real message is never silently dropped; claimProductSlot still backstops
+// duplication at dispatch time in that degraded case.
+func (s *offerGenerateService) claimOnce(ctx context.Context, key string, ttl time.Duration) bool {
 	if s.cache == nil {
-		return false
+		return true
 	}
-	val, err := s.cache.Get(ctx, key)
+	claimed, err := s.cache.SetNX(ctx, key, "1", ttl)
 	if err != nil {
-		return false
-	}
-	return val != ""
-}
-
-func (s *offerGenerateService) markProcessed(ctx context.Context, key string, ttl time.Duration) {
-	if s.cache == nil {
-		return
-	}
-	if err := s.cache.Set(ctx, key, "1", ttl); err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to set offer_generate dedup key", err, map[string]string{
-			"module": "offer_generate", "operation": "dedup_set",
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "offer_generate dedup SetNX failed, processing fail-open", err, map[string]string{
+			"module": "offer_generate", "operation": "dedup_claim",
 		})
+		return true
 	}
+	return claimed
 }
 
 func (s *offerGenerateService) claimProductSlot(ctx context.Context, userID, groupID, canonicalKey string, window time.Duration) bool {
@@ -979,19 +982,17 @@ func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.Inc
 	// inclui a MediaURL no hash pra evitar que duas mídias sem legenda
 	// colidam na mesma janela.
 	contentKey := s.buildRelayContentKey(msg)
-	if s.isDuplicate(ctx, contentKey) {
+	if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
 		s.logger.Debug("Offer relay: duplicate content, skipping")
 		return nil
 	}
-	s.markProcessed(ctx, contentKey, 2*time.Minute)
 
 	// Message ID dedup (10 min) — idêntico ao fluxo principal.
 	msgKey := fmt.Sprintf("og_relay_msg_dedup:%s:%s", msg.RemoteJID, msg.MessageID)
-	if s.isDuplicate(ctx, msgKey) {
+	if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
 		s.logger.Debug("Offer relay: duplicate message ID, skipping")
 		return nil
 	}
-	s.markProcessed(ctx, msgKey, 10*time.Minute)
 
 	automations, err := s.automationRepo.GetOfferGenerateAutomationsForGroup(ctx, msg.RemoteJID)
 	if err != nil {
