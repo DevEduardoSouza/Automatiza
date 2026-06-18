@@ -509,6 +509,18 @@ func (a *WahaAdapter) doRequest(ctx context.Context, method, path string, body i
 				return nil, NewProviderError(ErrCodeTimeout, "request canceled", err)
 			}
 			if errors.Is(err, context.DeadlineExceeded) {
+				// Tell the per-request httpClient timeout apart from the
+				// CALLER's deadline: when the caller's ctx is still alive, the
+				// client timeout fired because WAHA/WhatsApp's media upload was
+				// momentarily slow (>httpTimeout). That's transient, so retry
+				// once (capped) instead of dropping the image straight to the
+				// text-only fallback ("promoção sem foto") — the dominant cause
+				// of "sem foto" once the 429/400 codes are retried. If the
+				// caller's ctx is done, it really gave up, so return.
+				if a.retryEnabled && ctx.Err() == nil && attempt < softUploadMaxRetries {
+					lastErr = err
+					continue
+				}
 				return nil, NewProviderError(ErrCodeTimeout, "request timed out", err)
 			}
 
