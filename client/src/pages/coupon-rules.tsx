@@ -27,13 +27,22 @@ import {
   useCouponRules,
 } from '@/hooks/use-coupon-rules';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const PLATFORM_OPTIONS = [
   { value: 'shopee', label: 'Shopee' },
   { value: 'mercado_livre', label: 'Mercado Livre' },
 ];
+
+/**
+ * Ordem da lista de regras de cupom.
+ * - recent: data de criação, mais recentes primeiro (default)
+ * - oldest: data de criação, mais antigas primeiro
+ * - period: data de início do período, as que começam antes primeiro
+ *   (regras "Sempre ativo", sem período, vão pro fim)
+ */
+type RuleSortOrder = 'recent' | 'oldest' | 'period';
 
 interface RuleFormState {
   platform: string;
@@ -127,6 +136,28 @@ export default function CouponRulesPage() {
   const [form, setForm] = useState<RuleFormState>(EMPTY_FORM);
   const [periodError, setPeriodError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<RuleSortOrder>('recent');
+
+  // Ordena por data pra facilitar localizar uma regra. Datas são ISO 8601,
+  // então localeCompare ordena cronologicamente. Copia o array antes (rules
+  // vem do cache do React Query — não pode mutar).
+  const sortedRules = useMemo(() => {
+    const copy = [...rules];
+    switch (sortOrder) {
+      case 'oldest':
+        return copy.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      case 'period':
+        // Começa antes no topo; regras sem período ("Sempre ativo") vão pro fim.
+        return copy.sort((a, b) => {
+          if (!a.period_start && !b.period_start) return 0;
+          if (!a.period_start) return 1;
+          if (!b.period_start) return -1;
+          return a.period_start.localeCompare(b.period_start);
+        });
+      default: // 'recent' — mais recentes primeiro (default)
+        return copy.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    }
+  }, [rules, sortOrder]);
 
   function openCreate() {
     setEditingId(null);
@@ -267,6 +298,24 @@ export default function CouponRulesPage() {
         </Button>
       </div>
 
+      {rules.length > 0 && (
+        <div className="flex items-center justify-end gap-2">
+          <Label htmlFor="rule-sort" className="text-sm text-muted-foreground">
+            Ordenar por
+          </Label>
+          <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as RuleSortOrder)}>
+            <SelectTrigger id="rule-sort" className="w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="recent">Mais recentes</SelectItem>
+              <SelectItem value="oldest">Mais antigas</SelectItem>
+              <SelectItem value="period">Período (começa antes)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
@@ -292,7 +341,7 @@ export default function CouponRulesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rules.map((rule) => (
+                  {sortedRules.map((rule) => (
                     <tr key={rule.id} className="border-b">
                       <td className="px-4 py-3 max-w-md">
                         <span className="text-sm line-clamp-2">
