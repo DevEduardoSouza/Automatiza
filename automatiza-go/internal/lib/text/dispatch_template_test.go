@@ -925,3 +925,106 @@ func TestExtractTemplateVariables(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderMLOfferTemplate_EmptyOriginalPrice cobre o bug do "De ~~"
+// pendurado: oferta ML sem preço cheio (OriginalPrice == 0) não pode deixar
+// a linha do preço original riscado vazia no disparo.
+func TestRenderMLOfferTemplate_EmptyOriginalPrice(t *testing.T) {
+	t.Parallel()
+
+	const tmpl = "🛍️ {nome_produto}\n\nDe ~{preco_original_formatado}~\n💸 Por {preco_formatado}\n\n🛒Compre aqui: {link_afiliado}"
+
+	t.Run("sem preco original remove a linha De", func(t *testing.T) {
+		t.Parallel()
+		got := RenderMLOfferTemplate(tmpl, MLOfferVars{
+			Title:         "Sérum Kérastase",
+			Price:         382.0,
+			OriginalPrice: 0,
+			AffiliateLink: "https://meli.la/2mAwoEq",
+		})
+		if strings.Contains(got, "~~") {
+			t.Errorf("riscado vazio '~~' presente:\n%s", got)
+		}
+		if strings.Contains(got, "De ~") {
+			t.Errorf("linha 'De' pendurada nao foi removida:\n%s", got)
+		}
+		if !strings.Contains(got, "💸 Por R$ 382,00") {
+			t.Errorf("preco atual sumiu:\n%s", got)
+		}
+		if !strings.Contains(got, "https://meli.la/2mAwoEq") {
+			t.Errorf("link sumiu:\n%s", got)
+		}
+	})
+
+	t.Run("com preco original mantem a linha De", func(t *testing.T) {
+		t.Parallel()
+		got := RenderMLOfferTemplate(tmpl, MLOfferVars{
+			Title:         "Sérum Kérastase",
+			Price:         382.0,
+			OriginalPrice: 500.0,
+			AffiliateLink: "https://meli.la/2mAwoEq",
+		})
+		if !strings.Contains(got, "De ~R$ 500,00~") {
+			t.Errorf("linha 'De' com preco original deveria permanecer:\n%s", got)
+		}
+		if !strings.Contains(got, "💸 Por R$ 382,00") {
+			t.Errorf("preco atual sumiu:\n%s", got)
+		}
+	})
+}
+
+func TestStripEmptyOriginalPriceLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		template      string
+		originalEmpty bool
+		wantContains  []string
+		wantMissing   []string
+	}{
+		{
+			name:          "placeholder atual riscado removido quando vazio",
+			template:      "🛍️ {nome_produto}\nDe ~{preco_original_formatado}~\n💸 Por {preco_formatado}",
+			originalEmpty: true,
+			wantMissing:   []string{"De ~", "preco_original_formatado"},
+			wantContains:  []string{"{preco_formatado}", "{nome_produto}"},
+		},
+		{
+			name:          "placeholder legado removido quando vazio",
+			template:      "De {{PRODUTO_PRECO_ORIGINAL}}\n💸 Por {{PRODUTO_PRECO}}",
+			originalEmpty: true,
+			wantMissing:   []string{"PRODUTO_PRECO_ORIGINAL", "De "},
+			wantContains:  []string{"{{PRODUTO_PRECO}}"},
+		},
+		{
+			name:          "linha combinada De X por Y preservada",
+			template:      "De ~{preco_original_formatado}~ por {preco_formatado}",
+			originalEmpty: true,
+			wantContains:  []string{"preco_original_formatado", "preco_formatado"},
+		},
+		{
+			name:          "nada muda quando ha preco original",
+			template:      "De ~{preco_original_formatado}~\n💸 Por {preco_formatado}",
+			originalEmpty: false,
+			wantContains:  []string{"preco_original_formatado", "preco_formatado"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := StripEmptyOriginalPriceLine(tt.template, tt.originalEmpty)
+			for _, want := range tt.wantContains {
+				if !strings.Contains(got, want) {
+					t.Errorf("esperava conter %q em:\n%s", want, got)
+				}
+			}
+			for _, missing := range tt.wantMissing {
+				if strings.Contains(got, missing) {
+					t.Errorf("nao esperava %q em:\n%s", missing, got)
+				}
+			}
+		})
+	}
+}

@@ -15,18 +15,18 @@ type TemplateVar struct {
 
 // Portuguese template variable names (matching Node.js parity)
 const (
-	VarNomeProduto           = "nome_produto"
-	VarLoja                  = "loja"
-	VarPreco                 = "preco"
-	VarPrecoFormatado        = "preco_formatado"
-	VarPrecoOriginal         = "preco_original"
+	VarNomeProduto            = "nome_produto"
+	VarLoja                   = "loja"
+	VarPreco                  = "preco"
+	VarPrecoFormatado         = "preco_formatado"
+	VarPrecoOriginal          = "preco_original"
 	VarPrecoOriginalFormatado = "preco_original_formatado"
-	VarLinkAfiliado          = "link_afiliado"
-	VarLinkProduto           = "link_produto"
-	VarCTA                   = "cta"
-	VarCupom                 = "cupom"
-	VarCupomBloco            = "cupom_bloco"
-	VarAvisoPreco            = "aviso_preco"
+	VarLinkAfiliado           = "link_afiliado"
+	VarLinkProduto            = "link_produto"
+	VarCTA                    = "cta"
+	VarCupom                  = "cupom"
+	VarCupomBloco             = "cupom_bloco"
+	VarAvisoPreco             = "aviso_preco"
 	// VarInfo is the free-form line populated by the info[...] tag in the
 	// trigger message (see ParseInfoTag). Renders to "" when the message
 	// has no info tag, which collapses any blank line around it via the
@@ -77,6 +77,48 @@ func RenderTemplate(template string, vars map[string]string) string {
 	result = regexp.MustCompile(`\n{3,}`).ReplaceAllString(result, "\n\n")
 
 	return strings.TrimSpace(result)
+}
+
+// StripEmptyOriginalPriceLine remove a linha do "preço original" quando a
+// oferta não tem esse valor (FormatBRLSpaced devolve "" para preço <= 0).
+//
+// Sem isso, um template como `De ~{preco_original_formatado}~` renderiza um
+// "De ~~" pendurado (riscado vazio), e o default `De {preco_original_formatado}`
+// vira um "De " solto. É comum no Mercado Livre, que frequentemente não traz o
+// preço cheio. A linha só é removida quando NÃO contém também o preço atual,
+// pra preservar layouts que juntem "De X por Y" na mesma linha.
+//
+// Reconhece tanto os placeholders atuais ({preco_original_formatado} etc.)
+// quanto o legado {{PRODUTO_PRECO_ORIGINAL}}. Os callers que pré-substituem o
+// placeholder legado por "" (ex.: automation_service) devem chamar esta função
+// ANTES dessa substituição — depois a linha já virou "De " e não há mais o que
+// casar. Os RenderXOfferTemplate já a aplicam internamente para os atuais.
+func StripEmptyOriginalPriceLine(template string, originalPriceEmpty bool) string {
+	if !originalPriceEmpty {
+		return template
+	}
+
+	originalVars := []string{VarPrecoOriginalFormatado, VarPrecoOriginal, VarOriginalPrice, "PRODUTO_PRECO_ORIGINAL"}
+	currentVars := []string{VarPrecoFormatado, VarPreco, VarPrice, "PRODUTO_PRECO"}
+
+	lineHasVar := func(line string, keys []string) bool {
+		for _, k := range keys {
+			if strings.Contains(line, "{"+k+"}") || strings.Contains(line, "{{"+k+"}}") {
+				return true
+			}
+		}
+		return false
+	}
+
+	lines := strings.Split(template, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if lineHasVar(line, originalVars) && !lineHasVar(line, currentVars) {
+			continue // linha "De ~~" pendurada — descarta
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
 }
 
 // ShopeeOfferVars holds variables for a Shopee offer template
@@ -159,6 +201,7 @@ func RenderShopeeOfferTemplate(template string, offer ShopeeOfferVars) string {
 		vars[VarCouponText] = offer.CouponText
 	}
 
+	template = StripEmptyOriginalPriceLine(template, offer.OriginalPrice <= 0)
 	return RenderTemplate(template, vars)
 }
 
@@ -208,6 +251,7 @@ func RenderMLOfferTemplate(template string, offer MLOfferVars) string {
 		vars[VarCouponText] = offer.CouponText
 	}
 
+	template = StripEmptyOriginalPriceLine(template, offer.OriginalPrice <= 0)
 	return RenderTemplate(template, vars)
 }
 
