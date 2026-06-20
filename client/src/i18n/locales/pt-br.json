@@ -1575,6 +1575,12 @@
       "empty": "Você ainda não criou nenhum cupom.",
       "loading": "Carregando cupons...",
       "filterDescription": "Busque e filtre seus cupons",
+      "sort": {
+        "label": "Ordenar por",
+        "recent": "Mais recentes",
+        "oldest": "Mais antigos",
+        "expiry": "Validade (vence antes)"
+      },
       "success": {
         "created": "Cupom criado",
         "updated": "Cupom atualizado",

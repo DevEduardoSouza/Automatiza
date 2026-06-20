@@ -47,6 +47,14 @@ type StoreKey = 'shopee' | 'amazon' | 'magalu' | 'ml' | 'shein' | 'aliexpress' |
  */
 type LocalDiscountType = 'fixed' | 'percent';
 
+/**
+ * Ordem da lista de cupons.
+ * - recent: data de criação, mais recentes primeiro (default)
+ * - oldest: data de criação, mais antigos primeiro
+ * - expiry: data de validade, os que vencem antes primeiro (sem validade vão pro fim)
+ */
+export type CouponSortOrder = 'recent' | 'oldest' | 'expiry';
+
 const STORE_KEYS: StoreKey[] = ['shopee', 'amazon', 'magalu', 'ml', 'shein', 'aliexpress', 'awin'];
 
 const CATEGORY_KEYS = [
@@ -234,6 +242,7 @@ interface UseCouponsConnectReturn {
   filterStore: string;
   filterStatus: string;
   searchQuery: string;
+  sortOrder: CouponSortOrder;
   formData: CreateCouponData;
   stores: StoreOption[];
   categories: CategoryOption[];
@@ -242,6 +251,7 @@ interface UseCouponsConnectReturn {
   setFilterStore: (value: string) => void;
   setFilterStatus: (value: string) => void;
   setSearchQuery: (value: string) => void;
+  setSortOrder: (value: CouponSortOrder) => void;
   setFormData: React.Dispatch<React.SetStateAction<CreateCouponData>>;
   setIsDialogOpen: (value: boolean) => void;
   handleOpenDialog: (coupon?: LocalCoupon) => void;
@@ -296,6 +306,7 @@ export function useCoupons(): UseCouponsConnectReturn {
   const [filterStore, setFilterStore] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortOrder, setSortOrder] = useState<CouponSortOrder>('recent');
   const [formData, setFormData] = useState<CreateCouponData>(initialFormData);
 
   // Build filter for query
@@ -607,24 +618,39 @@ export function useCoupons(): UseCouponsConnectReturn {
     return new Date(coupon.expires_at) < new Date();
   }, []);
 
-  const filteredCoupons = useMemo(
-    () =>
-      coupons.filter((coupon) => {
-        // Filter by search query (code or title)
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase().trim();
-          const matchesCode = coupon.code.toLowerCase().includes(query);
-          const matchesTitle = coupon.title.toLowerCase().includes(query);
-          if (!matchesCode && !matchesTitle) return false;
-        }
-        if (filterStore !== 'all' && coupon.store !== filterStore) return false;
-        if (filterStatus === 'active' && (!coupon.is_active || isExpired(coupon))) return false;
-        if (filterStatus === 'inactive' && coupon.is_active && !isExpired(coupon)) return false;
-        if (filterStatus === 'expired' && !isExpired(coupon)) return false;
-        return true;
-      }),
-    [coupons, filterStore, filterStatus, searchQuery, isExpired]
-  );
+  const filteredCoupons = useMemo(() => {
+    const filtered = coupons.filter((coupon) => {
+      // Filter by search query (code or title)
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        const matchesCode = coupon.code.toLowerCase().includes(query);
+        const matchesTitle = coupon.title.toLowerCase().includes(query);
+        if (!matchesCode && !matchesTitle) return false;
+      }
+      if (filterStore !== 'all' && coupon.store !== filterStore) return false;
+      if (filterStatus === 'active' && (!coupon.is_active || isExpired(coupon))) return false;
+      if (filterStatus === 'inactive' && coupon.is_active && !isExpired(coupon)) return false;
+      if (filterStatus === 'expired' && !isExpired(coupon)) return false;
+      return true;
+    });
+
+    // Ordena por data. Datas são ISO 8601, então localeCompare ordena
+    // cronologicamente. `filter` já devolve array novo — sort não muta `coupons`.
+    switch (sortOrder) {
+      case 'oldest':
+        return filtered.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      case 'expiry':
+        // Vence antes no topo; cupons sem validade vão pro fim.
+        return filtered.sort((a, b) => {
+          if (!a.expires_at && !b.expires_at) return 0;
+          if (!a.expires_at) return 1;
+          if (!b.expires_at) return -1;
+          return a.expires_at.localeCompare(b.expires_at);
+        });
+      default: // 'recent' — mais recentes primeiro (default)
+        return filtered.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    }
+  }, [coupons, filterStore, filterStatus, searchQuery, sortOrder, isExpired]);
 
   return {
     coupons,
@@ -634,6 +660,7 @@ export function useCoupons(): UseCouponsConnectReturn {
     filterStore,
     filterStatus,
     searchQuery,
+    sortOrder,
     formData,
     stores,
     categories,
@@ -642,6 +669,7 @@ export function useCoupons(): UseCouponsConnectReturn {
     setFilterStore,
     setFilterStatus,
     setSearchQuery,
+    setSortOrder,
     setFormData,
     setIsDialogOpen,
     handleOpenDialog,
