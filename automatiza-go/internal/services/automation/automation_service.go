@@ -1040,6 +1040,10 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 		"{{LOJA_NOME}}":              offer.ShopName,
 		"{{PRODUTO_IMAGEM}}":         offer.Image,
 	}
+	// Remove a linha "De {{PRODUTO_PRECO_ORIGINAL}}" quando não há preço cheio —
+	// senão a substituição abaixo a deixaria como "De " pendurado no disparo.
+	// Tem que rodar ANTES do ReplaceAll (depois o placeholder já virou "").
+	template = text.StripEmptyOriginalPriceLine(template, offer.OriginalPrice <= 0)
 	for key, value := range legacyVars {
 		template = strings.ReplaceAll(template, key, value)
 	}
