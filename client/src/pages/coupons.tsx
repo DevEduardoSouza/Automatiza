@@ -25,7 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useCoupons } from '@/hooks/use-coupons';
+import { type CouponSortOrder, useCoupons } from '@/hooks/use-coupons';
 import {
   CheckCircle2,
   Copy,
@@ -93,6 +93,7 @@ export default function Coupons() {
     filterStore,
     filterStatus,
     searchQuery,
+    sortOrder,
     formData,
     stores,
     filteredCoupons,
@@ -100,6 +101,7 @@ export default function Coupons() {
     setFilterStore,
     setFilterStatus,
     setSearchQuery,
+    setSortOrder,
     setFormData,
     setIsDialogOpen,
     handleOpenDialog,
@@ -440,7 +442,7 @@ export default function Coupons() {
                     className={`${inputClasses} pl-9 xs:pl-11`}
                   />
                 </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
                   <div className="space-y-2">
                     <Label>{t('common.store')}</Label>
                     <Select value={filterStore} onValueChange={setFilterStore}>
@@ -468,6 +470,22 @@ export default function Coupons() {
                         <SelectItem value="active">{t('common.active')}</SelectItem>
                         <SelectItem value="inactive">{t('common.inactive')}</SelectItem>
                         <SelectItem value="expired">{t('common.expired')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('pages.coupons.sort.label')}</Label>
+                    <Select
+                      value={sortOrder}
+                      onValueChange={(value) => setSortOrder(value as CouponSortOrder)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="recent">{t('pages.coupons.sort.recent')}</SelectItem>
+                        <SelectItem value="oldest">{t('pages.coupons.sort.oldest')}</SelectItem>
+                        <SelectItem value="expiry">{t('pages.coupons.sort.expiry')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
