@@ -343,7 +343,10 @@ function SidebarContent({ className, ref, ...props }: SidebarContentProps) {
       ref={ref}
       data-sidebar="content"
       className={cn(
-        'flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden',
+        // overflow-y-auto in both states (incl. collapsed/icon) so a tall menu
+        // scrolls instead of clipping its bottom items + footer on short
+        // screens; overflow-x-hidden keeps the icon rail from scrolling sideways.
+        'flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden',
         className
       )}
       {...props}

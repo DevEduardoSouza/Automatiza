@@ -675,7 +675,11 @@ h2 {
 }
 
 .mobile-header-dropdown-open {
-  max-height: 50vh;
+  /* Fill the screen below the 57px header instead of capping at 50vh, which
+     cut the menu in half — the nav has 16 items + support/tutorial/logout and
+     didn't fit. 100dvh (dynamic) accounts for the mobile browser's address bar;
+     overflow-y: auto still scrolls if it's taller than the viewport. */
+  max-height: calc(100dvh - 57px);
   overflow-y: auto;
 }
 
