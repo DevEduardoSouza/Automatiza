@@ -46,9 +46,9 @@ type Automation struct {
 	// NULL/empty = sem expiração. Quando setado e hoje > end_date,
 	// scheduler para de disparar (silencioso, não muda status).
 	// Útil para campanhas temporárias.
-	EndDate *string `json:"end_date,omitempty" db:"end_date"`
-	LastRunAt       *string  `json:"last_run_at,omitempty" db:"last_run_at"`
-	NextRunAt       *string  `json:"next_run_at,omitempty" db:"next_run_at"`
+	EndDate   *string `json:"end_date,omitempty" db:"end_date"`
+	LastRunAt *string `json:"last_run_at,omitempty" db:"last_run_at"`
+	NextRunAt *string `json:"next_run_at,omitempty" db:"next_run_at"`
 
 	// Monitoring-specific fields
 	MonitoringTextRules *MonitoringTextRules `json:"monitoring_text_rules,omitempty" db:"monitoring_text_rules"`
@@ -61,6 +61,10 @@ type Automation struct {
 	ListItemsPerRun  *int    `json:"list_items_per_run,omitempty" db:"list_items_per_run"`
 	ListIncludeImage *bool   `json:"list_include_image,omitempty" db:"list_include_image"`
 	ListSendAsImage  *bool   `json:"list_send_as_image,omitempty" db:"list_send_as_image"`
+	// OfferGenerateSendAsImage (OFFER_GENERATE mode): true = envia a oferta como
+	// imagem baixada + legenda (default); false = preview nativo. Default TRUE no
+	// schema, então nil deve ser tratado como true no serviço.
+	OfferGenerateSendAsImage *bool `json:"offer_generate_send_as_image,omitempty" db:"offer_generate_send_as_image"`
 	// RepeatWhenFinished (LIST mode): true = reseta items consumidos automaticamente
 	// quando a lista esgota e continua o loop. Default TRUE (definido no schema).
 	RepeatWhenFinished bool `json:"repeat_when_finished" db:"repeat_when_finished"`

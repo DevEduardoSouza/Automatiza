@@ -93,6 +93,7 @@ export interface LocalAutomation {
   listItemsPerRun?: number;
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
+  offerGenerateSendAsImage?: boolean;
   // Preferred sender chip (instance database id, string form). Empty / unset
   // = no preference; the worker treats either case as "fall back to per-group
   // ownership / first connected."
@@ -160,6 +161,7 @@ export interface CreateAutomationParams {
   listItemsPerRun?: number;
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
+  offerGenerateSendAsImage?: boolean;
   instanceId?: string;
   // Multi-chip preference (049). Empty array also valid as "clear preference."
   instanceIds?: string[];
@@ -201,6 +203,7 @@ export interface UpdateAutomationParams {
   listItemsPerRun?: number;
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
+  offerGenerateSendAsImage?: boolean;
   // Empty string explicitly clears the preference; undefined leaves it
   // unchanged (matches proto3 optional semantics on the wire).
   instanceId?: string;
@@ -420,6 +423,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     listItemsPerRun: automation.listItemsPerRun,
     listIncludeImage: automation.listIncludeImage,
     listSendAsImage: automation.listSendAsImage,
+    offerGenerateSendAsImage: automation.offerGenerateSendAsImage,
     instanceId: automation.instanceId,
     instanceIds: [...(automation.instanceIds ?? [])],
     // Proto map<string,string> deserializes as a plain object; copy to a
@@ -573,6 +577,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listItemsPerRun: params.listItemsPerRun,
           listIncludeImage: params.listIncludeImage,
           listSendAsImage: params.listSendAsImage,
+          offerGenerateSendAsImage: params.offerGenerateSendAsImage,
           instanceId: params.instanceId,
           instanceIds: params.instanceIds ?? [],
           chipOverrides: params.chipOverrides ?? {},
@@ -648,6 +653,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listItemsPerRun: params.listItemsPerRun,
           listIncludeImage: params.listIncludeImage,
           listSendAsImage: params.listSendAsImage,
+          offerGenerateSendAsImage: params.offerGenerateSendAsImage,
           instanceId: params.instanceId,
           instanceIds: params.instanceIds ?? [],
           chipOverrides: params.chipOverrides ?? {},

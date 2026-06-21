@@ -199,6 +199,11 @@ message Automation {
   // LIST mode: send link as downloaded image + caption instead of native preview
   optional bool list_send_as_image = 31;
 
+  // OFFER_GENERATE mode: send the generated offer as downloaded image + caption.
+  // Defaults to true (preserva o comportamento atual: offer_generate sempre
+  // manda imagem quando há). Desligar usa o preview nativo (mais leve).
+  optional bool offer_generate_send_as_image = 39;
+
   // Preferred sender chip — when set and connected, every dispatch from
   // this automation goes through this chip; otherwise falls back to the
   // group's owner chip and then to the first connected instance.
@@ -366,6 +371,9 @@ message CreateAutomationRequest {
   // end_date (YYYY-MM-DD). Unset/empty = sem expiração. Ver
   // Automation.end_date.
   optional string end_date = 33;
+  // OFFER_GENERATE: enviar oferta como imagem anexada. Unset = default do
+  // server (true). Ver Automation.offer_generate_send_as_image.
+  optional bool offer_generate_send_as_image = 34;
 }
 
 message CreateAutomationResponse {
@@ -429,6 +437,9 @@ message UpdateAutomationRequest {
   // end_date (YYYY-MM-DD). Unset = leave unchanged; empty string
   // explicitly clears (volta a rodar sem expiração).
   optional string end_date = 34;
+  // OFFER_GENERATE: enviar oferta como imagem anexada. Unset = leave
+  // unchanged. Ver Automation.offer_generate_send_as_image.
+  optional bool offer_generate_send_as_image = 35;
 }
 
 message UpdateAutomationResponse {

@@ -187,6 +187,7 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     list_items_per_run: local.listItemsPerRun,
     list_include_image: local.listIncludeImage,
     list_send_as_image: local.listSendAsImage,
+    offer_generate_send_as_image: local.offerGenerateSendAsImage,
     instance_id: local.instanceId ?? null,
     instance_ids: local.instanceIds ?? [],
     chip_overrides: local.chipOverrides ?? {},

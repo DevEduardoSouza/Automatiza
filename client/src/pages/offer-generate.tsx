@@ -580,6 +580,27 @@ export default function OfferGenerate() {
                     />
                   </div>
 
+                  {/* Enviar como imagem — default ON (preserva o histórico:
+                      offer_generate sempre mandou imagem). Desligar usa o
+                      preview nativo do WhatsApp. */}
+                  <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium">
+                        {t('pages.offerAutomations.form.sendAsImage')}
+                      </div>
+                      <p className="text-xs" style={{ color: colors.wineTextMuted }}>
+                        {t('pages.offerAutomations.form.sendAsImageHint')}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={formData.offer_generate_send_as_image ?? true}
+                      onCheckedChange={(checked) =>
+                        setFormData((prev) => ({ ...prev, offer_generate_send_as_image: checked }))
+                      }
+                      aria-label={t('pages.offerAutomations.form.sendAsImage')}
+                    />
+                  </div>
+
                   {/* Action buttons */}
                   <div className="flex flex-col xs:flex-row justify-between gap-2 pt-1">
                     {config && (
