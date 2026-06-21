@@ -3,7 +3,11 @@ package automation
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"automatiza-go/internal/models"
@@ -15,8 +19,29 @@ import (
 // perAutomationTimeout caps a single automation's execution inside a
 // ProcessActiveAutomations tick. Normal runs finish in well under this; the
 // cap exists so a run stuck on a degraded dependency can't consume the shared
-// 5-minute cron context and starve the rest of the (serial) batch.
+// 5-minute cron context and starve the rest of the batch.
 const perAutomationTimeout = 90 * time.Second
+
+// defaultSchedulerConcurrency = 1 preserva o comportamento histórico (loop
+// serial). SCHEDULER_CONCURRENCY > 1 roda as automações due em paralelo dentro
+// do tick, com um pool limitado — uma lista deixa de esperar a outra terminar,
+// e uma automação travada não congela as demais. O anti-ban se mantém: o
+// session pacer é atômico por chip mesmo sob concorrência (ver session_pacer.go).
+const defaultSchedulerConcurrency = 1
+
+// schedulerConcurrencyFromEnv lê SCHEDULER_CONCURRENCY (default 1 = serial).
+// Valores inválidos ou < 1 caem no default.
+func schedulerConcurrencyFromEnv() int {
+	v := strings.TrimSpace(os.Getenv("SCHEDULER_CONCURRENCY"))
+	if v == "" {
+		return defaultSchedulerConcurrency
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 {
+		return defaultSchedulerConcurrency
+	}
+	return n
+}
 
 // Scheduler implements the cron.AutomationScheduler interface.
 // It processes active automations based on their schedule configuration.
@@ -65,10 +90,12 @@ func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
 	s.logger.Info("Processing active automations", zap.Int("count", len(automations)))
 
 	now := time.Now()
-	processedCount := 0
 	skippedCount := 0
-	errorCount := 0
+	var processedCount, errorCount int64
 
+	// 1ª passada (serial, barata): filtra para as automações realmente due
+	// neste tick. Os gates (janela, datas, intervalo) leem só campos locais.
+	due := make([]*models.Automation, 0, len(automations))
 	for i := range automations {
 		automation := &automations[i]
 
@@ -104,7 +131,14 @@ func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
 			continue
 		}
 
-		// Execute the automation
+		due = append(due, automation)
+	}
+
+	// runOne executa uma automação due com seu próprio timeout. É seguro
+	// chamar concorrentemente: cada automação é independente (IDs distintos,
+	// repos/Redis/asynq são thread-safe) e o session pacer é atômico por chip,
+	// então o anti-ban se mantém sob concorrência.
+	runOne := func(automation *models.Automation) {
 		s.logger.Info("Running scheduled automation",
 			zap.String("id", automation.ID),
 			zap.String("name", automation.Name),
@@ -113,9 +147,8 @@ func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
 
 		// Per-automation timeout: cap each run with its own deadline so one
 		// slow automation (e.g. hanging on a degraded external API) can't eat
-		// the whole shared tick budget and starve the automations after it in
-		// this serial loop. Derived from the tick ctx, so shutdown still
-		// cancels promptly.
+		// the whole shared tick budget. Derived from the tick ctx, so shutdown
+		// still cancels promptly.
 		autoCtx, cancel := context.WithTimeout(ctx, perAutomationTimeout)
 		result, err := s.service.RunAutomation(autoCtx, automation.ID, automation.UserID)
 		cancel()
@@ -124,8 +157,8 @@ func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
 				zap.String("id", automation.ID),
 				zap.String("name", automation.Name),
 				zap.Error(err))
-			errorCount++
-			continue
+			atomic.AddInt64(&errorCount, 1)
+			return
 		}
 
 		s.logger.Info("Automation completed",
@@ -134,13 +167,37 @@ func (s *Scheduler) ProcessActiveAutomations(ctx context.Context) error {
 			zap.Int("messagesSent", result.MessagesSent),
 			zap.Int("offersFound", result.OffersFound))
 
-		processedCount++
+		atomic.AddInt64(&processedCount, 1)
+	}
+
+	// 2ª passada: executa as due. Serial quando concurrency<=1 (default,
+	// comportamento histórico); senão, pool limitado em paralelo.
+	concurrency := schedulerConcurrencyFromEnv()
+	if concurrency <= 1 {
+		for _, automation := range due {
+			runOne(automation)
+		}
+	} else {
+		sem := make(chan struct{}, concurrency)
+		var wg sync.WaitGroup
+		for _, automation := range due {
+			wg.Add(1)
+			sem <- struct{}{} // bloqueia quando o pool está cheio
+			go func(a *models.Automation) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				runOne(a)
+			}(automation)
+		}
+		wg.Wait()
 	}
 
 	s.logger.Info("Finished processing automations",
-		zap.Int("processed", processedCount),
+		zap.Int("processed", int(processedCount)),
 		zap.Int("skipped", skippedCount),
-		zap.Int("errors", errorCount))
+		zap.Int("errors", int(errorCount)),
+		zap.Int("due", len(due)),
+		zap.Int("concurrency", concurrency))
 
 	return nil
 }
