@@ -516,6 +516,10 @@ type Automation struct {
 	ListIncludeImage *bool `protobuf:"varint,28,opt,name=list_include_image,json=listIncludeImage,proto3,oneof" json:"list_include_image,omitempty"`
 	// LIST mode: send link as downloaded image + caption instead of native preview
 	ListSendAsImage *bool `protobuf:"varint,31,opt,name=list_send_as_image,json=listSendAsImage,proto3,oneof" json:"list_send_as_image,omitempty"`
+	// OFFER_GENERATE mode: send the generated offer as downloaded image + caption.
+	// Defaults to true (preserva o comportamento atual: offer_generate sempre
+	// manda imagem quando há). Desligar usa o preview nativo (mais leve).
+	OfferGenerateSendAsImage *bool `protobuf:"varint,39,opt,name=offer_generate_send_as_image,json=offerGenerateSendAsImage,proto3,oneof" json:"offer_generate_send_as_image,omitempty"`
 	// Preferred sender chip — when set and connected, every dispatch from
 	// this automation goes through this chip; otherwise falls back to the
 	// group's owner chip and then to the first connected instance.
@@ -805,6 +809,13 @@ func (x *Automation) GetListIncludeImage() bool {
 func (x *Automation) GetListSendAsImage() bool {
 	if x != nil && x.ListSendAsImage != nil {
 		return *x.ListSendAsImage
+	}
+	return false
+}
+
+func (x *Automation) GetOfferGenerateSendAsImage() bool {
+	if x != nil && x.OfferGenerateSendAsImage != nil {
+		return *x.OfferGenerateSendAsImage
 	}
 	return false
 }
@@ -1249,9 +1260,12 @@ type CreateAutomationRequest struct {
 	StartDate *string `protobuf:"bytes,32,opt,name=start_date,json=startDate,proto3,oneof" json:"start_date,omitempty"`
 	// end_date (YYYY-MM-DD). Unset/empty = sem expiração. Ver
 	// Automation.end_date.
-	EndDate       *string `protobuf:"bytes,33,opt,name=end_date,json=endDate,proto3,oneof" json:"end_date,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	EndDate *string `protobuf:"bytes,33,opt,name=end_date,json=endDate,proto3,oneof" json:"end_date,omitempty"`
+	// OFFER_GENERATE: enviar oferta como imagem anexada. Unset = default do
+	// server (true). Ver Automation.offer_generate_send_as_image.
+	OfferGenerateSendAsImage *bool `protobuf:"varint,34,opt,name=offer_generate_send_as_image,json=offerGenerateSendAsImage,proto3,oneof" json:"offer_generate_send_as_image,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *CreateAutomationRequest) Reset() {
@@ -1515,6 +1529,13 @@ func (x *CreateAutomationRequest) GetEndDate() string {
 	return ""
 }
 
+func (x *CreateAutomationRequest) GetOfferGenerateSendAsImage() bool {
+	if x != nil && x.OfferGenerateSendAsImage != nil {
+		return *x.OfferGenerateSendAsImage
+	}
+	return false
+}
+
 type CreateAutomationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Automation    *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
@@ -1612,9 +1633,12 @@ type UpdateAutomationRequest struct {
 	StartDate *string `protobuf:"bytes,33,opt,name=start_date,json=startDate,proto3,oneof" json:"start_date,omitempty"`
 	// end_date (YYYY-MM-DD). Unset = leave unchanged; empty string
 	// explicitly clears (volta a rodar sem expiração).
-	EndDate       *string `protobuf:"bytes,34,opt,name=end_date,json=endDate,proto3,oneof" json:"end_date,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	EndDate *string `protobuf:"bytes,34,opt,name=end_date,json=endDate,proto3,oneof" json:"end_date,omitempty"`
+	// OFFER_GENERATE: enviar oferta como imagem anexada. Unset = leave
+	// unchanged. Ver Automation.offer_generate_send_as_image.
+	OfferGenerateSendAsImage *bool `protobuf:"varint,35,opt,name=offer_generate_send_as_image,json=offerGenerateSendAsImage,proto3,oneof" json:"offer_generate_send_as_image,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *UpdateAutomationRequest) Reset() {
@@ -1883,6 +1907,13 @@ func (x *UpdateAutomationRequest) GetEndDate() string {
 		return *x.EndDate
 	}
 	return ""
+}
+
+func (x *UpdateAutomationRequest) GetOfferGenerateSendAsImage() bool {
+	if x != nil && x.OfferGenerateSendAsImage != nil {
+		return *x.OfferGenerateSendAsImage
+	}
+	return false
 }
 
 type UpdateAutomationResponse struct {
@@ -2676,7 +2707,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x16\n" +
 	"\x06suffix\x18\x04 \x01(\tR\x06suffix\x12!\n" +
 	"\fclean_phones\x18\x05 \x01(\bR\vcleanPhones\x12%\n" +
-	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xdb\x0f\n" +
+	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xc1\x10\n" +
 	"\n" +
 	"Automation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -2717,16 +2748,17 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x0fml_link_list_id\x18\x1a \x01(\tH\vR\fmlLinkListId\x88\x01\x01\x120\n" +
 	"\x12list_items_per_run\x18\x1b \x01(\x05H\fR\x0flistItemsPerRun\x88\x01\x01\x121\n" +
 	"\x12list_include_image\x18\x1c \x01(\bH\rR\x10listIncludeImage\x88\x01\x01\x120\n" +
-	"\x12list_send_as_image\x18\x1f \x01(\bH\x0eR\x0flistSendAsImage\x88\x01\x01\x12$\n" +
-	"\vinstance_id\x18  \x01(\tH\x0fR\n" +
+	"\x12list_send_as_image\x18\x1f \x01(\bH\x0eR\x0flistSendAsImage\x88\x01\x01\x12C\n" +
+	"\x1coffer_generate_send_as_image\x18' \x01(\bH\x0fR\x18offerGenerateSendAsImage\x88\x01\x01\x12$\n" +
+	"\vinstance_id\x18  \x01(\tH\x10R\n" +
 	"instanceId\x88\x01\x01\x12,\n" +
 	"\x12apply_coupon_rules\x18! \x01(\bR\x10applyCouponRules\x12!\n" +
 	"\finstance_ids\x18\" \x03(\tR\vinstanceIds\x12T\n" +
 	"\x0echip_overrides\x18# \x03(\v2-.automations.v1.Automation.ChipOverridesEntryR\rchipOverrides\x120\n" +
 	"\x14repeat_when_finished\x18$ \x01(\bR\x12repeatWhenFinished\x12\"\n" +
 	"\n" +
-	"start_date\x18% \x01(\tH\x10R\tstartDate\x88\x01\x01\x12\x1e\n" +
-	"\bend_date\x18& \x01(\tH\x11R\aendDate\x88\x01\x01\x1a@\n" +
+	"start_date\x18% \x01(\tH\x11R\tstartDate\x88\x01\x01\x12\x1e\n" +
+	"\bend_date\x18& \x01(\tH\x12R\aendDate\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x13\n" +
@@ -2747,7 +2779,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x10_ml_link_list_idB\x15\n" +
 	"\x13_list_items_per_runB\x15\n" +
 	"\x13_list_include_imageB\x15\n" +
-	"\x13_list_send_as_imageB\x0e\n" +
+	"\x13_list_send_as_imageB\x1f\n" +
+	"\x1d_offer_generate_send_as_imageB\x0e\n" +
 	"\f_instance_idB\r\n" +
 	"\v_start_dateB\v\n" +
 	"\t_end_date\"w\n" +
@@ -2779,7 +2812,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x15GetAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xd2\x0e\n" +
+	"automation\"\xb8\x0f\n" +
 	"\x17CreateAutomationRequest\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x04name\x122\n" +
@@ -2823,7 +2856,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x14repeat_when_finished\x18\x1f \x01(\bH\rR\x12repeatWhenFinished\x88\x01\x01\x12\"\n" +
 	"\n" +
 	"start_date\x18  \x01(\tH\x0eR\tstartDate\x88\x01\x01\x12\x1e\n" +
-	"\bend_date\x18! \x01(\tH\x0fR\aendDate\x88\x01\x01\x1a@\n" +
+	"\bend_date\x18! \x01(\tH\x0fR\aendDate\x88\x01\x01\x12C\n" +
+	"\x1coffer_generate_send_as_image\x18\" \x01(\bH\x10R\x18offerGenerateSendAsImage\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x13\n" +
@@ -2845,11 +2879,12 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x13_apply_coupon_rulesB\x17\n" +
 	"\x15_repeat_when_finishedB\r\n" +
 	"\v_start_dateB\v\n" +
-	"\t_end_date\"V\n" +
+	"\t_end_dateB\x1f\n" +
+	"\x1d_offer_generate_send_as_image\"V\n" +
 	"\x18CreateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xe1\x0f\n" +
+	"automation\"\xc7\x10\n" +
 	"\x17UpdateAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
 	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x127\n" +
@@ -2893,7 +2928,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x14repeat_when_finished\x18  \x01(\bH\x15R\x12repeatWhenFinished\x88\x01\x01\x12\"\n" +
 	"\n" +
 	"start_date\x18! \x01(\tH\x16R\tstartDate\x88\x01\x01\x12\x1e\n" +
-	"\bend_date\x18\" \x01(\tH\x17R\aendDate\x88\x01\x01\x1a@\n" +
+	"\bend_date\x18\" \x01(\tH\x17R\aendDate\x88\x01\x01\x12C\n" +
+	"\x1coffer_generate_send_as_image\x18# \x01(\bH\x18R\x18offerGenerateSendAsImage\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\a\n" +
@@ -2923,7 +2959,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x13_apply_coupon_rulesB\x17\n" +
 	"\x15_repeat_when_finishedB\r\n" +
 	"\v_start_dateB\v\n" +
-	"\t_end_date\"V\n" +
+	"\t_end_dateB\x1f\n" +
+	"\x1d_offer_generate_send_as_image\"V\n" +
 	"\x18UpdateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +

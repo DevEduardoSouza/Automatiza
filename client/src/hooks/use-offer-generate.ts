@@ -230,6 +230,10 @@ export function useOfferGenerate() {
         // to true when unset so the rule engine still kicks in for
         // existing rows that pre-date the field.
         applyCouponRules: formData.apply_coupon_rules ?? true,
+        // "Enviar como imagem": default true preserva o comportamento
+        // histórico (offer_generate sempre mandou imagem). Desligar usa
+        // o preview nativo do WhatsApp.
+        offerGenerateSendAsImage: formData.offer_generate_send_as_image ?? true,
       };
 
       if (config) {

@@ -418,6 +418,12 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 	var imageURL string
 	var canonicalKey string
 	var store string
+	// Dados pro card de preview nativo (usado quando offer_generate_send_as_image
+	// está OFF). previewURL é o link de afiliado (também presente no texto), e
+	// title/desc alimentam o card. Preenchidos em cada branch (Shopee/ML).
+	var previewURL string
+	var previewTitle string
+	var previewDesc string
 
 	if len(shopeeLinks) > 0 && s.shopeeService != nil {
 		link := shopeeLinks[0]
@@ -521,6 +527,14 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			Info:          infoText,
 		})
 
+		// Card de preview nativo (caminho send_as_image OFF)
+		previewURL = affiliateURL
+		previewTitle = product.Name
+		previewDesc = text.FormatBRLSpaced(offerPrice)
+		if product.OriginalPrice > offerPrice {
+			previewDesc = fmt.Sprintf("De %s por %s", text.FormatBRLSpaced(product.OriginalPrice), text.FormatBRLSpaced(offerPrice))
+		}
+
 	} else if len(mlLinks) > 0 && s.mlService != nil {
 		link := mlLinks[0]
 		store = "mercadolivre"
@@ -610,6 +624,14 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			CouponBlock:   couponBlock,
 			Info:          infoText,
 		})
+
+		// Card de preview nativo (caminho send_as_image OFF)
+		previewURL = affiliateURL
+		previewTitle = preview.Title
+		previewDesc = text.FormatBRLSpaced(offerPrice)
+		if originalPrice > offerPrice {
+			previewDesc = fmt.Sprintf("De %s por %s", text.FormatBRLSpaced(originalPrice), text.FormatBRLSpaced(offerPrice))
+		}
 	} else {
 		return nil
 	}
@@ -649,12 +671,12 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 
 	chipForGroup := func(waGroupID string) string {
 		return PickChipForGroup(ChipRoutingInput{
-			WaGroupID:        waGroupID,
-			PreferenceIDs:    preferenceIDs,
+			WaGroupID:         waGroupID,
+			PreferenceIDs:     preferenceIDs,
 			GroupParticipants: groupParticipants[waGroupID],
-			ConnectedByID:    connectedByID,
-			ChipOverrides:    auto.ChipOverrides,
-			SenderSession:    senderSession,
+			ConnectedByID:     connectedByID,
+			ChipOverrides:     auto.ChipOverrides,
+			SenderSession:     senderSession,
 		})
 	}
 
@@ -724,14 +746,32 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				// Send via WhatsApp
 				sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
 				var sendErr error
-				if imageURL != "" {
+				// send_as_image default TRUE (preserva o comportamento histórico
+				// do offer_generate: sempre imagem quando há). OFF usa preview nativo.
+				sendAsImage := true
+				if auto.OfferGenerateSendAsImage != nil {
+					sendAsImage = *auto.OfferGenerateSendAsImage
+				}
+				switch {
+				case imageURL != "" && sendAsImage:
 					_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
 						SessionName: dispatchSession,
 						ChatID:      groupID,
 						Caption:     renderedMessage,
 						ImageURL:    imageURL,
 					})
-				} else {
+				case !sendAsImage && previewURL != "":
+					// Preview nativo: card com título/preço/thumb em vez de anexo.
+					_, sendErr = s.waProvider.SendLinkCustomPreview(sendCtx, whatsapp.SendLinkPreviewInput{
+						SessionName: dispatchSession,
+						ChatID:      groupID,
+						Text:        renderedMessage,
+						URL:         previewURL,
+						Title:       previewTitle,
+						Description: previewDesc,
+						ImageURL:    imageURL,
+					})
+				default:
 					_, sendErr = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
 						SessionName: dispatchSession,
 						ChatID:      groupID,
