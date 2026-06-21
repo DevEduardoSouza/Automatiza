@@ -444,6 +444,13 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 
 		// Send to each target group
 		groupIDsSent := make([]string, 0, len(validGroups))
+		// Espaçamento de envio acumulado POR CHIP (não global). Com o delay
+		// global antigo (len(groupIDsSent)*3s), uma lista de 132 grupos
+		// empurrava o último envio pra ~6,5 min — estourando o intervalo.
+		// Por chip, os grupos se distribuem entre as sessões e entregam em
+		// ~(grupos/chips)*3s. O session pacer (atômico por sessão) continua
+		// garantindo o anti-ban entre automações que dividem o mesmo chip.
+		perChipSent := make(map[string]int)
 		for _, groupID := range validGroups {
 			// Apply URL safety check
 			if s.urlSafetyService != nil {
@@ -515,8 +522,9 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			}
 
 			if s.queueClient != nil {
-				// Calculate delay for this group (spread messages)
-				delayMs := time.Duration(len(groupIDsSent)*3) * time.Second
+				// Delay acumulado por chip (ver perChipSent acima): o N-ésimo
+				// envio DESTE chip espera N*3s, em vez de N*3s global.
+				delayMs := time.Duration(perChipSent[senderSession]*3) * time.Second
 
 				_, err := s.queueClient.EnqueueMessage(ctx, jobData, delayMs)
 				if err != nil {
@@ -533,6 +541,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				_ = s.backpressure.RecordEnqueue(ctx, automation.UserID)
 			}
 			groupIDsSent = append(groupIDsSent, groupID)
+			perChipSent[senderSession]++
 			result.MessagesSent++
 		}
 

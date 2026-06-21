@@ -211,6 +211,37 @@ func TestProcessActiveAutomations_RunsSearchAutomation(t *testing.T) {
 	svc.AssertCalled(t, "RunAutomation", mock.Anything, "auto-1", "user-1")
 }
 
+// TestProcessActiveAutomations_ConcurrentRunsAllDue valida o caminho paralelo
+// (SCHEDULER_CONCURRENCY > 1): todas as automações due devem rodar exatamente
+// uma vez, sem perder nenhuma. t.Setenv proíbe t.Parallel() neste teste.
+func TestProcessActiveAutomations_ConcurrentRunsAllDue(t *testing.T) {
+	t.Setenv("SCHEDULER_CONCURRENCY", "4")
+
+	logger := zaptest.NewLogger(t)
+	repo := new(mockSchedulerAutomationRepo)
+	svc := new(mockSchedulerService)
+	scheduler := NewScheduler(repo, svc, logger)
+
+	searchType := "search"
+	automations := []models.Automation{
+		{ID: "auto-1", UserID: "user-1", Name: "A1", Status: models.AutomationStatusActive, Type: &searchType},
+		{ID: "auto-2", UserID: "user-2", Name: "A2", Status: models.AutomationStatusActive, Type: &searchType},
+		{ID: "auto-3", UserID: "user-3", Name: "A3", Status: models.AutomationStatusActive, Type: &searchType},
+	}
+
+	repo.On("GetActiveAutomations", mock.Anything).Return(automations, nil)
+	svc.On("RunAutomation", mock.Anything, mock.Anything, mock.Anything).
+		Return(&models.RunAutomationResult{Success: true}, nil)
+
+	err := scheduler.ProcessActiveAutomations(context.Background())
+
+	require.NoError(t, err)
+	svc.AssertCalled(t, "RunAutomation", mock.Anything, "auto-1", "user-1")
+	svc.AssertCalled(t, "RunAutomation", mock.Anything, "auto-2", "user-2")
+	svc.AssertCalled(t, "RunAutomation", mock.Anything, "auto-3", "user-3")
+	svc.AssertNumberOfCalls(t, "RunAutomation", 3)
+}
+
 func TestProcessActiveAutomations_RunErrorContinues(t *testing.T) {
 	t.Parallel()
 	logger := zaptest.NewLogger(t)
