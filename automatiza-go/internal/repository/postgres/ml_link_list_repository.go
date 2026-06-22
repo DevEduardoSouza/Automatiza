@@ -267,7 +267,7 @@ func (r *mlLinkListRepository) GetItemsByListID(ctx context.Context, listID stri
 	query := `
 		SELECT id, list_id, origin_url, order_index, is_active, consumed_at,
 		       consumed_by_automation_id, consumed_by_group_id, product_title,
-		       product_price, product_image_url, metadata, created_at, updated_at
+		       product_price, product_image_url, metadata, info, created_at, updated_at
 		FROM ml_link_list_items
 		WHERE list_id = $1
 		ORDER BY order_index ASC, created_at ASC
@@ -301,6 +301,7 @@ func (r *mlLinkListRepository) GetItemsByListID(ctx context.Context, listID stri
 			&item.ProductPrice,
 			&item.ProductImageURL,
 			&item.Metadata,
+			&item.Info,
 			&createdAt,
 			&updatedAt,
 		)
@@ -368,7 +369,7 @@ func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, li
 		query = `
 			SELECT id, list_id, origin_url, order_index, is_active, consumed_at,
 			       consumed_by_automation_id, consumed_by_group_id, product_title,
-			       product_price, product_image_url, metadata, created_at, updated_at
+			       product_price, product_image_url, metadata, info, created_at, updated_at
 			FROM ml_link_list_items
 			WHERE list_id = $1
 			ORDER BY order_index ASC, id ASC
@@ -394,7 +395,7 @@ func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, li
 		query = `
 			SELECT id, list_id, origin_url, order_index, is_active, consumed_at,
 			       consumed_by_automation_id, consumed_by_group_id, product_title,
-			       product_price, product_image_url, metadata, created_at, updated_at
+			       product_price, product_image_url, metadata, info, created_at, updated_at
 			FROM ml_link_list_items
 			WHERE list_id = $1
 			  AND (order_index > $2 OR (order_index = $2 AND id > $3))
@@ -432,6 +433,7 @@ func (r *mlLinkListRepository) GetItemsByListIDPaginated(ctx context.Context, li
 			&item.ProductPrice,
 			&item.ProductImageURL,
 			&item.Metadata,
+			&item.Info,
 			&createdAt,
 			&updatedAt,
 		)
@@ -467,7 +469,7 @@ func (r *mlLinkListRepository) GetItemByID(ctx context.Context, itemID string) (
 	query := `
 		SELECT id, list_id, origin_url, order_index, is_active, consumed_at,
 		       consumed_by_automation_id, consumed_by_group_id, product_title,
-		       product_price, product_image_url, metadata, created_at, updated_at
+		       product_price, product_image_url, metadata, info, created_at, updated_at
 		FROM ml_link_list_items
 		WHERE id = $1
 	`
@@ -489,6 +491,7 @@ func (r *mlLinkListRepository) GetItemByID(ctx context.Context, itemID string) (
 		&item.ProductPrice,
 		&item.ProductImageURL,
 		&item.Metadata,
+		&item.Info,
 		&createdAt,
 		&updatedAt,
 	)
@@ -516,9 +519,9 @@ func (r *mlLinkListRepository) GetItemByID(ctx context.Context, itemID string) (
 func (r *mlLinkListRepository) CreateItem(ctx context.Context, item *models.MlLinkListItem) (*models.MlLinkListItem, error) {
 	query := `
 		INSERT INTO ml_link_list_items (list_id, origin_url, order_index, is_active,
-		                                product_title, product_price, product_image_url, metadata,
+		                                product_title, product_price, product_image_url, metadata, info,
 		                                created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -540,6 +543,7 @@ func (r *mlLinkListRepository) CreateItem(ctx context.Context, item *models.MlLi
 		item.ProductPrice,
 		item.ProductImageURL,
 		metadata,
+		item.Info,
 		now,
 		now,
 	).Scan(&item.ID, &createdAt, &updatedAt)
@@ -569,9 +573,9 @@ func (r *mlLinkListRepository) BulkCreateItems(ctx context.Context, items []mode
 	err := r.db.WithTx(ctx, func(tx pgx.Tx) error {
 		query := `
 			INSERT INTO ml_link_list_items (list_id, origin_url, order_index, is_active,
-			                                product_title, product_price, product_image_url, metadata,
+			                                product_title, product_price, product_image_url, metadata, info,
 			                                created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 			RETURNING id, created_at, updated_at
 		`
 
@@ -595,6 +599,7 @@ func (r *mlLinkListRepository) BulkCreateItems(ctx context.Context, items []mode
 				item.ProductPrice,
 				item.ProductImageURL,
 				metadata,
+				item.Info,
 				now,
 				now,
 			).Scan(&id, &createdAt, &updatedAt)
@@ -637,7 +642,7 @@ func (r *mlLinkListRepository) UpdateItem(ctx context.Context, itemID string, up
 		switch key {
 		case "origin_url", "order_index", "is_active", "consumed_at",
 			"consumed_by_automation_id", "consumed_by_group_id",
-			"product_title", "product_price", "product_image_url", "metadata":
+			"product_title", "product_price", "product_image_url", "metadata", "info":
 			setClauses = append(setClauses, fmt.Sprintf("%s = $%d", key, argIndex))
 			args = append(args, value)
 			argIndex++
@@ -765,7 +770,7 @@ func (r *mlLinkListRepository) GetUnconsumedItems(ctx context.Context, listID st
 	query := `
 		SELECT id, list_id, origin_url, order_index, is_active, consumed_at,
 		       consumed_by_automation_id, consumed_by_group_id, product_title,
-		       product_price, product_image_url, metadata, created_at, updated_at
+		       product_price, product_image_url, metadata, info, created_at, updated_at
 		FROM ml_link_list_items
 		WHERE list_id = $1 AND is_active = true AND consumed_at IS NULL
 		ORDER BY order_index ASC, created_at ASC
@@ -801,6 +806,7 @@ func (r *mlLinkListRepository) GetUnconsumedItems(ctx context.Context, listID st
 			&item.ProductPrice,
 			&item.ProductImageURL,
 			&item.Metadata,
+			&item.Info,
 			&createdAt,
 			&updatedAt,
 		)

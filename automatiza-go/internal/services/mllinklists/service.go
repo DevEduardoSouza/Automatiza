@@ -493,6 +493,9 @@ func (s *service) UpdateItem(ctx context.Context, userID, itemID string, input U
 	if input.OrderIndex != nil {
 		updates["order_index"] = *input.OrderIndex
 	}
+	if input.Info != nil {
+		updates["info"] = *input.Info
+	}
 
 	if len(updates) > 0 {
 		if err := s.repo.UpdateItem(ctx, itemID, updates); err != nil {

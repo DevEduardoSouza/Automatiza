@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { VirtualTable } from '@/components/ui/virtual-table';
 import type { MlLinkListItem } from '@/entities/ml-link-list';
 import { formatBRL } from '@/lib/formatters';
-import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Pencil, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const colors = {
@@ -18,6 +18,8 @@ interface ItemsVirtualTableProps {
   onToggleActive: (item: MlLinkListItem) => void;
   onRemove: (item: MlLinkListItem) => void;
   onCopyLink: (url: string) => void;
+  /** Open the editor for the item's free-form {info} text */
+  onEditInfo: (item: MlLinkListItem) => void;
   /** Called when scroll reaches near the end of the list */
   onLoadMore?: () => void;
   /** Whether there are more items to load */
@@ -37,6 +39,7 @@ export function ItemsVirtualTable({
   onToggleActive,
   onRemove,
   onCopyLink,
+  onEditInfo,
   onLoadMore,
   hasMore = false,
   isLoadingMore = false,
@@ -109,6 +112,32 @@ export function ItemsVirtualTable({
             ? formatBRL(item.product_price)
             : ''}
         </div>
+      ),
+    },
+    {
+      key: 'info',
+      header: t('pages.mlLinkLists.items.table.info'),
+      width: '200px',
+      render: (item: MlLinkListItem) => (
+        <button
+          type="button"
+          onClick={() => onEditInfo(item)}
+          className="flex items-start gap-2 text-left w-full"
+          title={t('pages.mlLinkLists.items.editInfo')}
+        >
+          <Pencil
+            className="h-3.5 w-3.5 mt-0.5 shrink-0"
+            style={{ color: colors.wineTextMuted }}
+            aria-hidden="true"
+          />
+          {item.info ? (
+            <span className="text-xs whitespace-pre-line line-clamp-3">{item.info}</span>
+          ) : (
+            <span className="text-xs italic" style={{ color: colors.wineTextMuted }}>
+              {t('pages.mlLinkLists.items.addInfo')}
+            </span>
+          )}
+        </button>
       ),
     },
     {
