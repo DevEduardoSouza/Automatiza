@@ -29,6 +29,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	_ "golang.org/x/image/webp" // register WebP decoder for image.Decode (ML/Shopee serve .webp)
 )
 
 const (
