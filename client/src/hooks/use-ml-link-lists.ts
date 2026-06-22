@@ -119,7 +119,12 @@ function parseImportRows(fileText: string): Array<{ url: string; info: string }>
     // Pula o cabeçalho ("URL", "url", "link"...) — só na primeira linha.
     if (idx === 0 && !isValidHttpUrl(url)) continue;
     if (!url) continue;
-    rows.push({ url, info: (fields[1] || '').trim() });
+    // Aceita `\n` literal como marcador de quebra de linha, pra quem prefere
+    // escrever o info numa linha só (sem Alt+Enter / célula multi-linha). Quem
+    // usa quebra real na célula também funciona — não há `\n` literal pra
+    // converter. Os dois jeitos coexistem.
+    const info = (fields[1] || '').replace(/\\n/g, '\n').trim();
+    rows.push({ url, info });
   }
   return rows;
 }

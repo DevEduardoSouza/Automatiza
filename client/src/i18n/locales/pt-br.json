@@ -1754,7 +1754,7 @@
         "import": "Importar",
         "fileImport": "Importar arquivo",
         "fileSelect": "Selecionar arquivo (.csv ou .txt)",
-        "fileHint": "Um link por linha (1ª coluna). A 2ª coluna \"info\" é opcional e preenche a variável {info} do disparo. Aceita CSV ou TXT.",
+        "fileHint": "Um link por linha (1ª coluna). A 2ª coluna \"info\" é opcional e preenche a variável {info} do disparo — use \\n para pular linha. Aceita CSV ou TXT.",
         "fileTemplate": "Baixar planilha modelo",
         "fileSelected": "Arquivo: {{name}}",
         "fileImportButton": "Importar links",
