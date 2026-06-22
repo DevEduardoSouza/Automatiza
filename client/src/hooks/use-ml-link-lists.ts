@@ -34,20 +34,38 @@ function isValidHttpUrl(raw: string): boolean {
 }
 
 /**
- * Quebra uma linha CSV em campos, respeitando campos entre aspas duplas (que
- * podem conter o separador) com "" como aspas escapadas. Excel/Sheets põem
- * aspas automaticamente quando a célula contém o separador, então a coluna
- * "info" pode ter vírgulas sem quebrar o parse.
+ * Faz o parse de um CSV inteiro (RFC 4180) em registros de campos, respeitando
+ * campos entre aspas duplas que podem conter o separador, aspas escapadas ("")
+ * E quebras de linha. Isso é essencial pra coluna "info": uma descrição de
+ * produto multi-linha (benefícios, indicação, etc) é exportada pelo Excel/
+ * Sheets entre aspas com \n literais dentro — um split por linha quebraria.
+ *
+ * Aceita CRLF e LF. Uma quebra de linha FORA de aspas encerra o registro;
+ * dentro de aspas ela faz parte do valor do campo.
  */
-function parseCsvLine(line: string, sep: string): string[] {
-  const fields: string[] = [];
+function parseCsvRecords(text: string, sep: string): string[][] {
+  const records: string[][] = [];
+  let row: string[] = [];
   let field = '';
   let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  let started = false; // a célula/registro atual recebeu algum char?
+
+  const endField = () => {
+    row.push(field);
+    field = '';
+  };
+  const endRow = () => {
+    endField();
+    records.push(row);
+    row = [];
+    started = false;
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
     if (inQuotes) {
       if (ch === '"') {
-        if (line[i + 1] === '"') {
+        if (text[i + 1] === '"') {
           field += '"';
           i++;
         } else {
@@ -56,44 +74,52 @@ function parseCsvLine(line: string, sep: string): string[] {
       } else {
         field += ch;
       }
-    } else if (ch === '"') {
+      continue;
+    }
+    if (ch === '"') {
       inQuotes = true;
+      started = true;
     } else if (ch === sep) {
-      fields.push(field);
-      field = '';
+      endField();
+      started = true;
+    } else if (ch === '\r') {
+      // ignora o CR do CRLF; o \n seguinte fecha o registro
+    } else if (ch === '\n') {
+      if (started || field !== '') endRow();
     } else {
       field += ch;
+      started = true;
     }
   }
-  fields.push(field);
-  return fields;
+  // Último registro sem newline final.
+  if (started || field !== '') endRow();
+  return records;
 }
 
 /**
  * Faz o parse do arquivo de importação em linhas {url, info}. Detecta o
- * separador (',' ou ';' — Excel pt-BR exporta com ';') a partir da primeira
- * linha, pula um cabeçalho "URL" opcional, e pareia a 1ª coluna (link) com a
- * 2ª (texto de info, usado na variável {info} do disparo). Linhas em branco
- * são ignoradas.
+ * separador (',' ou ';' — Excel pt-BR exporta com ';') a partir da 1ª linha
+ * física (o cabeçalho não tem aspas), pula um cabeçalho "URL" opcional, e
+ * pareia a 1ª coluna (link) com a 2ª (texto de info, usado na variável {info}
+ * do disparo). A info pode ser multi-linha (entre aspas na planilha).
  */
 function parseImportRows(fileText: string): Array<{ url: string; info: string }> {
-  const lines = fileText.split(/\r?\n/).filter((l) => l.trim() !== '');
-  if (lines.length === 0) return [];
-
+  const firstLine = fileText.split(/\r?\n/, 1)[0] ?? '';
   // Detecção de separador: usa o delimitador mais frequente na 1ª linha (URLs
   // raramente têm vírgula/ponto-e-vírgula; a célula de info, se tiver vírgula,
   // vem entre aspas).
-  const first = lines[0];
-  const sep = first.split(';').length - 1 > first.split(',').length - 1 ? ';' : ',';
+  const sep =
+    firstLine.split(';').length - 1 > firstLine.split(',').length - 1 ? ';' : ',';
 
+  const records = parseCsvRecords(fileText, sep);
   const rows: Array<{ url: string; info: string }> = [];
-  for (let idx = 0; idx < lines.length; idx++) {
-    const fields = parseCsvLine(lines[idx], sep).map((f) => f.trim());
-    const url = fields[0] || '';
+  for (let idx = 0; idx < records.length; idx++) {
+    const fields = records[idx];
+    const url = (fields[0] || '').trim();
     // Pula o cabeçalho ("URL", "url", "link"...) — só na primeira linha.
     if (idx === 0 && !isValidHttpUrl(url)) continue;
     if (!url) continue;
-    rows.push({ url, info: fields[1] || '' });
+    rows.push({ url, info: (fields[1] || '').trim() });
   }
   return rows;
 }
