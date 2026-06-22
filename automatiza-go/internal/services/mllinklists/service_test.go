@@ -239,6 +239,10 @@ func (m *mockRepository) UpdateItem(ctx context.Context, itemID string, updates 
 	if order, ok := updates["order_index"].(int32); ok {
 		item.OrderIndex = int(order)
 	}
+	if info, ok := updates["info"].(string); ok {
+		s := info
+		item.Info = &s
+	}
 	item.UpdatedAt = time.Now().Format(time.RFC3339)
 	return nil
 }
@@ -1752,6 +1756,29 @@ func TestUpdateItem_Success(t *testing.T) {
 	}
 	if updated == nil {
 		t.Fatal("expected updated item")
+	}
+}
+
+func TestUpdateItem_Info(t *testing.T) {
+	t.Parallel()
+	svc, repo := setupService()
+	ctx := context.Background()
+
+	seedList(repo, "list-1", "user-1", "Test")
+	seedItem(repo, "item-1", "list-1", "https://mercadolivre.com.br/p/1", 0, true)
+
+	info := "Frete grátis\nÚltimas unidades"
+	updated, err := svc.UpdateItem(ctx, "user-1", "item-1", UpdateItemInput{
+		Info: ptr(info),
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if updated == nil || updated.Info == nil {
+		t.Fatal("expected updated item with info")
+	}
+	if *updated.Info != info {
+		t.Errorf("Info = %q, want %q", *updated.Info, info)
 	}
 }
 

@@ -78,6 +78,8 @@ type BulkCreateResult struct {
 type UpdateItemInput struct {
 	IsActive   *bool
 	OrderIndex *int32
+	// Info, when non-nil, updates the item's {info} text. Empty string clears.
+	Info *string
 }
 
 // PaginationInput contains pagination parameters for list operations.

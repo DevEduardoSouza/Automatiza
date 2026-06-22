@@ -95,6 +95,7 @@ export interface UpdateMlLinkListItemParams {
   id: string;
   is_active?: boolean;
   order_index?: number;
+  info?: string;
 }
 
 export interface PaginatedItemsParams {
@@ -590,6 +591,7 @@ export function useMlLinksConnect(): UseMlLinksConnectReturn {
           id: params.id,
           isActive: params.is_active,
           orderIndex: params.order_index,
+          info: params.info,
         })
       );
 

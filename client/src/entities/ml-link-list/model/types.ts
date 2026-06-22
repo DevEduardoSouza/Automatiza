@@ -41,6 +41,7 @@ export interface MlLinkListItem {
   product_price: number | null;
   product_image_url: string | null;
   metadata: MlLinkListItemMetadata | null;
+  info: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1175,10 +1175,12 @@ func (x *BulkCreateMlLinkListItemsResponse) GetSkippedUrls() []string {
 }
 
 type UpdateMlLinkListItemRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	IsActive      *bool                  `protobuf:"varint,2,opt,name=is_active,json=isActive,proto3,oneof" json:"is_active,omitempty"`
-	OrderIndex    *int32                 `protobuf:"varint,3,opt,name=order_index,json=orderIndex,proto3,oneof" json:"order_index,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	IsActive   *bool                  `protobuf:"varint,2,opt,name=is_active,json=isActive,proto3,oneof" json:"is_active,omitempty"`
+	OrderIndex *int32                 `protobuf:"varint,3,opt,name=order_index,json=orderIndex,proto3,oneof" json:"order_index,omitempty"`
+	// Free-form info text ({info} template variable). Empty string clears it.
+	Info          *string `protobuf:"bytes,4,opt,name=info,proto3,oneof" json:"info,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1232,6 +1234,13 @@ func (x *UpdateMlLinkListItemRequest) GetOrderIndex() int32 {
 		return *x.OrderIndex
 	}
 	return 0
+}
+
+func (x *UpdateMlLinkListItemRequest) GetInfo() string {
+	if x != nil && x.Info != nil {
+		return *x.Info
+	}
+	return ""
 }
 
 type UpdateMlLinkListItemResponse struct {
@@ -1657,15 +1666,17 @@ const file_ml_links_v1_ml_links_proto_rawDesc = "" +
 	"\rcreated_count\x18\x01 \x01(\x05R\fcreatedCount\x121\n" +
 	"\x05items\x18\x02 \x03(\v2\x1b.ml_links.v1.MlLinkListItemR\x05items\x12#\n" +
 	"\rskipped_count\x18\x03 \x01(\x05R\fskippedCount\x12!\n" +
-	"\fskipped_urls\x18\x04 \x03(\tR\vskippedUrls\"\x9c\x01\n" +
+	"\fskipped_urls\x18\x04 \x03(\tR\vskippedUrls\"\xbe\x01\n" +
 	"\x1bUpdateMlLinkListItemRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12 \n" +
 	"\tis_active\x18\x02 \x01(\bH\x00R\bisActive\x88\x01\x01\x12$\n" +
 	"\vorder_index\x18\x03 \x01(\x05H\x01R\n" +
-	"orderIndex\x88\x01\x01B\f\n" +
+	"orderIndex\x88\x01\x01\x12\x17\n" +
+	"\x04info\x18\x04 \x01(\tH\x02R\x04info\x88\x01\x01B\f\n" +
 	"\n" +
 	"_is_activeB\x0e\n" +
-	"\f_order_index\"O\n" +
+	"\f_order_indexB\a\n" +
+	"\x05_info\"O\n" +
 	"\x1cUpdateMlLinkListItemResponse\x12/\n" +
 	"\x04item\x18\x01 \x01(\v2\x1b.ml_links.v1.MlLinkListItemR\x04item\"6\n" +
 	"\x1bDeleteMlLinkListItemRequest\x12\x17\n" +

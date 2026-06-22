@@ -316,6 +316,10 @@ func (h *MlLinksHandler) UpdateMlLinkListItem(
 		idx := req.Msg.GetOrderIndex()
 		input.OrderIndex = &idx
 	}
+	if req.Msg.Info != nil {
+		info := req.Msg.GetInfo()
+		input.Info = &info
+	}
 
 	updated, err := h.service.UpdateItem(ctx, user.ID, req.Msg.GetId(), input)
 	if err != nil {
