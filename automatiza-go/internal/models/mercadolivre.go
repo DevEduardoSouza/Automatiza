@@ -160,6 +160,7 @@ type MlLinkListItem struct {
 	ProductPrice           *float64 `json:"product_price,omitempty" db:"product_price"`
 	ProductImageURL        *string  `json:"product_image_url,omitempty" db:"product_image_url"`
 	Metadata               []byte   `json:"metadata,omitempty" db:"metadata"`
+	Info                   *string  `json:"info,omitempty" db:"info"`
 	CreatedAt              string   `json:"created_at" db:"created_at"`
 	UpdatedAt              string   `json:"updated_at" db:"updated_at"`
 }

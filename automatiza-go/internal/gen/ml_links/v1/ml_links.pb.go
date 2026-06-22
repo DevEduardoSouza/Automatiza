@@ -23,7 +23,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// *
+//*
 // Represents a Mercado Livre link list.
 type MlLinkList struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -124,7 +124,7 @@ func (x *MlLinkList) GetUpdatedAt() string {
 	return ""
 }
 
-// *
+//*
 // Represents an item in a Mercado Livre link list.
 type MlLinkListItem struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -155,7 +155,11 @@ type MlLinkListItem struct {
 	// Creation timestamp (ISO 8601)
 	CreatedAt string `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// Last update timestamp (ISO 8601)
-	UpdatedAt     string `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	UpdatedAt string `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// Free-form info text for the {info} template variable (LIST mode). Mirrors
+	// the info[...] tag used in offer_generate; set per item, chiefly via the
+	// spreadsheet import. Empty/absent renders the {info} line as blank.
+	Info          *string `protobuf:"bytes,15,opt,name=info,proto3,oneof" json:"info,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -284,6 +288,13 @@ func (x *MlLinkListItem) GetCreatedAt() string {
 func (x *MlLinkListItem) GetUpdatedAt() string {
 	if x != nil {
 		return x.UpdatedAt
+	}
+	return ""
+}
+
+func (x *MlLinkListItem) GetInfo() string {
+	if x != nil && x.Info != nil {
+		return *x.Info
 	}
 	return ""
 }
@@ -1027,8 +1038,12 @@ type BulkCreateMlLinkListItemsRequest struct {
 	ListId         string                 `protobuf:"bytes,1,opt,name=list_id,json=listId,proto3" json:"list_id,omitempty"`
 	OriginUrls     []string               `protobuf:"bytes,2,rep,name=origin_urls,json=originUrls,proto3" json:"origin_urls,omitempty"`
 	BaseOrderIndex *int32                 `protobuf:"varint,3,opt,name=base_order_index,json=baseOrderIndex,proto3,oneof" json:"base_order_index,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Optional per-URL info text, aligned by index with origin_urls (spreadsheet
+	// "info" column). May be shorter than origin_urls or omitted entirely; a
+	// missing/empty entry means no info for that item.
+	Infos         []string `protobuf:"bytes,4,rep,name=infos,proto3" json:"infos,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BulkCreateMlLinkListItemsRequest) Reset() {
@@ -1080,6 +1095,13 @@ func (x *BulkCreateMlLinkListItemsRequest) GetBaseOrderIndex() int32 {
 		return *x.BaseOrderIndex
 	}
 	return 0
+}
+
+func (x *BulkCreateMlLinkListItemsRequest) GetInfos() []string {
+	if x != nil {
+		return x.Infos
+	}
+	return nil
 }
 
 type BulkCreateMlLinkListItemsResponse struct {
@@ -1529,7 +1551,7 @@ const file_ml_links_v1_ml_links_proto_rawDesc = "" +
 	"created_at\x18\x06 \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
 	"updated_at\x18\a \x01(\tR\tupdatedAtB\x0e\n" +
-	"\f_description\"\xa4\x05\n" +
+	"\f_description\"\xc6\x05\n" +
 	"\x0eMlLinkListItem\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\alist_id\x18\x02 \x01(\tR\x06listId\x12\x1d\n" +
@@ -1550,14 +1572,16 @@ const file_ml_links_v1_ml_links_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\r \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\x0e \x01(\tR\tupdatedAtB\x0e\n" +
+	"updated_at\x18\x0e \x01(\tR\tupdatedAt\x12\x17\n" +
+	"\x04info\x18\x0f \x01(\tH\aR\x04info\x88\x01\x01B\x0e\n" +
 	"\f_consumed_atB\x1c\n" +
 	"\x1a_consumed_by_automation_idB\x17\n" +
 	"\x15_consumed_by_group_idB\x10\n" +
 	"\x0e_product_titleB\x10\n" +
 	"\x0e_product_priceB\x14\n" +
 	"\x12_product_image_urlB\v\n" +
-	"\t_metadata\"\x18\n" +
+	"\t_metadataB\a\n" +
+	"\x05_info\"\x18\n" +
 	"\x16ListMlLinkListsRequest\"H\n" +
 	"\x17ListMlLinkListsResponse\x12-\n" +
 	"\x05lists\x18\x01 \x03(\v2\x17.ml_links.v1.MlLinkListR\x05lists\"/\n" +
@@ -1621,12 +1645,13 @@ const file_ml_links_v1_ml_links_proto_rawDesc = "" +
 	"\x12_product_image_urlB\v\n" +
 	"\t_metadata\"O\n" +
 	"\x1cCreateMlLinkListItemResponse\x12/\n" +
-	"\x04item\x18\x01 \x01(\v2\x1b.ml_links.v1.MlLinkListItemR\x04item\"\xb3\x01\n" +
+	"\x04item\x18\x01 \x01(\v2\x1b.ml_links.v1.MlLinkListItemR\x04item\"\xc9\x01\n" +
 	" BulkCreateMlLinkListItemsRequest\x12 \n" +
 	"\alist_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06listId\x12)\n" +
 	"\vorigin_urls\x18\x02 \x03(\tB\b\xbaH\x05\x92\x01\x02\b\x01R\n" +
 	"originUrls\x12-\n" +
-	"\x10base_order_index\x18\x03 \x01(\x05H\x00R\x0ebaseOrderIndex\x88\x01\x01B\x13\n" +
+	"\x10base_order_index\x18\x03 \x01(\x05H\x00R\x0ebaseOrderIndex\x88\x01\x01\x12\x14\n" +
+	"\x05infos\x18\x04 \x03(\tR\x05infosB\x13\n" +
 	"\x11_base_order_index\"\xc3\x01\n" +
 	"!BulkCreateMlLinkListItemsResponse\x12#\n" +
 	"\rcreated_count\x18\x01 \x01(\x05R\fcreatedCount\x121\n" +

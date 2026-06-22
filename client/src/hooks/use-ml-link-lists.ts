@@ -33,6 +33,71 @@ function isValidHttpUrl(raw: string): boolean {
   }
 }
 
+/**
+ * Quebra uma linha CSV em campos, respeitando campos entre aspas duplas (que
+ * podem conter o separador) com "" como aspas escapadas. Excel/Sheets põem
+ * aspas automaticamente quando a célula contém o separador, então a coluna
+ * "info" pode ter vírgulas sem quebrar o parse.
+ */
+function parseCsvLine(line: string, sep: string): string[] {
+  const fields: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === sep) {
+      fields.push(field);
+      field = '';
+    } else {
+      field += ch;
+    }
+  }
+  fields.push(field);
+  return fields;
+}
+
+/**
+ * Faz o parse do arquivo de importação em linhas {url, info}. Detecta o
+ * separador (',' ou ';' — Excel pt-BR exporta com ';') a partir da primeira
+ * linha, pula um cabeçalho "URL" opcional, e pareia a 1ª coluna (link) com a
+ * 2ª (texto de info, usado na variável {info} do disparo). Linhas em branco
+ * são ignoradas.
+ */
+function parseImportRows(fileText: string): Array<{ url: string; info: string }> {
+  const lines = fileText.split(/\r?\n/).filter((l) => l.trim() !== '');
+  if (lines.length === 0) return [];
+
+  // Detecção de separador: usa o delimitador mais frequente na 1ª linha (URLs
+  // raramente têm vírgula/ponto-e-vírgula; a célula de info, se tiver vírgula,
+  // vem entre aspas).
+  const first = lines[0];
+  const sep = first.split(';').length - 1 > first.split(',').length - 1 ? ';' : ',';
+
+  const rows: Array<{ url: string; info: string }> = [];
+  for (let idx = 0; idx < lines.length; idx++) {
+    const fields = parseCsvLine(lines[idx], sep).map((f) => f.trim());
+    const url = fields[0] || '';
+    // Pula o cabeçalho ("URL", "url", "link"...) — só na primeira linha.
+    if (idx === 0 && !isValidHttpUrl(url)) continue;
+    if (!url) continue;
+    rows.push({ url, info: fields[1] || '' });
+  }
+  return rows;
+}
+
 /** True quando o host casa com algum domínio do Mercado Livre. */
 function isMlUrl(u: URL): boolean {
   const host = u.hostname.toLowerCase();
@@ -553,28 +618,25 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     setImporting(true);
     try {
       const fileText = await file.text();
-      const lines = fileText
-        .split(/\r?\n/)
-        .map((l) => {
-          // CSV: pick first field (separator may be , or ;)
-          const firstField = l.split(/[,;]/)[0].trim();
-          return firstField;
-        })
-        .filter(Boolean);
+      const rows = parseImportRows(fileText);
 
-      console.log('[import] lines parsed:', lines.length);
+      console.log('[import] rows parsed:', rows.length);
 
       // Preserva ordem da planilha e mantém duplicatas — não usa Set.
       // A planilha é a fonte da verdade: se o cliente repetiu o mesmo
       // link 3x, queremos 3 itens. Validação só elimina linhas que não
-      // são URLs http(s) parseáveis.
-      const validated = lines.filter(isValidHttpUrl).map((l) => {
+      // são URLs http(s) parseáveis. Filtramos os pares url+info juntos
+      // pra manter o alinhamento por índice (info da linha descartada cai
+      // junto com a URL).
+      const validRows = rows.filter((r) => isValidHttpUrl(r.url));
+      const validated = validRows.map((r) => {
         try {
-          return normalizeUrl(l);
+          return normalizeUrl(r.url);
         } catch {
-          return l;
+          return r.url;
         }
       });
+      const infos = validRows.map((r) => r.info);
 
       console.log('[import] valid URLs:', validated.length);
 
@@ -594,7 +656,8 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
       const result = await mlLinksConnect.bulkCreateMlLinkListItems(
         selectedListId,
         validated,
-        baseOrder
+        baseOrder,
+        infos
       );
       console.log('[import] result:', result);
       await loadItems(selectedListId);

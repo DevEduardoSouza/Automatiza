@@ -272,6 +272,7 @@ func (h *MlLinksHandler) BulkCreateMlLinkListItems(
 	input := mllinklists.BulkCreateItemsInput{
 		ListID:     req.Msg.GetListId(),
 		OriginURLs: req.Msg.GetOriginUrls(),
+		Infos:      req.Msg.GetInfos(),
 	}
 	if req.Msg.BaseOrderIndex != nil {
 		idx := req.Msg.GetBaseOrderIndex()
@@ -510,6 +511,9 @@ func mlLinkListItemToProto(item *models.MlLinkListItem) *mllinksv1.MlLinkListIte
 	if item.Metadata != nil && len(item.Metadata) > 0 {
 		metadataStr := string(item.Metadata)
 		proto.Metadata = &metadataStr
+	}
+	if item.Info != nil {
+		proto.Info = item.Info
 	}
 
 	return proto

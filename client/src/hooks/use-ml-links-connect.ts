@@ -62,6 +62,7 @@ export interface LocalMlLinkListItem {
   product_price?: number;
   product_image_url?: string;
   metadata?: string;
+  info?: string;
   created_at: string;
   updated_at: string;
 }
@@ -132,7 +133,8 @@ interface UseMlLinksConnectReturn {
   bulkCreateMlLinkListItems: (
     listId: string,
     originUrls: string[],
-    baseOrderIndex?: number
+    baseOrderIndex?: number,
+    infos?: string[]
   ) => Promise<{
     createdCount: number;
     skippedCount: number;
@@ -189,6 +191,7 @@ function fromProtoMlLinkListItem(item: MlLinkListItem): LocalMlLinkListItem {
     product_price: item.productPrice,
     product_image_url: item.productImageUrl,
     metadata: item.metadata,
+    info: item.info,
     created_at: item.createdAt,
     updated_at: item.updatedAt,
   };
@@ -529,6 +532,7 @@ export function useMlLinksConnect(): UseMlLinksConnectReturn {
       listId: string;
       originUrls: string[];
       baseOrderIndex?: number;
+      infos?: string[];
     }): Promise<{ createdCount: number; items: LocalMlLinkListItem[] }> => {
       if (!user?.id) {
         throw new Error(t('common.errors.notAuthenticated'));
@@ -540,6 +544,7 @@ export function useMlLinksConnect(): UseMlLinksConnectReturn {
           listId: params.listId,
           originUrls: params.originUrls,
           baseOrderIndex: params.baseOrderIndex,
+          infos: params.infos,
         })
       );
 
@@ -764,14 +769,15 @@ export function useMlLinksConnect(): UseMlLinksConnectReturn {
     async (
       listId: string,
       originUrls: string[],
-      baseOrderIndex?: number
+      baseOrderIndex?: number,
+      infos?: string[]
     ): Promise<{
       createdCount: number;
       skippedCount: number;
       skippedUrls: string[];
       items: LocalMlLinkListItem[];
     }> => {
-      return bulkCreateItemsMutation.mutateAsync({ listId, originUrls, baseOrderIndex });
+      return bulkCreateItemsMutation.mutateAsync({ listId, originUrls, baseOrderIndex, infos });
     },
     [bulkCreateItemsMutation]
   );
