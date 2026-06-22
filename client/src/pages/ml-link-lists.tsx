@@ -232,8 +232,25 @@ export default function MlLinkLists() {
     copyToClipboard,
     addOneLink,
     toggleItemActive,
+    editItemInfo,
     moveItem,
   } = useMlLinkLists();
+
+  // Inline editor for an item's free-form {info} text.
+  const [infoEditItem, setInfoEditItem] = useState<(typeof items)[number] | null>(null);
+  const [infoDraft, setInfoDraft] = useState('');
+  const [savingInfo, setSavingInfo] = useState(false);
+
+  const saveInfo = async () => {
+    if (!infoEditItem) return;
+    setSavingInfo(true);
+    try {
+      await editItemInfo(infoEditItem, infoDraft.trim());
+      setInfoEditItem(null);
+    } finally {
+      setSavingInfo(false);
+    }
+  };
 
   return (
     <ErrorBoundary>
@@ -697,6 +714,10 @@ export default function MlLinkLists() {
                         onToggleActive={toggleItemActive}
                         onRemove={requestDeleteItem}
                         onCopyLink={copyToClipboard}
+                        onEditInfo={(item) => {
+                          setInfoEditItem(item);
+                          setInfoDraft(item.info ?? '');
+                        }}
                         onLoadMore={loadMoreItems}
                         hasMore={hasMoreItems}
                         isLoadingMore={loadingMoreItems}
@@ -767,6 +788,41 @@ export default function MlLinkLists() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={infoEditItem !== null}
+        onOpenChange={(open) => {
+          if (!open) setInfoEditItem(null);
+        }}
+      >
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg rounded-xl text-black">
+          <DialogHeader>
+            <DialogTitle className="text-base xs:text-lg text-black">
+              {t('pages.mlLinkLists.items.infoDialogTitle')}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs" style={{ color: 'rgba(141, 45, 83, 0.7)' }}>
+              {t('pages.mlLinkLists.items.infoDialogDescription')}
+            </p>
+            <Textarea
+              value={infoDraft}
+              onChange={(e) => setInfoDraft(e.target.value)}
+              rows={6}
+              placeholder={t('pages.mlLinkLists.items.infoPlaceholder')}
+              className="text-sm"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setInfoEditItem(null)} disabled={savingInfo}>
+                {t('common.cancel')}
+              </Button>
+              <Button onClick={saveInfo} disabled={savingInfo}>
+                {t('common.save')}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ErrorBoundary>
   );
 }

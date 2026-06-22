@@ -186,6 +186,7 @@ interface UseMlLinkListsReturn {
   copyToClipboard: (text: string) => Promise<void>;
   addOneLink: () => Promise<void>;
   toggleItemActive: (item: MlLinkListItem) => Promise<void>;
+  editItemInfo: (item: MlLinkListItem, info: string) => Promise<void>;
   moveItem: (item: MlLinkListItem, dir: 'up' | 'down') => Promise<void>;
 }
 
@@ -231,6 +232,7 @@ function toEntityMlLinkListItem(
     product_price: local.product_price ?? null,
     product_image_url: local.product_image_url ?? null,
     metadata,
+    info: local.info ?? null,
     created_at: local.created_at,
     updated_at: local.updated_at,
   };
@@ -743,6 +745,27 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     [toast, t, loadItems, mlLinksConnect]
   );
 
+  const editItemInfo = useCallback(
+    async (it: MlLinkListItem, info: string) => {
+      try {
+        await mlLinksConnect.updateMlLinkListItem({
+          id: it.id,
+          info,
+        });
+        loadItems(it.list_id);
+      } catch (e: unknown) {
+        const errorMessage =
+          e instanceof Error ? e.message : t('pages.mlLinkLists.errors.updateItemFailed');
+        toast({
+          title: t('pages.mlLinkLists.errors.updateItem'),
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
+    },
+    [toast, t, loadItems, mlLinksConnect]
+  );
+
   const moveItem = useCallback(
     async (it: MlLinkListItem, dir: 'up' | 'down') => {
       const idx = items.findIndex((x) => x.id === it.id);
@@ -816,6 +839,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     copyToClipboard,
     addOneLink,
     toggleItemActive,
+    editItemInfo,
     moveItem,
   };
 }
