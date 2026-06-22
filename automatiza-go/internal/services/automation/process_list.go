@@ -628,6 +628,12 @@ func (s *automationService) buildListModeMessage(
 			vars.Image = *item.ProductImageURL
 		}
 
+		// {info} via campo info do item (coluna "info" da planilha) — mesmo
+		// motivo do ramo ML: no LIST mode não há tag info[...] de gatilho.
+		if item.Info != nil {
+			vars.Info = *item.Info
+		}
+
 		// Populate coupon fields and override price with discounted value
 		if couponResult != nil && couponResult.Applied {
 			vars.CouponCode = couponResult.CouponCode
@@ -699,6 +705,14 @@ func (s *automationService) buildListModeMessage(
 		if item.ProductImageURL != nil {
 			vars.Image = *item.ProductImageURL
 		}
+	}
+
+	// {info} no LIST mode: a lista não tem mensagem de gatilho com a tag
+	// info[...] (fluxo do offer_generate), então preenchemos a variável a
+	// partir do campo info do item — vindo da coluna "info" da planilha de
+	// importação. Vazio mantém a linha do {info} colapsada como antes.
+	if item.Info != nil {
+		vars.Info = *item.Info
 	}
 
 	// Populate coupon fields and override price with discounted value

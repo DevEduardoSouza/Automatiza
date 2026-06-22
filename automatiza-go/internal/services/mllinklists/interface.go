@@ -61,6 +61,9 @@ type BulkCreateItemsInput struct {
 	ListID         string
 	OriginURLs     []string
 	BaseOrderIndex *int32
+	// Infos carries the optional per-URL info text, aligned by index with
+	// OriginURLs (spreadsheet "info" column). May be shorter than OriginURLs.
+	Infos []string
 }
 
 // BulkCreateResult contains the result of a bulk create operation.

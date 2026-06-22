@@ -82,6 +82,11 @@ message MlLinkListItem {
 
   // Last update timestamp (ISO 8601)
   string updated_at = 14;
+
+  // Free-form info text for the {info} template variable (LIST mode). Mirrors
+  // the info[...] tag used in offer_generate; set per item, chiefly via the
+  // spreadsheet import. Empty/absent renders the {info} line as blank.
+  optional string info = 15;
 }
 
 // ============================================================
@@ -194,6 +199,10 @@ message BulkCreateMlLinkListItemsRequest {
   string list_id = 1 [(buf.validate.field).string.min_len = 1];
   repeated string origin_urls = 2 [(buf.validate.field).repeated.min_items = 1];
   optional int32 base_order_index = 3;
+  // Optional per-URL info text, aligned by index with origin_urls (spreadsheet
+  // "info" column). May be shorter than origin_urls or omitted entirely; a
+  // missing/empty entry means no info for that item.
+  repeated string infos = 4;
 }
 
 message BulkCreateMlLinkListItemsResponse {

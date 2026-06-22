@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	apperrors "automatiza-go/internal/errors"
@@ -354,16 +355,35 @@ func (s *service) BulkCreateItems(ctx context.Context, userID string, input Bulk
 		return nil, apperrors.ErrListNotFound
 	}
 
-	// Validate all URLs first
-	validationResult := urlvalidation.ValidateAndCategorizeURLs(input.OriginURLs)
-
+	// Validate URLs keeping each one's optional info text (the spreadsheet
+	// "info" column, aligned by index with OriginURLs) attached. We can't use
+	// ValidateAndCategorizeURLs + a parallel infos[] here: it drops invalid
+	// URLs and loses their position, so the realignment would break. Instead we
+	// validate per pair and carry the info through.
+	//
 	// Dedup intencionalmente removido. A planilha é a fonte da verdade:
 	// se o cliente colocou o mesmo link N vezes, é porque quer N envios.
 	// Também não filtramos contra itens já existentes na lista —
 	// re-importar uma planilha gera novas entradas. A migration 051
 	// removeu UNIQUE (list_id, product_url) que tornava esse comportamento
 	// impossível no nível do banco.
-	newURLs := validationResult.ValidURLs
+	type urlInfoPair struct {
+		url  string
+		info string
+	}
+	validPairs := make([]urlInfoPair, 0, len(input.OriginURLs))
+	invalidURLs := make(map[string]string)
+	for i, rawURL := range input.OriginURLs {
+		info := ""
+		if i < len(input.Infos) {
+			info = strings.TrimSpace(input.Infos[i])
+		}
+		if err := urlvalidation.ValidateProductURL(rawURL); err != nil {
+			invalidURLs[rawURL] = err.Error()
+			continue
+		}
+		validPairs = append(validPairs, urlInfoPair{url: rawURL, info: info})
+	}
 
 	// Get base order index
 	baseOrderIndex := 0
@@ -378,23 +398,28 @@ func (s *service) BulkCreateItems(ctx context.Context, userID string, input Bulk
 	}
 
 	// Build items
-	items := make([]models.MlLinkListItem, len(newURLs))
-	for i, rawURL := range newURLs {
-		normalized, normErr := urlvalidation.NormalizeURL(rawURL)
+	items := make([]models.MlLinkListItem, len(validPairs))
+	for i, pair := range validPairs {
+		normalized, normErr := urlvalidation.NormalizeURL(pair.url)
 		if normErr != nil {
 			observability.LogAndCapture(s.logger, sentry.LevelWarning,
 				"Failed to normalize URL for item creation, using original",
 				normErr, map[string]string{
 					"module": "ml_link_lists", "operation": "bulk_create_normalize_item",
 				})
-			normalized = rawURL
+			normalized = pair.url
 		}
-		items[i] = models.MlLinkListItem{
+		item := models.MlLinkListItem{
 			ListID:     input.ListID,
 			OriginURL:  normalized,
 			OrderIndex: baseOrderIndex + i,
 			IsActive:   true,
 		}
+		if pair.info != "" {
+			info := pair.info
+			item.Info = &info
+		}
+		items[i] = item
 	}
 
 	// Bulk create
@@ -412,8 +437,8 @@ func (s *service) BulkCreateItems(ctx context.Context, userID string, input Bulk
 
 	// Skipped agora contém apenas URLs inválidas (não-http(s), unparseable,
 	// vazias) — dedup foi removido, duplicatas viram itens.
-	allSkipped := make([]string, 0, len(validationResult.InvalidURLs))
-	for url := range validationResult.InvalidURLs {
+	allSkipped := make([]string, 0, len(invalidURLs))
+	for url := range invalidURLs {
 		allSkipped = append(allSkipped, url)
 	}
 

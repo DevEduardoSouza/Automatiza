@@ -1433,6 +1433,77 @@ func TestBulkCreateItems_WithInvalidURLs(t *testing.T) {
 	}
 }
 
+func TestBulkCreateItems_WithInfo_AlignmentPreserved(t *testing.T) {
+	t.Parallel()
+	svc, repo := setupService()
+	ctx := context.Background()
+
+	seedList(repo, "list-1", "user-1", "Test")
+
+	// An invalid URL in the middle must be dropped WITHOUT shifting the info of
+	// the URLs after it — each valid URL keeps its OWN info. This is the whole
+	// reason we pair url+info before validation instead of using a parallel
+	// infos[] aligned against the post-filter ValidURLs.
+	result, err := svc.BulkCreateItems(ctx, "user-1", BulkCreateItemsInput{
+		ListID: "list-1",
+		OriginURLs: []string{
+			"https://www.mercadolivre.com.br/p/MLB11111",
+			"ftp://example.com/invalid", // dropped
+			"https://www.mercadolivre.com.br/p/MLB22222",
+		},
+		Infos: []string{"frete gratis", "lixo do link invalido", "ultimas unidades"},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.CreatedCount != 2 {
+		t.Fatalf("expected 2 created, got %d", result.CreatedCount)
+	}
+
+	created := repo.itemsByList["list-1"]
+	if len(created) != 2 {
+		t.Fatalf("expected 2 items stored, got %d", len(created))
+	}
+	if created[0].Info == nil || *created[0].Info != "frete gratis" {
+		t.Errorf("item[0].Info = %v, want 'frete gratis'", created[0].Info)
+	}
+	// The dropped ftp URL's info must NOT leak into the next item.
+	if created[1].Info == nil || *created[1].Info != "ultimas unidades" {
+		t.Errorf("item[1].Info = %v, want 'ultimas unidades' (alignment preserved)", created[1].Info)
+	}
+}
+
+func TestBulkCreateItems_InfoOptional(t *testing.T) {
+	t.Parallel()
+	svc, repo := setupService()
+	ctx := context.Background()
+
+	seedList(repo, "list-1", "user-1", "Test")
+
+	// Infos shorter than OriginURLs (and a blank entry) → those items get no
+	// info (nil), not an empty-string pointer.
+	result, err := svc.BulkCreateItems(ctx, "user-1", BulkCreateItemsInput{
+		ListID: "list-1",
+		OriginURLs: []string{
+			"https://www.mercadolivre.com.br/p/MLB11111",
+			"https://www.mercadolivre.com.br/p/MLB22222",
+		},
+		Infos: []string{"   "}, // blank → nil; second URL has no info entry at all
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.CreatedCount != 2 {
+		t.Fatalf("expected 2 created, got %d", result.CreatedCount)
+	}
+	created := repo.itemsByList["list-1"]
+	for i := range created {
+		if created[i].Info != nil {
+			t.Errorf("item[%d].Info = %q, want nil (no/blank info)", i, *created[i].Info)
+		}
+	}
+}
+
 func TestBulkCreateItems_ListNotFound(t *testing.T) {
 	t.Parallel()
 	svc, _ := setupService()
