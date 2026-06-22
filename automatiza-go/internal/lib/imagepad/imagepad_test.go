@@ -119,6 +119,29 @@ func TestPadToSafeAspect_PNGInput(t *testing.T) {
 	}
 }
 
+// WebP input must decode and normalize too. This is the regression guard for
+// the ML/Shopee crop: their CDNs serve .webp, and without the webp decoder
+// image.Decode failed → SendImage fail-opened → the raw portrait shipped and
+// WhatsApp center-cropped it. A 200x400 portrait webp (aspect 0.5) must pad to
+// a 400x400 square just like the jpeg/png paths.
+func TestPadToSafeAspect_WebPInput(t *testing.T) {
+	// 200x400 solid-color portrait, encoded as WebP (no stdlib webp encoder, so
+	// embedded as a fixture). Decodes only if the webp decoder is registered.
+	const portraitWebPB64 = "UklGRuIAAABXRUJQVlA4INYAAABQFQCdASrIAJABPjEYi0SiIaEQFAAgAwS0t3C7sI9uA/AD8AAAC0tk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHrAAD+/7kxP//94zzoLm/oR///v9V4v4H/rgAAAAAAAAAAAAAA"
+	raw, err := base64.StdEncoding.DecodeString(portraitWebPB64)
+	if err != nil {
+		t.Fatalf("decode fixture base64: %v", err)
+	}
+	out, err := PadToSafeAspectJPEG(raw)
+	if err != nil {
+		t.Fatalf("webp must decode (decoder registered): %v", err)
+	}
+	w, h := decodedSize(t, out)
+	if w != h || h != 400 {
+		t.Fatalf("expected 400x400 square from 200x400 webp, got %dx%d", w, h)
+	}
+}
+
 func TestPadToSafeAspect_BadInput(t *testing.T) {
 	if _, err := PadToSafeAspectJPEG([]byte("not an image")); err == nil {
 		t.Fatal("expected error for undecodable input")
