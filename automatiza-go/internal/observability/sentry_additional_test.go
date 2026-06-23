@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -81,6 +82,49 @@ func TestRedactPII_BreadcrumbsNonStringData(t *testing.T) {
 	assert.Equal(t, 42, crumb.Data["count"])
 	assert.Equal(t, true, crumb.Data["active"])
 	assert.Equal(t, 3.14, crumb.Data["score"])
+}
+
+// TestRedactPII_DoesNotMutateSharedBreadcrumb guards the fix for the worker
+// crash "fatal error: concurrent map writes": sentry-go shares breadcrumb
+// pointers (and their Data maps) across events, so redactPII must NOT mutate the
+// shared original — it must redact a copy.
+func TestRedactPII_DoesNotMutateSharedBreadcrumb(t *testing.T) {
+	shared := &sentry.Breadcrumb{
+		Message: "login by test@example.com",
+		Data:    map[string]interface{}{"email": "user@example.com"},
+	}
+	event := &sentry.Event{Breadcrumbs: []*sentry.Breadcrumb{shared}}
+
+	result := redactPII(event)
+
+	// Shared original must be untouched.
+	assert.Equal(t, "login by test@example.com", shared.Message)
+	assert.Equal(t, "user@example.com", shared.Data["email"])
+	// Returned event must be redacted.
+	assert.Contains(t, result.Breadcrumbs[0].Message, "[EMAIL_REDACTED]")
+	assert.Equal(t, "[EMAIL_REDACTED]", result.Breadcrumbs[0].Data["email"])
+}
+
+// TestRedactPII_ConcurrentSharedBreadcrumbs reproduces the original crash:
+// multiple events sharing the same breadcrumb pointer + Data map, redacted
+// concurrently. Run with -race; pre-fix this tripped "concurrent map writes".
+func TestRedactPII_ConcurrentSharedBreadcrumbs(t *testing.T) {
+	shared := &sentry.Breadcrumb{
+		Message: "user test@example.com",
+		Data:    map[string]interface{}{"email": "a@b.com", "count": 1},
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ev := &sentry.Event{Breadcrumbs: []*sentry.Breadcrumb{shared}}
+			_ = redactPII(ev)
+		}()
+	}
+	wg.Wait()
+	// The shared original is only ever read, never written.
+	assert.Equal(t, "a@b.com", shared.Data["email"])
 }
 
 func TestRedactPII_RequestAllSensitiveHeaders(t *testing.T) {
