@@ -285,19 +285,27 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 	discountTag := text.ParseDiscountTag(msg.Body)
 	infoText := text.ParseInfoTag(msg.Body)
 
-	// 5. Load dispatch template (required for offer_generate)
-	if auto.DispatchTextID == nil || *auto.DispatchTextID == "" {
-		s.logger.Warn("No dispatch text configured for offer_generate",
-			zap.String("automationID", auto.ID))
-		return nil
+	// 5. Load dispatch template. When the automation has no dispatch text
+	// configured (or it fails to load), fall back to the system default
+	// template so the offer still relays instead of silently dropping. This
+	// mirrors the product expectation: offer_generate without a custom text
+	// should still work — in prod, 19 active automations had no dispatch text
+	// and were silently not relaying because this path returned nil.
+	var dispatchText *models.DispatchText
+	if auto.DispatchTextID != nil && *auto.DispatchTextID != "" {
+		loaded, loadErr := s.settingsRepo.GetActiveDispatchTextByID(ctx, *auto.DispatchTextID, auto.UserID)
+		if loadErr != nil || loaded == nil {
+			s.logger.Warn("Failed to load dispatch text, falling back to system default",
+				zap.String("automationID", auto.ID),
+				zap.Error(loadErr))
+		} else {
+			dispatchText = loaded
+		}
 	}
-
-	dispatchText, err := s.settingsRepo.GetActiveDispatchTextByID(ctx, *auto.DispatchTextID, auto.UserID)
-	if err != nil || dispatchText == nil {
-		s.logger.Warn("Failed to load dispatch text",
-			zap.String("automationID", auto.ID),
-			zap.Error(err))
-		return nil
+	if dispatchText == nil {
+		dispatchText = &models.DispatchText{Body: text.DefaultShopeeTemplate()}
+		s.logger.Info("Using system default dispatch template for offer_generate",
+			zap.String("automationID", auto.ID))
 	}
 
 	// 6. Load CTA pool. Política espelha automation_service:
