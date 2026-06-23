@@ -141,14 +141,35 @@ func redactPII(event *sentry.Event) *sentry.Event {
 		event.Exception[i].Value = redactString(event.Exception[i].Value)
 	}
 
-	// Redact breadcrumb messages
-	for i := range event.Breadcrumbs {
-		event.Breadcrumbs[i].Message = redactString(event.Breadcrumbs[i].Message)
-		for k, v := range event.Breadcrumbs[i].Data {
-			if s, ok := v.(string); ok {
-				event.Breadcrumbs[i].Data[k] = redactString(s)
+	// Redact breadcrumb messages and data WITHOUT mutating in place. sentry-go
+	// shares breadcrumb pointers (and their Data maps) across concurrently-sent
+	// events — they come from the same Hub/Scope. Writing them here from multiple
+	// asynq goroutines crashed the worker with "fatal error: concurrent map
+	// writes" (redactPII at sentry.go) under error storms. Build fresh copies and
+	// point the event at those, leaving the shared originals untouched (we only
+	// READ them, which is concurrency-safe).
+	if len(event.Breadcrumbs) > 0 {
+		cleaned := make([]*sentry.Breadcrumb, len(event.Breadcrumbs))
+		for i, b := range event.Breadcrumbs {
+			if b == nil {
+				continue
 			}
+			cp := *b
+			cp.Message = redactString(b.Message)
+			if len(b.Data) > 0 {
+				data := make(map[string]interface{}, len(b.Data))
+				for k, v := range b.Data {
+					if s, ok := v.(string); ok {
+						data[k] = redactString(s)
+					} else {
+						data[k] = v
+					}
+				}
+				cp.Data = data
+			}
+			cleaned[i] = &cp
 		}
+		event.Breadcrumbs = cleaned
 	}
 
 	// Redact request data
