@@ -197,39 +197,30 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 	}
 
-	// 2. Categorize and resolve links
-	shopeeLinks, mlLinks := s.categorizeLinks(links)
+	// 2. Monitoring relays Shopee ONLY. Mercado Livre, Amazon and every other
+	// store are blocked by policy and must never be repassed — regardless of
+	// the automation's `stores` config. We keep only the Shopee links for
+	// affiliate conversion and treat everything else as blocked.
+	shopeeLinks, _ := s.categorizeLinks(links)
 
-	// 3. Filter by configured stores
-	stores := automation.Stores
-	if len(stores) == 0 {
-		stores = []string{"shopee"}
+	// Every non-Shopee link is blocked. Collect them so we can strip them from
+	// the forwarded body below: the relay forwards msg.Body as-is (only swapping
+	// the Shopee links we affiliate), so a non-Shopee link the source included
+	// would otherwise ride along untouched and get repassed.
+	var blockedLinks []string
+	for _, link := range links {
+		if !shopeeURLRegex.MatchString(link) {
+			blockedLinks = append(blockedLinks, link)
+		}
 	}
 
-	storeSet := make(map[string]bool, len(stores))
-	for _, st := range stores {
-		storeSet[st] = true
-	}
-
-	if !storeSet["shopee"] {
-		shopeeLinks = nil
-	}
-	// When mercadolivre isn't enabled, ML is blocked for this automation:
-	// drop the ML links from affiliate generation and remember them so we can
-	// strip them from the forwarded body below. The relay forwards msg.Body
-	// as-is (only swapping links we affiliated), so an ML link the source
-	// included would otherwise be repassed even with ML disabled.
-	var blockedMLLinks []string
-	if !storeSet["mercadolivre"] {
-		blockedMLLinks = mlLinks
-		mlLinks = nil
-	}
-
-	if len(shopeeLinks) == 0 && len(mlLinks) == 0 {
-		s.logger.Info("No links matching configured stores, skipping",
+	// 3. Shopee-only gate: without a Shopee link there is nothing to relay.
+	if len(shopeeLinks) == 0 {
+		s.logger.Info("No Shopee links in message, skipping (monitoring relays Shopee only)",
 			zap.String("automationID", automation.ID),
-			zap.Strings("stores", stores),
-			zap.Int("totalLinks", len(links)))
+			zap.Strings("stores", automation.Stores),
+			zap.Int("totalLinks", len(links)),
+			zap.Int("blockedLinks", len(blockedLinks)))
 		return nil
 	}
 
@@ -279,46 +270,6 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 	}
 
-	for _, link := range mlLinks {
-		if s.mlService != nil {
-			aff, err := s.mlService.CreateAffiliateLink(ctx, link, automation.UserID)
-			if err != nil {
-				errStr := err.Error()
-				if strings.Contains(errStr, "Invalid Signature") ||
-					strings.Contains(errStr, "credentials incomplete") ||
-					strings.Contains(errStr, "invalid_token") {
-					s.logger.Warn("ML credential error, pausing automation",
-						zap.String("automationID", automation.ID),
-						zap.String("userID", automation.UserID),
-						zap.Error(err))
-
-					ck := s.extractCanonicalKey(links)
-					st := s.detectStore(links)
-					s.logDispatch(ctx, automation, "", link,
-						"failed", "Credenciais Mercado Livre inválidas - reconfigure suas credenciais",
-						ck, st)
-
-					now := time.Now().UTC().Format(time.RFC3339)
-					_ = s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
-						"status":        models.AutomationStatusPaused,
-						"last_error":    "Credenciais ML inválidas - automação pausada automaticamente",
-						"last_error_at": now,
-					})
-
-					return nil
-				}
-
-				s.logger.Warn("Failed to generate ML affiliate link, keeping original",
-					zap.String("automationID", automation.ID),
-					zap.String("userID", automation.UserID),
-					zap.String("originalLink", link),
-					zap.Error(err))
-			} else if aff != nil && aff.AffiliateLink != "" {
-				affiliateLinks[link] = aff.AffiliateLink
-			}
-		}
-	}
-
 	// 5. Apply text transformation rules
 	processedText := msg.Body
 
@@ -332,12 +283,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		processedText = strings.ReplaceAll(processedText, orig, aff)
 	}
 
-	// 6b. Block ML relay: strip any ML links the source posted when this
-	// automation has mercadolivre disabled. Pure-ML messages were already
-	// dropped by the store filter above; this covers mixed messages where a
-	// Shopee link keeps the relay alive but an ML link rode along in the body.
-	for _, mlLink := range blockedMLLinks {
-		processedText = strings.ReplaceAll(processedText, mlLink, "")
+	// 6b. Block every non-Shopee link: strip the links the source posted that we
+	// did not affiliate (Mercado Livre, Amazon, etc.). Pure non-Shopee messages
+	// were already dropped by the Shopee-only gate above; this covers mixed
+	// messages where a Shopee link keeps the relay alive but a non-Shopee link
+	// rode along in the body.
+	for _, blockedLink := range blockedLinks {
+		processedText = strings.ReplaceAll(processedText, blockedLink, "")
 	}
 
 	// 7. Normalize text

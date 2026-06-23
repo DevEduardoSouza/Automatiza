@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1494,6 +1495,156 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 		}
 		if sent {
 			t.Error("stores=nil should default to [shopee] and skip ML links")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// processAutomation - Shopee-only whitelist (monitoring relays Shopee ONLY)
+// ---------------------------------------------------------------------------
+
+// shopeeAffiliateService returns a mock Shopee service that always converts a
+// link to a fixed affiliate URL, so relays reach the send stage.
+func shopeeAffiliateService(affURL string) *mockShopeeService {
+	return &mockShopeeService{
+		GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+			return &models.ShopeeAffiliateLink{AffiliateLink: affURL}, nil
+		},
+	}
+}
+
+func TestProcessAutomation_ShopeeOnlyWhitelist(t *testing.T) {
+	// Even with mercadolivre explicitly ENABLED in stores, monitoring must
+	// never relay an ML link. This is the hard rule that the per-store config
+	// (PR #193) did not guarantee.
+	t.Run("stores=[shopee,mercadolivre] + ML link → blocked (never relayed)", func(t *testing.T) {
+		var sent bool
+		svc := newTestService(t, func(s *monitoringService) {
+			s.waProvider = &mockWAProvider{
+				SendTextFn: func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+					sent = true
+					return &whatsapp.MessageResult{ID: "msg-1"}, nil
+				},
+			}
+		})
+
+		delayZero := 0
+		auto := &models.Automation{
+			ID:           "auto-1",
+			UserID:       "user-1",
+			Name:         "test",
+			Stores:       []string{"shopee", "mercadolivre"},
+			SendGroups:   []string{"dest@g.us"},
+			Status:       "active",
+			DelaySeconds: &delayZero,
+		}
+
+		err := svc.processAutomation(context.Background(), auto, &models.IncomingMessage{
+			InstanceName: "inst1",
+			RemoteJID:    "source@g.us",
+			Body:         "https://www.mercadolivre.com.br/product/MLB123",
+		}, []string{"https://www.mercadolivre.com.br/product/MLB123"})
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sent {
+			t.Error("ML link must NOT be relayed even when mercadolivre is enabled in stores")
+		}
+	})
+
+	// Mixed message: a Shopee link keeps the relay alive, but a non-Shopee link
+	// (Amazon) rode along. The Amazon link must be stripped from the body.
+	t.Run("mixed Shopee+Amazon → relays Shopee, strips Amazon link", func(t *testing.T) {
+		var sentText string
+		var sent bool
+		svc := newTestService(t, func(s *monitoringService) {
+			s.shopeeService = shopeeAffiliateService("https://s.shopee.com.br/AFF123")
+			s.waProvider = &mockWAProvider{
+				SendTextFn: func(_ context.Context, in whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+					sent = true
+					sentText = in.Text
+					return &whatsapp.MessageResult{ID: "msg-1"}, nil
+				},
+			}
+		})
+
+		delayZero := 0
+		auto := &models.Automation{
+			ID:           "auto-1",
+			UserID:       "user-1",
+			Name:         "test",
+			Stores:       []string{"shopee"},
+			SendGroups:   []string{"dest@g.us"},
+			Status:       "active",
+			DelaySeconds: &delayZero,
+		}
+
+		shopeeURL := "https://shopee.com.br/product-i.123.456"
+		amazonURL := "https://amazon.com.br/product/999"
+		err := svc.processAutomation(context.Background(), auto, &models.IncomingMessage{
+			InstanceName: "inst1",
+			RemoteJID:    "source@g.us",
+			Body:         "Oferta: " + shopeeURL + " e tambem " + amazonURL,
+		}, []string{shopeeURL, amazonURL})
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !sent {
+			t.Fatal("expected Shopee relay to be sent")
+		}
+		if strings.Contains(sentText, "amazon.com.br") {
+			t.Errorf("Amazon link must be stripped from relayed body, got: %q", sentText)
+		}
+		if !strings.Contains(sentText, "s.shopee.com.br/AFF123") {
+			t.Errorf("relayed body must contain the Shopee affiliate link, got: %q", sentText)
+		}
+	})
+
+	// Mixed message: Shopee + ML. ML link must be stripped even though the
+	// Shopee link keeps the relay alive.
+	t.Run("mixed Shopee+ML → relays Shopee, strips ML link", func(t *testing.T) {
+		var sentText string
+		var sent bool
+		svc := newTestService(t, func(s *monitoringService) {
+			s.shopeeService = shopeeAffiliateService("https://s.shopee.com.br/AFF123")
+			s.waProvider = &mockWAProvider{
+				SendTextFn: func(_ context.Context, in whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+					sent = true
+					sentText = in.Text
+					return &whatsapp.MessageResult{ID: "msg-1"}, nil
+				},
+			}
+		})
+
+		delayZero := 0
+		auto := &models.Automation{
+			ID:           "auto-1",
+			UserID:       "user-1",
+			Name:         "test",
+			Stores:       []string{"shopee", "mercadolivre"},
+			SendGroups:   []string{"dest@g.us"},
+			Status:       "active",
+			DelaySeconds: &delayZero,
+		}
+
+		shopeeURL := "https://shopee.com.br/product-i.123.456"
+		mlURL := "https://www.mercadolivre.com.br/product/MLB123"
+		err := svc.processAutomation(context.Background(), auto, &models.IncomingMessage{
+			InstanceName: "inst1",
+			RemoteJID:    "source@g.us",
+			Body:         shopeeURL + " ou " + mlURL,
+		}, []string{shopeeURL, mlURL})
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !sent {
+			t.Fatal("expected Shopee relay to be sent")
+		}
+		if strings.Contains(sentText, "mercadolivre.com.br") {
+			t.Errorf("ML link must be stripped from relayed body, got: %q", sentText)
 		}
 	})
 }
