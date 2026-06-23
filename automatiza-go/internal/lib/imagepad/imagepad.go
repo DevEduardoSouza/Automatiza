@@ -133,31 +133,122 @@ func padToAspectJPEG(src []byte, minA, maxA float64) ([]byte, error) {
 // ready for SendImageInput.ImageBase64. Any failure (download, non-200, decode)
 // returns an error so the caller can fall back to sending the raw URL.
 func FetchAndPadToSafeAspectJPEGBase64(ctx context.Context, url string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	raw, err := fetchImageBytes(ctx, url)
 	if err != nil {
 		return "", err
+	}
+	padded, err := PadToSafeAspectJPEG(raw)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(padded), nil
+}
+
+// fetchImageBytes downloads an image URL with a browser-ish UA and a size cap.
+func fetchImageBytes(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
 	}
 	// ML/Shopee CDNs are friendlier with a browser-ish UA.
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 
 	resp, err := defaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("fetch image: %w", err)
+		return nil, fmt.Errorf("fetch image: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("fetch image: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("fetch image: status %d", resp.StatusCode)
 	}
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxImageBytes))
 	if err != nil {
-		return "", fmt.Errorf("read image: %w", err)
+		return nil, fmt.Errorf("read image: %w", err)
+	}
+	return raw, nil
+}
+
+// edgeExtendPortraitToSquareJPEG squares a PORTRAIT image (aspect < 1) by
+// filling the side margins with the image's own edge columns, so the photo's
+// background flows continuously into the margins — no white bar, no blur, no
+// crop. It reads as a natural product-on-background shot.
+//
+// WhatsApp center-crops anything taller than square in BOTH the link-preview
+// card and the photo bubble (measured via probe), so a tall bottle loses its
+// cap/base. Squaring shows the full product; edge-extend (vs white/blur) keeps
+// it looking native. Returns padded=false for square/landscape images, which
+// must be sent unchanged (they already render in full).
+func edgeExtendPortraitToSquareJPEG(src []byte) (out []byte, padded bool, err error) {
+	img, _, err := image.Decode(bytes.NewReader(src))
+	if err != nil {
+		return nil, false, fmt.Errorf("decode image: %w", err)
+	}
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= 0 || h <= 0 {
+		return nil, false, fmt.Errorf("invalid image bounds %dx%d", w, h)
+	}
+	if w >= h {
+		return nil, false, nil // square/landscape: leave unchanged
 	}
 
-	padded, err := PadToSafeAspectJPEG(raw)
+	canvas := image.NewRGBA(image.Rect(0, 0, h, h))
+	offX := (h - w) / 2
+	// The product photo, centered horizontally.
+	draw.Draw(canvas, image.Rect(offX, 0, offX+w, h), img, b.Min, draw.Src)
+	// Fill each side margin by replicating that row's edge pixel.
+	for y := 0; y < h; y++ {
+		left := img.At(b.Min.X, b.Min.Y+y)
+		for x := 0; x < offX; x++ {
+			canvas.Set(x, y, left)
+		}
+		right := img.At(b.Min.X+w-1, b.Min.Y+y)
+		for x := offX + w; x < h; x++ {
+			canvas.Set(x, y, right)
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, canvas, &jpeg.Options{Quality: jpegQuality}); err != nil {
+		return nil, false, fmt.Errorf("encode jpeg: %w", err)
+	}
+	return buf.Bytes(), true, nil
+}
+
+// FetchEdgeExtendPortraitJPEGBase64 downloads url and, if it's a portrait image,
+// returns an edge-extended square JPEG as base64. Returns "" (no error) for
+// square/landscape images — the caller should then send the original URL
+// unchanged. Any download/decode failure returns an error (caller keeps URL).
+func FetchEdgeExtendPortraitJPEGBase64(ctx context.Context, url string) (string, error) {
+	raw, err := fetchImageBytes(ctx, url)
 	if err != nil {
 		return "", err
+	}
+	padded, ok, err := edgeExtendPortraitToSquareJPEG(raw)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", nil
+	}
+	return base64.StdEncoding.EncodeToString(padded), nil
+}
+
+// EdgeExtendPortraitJPEGBase64 edge-extends an already-base64 image to a square
+// when it's portrait; returns "" (no error) for square/landscape (send original).
+func EdgeExtendPortraitJPEGBase64(b64 string) (string, error) {
+	raw, err := decodeBase64Image(b64)
+	if err != nil {
+		return "", err
+	}
+	padded, ok, err := edgeExtendPortraitToSquareJPEG(raw)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", nil
 	}
 	return base64.StdEncoding.EncodeToString(padded), nil
 }

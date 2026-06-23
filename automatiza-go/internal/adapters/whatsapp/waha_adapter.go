@@ -1388,6 +1388,34 @@ func (a *WahaAdapter) SendLinkCustomPreview(ctx context.Context, input SendLinkP
 		zap.String("previewURL", input.URL),
 		zap.String("title", input.Title))
 
+	// WhatsApp center-crops PORTRAIT images in the rich preview card (a tall
+	// product loses its top/bottom — measured via probe); square/landscape render
+	// in full. So edge-extend ONLY portrait preview images to a square: the side
+	// margins are filled with the photo's own edge columns, so the product shows
+	// whole and the fill looks like a natural continuation of the photo (not a
+	// white bar, blur, or obvious crop). Square/landscape are sent UNCHANGED.
+	// Fail-open: keep the original on any download/decode error.
+	switch {
+	case input.ImageURL != "" && input.ImageBase64 == "":
+		if b64, perr := imagepad.FetchEdgeExtendPortraitJPEGBase64(ctx, input.ImageURL); perr != nil {
+			a.logger.Warn("Preview image edge-extend failed, sending original URL",
+				zap.String("imageURL", input.ImageURL),
+				zap.Error(perr))
+		} else if b64 != "" {
+			input.ImageBase64 = b64
+			input.Mimetype = "image/jpeg"
+			input.ImageURL = ""
+		}
+	case input.ImageBase64 != "":
+		if b64, perr := imagepad.EdgeExtendPortraitJPEGBase64(input.ImageBase64); perr != nil {
+			a.logger.Warn("Preview image edge-extend (base64) failed, sending original",
+				zap.Error(perr))
+		} else if b64 != "" {
+			input.ImageBase64 = b64
+			input.Mimetype = "image/jpeg"
+		}
+	}
+
 	payload := a.mapper.SendLinkPreviewToWaha(&input)
 
 	resp, err := a.doRequest(ctx, http.MethodPost, "/api/send/link-custom-preview", payload)
