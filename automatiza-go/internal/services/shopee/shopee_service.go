@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -43,6 +44,49 @@ type shopeeService struct {
 	categoryMap   map[string][]int
 	logger        *zap.Logger
 	breaker       *circuitBreaker
+}
+
+// ErrShopeeNoAPIAccess marks a Shopee Affiliate Open API access denial — error
+// 10035 ("You currently do not have access to the Shopee Affiliate Open API
+// Platform"). It is a per-account permission problem, NOT a transient failure:
+// every call with those credentials fails identically. Callers short-circuit on
+// it (and set a per-user cooldown) instead of grinding through the slow
+// productOfferV2 → generateShortLink fallback chain for every link of every
+// message. Without this, accounts lacking Open API access pile up calls until the
+// offer_generate context deadline trips (measured: 693 timeouts/6h across many
+// clients), starving delivery for everyone.
+var ErrShopeeNoAPIAccess = errors.New("shopee: account has no Affiliate Open API Platform access (error 10035)")
+
+// noAPIAccessCooldown is how long Shopee calls are skipped for a user after a
+// 10035, so one client's missing API access stops hammering the worker.
+const noAPIAccessCooldown = 10 * time.Minute
+
+// isNoAPIAccessMessage detects the Shopee 10035 "no Open API access" error.
+func isNoAPIAccessMessage(msg string) bool {
+	return strings.Contains(msg, "10035") ||
+		strings.Contains(msg, "do not have access to the Shopee Affiliate Open API")
+}
+
+func shopeeNoAPIAccessKey(userID string) string {
+	return "shopee:noapi:" + userID
+}
+
+// inNoAPIAccessCooldown reports whether this user recently hit a 10035 and should
+// skip Shopee calls entirely for now. Fail-open (false) on nil cache / errors.
+func (s *shopeeService) inNoAPIAccessCooldown(ctx context.Context, userID string) bool {
+	if s.cache == nil || userID == "" {
+		return false
+	}
+	val, err := s.cache.Get(ctx, shopeeNoAPIAccessKey(userID))
+	return err == nil && val != ""
+}
+
+// markNoAPIAccess records a 10035 cooldown for the user (best-effort).
+func (s *shopeeService) markNoAPIAccess(ctx context.Context, userID string) {
+	if s.cache == nil || userID == "" {
+		return
+	}
+	_, _ = s.cache.SetNX(ctx, shopeeNoAPIAccessKey(userID), "1", noAPIAccessCooldown)
 }
 
 // NewShopeeService creates a new Shopee service
@@ -209,6 +253,17 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 		errMsg := gqlResp.Errors[0].Message
 		gqlErr := fmt.Errorf("shopee API error: %s", errMsg)
 
+		// Error 10035 = the account has no Open API Platform access. Permanent
+		// per-account permission issue, not a transient/code error: return the
+		// sentinel so callers fail fast (and set a cooldown) instead of retrying
+		// the slow fallback chain. Log locally only — no Sentry flood.
+		if isNoAPIAccessMessage(errMsg) {
+			s.logger.Warn("Shopee account has no Open API access (10035), failing fast (not sent to Sentry)",
+				zap.String("external_service", "shopee"),
+				zap.String("error", errMsg))
+			return nil, fmt.Errorf("%w: %s", ErrShopeeNoAPIAccess, errMsg)
+		}
+
 		// "Invalid Signature" / "invalid value" are user-config issues (wrong credentials),
 		// not code bugs. Log locally only — no Sentry event to avoid flooding.
 		if strings.Contains(errMsg, "Invalid Signature") ||
@@ -237,6 +292,12 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 		zap.Int("limit", params.Limit),
 		zap.Any("minPrice", params.MinPrice),
 		zap.Any("maxPrice", params.MaxPrice))
+
+	// Skip if this user's Shopee account recently returned 10035 (no Open API
+	// access) — avoids piling up doomed calls/timeouts.
+	if s.inNoAPIAccessCooldown(ctx, userID) {
+		return nil, ErrShopeeNoAPIAccess
+	}
 
 	// Get affiliate credentials
 	creds, err := s.affiliateRepo.GetByUserAndStore(ctx, userID, "shopee")
@@ -296,7 +357,11 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 		} else {
 			sortType = varietySortTypes[rand.Intn(len(varietySortTypes))]
 		}
-		return s.searchShopee(ctx, appID, secret, params.Keyword, nil, sortType, limit, params)
+		res, serr := s.searchShopee(ctx, appID, secret, params.Keyword, nil, sortType, limit, params)
+		if serr != nil && errors.Is(serr, ErrShopeeNoAPIAccess) {
+			s.markNoAPIAccess(ctx, userID)
+		}
+		return res, serr
 	}
 
 	// Search per category and aggregate results
@@ -316,6 +381,12 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 		}
 		result, err := s.searchShopee(ctx, appID, secret, params.Keyword, &catIDCopy, sortType, perCategoryLimit, params)
 		if err != nil {
+			if errors.Is(err, ErrShopeeNoAPIAccess) {
+				// No Open API access: every category will fail the same way.
+				// Set the cooldown and stop iterating.
+				s.markNoAPIAccess(ctx, userID)
+				return nil, err
+			}
 			s.logger.Warn("Shopee search failed for category",
 				zap.Int("categoryID", catID),
 				zap.Error(err))
@@ -558,6 +629,9 @@ func (s *shopeeService) generateNonProductAffiliateLink(ctx context.Context, ori
 
 	shortData, shortErr := s.shopeeGraphQL(ctx, appID, secret, string(shortPayload))
 	if shortErr != nil {
+		if errors.Is(shortErr, ErrShopeeNoAPIAccess) {
+			s.markNoAPIAccess(ctx, userID)
+		}
 		return nil, fmt.Errorf("failed to generate affiliate link for non-product URL: %w", shortErr)
 	}
 
@@ -587,6 +661,13 @@ func (s *shopeeService) generateNonProductAffiliateLink(ctx context.Context, ori
 }
 
 func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, userID string) (*models.ShopeeAffiliateLink, error) {
+	// Skip if this user's Shopee account recently returned 10035 (no Open API
+	// access): the link can't be generated without it, so don't expand URLs or
+	// make calls that will all fail and pile up timeouts.
+	if s.inNoAPIAccessCooldown(ctx, userID) {
+		return nil, ErrShopeeNoAPIAccess
+	}
+
 	// Extract item and shop IDs from URL
 	shopID, itemID, err := s.ExtractProductIDs(productURL)
 	if err != nil {
@@ -670,6 +751,11 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 			offerLinkFallback = node.OfferLink
 			imageURL = node.ImageURL
 		}
+	} else if errors.Is(err, ErrShopeeNoAPIAccess) {
+		// No Open API access: generateShortLink would fail identically. Set the
+		// cooldown and bail now instead of making a second doomed call.
+		s.markNoAPIAccess(ctx, userID)
+		return nil, err
 	} else {
 		s.logger.Warn("productOfferV2 failed, generating link via generateShortLink",
 			zap.Int64("itemID", itemID),
@@ -761,6 +847,12 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 		zap.Int64("itemID", itemID),
 		zap.Int64("shopID", shopID))
 
+	// Skip if this user's Shopee account recently returned 10035 (no Open API
+	// access) — every call would fail the same way and pile up timeouts.
+	if s.inNoAPIAccessCooldown(ctx, userID) {
+		return nil, ErrShopeeNoAPIAccess
+	}
+
 	// Get affiliate credentials
 	creds, err := s.affiliateRepo.GetByUserAndStore(ctx, userID, "shopee")
 	if err != nil || creds == nil {
@@ -784,6 +876,13 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 
 	data, err := s.shopeeGraphQL(ctx, appID, secret, payloadStr)
 	if err != nil {
+		// No Open API access (10035): set the cooldown so the next links/messages
+		// for this user skip Shopee entirely. Don't flood Sentry — it's a per-user
+		// access issue, not a code/outage problem.
+		if errors.Is(err, ErrShopeeNoAPIAccess) {
+			s.markNoAPIAccess(ctx, userID)
+			return nil, err
+		}
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee getProduct API failed", err, map[string]string{
 			"external_service": "shopee",
 			"endpoint":         "getProduct",
