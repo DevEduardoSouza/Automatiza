@@ -42,6 +42,41 @@ func decodedSize(t *testing.T, data []byte) (int, int) {
 	return cfg.Width, cfg.Height
 }
 
+// Portrait preview images must be edge-extended to a square (full product, no
+// crop). The base64 helper returns a fresh base64 only for portrait.
+func TestEdgeExtendPortrait_Squares(t *testing.T) {
+	src := base64.StdEncoding.EncodeToString(makeImage(t, 240, 500, "jpeg")) // 0.48 portrait
+	out, err := EdgeExtendPortraitJPEGBase64(src)
+	if err != nil {
+		t.Fatalf("edge-extend: %v", err)
+	}
+	if out == "" {
+		t.Fatal("portrait must be edge-extended, got empty (unchanged)")
+	}
+	raw, err := base64.StdEncoding.DecodeString(out)
+	if err != nil {
+		t.Fatalf("decode out: %v", err)
+	}
+	if w, h := decodedSize(t, raw); w != h || w != 500 {
+		t.Fatalf("portrait must become 500x500 square, got %dx%d", w, h)
+	}
+}
+
+// Square/landscape preview images are sent UNCHANGED — the helper signals this
+// by returning an empty string (no error), so the caller keeps the original URL.
+func TestEdgeExtendPortrait_SquareAndLandscapeUnchanged(t *testing.T) {
+	for _, c := range [][2]int{{500, 500}, {500, 329}, {1000, 600}} {
+		src := base64.StdEncoding.EncodeToString(makeImage(t, c[0], c[1], "jpeg"))
+		out, err := EdgeExtendPortraitJPEGBase64(src)
+		if err != nil {
+			t.Fatalf("%dx%d: %v", c[0], c[1], err)
+		}
+		if out != "" {
+			t.Fatalf("%dx%d (square/landscape) must be unchanged, got non-empty", c[0], c[1])
+		}
+	}
+}
+
 // In-range images (square→landscape) must pass through unchanged (no padding).
 func TestPadToSafeAspect_InRangeUnchanged(t *testing.T) {
 	cases := [][2]int{
