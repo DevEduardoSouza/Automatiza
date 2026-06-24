@@ -177,7 +177,13 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 	if automation.DispatchTextID != nil {
 		dt, _ := s.settingsRepo.GetActiveDispatchTextByID(ctx, *automation.DispatchTextID, automation.UserID)
 		if dt != nil {
+			// Sorteia entre as variações a cada envio. Antes usava só dt.Body
+			// (= copies[0]), então mesmo com N variações cadastradas sempre saía
+			// a primeira. dt.Copies é a lista de variações (Body é a 1ª).
 			dispatchTemplate = dt.Body
+			if len(dt.Copies) > 0 {
+				dispatchTemplate = dt.Copies[rand.IntN(len(dt.Copies))] //nolint:gosec // G404: non-security random for copy rotation
+			}
 		}
 	}
 

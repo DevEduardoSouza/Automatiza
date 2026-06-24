@@ -307,6 +307,12 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		s.logger.Info("Using system default dispatch template for offer_generate",
 			zap.String("automationID", auto.ID))
 	}
+	// Sorteia entre as variações (copies) a cada disparo. Sem isso só a 1ª
+	// variação (Body) era usada, mesmo com N cadastradas. Os renders abaixo
+	// (Shopee/ML) usam dispatchText.Body.
+	if len(dispatchText.Copies) > 0 {
+		dispatchText.Body = dispatchText.Copies[rand.IntN(len(dispatchText.Copies))] //nolint:gosec // G404: non-security random for copy rotation
+	}
 
 	// 6. Load CTA pool. Política espelha automation_service:
 	//   - auto.CTAIDs preenchido → override explícito, busca só esses
