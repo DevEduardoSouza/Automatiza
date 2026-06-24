@@ -30,7 +30,7 @@ func (r *dashboardRepository) GetGroupsStats(ctx context.Context, userID string)
 			COUNT(*) FILTER (WHERE status = 'full')::int as full_groups,
 			COALESCE(SUM(members_count), 0)::int as total_members
 		FROM groups
-		WHERE user_id = $1
+		WHERE user_id = $1 AND is_admin = true
 	`
 
 	r.logger.Info("Executing GetGroupsStats query",
@@ -165,15 +165,15 @@ func (r *dashboardRepository) getWeeklyStats(ctx context.Context, userID string)
 				COUNT(*) as new_groups,
 				COALESCE(SUM(members_count), 0) as new_members
 			FROM groups
-			WHERE user_id = $1
+			WHERE user_id = $1 AND is_admin = true
 				AND created_at >= CURRENT_DATE - INTERVAL '6 days'
 			GROUP BY DATE(created_at)
 		),
 		cumulative_totals AS (
 			SELECT
 				ds.day,
-				(SELECT COUNT(*) FROM groups WHERE user_id = $1 AND DATE(created_at) <= ds.day) as total_groups,
-				(SELECT COALESCE(SUM(members_count), 0) FROM groups WHERE user_id = $1 AND DATE(created_at) <= ds.day) as total_members
+				(SELECT COUNT(*) FROM groups WHERE user_id = $1 AND is_admin = true AND DATE(created_at) <= ds.day) as total_groups,
+				(SELECT COALESCE(SUM(members_count), 0) FROM groups WHERE user_id = $1 AND is_admin = true AND DATE(created_at) <= ds.day) as total_members
 			FROM date_series ds
 		)
 		SELECT
@@ -239,7 +239,7 @@ func (r *dashboardRepository) getMonthlyStats(ctx context.Context, userID string
 				COUNT(*) as new_groups,
 				COALESCE(SUM(members_count), 0) as new_members
 			FROM groups
-			WHERE user_id = $1
+			WHERE user_id = $1 AND is_admin = true
 				AND created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '3 weeks'
 			GROUP BY DATE_TRUNC('week', created_at)
 		),
@@ -247,8 +247,8 @@ func (r *dashboardRepository) getMonthlyStats(ctx context.Context, userID string
 			SELECT
 				wr.week_offset,
 				wr.week_start,
-				(SELECT COUNT(*) FROM groups WHERE user_id = $1 AND DATE(created_at) <= wr.week_end) as total_groups,
-				(SELECT COALESCE(SUM(members_count), 0) FROM groups WHERE user_id = $1 AND DATE(created_at) <= wr.week_end) as total_members
+				(SELECT COUNT(*) FROM groups WHERE user_id = $1 AND is_admin = true AND DATE(created_at) <= wr.week_end) as total_groups,
+				(SELECT COALESCE(SUM(members_count), 0) FROM groups WHERE user_id = $1 AND is_admin = true AND DATE(created_at) <= wr.week_end) as total_members
 			FROM week_ranges wr
 		)
 		SELECT
@@ -317,7 +317,7 @@ func (r *dashboardRepository) getYearlyStats(ctx context.Context, userID string)
 				COUNT(*) as new_groups,
 				COALESCE(SUM(members_count), 0) as new_members
 			FROM groups
-			WHERE user_id = $1
+			WHERE user_id = $1 AND is_admin = true
 				AND created_at >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
 			GROUP BY DATE_TRUNC('month', created_at)
 		),
@@ -326,8 +326,8 @@ func (r *dashboardRepository) getYearlyStats(ctx context.Context, userID string)
 				mr.month_offset,
 				mr.month_start,
 				EXTRACT(MONTH FROM mr.month_start)::int as month_num,
-				(SELECT COUNT(*) FROM groups WHERE user_id = $1 AND DATE(created_at) <= mr.month_end) as total_groups,
-				(SELECT COALESCE(SUM(members_count), 0) FROM groups WHERE user_id = $1 AND DATE(created_at) <= mr.month_end) as total_members
+				(SELECT COUNT(*) FROM groups WHERE user_id = $1 AND is_admin = true AND DATE(created_at) <= mr.month_end) as total_groups,
+				(SELECT COALESCE(SUM(members_count), 0) FROM groups WHERE user_id = $1 AND is_admin = true AND DATE(created_at) <= mr.month_end) as total_members
 			FROM month_ranges mr
 		)
 		SELECT
