@@ -973,6 +973,48 @@ func TestRenderMLOfferTemplate_EmptyOriginalPrice(t *testing.T) {
 	})
 }
 
+// TestRenderShopeeOfferTemplate_NoDiscount cobre o caso "De R$ X por R$ X":
+// produto Shopee sem desconto (OriginalPrice <= Price). Os serviços (list e
+// offer_generate) passam OriginalPrice=0 nesse caso, e o template precisa
+// remover a linha "De" em vez de mostrar o mesmo valor duas vezes.
+func TestRenderShopeeOfferTemplate_NoDiscount(t *testing.T) {
+	t.Parallel()
+
+	const tmpl = "🛍️ {nome_produto}\n\nDe {preco_original_formatado}\n💸 Por {preco_formatado}\n\n🛒Compre aqui: {link_afiliado}"
+
+	t.Run("sem desconto (OriginalPrice 0) remove a linha De", func(t *testing.T) {
+		t.Parallel()
+		got := RenderShopeeOfferTemplate(tmpl, ShopeeOfferVars{
+			Title:         "Hidratante Facial Epidrat Calm 40mL",
+			Price:         99.90,
+			OriginalPrice: 0,
+			AffiliateLink: "https://s.shopee.com.br/1BKFyf6qll",
+		})
+		if strings.Contains(got, "De R$ 99,90") {
+			t.Errorf("linha 'De' com preco igual ao atual nao foi removida:\n%s", got)
+		}
+		if !strings.Contains(got, "💸 Por R$ 99,90") {
+			t.Errorf("preco atual sumiu:\n%s", got)
+		}
+	})
+
+	t.Run("com desconto real mantem a linha De", func(t *testing.T) {
+		t.Parallel()
+		got := RenderShopeeOfferTemplate(tmpl, ShopeeOfferVars{
+			Title:         "Hidratante Facial Epidrat Calm 40mL",
+			Price:         79.90,
+			OriginalPrice: 99.90,
+			AffiliateLink: "https://s.shopee.com.br/1BKFyf6qll",
+		})
+		if !strings.Contains(got, "De R$ 99,90") {
+			t.Errorf("linha 'De' com desconto real deveria permanecer:\n%s", got)
+		}
+		if !strings.Contains(got, "💸 Por R$ 79,90") {
+			t.Errorf("preco atual sumiu:\n%s", got)
+		}
+	})
+}
+
 func TestStripEmptyOriginalPriceLine(t *testing.T) {
 	t.Parallel()
 

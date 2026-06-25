@@ -618,7 +618,14 @@ func (s *automationService) buildListModeMessage(
 		if shopeeProduct != nil {
 			vars.Title = shopeeProduct.Name
 			vars.Price = shopeeProduct.Price
-			vars.OriginalPrice = shopeeProduct.OriginalPrice
+			// Só preenche o preço original quando há desconto real
+			// (original > atual). Sem essa guarda, produtos sem desconto saem
+			// como "De R$ 99,90 por R$ 99,90" (mesmo valor) — o renderer só
+			// remove a linha quando OriginalPrice <= 0. Mesma regra do texto
+			// "desc" acima.
+			if shopeeProduct.OriginalPrice > shopeeProduct.Price {
+				vars.OriginalPrice = shopeeProduct.OriginalPrice
+			}
 			vars.Discount = shopeeProduct.Discount
 			vars.Image = shopeeProduct.Image
 			vars.Store = shopeeProduct.ShopName
@@ -681,7 +688,8 @@ func (s *automationService) buildListModeMessage(
 	if preview != nil {
 		vars.Title = preview.Title
 		vars.Price = preview.Price
-		if preview.OriginalPrice != nil {
+		// Só com desconto real (original > atual) — evita "De X por X".
+		if preview.OriginalPrice != nil && *preview.OriginalPrice > preview.Price {
 			vars.OriginalPrice = *preview.OriginalPrice
 		}
 		vars.Discount = preview.Discount
