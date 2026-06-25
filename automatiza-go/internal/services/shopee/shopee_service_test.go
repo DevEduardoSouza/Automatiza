@@ -237,6 +237,17 @@ func TestGetShopeeCredentials(t *testing.T) {
 			wantAppID:  "camel-id",
 			wantSecret: "",
 		},
+		{
+			name: "trims surrounding whitespace/newline (paste accident → 10020)",
+			creds: &models.AffiliateCredentials{
+				Credentials: map[string]string{
+					"appId":    "  18337620666 ",
+					"password": "secret-with-trailing-space \n",
+				},
+			},
+			wantAppID:  "18337620666",
+			wantSecret: "secret-with-trailing-space",
+		},
 	}
 
 	for _, tt := range tests {
