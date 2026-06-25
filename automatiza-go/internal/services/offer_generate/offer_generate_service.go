@@ -533,11 +533,18 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 
 		canonicalKey = fmt.Sprintf("shopee:%d:%d", shopID, itemID)
 
+		// Só passa preço original quando há desconto real (> preço de oferta);
+		// senão o template renderiza "De R$ X por R$ X" (mesmo valor).
+		shopeeOriginalPrice := 0.0
+		if product.OriginalPrice > offerPrice {
+			shopeeOriginalPrice = product.OriginalPrice
+		}
+
 		// Render template
 		renderedMessage = text.RenderShopeeOfferTemplate(dispatchText.Body, text.ShopeeOfferVars{
 			Title:         product.Name,
 			Price:         offerPrice,
-			OriginalPrice: product.OriginalPrice,
+			OriginalPrice: shopeeOriginalPrice,
 			Discount:      product.Discount,
 			Link:          link,
 			AffiliateLink: affiliateURL,
@@ -630,10 +637,18 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			condition = *preview.Condition
 		}
 
+		// Só passa preço original quando há desconto real (> preço de oferta);
+		// senão o template renderiza "De R$ X por R$ X". O preview às vezes não
+		// traz original, e o default acima iguala ao offerPrice.
+		mlOriginalPrice := 0.0
+		if originalPrice > offerPrice {
+			mlOriginalPrice = originalPrice
+		}
+
 		renderedMessage = text.RenderMLOfferTemplate(dispatchText.Body, text.MLOfferVars{
 			Title:         preview.Title,
 			Price:         offerPrice,
-			OriginalPrice: originalPrice,
+			OriginalPrice: mlOriginalPrice,
 			Discount:      preview.Discount,
 			Link:          link,
 			AffiliateLink: affiliateURL,
