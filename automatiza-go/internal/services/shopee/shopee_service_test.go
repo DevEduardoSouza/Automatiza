@@ -264,6 +264,48 @@ func TestGetShopeeCredentials(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Tests: stripAffiliateAttribution
+// ---------------------------------------------------------------------------
+
+func TestStripAffiliateAttribution(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "remove mmp_pid e utm da fonte (caso real)",
+			in:   "https://shopee.com.br/m/cupom-de-desconto?mmp_pid=an_18337620666&uls_trackid=55vubdjk00ng&utm_campaign=id_YBB3gXtEf5&utm_content=----&utm_medium=affiliates&utm_source=an_18337620666&utm_term=f4p8vo2s5kr3",
+			want: "https://shopee.com.br/m/cupom-de-desconto",
+		},
+		{
+			name: "sem params fica igual",
+			in:   "https://shopee.com.br/m/cupom-de-desconto",
+			want: "https://shopee.com.br/m/cupom-de-desconto",
+		},
+		{
+			name: "preserva params nao-tracking",
+			in:   "https://shopee.com.br/m/promo?categoria=beleza&mmp_pid=an_999&utm_source=an_999",
+			want: "https://shopee.com.br/m/promo?categoria=beleza",
+		},
+		{
+			name: "remove af_ prefixados",
+			in:   "https://shopee.com.br/voucher?af_siteid=123&af_click_lookback=7d&id=abc",
+			want: "https://shopee.com.br/voucher?id=abc",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripAffiliateAttribution(tt.in)
+			if got != tt.want {
+				t.Errorf("stripAffiliateAttribution(%q)\n  = %q\n  want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Tests: shopeeSign
 // ---------------------------------------------------------------------------
 
