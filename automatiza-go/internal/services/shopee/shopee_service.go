@@ -136,6 +136,14 @@ func getShopeeCredentials(creds *models.AffiliateCredentials) (appID, secret str
 	if secret == "" {
 		secret = creds.AppSecret
 	}
+
+	// Trim whitespace: usuários frequentemente colam o App ID/Secret com
+	// espaço ou quebra de linha acidental, e a assinatura SHA256 quebra
+	// (Shopee responde 10020 Invalid Credential). Trimar aqui — o único
+	// ponto de leitura — protege todos os call sites e também credenciais
+	// já salvas sujas, sem depender de re-salvar no formulário.
+	appID = strings.TrimSpace(appID)
+	secret = strings.TrimSpace(secret)
 	return
 }
 
