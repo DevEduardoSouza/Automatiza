@@ -22,6 +22,11 @@ var discountTagRegex = regexp.MustCompile(`desc\[([^\]]+)\]`)
 // only forbidden character is `]` since it closes the tag.
 var infoTagRegex = regexp.MustCompile(`info\[([^\]]*)\]`)
 
+// ctaTagRegex captures the contents of a cta[...] tag. Same shape as the
+// info tag — free-form text (may contain spaces/emoji/URLs), only `]` is
+// forbidden since it closes the tag.
+var ctaTagRegex = regexp.MustCompile(`cta\[([^\]]*)\]`)
+
 // ParseInfoTag extracts the contents of an info[...] tag from the message
 // body and returns the trimmed text. Returns "" when no tag is present or
 // when the tag is empty.
@@ -43,6 +48,29 @@ func ParseInfoTag(body string) string {
 // canonical example is a coupon link) are not mistaken for product links.
 func StripInfoTag(body string) string {
 	return strings.TrimSpace(infoTagRegex.ReplaceAllString(body, ""))
+}
+
+// ParseCTATag extracts the contents of a cta[...] tag from the message body
+// and returns the trimmed text. Returns "" when no tag is present or when the
+// tag is empty.
+//
+// The cta tag is used by /offer-generate as a per-send override: when present
+// in the trigger message it replaces the automatically picked CTA for that
+// single dispatch, feeding the {cta} placeholder directly without touching the
+// configured CTA pool.
+func ParseCTATag(body string) string {
+	match := ctaTagRegex.FindStringSubmatch(body)
+	if match == nil {
+		return ""
+	}
+	return strings.TrimSpace(match[1])
+}
+
+// StripCTATag removes every cta[...] occurrence from the body. Callers run
+// this before link extraction so URLs embedded inside a cta tag are not
+// mistaken for product links.
+func StripCTATag(body string) string {
+	return strings.TrimSpace(ctaTagRegex.ReplaceAllString(body, ""))
 }
 
 // ParseDiscountTag extracts a discount tag from the message body.

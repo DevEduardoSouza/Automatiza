@@ -127,10 +127,10 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 		}
 	}
 
-	// 2. Extract links from message body. info[...] must be stripped first
-	// so URLs embedded inside an info tag (typically a coupon link) are not
-	// mistaken for a separate product link.
-	bodyForLinks := text.StripInfoTag(msg.Body)
+	// 2. Extract links from message body. info[...] and cta[...] must be
+	// stripped first so URLs embedded inside those tags (typically a coupon
+	// link) are not mistaken for a separate product link.
+	bodyForLinks := text.StripCTATag(text.StripInfoTag(msg.Body))
 	links := text.ExtractLinks(bodyForLinks)
 	if len(links) == 0 {
 		// Nenhum link de produto detectado: cai no modo "relay" — repassa
@@ -281,9 +281,10 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		return nil
 	}
 
-	// 4. Parse discount and info tags from message body
+	// 4. Parse discount, info and cta tags from message body
 	discountTag := text.ParseDiscountTag(msg.Body)
 	infoText := text.ParseInfoTag(msg.Body)
+	ctaOverride := text.ParseCTATag(msg.Body)
 
 	// 5. Load dispatch template. When the automation has no dispatch text
 	// configured (or it fails to load), fall back to the system default
@@ -341,7 +342,14 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 
 	// pickCTA escolhe pela plataforma resolvida (Shopee/ML) e cai pros
 	// inline auto.CTAs como fallback se o pool não tiver match.
+	//
+	// A tag cta[...] no corpo da mensagem é um override per-send: quando
+	// presente, substitui o CTA automático naquele disparo, ignorando pool e
+	// inline (espelha o comportamento da tag info[...]).
 	pickCTA := func(isML, isShopee bool) string {
+		if ctaOverride != "" {
+			return ctaOverride
+		}
 		if text := ctapicker.PickByPlatform(ctaPool, isML, isShopee); text != "" {
 			return text
 		}

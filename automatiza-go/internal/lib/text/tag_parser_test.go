@@ -200,6 +200,86 @@ func TestStripInfoTag(t *testing.T) {
 	}
 }
 
+func TestParseCTATag(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "plain text",
+			body: "https://shopee.com.br/abc cta[Corre que acaba logo 👉]",
+			want: "Corre que acaba logo 👉",
+		},
+		{
+			name: "embedded url",
+			body: "https://shopee.com.br/abc\ncta[Garanta em https://s.shopee.com.br/link]",
+			want: "Garanta em https://s.shopee.com.br/link",
+		},
+		{
+			name: "tag at start",
+			body: "cta[Clique agora] https://shopee.com.br/abc",
+			want: "Clique agora",
+		},
+		{
+			name: "empty tag",
+			body: "https://shopee.com.br/abc cta[]",
+			want: "",
+		},
+		{
+			name: "no tag",
+			body: "https://shopee.com.br/abc",
+			want: "",
+		},
+		{
+			name: "whitespace trimmed",
+			body: "cta[   spaced cta   ]",
+			want: "spaced cta",
+		},
+		{
+			name: "info and cta coexist",
+			body: "https://shopee.com.br/abc info[Frete grátis] cta[Compre já]",
+			want: "Compre já",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseCTATag(tt.body)
+			if got != tt.want {
+				t.Errorf("ParseCTATag(%q) = %q, want %q", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripCTATag(t *testing.T) {
+	tests := []struct {
+		body string
+		want string
+	}{
+		{"https://shopee.com.br/abc cta[Compre já]", "https://shopee.com.br/abc"},
+		{"cta[X] https://shopee.com.br/abc", "https://shopee.com.br/abc"},
+		// URL inside cta[] must be stripped so link extraction does not
+		// treat it as a product link.
+		{
+			"https://shopee.com.br/produto cta[Garanta em https://s.shopee.com.br/x]",
+			"https://shopee.com.br/produto",
+		},
+		{"https://shopee.com.br/abc", "https://shopee.com.br/abc"},
+		{"cta[] https://shopee.com.br/abc", "https://shopee.com.br/abc"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.body, func(t *testing.T) {
+			got := StripCTATag(tt.body)
+			if got != tt.want {
+				t.Errorf("StripCTATag(%q) = %q, want %q", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestApplyDiscountTag(t *testing.T) {
 	tests := []struct {
 		name  string
