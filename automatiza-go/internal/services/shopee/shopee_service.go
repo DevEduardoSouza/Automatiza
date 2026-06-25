@@ -15,6 +15,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -612,6 +613,34 @@ func isNonProductShopeeURL(expandedURL string) bool {
 		strings.Contains(lower, "shopee.com.br/oficial")
 }
 
+// stripAffiliateAttribution remove os parâmetros de atribuição de afiliado de
+// uma URL Shopee. Quando o link da fonte é expandido, ele já vem com a tag do
+// afiliado que o gerou (ex.: mmp_pid=an_XXXX&utm_source=an_XXXX). Se a gente
+// passa essa URL direto pro generateShortLink, o novo link curto preserva o
+// mmp_pid embutido e a venda é creditada pro afiliado da FONTE, não pro nosso
+// usuário — mesmo a chamada sendo assinada com a credencial dele. Limpar esses
+// params antes de re-gerar garante que a Shopee atribua ao caller.
+//
+// Mantém path e quaisquer params não-tracking; remove os conhecidos de
+// atribuição (mmp_pid, uls_trackid, smtt) e todo utm_*/af_*. Em erro de parse,
+// devolve a URL original (degradação segura).
+func stripAffiliateAttribution(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	q := u.Query()
+	for key := range q {
+		lk := strings.ToLower(key)
+		if lk == "mmp_pid" || lk == "uls_trackid" || lk == "smtt" ||
+			strings.HasPrefix(lk, "utm_") || strings.HasPrefix(lk, "af_") {
+			q.Del(key)
+		}
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 // generateNonProductAffiliateLink converts non-product Shopee URLs (coupons, campaigns)
 // into affiliate short links using the client's credentials via generateShortLink mutation.
 func (s *shopeeService) generateNonProductAffiliateLink(ctx context.Context, originalURL, expandedURL, userID string) (*models.ShopeeAffiliateLink, error) {
@@ -622,14 +651,19 @@ func (s *shopeeService) generateNonProductAffiliateLink(ctx context.Context, ori
 	}
 	appID, secret := getShopeeCredentials(creds)
 
+	// Remove a atribuição do afiliado da fonte embutida na URL expandida,
+	// senão o novo link curto credita a venda pra ele em vez do nosso usuário.
+	cleanURL := stripAffiliateAttribution(expandedURL)
+
 	s.logger.Info("Generating affiliate link for non-product Shopee URL",
 		zap.String("original", originalURL),
 		zap.String("expanded", expandedURL),
+		zap.String("cleaned", cleanURL),
 		zap.String("userID", userID))
 
 	// Use generateShortLink mutation — works with any Shopee URL.
 	// Sub ID fixo em shopeeSubIDDefault — não configurável pelo user.
-	shortLinkQuery := buildGenerateShortLinkMutation(expandedURL, shopeeSubIDDefault)
+	shortLinkQuery := buildGenerateShortLinkMutation(cleanURL, shopeeSubIDDefault)
 	shortPayload, marshalErr := json.Marshal(map[string]string{"query": shortLinkQuery})
 	if marshalErr != nil {
 		return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", marshalErr)
