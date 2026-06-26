@@ -97,15 +97,7 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 		return nil
 	}
 
-	// Skip our own messages
-	if msg.FromMe {
-		p.logger.Debug("Skipping own message",
-			zap.String("session", sessionName),
-			zap.String("messageID", msg.MessageID))
-		return nil
-	}
-
-	// Skip empty messages
+	// Skip empty messages (nothing for either service to act on)
 	if msg.Body == "" && !msg.HasMedia {
 		p.logger.Debug("Skipping empty message",
 			zap.String("session", sessionName),
@@ -113,7 +105,7 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 		return nil
 	}
 
-	p.logger.Info("Processing message for monitoring",
+	p.logger.Info("Processing message",
 		zap.String("session", sessionName),
 		zap.String("messageID", msg.MessageID),
 		zap.String("group", msg.RemoteJID),
@@ -121,17 +113,29 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 		zap.Bool("fromMe", msg.FromMe),
 		zap.Int("bodyLen", len(msg.Body)))
 
-	// Process the message through the monitoring service
-	if err := p.monitoringService.ProcessIncomingMessage(ctx, msg); err != nil {
-		p.logger.Error("Failed to process message for monitoring",
-			zap.String("session", sessionName),
-			zap.String("messageID", msg.MessageID),
-			zap.Error(err))
-		// Return error to trigger retry
-		return fmt.Errorf("monitoring service error: %w", err)
+	// Own (FromMe) messages must NOT go to monitoring — that mode never copies
+	// the chip's own posts. But they MUST still reach offer_generate: a chip
+	// owner manually posting a product/offer into a monitor group (or a monitor
+	// group that has only the owner's chip in it, like a private staging group)
+	// is a legitimate trigger. offer_generate has its own loop-guard
+	// (og_self_send, set on every send) to ignore its own relayed output, so it
+	// can safely receive FromMe messages. A blanket early-return here used to
+	// drop them before offer_generate ever saw them — meaning users who fed
+	// offers by posting themselves got nothing relayed.
+	if !msg.FromMe {
+		// Process the message through the monitoring service
+		if err := p.monitoringService.ProcessIncomingMessage(ctx, msg); err != nil {
+			p.logger.Error("Failed to process message for monitoring",
+				zap.String("session", sessionName),
+				zap.String("messageID", msg.MessageID),
+				zap.Error(err))
+			// Return error to trigger retry
+			return fmt.Errorf("monitoring service error: %w", err)
+		}
 	}
 
-	// Also process through the offer generate service (filters internally by automation type)
+	// Also process through the offer generate service (filters internally by
+	// automation type, and handles FromMe via its own loop-guard)
 	if p.offerGenerateService != nil {
 		if err := p.offerGenerateService.ProcessIncomingMessage(ctx, msg); err != nil {
 			p.logger.Error("Failed to process message for offer generation",
