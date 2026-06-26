@@ -508,6 +508,11 @@ type SendImageInput struct {
 
 	// Filename is the optional filename for the image.
 	Filename string
+
+	// Mentions is a list of WhatsApp IDs to mention (for group messages).
+	// Drives contextInfo.mentionedJid so participants are notified even when
+	// their number is not written in the caption (e.g. @todos ghost mention).
+	Mentions []string
 }
 
 // SendVoiceInput contains parameters for sending a voice message.

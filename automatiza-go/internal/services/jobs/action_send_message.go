@@ -75,6 +75,7 @@ func sendMessageWithMedia(
 			Caption:     caption,
 			Filename:    payload.FileName,
 			Mimetype:    payload.MimeType,
+			Mentions:    mentions,
 		}
 
 		// Determine if media is URL or base64
@@ -115,6 +116,7 @@ func sendMessageWithMedia(
 			Caption:     caption,
 			Filename:    payload.FileName,
 			Mimetype:    payload.MimeType,
+			Mentions:    mentions,
 		}
 		if strings.HasPrefix(payload.Media, "http") {
 			input.ImageURL = payload.Media
