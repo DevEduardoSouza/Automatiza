@@ -68,7 +68,8 @@ func (r *automationRepository) GetUserAutomations(ctx context.Context, userID st
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
-		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image
+		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
+		       search_send_as_image, monitoring_send_as_image
 		FROM automations
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -95,7 +96,8 @@ func (r *automationRepository) GetActiveAutomations(ctx context.Context) ([]mode
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
-		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image
+		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
+		       search_send_as_image, monitoring_send_as_image
 		FROM automations
 		WHERE status = 'active'
 		ORDER BY priority DESC, created_at ASC
@@ -122,7 +124,8 @@ func (r *automationRepository) GetAutomationByID(ctx context.Context, automation
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
-		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image
+		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
+		       search_send_as_image, monitoring_send_as_image
 		FROM automations
 		WHERE id = $1
 	`
@@ -142,7 +145,8 @@ func (r *automationRepository) GetAutomationByIDAndUser(ctx context.Context, aut
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
-		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image
+		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
+		       search_send_as_image, monitoring_send_as_image
 		FROM automations
 		WHERE id = $1 AND user_id = $2
 	`
@@ -177,11 +181,13 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 			delay_seconds, dedupe_hours, coupon_id, created_at, updated_at,
 			texts, ctas, cta_ids, ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 			list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
-			repeat_when_finished, start_date, end_date, offer_generate_send_as_image
+			repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
+			search_send_as_image, monitoring_send_as_image
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
-			$32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47
+			$32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47,
+			$48, $49
 		)
 		RETURNING id
 	`
@@ -234,6 +240,7 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 		data.Texts, data.CTAs, data.CTAIDs, data.MlLinkListID, data.ListItemsPerRun, data.ListIncludeImage, data.PriorityType,
 		data.ListSendAsImage, instanceIDArg, instanceIDsArg, data.ApplyCouponRules, chipOverridesJSON,
 		data.RepeatWhenFinished, data.StartDate, data.EndDate, data.OfferGenerateSendAsImage,
+		data.SearchSendAsImage, data.MonitoringSendAsImage,
 	).Scan(&id)
 
 	if err != nil {
@@ -394,7 +401,8 @@ func (r *automationRepository) GetMonitoringAutomationsForGroup(ctx context.Cont
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
-		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image
+		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
+		       search_send_as_image, monitoring_send_as_image
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'monitoring'
@@ -424,7 +432,8 @@ func (r *automationRepository) GetOfferGenerateAutomationsForGroup(ctx context.C
 		       texts, ctas, cta_ids, last_error, last_error_at,
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
-		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image
+		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
+		       search_send_as_image, monitoring_send_as_image
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'offer_generate'
@@ -464,6 +473,8 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	var listIncludeImage *bool
 	var listSendAsImage *bool
 	var offerGenerateSendAsImage *bool
+	var searchSendAsImage *bool
+	var monitoringSendAsImage *bool
 	var instanceID *int
 	var instanceIDs []int
 	var chipOverridesJSON []byte
@@ -483,6 +494,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 		&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
 		&listSendAsImage, &instanceID, &instanceIDs, &a.ApplyCouponRules, &chipOverridesJSON,
 		&repeatWhenFinished, &startDate, &endDate, &offerGenerateSendAsImage,
+		&searchSendAsImage, &monitoringSendAsImage,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -509,6 +521,8 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	a.ListIncludeImage = listIncludeImage
 	a.ListSendAsImage = listSendAsImage
 	a.OfferGenerateSendAsImage = offerGenerateSendAsImage
+	a.SearchSendAsImage = searchSendAsImage
+	a.MonitoringSendAsImage = monitoringSendAsImage
 	a.RepeatWhenFinished = repeatWhenFinished
 	if startDate != nil {
 		t := startDate.Format("2006-01-02")
@@ -617,6 +631,8 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		var listIncludeImage *bool
 		var listSendAsImage *bool
 		var offerGenerateSendAsImage *bool
+		var searchSendAsImage *bool
+		var monitoringSendAsImage *bool
 		var instanceID *int
 		var instanceIDs []int
 		var chipOverridesJSON []byte
@@ -636,6 +652,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 			&mlLinkListID, &listItemsPerRun, &listIncludeImage, &priorityType,
 			&listSendAsImage, &instanceID, &instanceIDs, &a.ApplyCouponRules, &chipOverridesJSON,
 			&repeatWhenFinished, &startDate, &endDate, &offerGenerateSendAsImage,
+			&searchSendAsImage, &monitoringSendAsImage,
 		)
 		if err != nil {
 			return nil, err
@@ -659,6 +676,8 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		a.ListIncludeImage = listIncludeImage
 		a.ListSendAsImage = listSendAsImage
 		a.OfferGenerateSendAsImage = offerGenerateSendAsImage
+		a.SearchSendAsImage = searchSendAsImage
+		a.MonitoringSendAsImage = monitoringSendAsImage
 		a.RepeatWhenFinished = repeatWhenFinished
 		if startDate != nil {
 			t := startDate.Format("2006-01-02")

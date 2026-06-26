@@ -65,6 +65,12 @@ type Automation struct {
 	// imagem baixada + legenda (default); false = preview nativo. Default TRUE no
 	// schema, então nil deve ser tratado como true no serviço.
 	OfferGenerateSendAsImage *bool `json:"offer_generate_send_as_image,omitempty" db:"offer_generate_send_as_image"`
+	// SearchSendAsImage (SEARCH mode): true = imagem baixada + legenda (default);
+	// false = preview nativo. Default TRUE no schema → nil = true no serviço.
+	SearchSendAsImage *bool `json:"search_send_as_image,omitempty" db:"search_send_as_image"`
+	// MonitoringSendAsImage (MONITORING mode): true = imagem baixada + legenda;
+	// false = preview nativo (default). Default FALSE no schema → nil = false.
+	MonitoringSendAsImage *bool `json:"monitoring_send_as_image,omitempty" db:"monitoring_send_as_image"`
 	// RepeatWhenFinished (LIST mode): true = reseta items consumidos automaticamente
 	// quando a lista esgota e continua o loop. Default TRUE (definido no schema).
 	RepeatWhenFinished bool `json:"repeat_when_finished" db:"repeat_when_finished"`

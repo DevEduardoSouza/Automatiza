@@ -603,6 +603,47 @@ export function AutomationFormDialog({
             </div>
           )}
 
+          {/* "Enviar como imagem" — Busca (default ON) e Monitoramento (default OFF) */}
+          {formData.mode === 'search' && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+              <div className="space-y-1">
+                <Label htmlFor="search-send-as-image" className="cursor-pointer">
+                  {t('pages.offerAutomations.form.sendAsImage')}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('pages.offerAutomations.form.sendAsImageHint')}
+                </p>
+              </div>
+              <Switch
+                id="search-send-as-image"
+                checked={Boolean(formData.search_send_as_image ?? true)}
+                onCheckedChange={(v) =>
+                  setFormData((prev) => ({ ...prev, search_send_as_image: Boolean(v) }))
+                }
+              />
+            </div>
+          )}
+
+          {formData.mode === 'monitoring' && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+              <div className="space-y-1">
+                <Label htmlFor="monitoring-send-as-image" className="cursor-pointer">
+                  {t('pages.offerAutomations.form.sendAsImage')}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('pages.offerAutomations.form.sendAsImageHint')}
+                </p>
+              </div>
+              <Switch
+                id="monitoring-send-as-image"
+                checked={Boolean(formData.monitoring_send_as_image ?? false)}
+                onCheckedChange={(v) =>
+                  setFormData((prev) => ({ ...prev, monitoring_send_as_image: Boolean(v) }))
+                }
+              />
+            </div>
+          )}
+
           <div className="flex flex-col xs:flex-row justify-end gap-2 lg:gap-3">
             <button
               type="button"

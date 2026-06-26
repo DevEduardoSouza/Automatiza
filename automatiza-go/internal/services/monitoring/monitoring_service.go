@@ -537,8 +537,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		var err error
 		var sent bool
 
+		// "Enviar como imagem" (MONITORING, default FALSE): ligado pula o
+		// preview nativo e força imagem baixada + legenda; desligado mantém o
+		// preview-first (comportamento atual). nil = false (default do schema).
+		monitoringSendAsImage := automation.MonitoringSendAsImage != nil && *automation.MonitoringSendAsImage
+
 		// Priority 1: Link custom preview (source had WhatsApp link preview)
-		if firstAffiliateURL != "" && msg.LinkPreviewTitle != "" {
+		if !monitoringSendAsImage && firstAffiliateURL != "" && msg.LinkPreviewTitle != "" {
 			_, err = s.waProvider.SendLinkCustomPreview(sendCtx, whatsapp.SendLinkPreviewInput{
 				SessionName: senderSession,
 				ChatID:      groupID,

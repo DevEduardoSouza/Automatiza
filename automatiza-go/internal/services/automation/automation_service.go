@@ -937,13 +937,27 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					continue
 				}
 
+				// "Enviar como imagem" (SEARCH, default TRUE): ligado envia a
+				// imagem baixada + legenda (comportamento histórico da Busca);
+				// desligado usa o preview nativo do WhatsApp (mais leve).
+				// nil = true (default do schema).
+				searchSendAsImage := automation.SearchSendAsImage == nil || *automation.SearchSendAsImage
+
 				jobData := &workers.MessageJobData{
 					InstanceName: senderSession,
 					GroupID:      groupID,
 					Message:      message,
-					ImageURL:     imageURL,
 					HistoryID:    &historyID,
 					AutomationID: automation.ID,
+				}
+				if searchSendAsImage {
+					jobData.ImageURL = imageURL
+				} else if offer.AffiliateLink != "" {
+					jobData.LinkPreview = &workers.LinkPreviewData{
+						URL:      offer.AffiliateLink,
+						Title:    offer.Name,
+						ImageURL: offer.Image,
+					}
 				}
 
 				if s.queueClient != nil {

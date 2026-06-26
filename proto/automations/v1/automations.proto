@@ -204,6 +204,16 @@ message Automation {
   // manda imagem quando há). Desligar usa o preview nativo (mais leve).
   optional bool offer_generate_send_as_image = 39;
 
+  // SEARCH mode: send the offer as downloaded image + caption. Defaults to
+  // true (preserva: a Busca sempre mandou imagem). Desligar usa o preview
+  // nativo do WhatsApp (mais leve).
+  optional bool search_send_as_image = 40;
+
+  // MONITORING mode: send the relayed offer as downloaded image + caption.
+  // Defaults to false (preserva: monitoramento usa preview nativo primeiro).
+  // Ligar força imagem baixada quando há.
+  optional bool monitoring_send_as_image = 41;
+
   // Preferred sender chip — when set and connected, every dispatch from
   // this automation goes through this chip; otherwise falls back to the
   // group's owner chip and then to the first connected instance.
@@ -374,6 +384,12 @@ message CreateAutomationRequest {
   // OFFER_GENERATE: enviar oferta como imagem anexada. Unset = default do
   // server (true). Ver Automation.offer_generate_send_as_image.
   optional bool offer_generate_send_as_image = 34;
+  // SEARCH: enviar oferta como imagem anexada. Unset = default do server
+  // (true). Ver Automation.search_send_as_image.
+  optional bool search_send_as_image = 35;
+  // MONITORING: enviar oferta como imagem anexada. Unset = default do server
+  // (false). Ver Automation.monitoring_send_as_image.
+  optional bool monitoring_send_as_image = 36;
 }
 
 message CreateAutomationResponse {
@@ -440,6 +456,12 @@ message UpdateAutomationRequest {
   // OFFER_GENERATE: enviar oferta como imagem anexada. Unset = leave
   // unchanged. Ver Automation.offer_generate_send_as_image.
   optional bool offer_generate_send_as_image = 35;
+  // SEARCH: enviar oferta como imagem anexada. Unset = leave unchanged.
+  // Ver Automation.search_send_as_image.
+  optional bool search_send_as_image = 36;
+  // MONITORING: enviar oferta como imagem anexada. Unset = leave unchanged.
+  // Ver Automation.monitoring_send_as_image.
+  optional bool monitoring_send_as_image = 37;
 }
 
 message UpdateAutomationResponse {

@@ -688,6 +688,12 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 	if a.OfferGenerateSendAsImage != nil {
 		proto.OfferGenerateSendAsImage = a.OfferGenerateSendAsImage
 	}
+	if a.SearchSendAsImage != nil {
+		proto.SearchSendAsImage = a.SearchSendAsImage
+	}
+	if a.MonitoringSendAsImage != nil {
+		proto.MonitoringSendAsImage = a.MonitoringSendAsImage
+	}
 
 	// Preferred sender chip
 	if a.InstanceID != nil {
@@ -1029,6 +1035,12 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 	if msg.OfferGenerateSendAsImage != nil {
 		automation.OfferGenerateSendAsImage = msg.OfferGenerateSendAsImage
 	}
+	if msg.SearchSendAsImage != nil {
+		automation.SearchSendAsImage = msg.SearchSendAsImage
+	}
+	if msg.MonitoringSendAsImage != nil {
+		automation.MonitoringSendAsImage = msg.MonitoringSendAsImage
+	}
 
 	// Preferred sender chip — empty string == no preference, so drop it
 	// to nil so the repo writes NULL.
@@ -1188,6 +1200,12 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 	}
 	if msg.OfferGenerateSendAsImage != nil {
 		updates["offer_generate_send_as_image"] = msg.GetOfferGenerateSendAsImage()
+	}
+	if msg.SearchSendAsImage != nil {
+		updates["search_send_as_image"] = msg.GetSearchSendAsImage()
+	}
+	if msg.MonitoringSendAsImage != nil {
+		updates["monitoring_send_as_image"] = msg.GetMonitoringSendAsImage()
 	}
 
 	// Preferred sender chip — empty string means "clear the preference"
