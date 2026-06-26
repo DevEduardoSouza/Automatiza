@@ -48,6 +48,13 @@ const (
 	RedirectStrategyRoundRobin  = "round_robin"
 )
 
+// DefaultGroupMemberLimit is the fallback per-group capacity used by the
+// member_limit strategy when a target group has no explicit limit configured.
+// It matches WhatsApp's standard group cap (1024). Without this fallback, an
+// unset/zero limit was treated as "infinite capacity", so the link always
+// returned the first group and never rotated when it filled up.
+const DefaultGroupMemberLimit = 1024
+
 // RedirectLinkCreateRequest represents a request to create a redirect link
 type RedirectLinkCreateRequest struct {
 	Slug         string          `json:"slug" validate:"required,min=3,max=50"`
@@ -130,9 +137,17 @@ func (r *RedirectLink) GetAvailableGroup(groupMemberCounts map[string]int) *Grou
 
 		switch r.Strategy {
 		case RedirectStrategyMemberLimit:
-			// Check if group has reached member limit
+			// Check if group has reached member limit. When no explicit limit
+			// is configured (<= 0), fall back to WhatsApp's cap instead of
+			// treating the group as having infinite capacity — otherwise the
+			// link would always return this first group and never rotate when
+			// it fills up.
+			limit := group.MemberLimit
+			if limit <= 0 {
+				limit = DefaultGroupMemberLimit
+			}
 			memberCount := groupMemberCounts[group.GroupID]
-			if group.MemberLimit <= 0 || memberCount < group.MemberLimit {
+			if memberCount < limit {
 				return group
 			}
 		case RedirectStrategyClickLimit:
