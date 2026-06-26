@@ -345,9 +345,10 @@ func (m *Mapper) SendImageToWaha(input *SendImageInput) *wahaSendImageRequest {
 	}
 
 	req := &wahaSendImageRequest{
-		Session: input.SessionName,
-		ChatID:  input.ChatID,
-		Caption: input.Caption,
+		Session:  input.SessionName,
+		ChatID:   input.ChatID,
+		Caption:  input.Caption,
+		Mentions: input.Mentions,
 	}
 
 	// Use URL if provided, otherwise use base64 file

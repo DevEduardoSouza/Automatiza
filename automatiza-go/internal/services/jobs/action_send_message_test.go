@@ -236,9 +236,11 @@ func TestExecuteSendMessage_WithMentions(t *testing.T) {
 	call := provider.LastCall("SendText")
 	require.NotNil(t, call)
 	input := call.Args[0].(whatsapp.SendTextInput)
-	assert.Contains(t, input.Text, "@5511999999999")
-	assert.Contains(t, input.Text, "@5511888888888")
-	assert.NotContains(t, input.Text, "@todos")
+	// Body keeps the literal "@todos"; participants are notified silently
+	// through the mentions array (ghost mention), not by dumping numbers.
+	assert.Equal(t, "Hello @todos!", input.Text)
+	assert.NotContains(t, input.Text, "@5511999999999")
+	assert.NotContains(t, input.Text, "@5511888888888")
 	assert.Len(t, input.Mentions, 2)
 }
 

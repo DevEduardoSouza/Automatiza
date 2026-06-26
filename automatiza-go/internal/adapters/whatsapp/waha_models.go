@@ -341,10 +341,11 @@ type wahaSendTextRequest struct {
 // wahaSendImageRequest represents a WAHA image message request.
 // Maps to POST /api/sendImage request body.
 type wahaSendImageRequest struct {
-	Session string    `json:"session"`
-	ChatID  string    `json:"chatId"`
-	Caption string    `json:"caption,omitempty"`
-	File    *wahaFile `json:"file,omitempty"`
+	Session  string    `json:"session"`
+	ChatID   string    `json:"chatId"`
+	Caption  string    `json:"caption,omitempty"`
+	File     *wahaFile `json:"file,omitempty"`
+	Mentions []string  `json:"mentions,omitempty"`
 }
 
 // wahaSendVoiceRequest represents a WAHA voice/audio message request.

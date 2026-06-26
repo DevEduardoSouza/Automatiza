@@ -72,10 +72,12 @@ func TestExpandMentions_WithParticipants(t *testing.T) {
 	assert.Contains(t, mentions, "5511999999999")
 	assert.Contains(t, mentions, "5511888888888")
 	assert.Contains(t, mentions, "5511777777777")
-	assert.Contains(t, msg, "@5511999999999")
-	assert.Contains(t, msg, "@5511888888888")
-	assert.Contains(t, msg, "@5511777777777")
-	assert.NotContains(t, msg, "@todos")
+	// The visible text keeps the literal "@todos" and does NOT dump the
+	// participant numbers into the body (ghost mention).
+	assert.Equal(t, "Olá @todos!", msg)
+	assert.NotContains(t, msg, "@5511999999999")
+	assert.NotContains(t, msg, "@5511888888888")
+	assert.NotContains(t, msg, "@5511777777777")
 	assert.Equal(t, 1, provider.CallCount("GetGroupParticipants"))
 }
 
@@ -112,9 +114,9 @@ func TestExpandMentions_OnlyFirstOccurrence(t *testing.T) {
 
 	require.NotNil(t, mentions)
 	assert.Len(t, mentions, 1)
-	// strings.Replace with count 1 only replaces first occurrence
-	assert.Contains(t, msg, "@5511999999999")
-	assert.Contains(t, msg, "@todos segundo")
+	// Body text is left untouched: both "@todos" markers stay as literal text.
+	assert.Equal(t, "@todos primeiro @todos segundo", msg)
+	assert.NotContains(t, msg, "@5511999999999")
 }
 
 func TestExpandMentions_SingleParticipant(t *testing.T) {
@@ -129,5 +131,6 @@ func TestExpandMentions_SingleParticipant(t *testing.T) {
 	require.NotNil(t, mentions)
 	assert.Len(t, mentions, 1)
 	assert.Equal(t, "5511999999999", mentions[0])
-	assert.Equal(t, "Atenção @5511999999999!", msg)
+	// Literal "@todos" is preserved; the single participant is mentioned silently.
+	assert.Equal(t, "Atenção @todos!", msg)
 }
