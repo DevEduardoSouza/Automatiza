@@ -23,6 +23,16 @@ func (m *mockMonitoringService) ProcessIncomingMessage(ctx context.Context, msg 
 	return args.Error(0)
 }
 
+// mockOfferGenerateService is a mock implementation of offer_generate.Service
+type mockOfferGenerateService struct {
+	mock.Mock
+}
+
+func (m *mockOfferGenerateService) ProcessIncomingMessage(ctx context.Context, msg *models.IncomingMessage) error {
+	args := m.Called(ctx, msg)
+	return args.Error(0)
+}
+
 func TestMonitoringMessageProcessor_ProcessMessage_GroupMessage(t *testing.T) {
 	// Setup
 	logger := zap.NewNop()
@@ -106,6 +116,37 @@ func TestMonitoringMessageProcessor_ProcessMessage_SkipsOwnMessage(t *testing.T)
 	// Assert
 	assert.NoError(t, err)
 	mockSvc.AssertNotCalled(t, "ProcessIncomingMessage", mock.Anything, mock.Anything)
+}
+
+// TestMonitoringMessageProcessor_ProcessMessage_FromMeRoutesToOfferGenerate
+// guards the fix for the offer_generate "manual post not relayed" bug: a
+// FromMe message must be skipped by monitoring but STILL handed to
+// offer_generate (which has its own loop-guard). A chip owner posting an offer
+// into a monitor group — common when the monitor group is a private staging
+// group with only the owner's chip — is a legitimate relay trigger.
+func TestMonitoringMessageProcessor_ProcessMessage_FromMeRoutesToOfferGenerate(t *testing.T) {
+	logger := zap.NewNop()
+	mockMon := new(mockMonitoringService)
+	mockOG := new(mockOfferGenerateService)
+	mockOG.On("ProcessIncomingMessage", mock.Anything, mock.Anything).Return(nil)
+
+	processor := workers.NewMonitoringMessageProcessor(mockMon, mockOG, logger)
+
+	payload := map[string]interface{}{
+		"id":        "msg-own-offer",
+		"from":      "120363xxxxx@g.us",
+		"body":      "https://shopee.com.br/product/123/456",
+		"fromMe":    true, // chip owner manually posting into a monitor group
+		"timestamp": float64(1706700000),
+	}
+
+	err := processor.ProcessMessage(context.Background(), "session1", payload)
+
+	assert.NoError(t, err)
+	// Monitoring never sees own messages...
+	mockMon.AssertNotCalled(t, "ProcessIncomingMessage", mock.Anything, mock.Anything)
+	// ...but offer_generate must.
+	mockOG.AssertCalled(t, "ProcessIncomingMessage", mock.Anything, mock.Anything)
 }
 
 func TestMonitoringMessageProcessor_ProcessMessage_SkipsEmptyMessage(t *testing.T) {
