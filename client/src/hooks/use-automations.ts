@@ -72,6 +72,8 @@ const DEFAULT_FORM_DATA: Partial<Automation> = {
   list_items_per_run: 1,
   list_include_image: true,
   list_send_as_image: false,
+  search_send_as_image: true,
+  monitoring_send_as_image: false,
 };
 
 export interface RefinementState {
@@ -188,6 +190,8 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     list_include_image: local.listIncludeImage,
     list_send_as_image: local.listSendAsImage,
     offer_generate_send_as_image: local.offerGenerateSendAsImage,
+    search_send_as_image: local.searchSendAsImage,
+    monitoring_send_as_image: local.monitoringSendAsImage,
     instance_id: local.instanceId ?? null,
     instance_ids: local.instanceIds ?? [],
     chip_overrides: local.chipOverrides ?? {},
@@ -633,6 +637,12 @@ export function useAutomations(): UseAutomationsReturn {
             mode === 'list' ? Boolean(formData.list_include_image ?? true) : undefined,
           listSendAsImage:
             mode === 'list' ? Boolean(formData.list_send_as_image ?? false) : undefined,
+          searchSendAsImage:
+            mode === 'search' ? Boolean(formData.search_send_as_image ?? true) : undefined,
+          monitoringSendAsImage:
+            mode === 'monitoring'
+              ? Boolean(formData.monitoring_send_as_image ?? false)
+              : undefined,
           // Empty string sent on update explicitly clears the saved
           // preference (when the user picks "all chips"). undefined
           // would leave the previous value untouched.
@@ -694,6 +704,12 @@ export function useAutomations(): UseAutomationsReturn {
             mode === 'list' ? Boolean(formData.list_include_image ?? true) : undefined,
           listSendAsImage:
             mode === 'list' ? Boolean(formData.list_send_as_image ?? false) : undefined,
+          searchSendAsImage:
+            mode === 'search' ? Boolean(formData.search_send_as_image ?? true) : undefined,
+          monitoringSendAsImage:
+            mode === 'monitoring'
+              ? Boolean(formData.monitoring_send_as_image ?? false)
+              : undefined,
           instanceId: formData.instance_id ?? undefined,
           instanceIds: formData.instance_ids ?? [],
           chipOverrides: formData.chip_overrides ?? {},

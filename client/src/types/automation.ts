@@ -65,6 +65,12 @@ export interface Automation {
   // OFFER_GENERATE (monitor) mode: enviar oferta como imagem anexada (default
   // true) em vez do preview nativo do WhatsApp.
   offer_generate_send_as_image?: boolean;
+  // SEARCH mode: enviar oferta como imagem anexada (default true) em vez do
+  // preview nativo do WhatsApp.
+  search_send_as_image?: boolean;
+  // MONITORING mode: enviar oferta como imagem anexada (default false) em vez
+  // do preview nativo do WhatsApp.
+  monitoring_send_as_image?: boolean;
   // Preferred sender chip (database id of an instance, string form). Set
   // by the form's chip selector and persisted; the worker uses it as the
   // sender for every dispatch from this automation. Empty / null = no

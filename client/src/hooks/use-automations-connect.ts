@@ -94,6 +94,8 @@ export interface LocalAutomation {
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
   offerGenerateSendAsImage?: boolean;
+  searchSendAsImage?: boolean;
+  monitoringSendAsImage?: boolean;
   // Preferred sender chip (instance database id, string form). Empty / unset
   // = no preference; the worker treats either case as "fall back to per-group
   // ownership / first connected."
@@ -162,6 +164,8 @@ export interface CreateAutomationParams {
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
   offerGenerateSendAsImage?: boolean;
+  searchSendAsImage?: boolean;
+  monitoringSendAsImage?: boolean;
   instanceId?: string;
   // Multi-chip preference (049). Empty array also valid as "clear preference."
   instanceIds?: string[];
@@ -204,6 +208,8 @@ export interface UpdateAutomationParams {
   listIncludeImage?: boolean;
   listSendAsImage?: boolean;
   offerGenerateSendAsImage?: boolean;
+  searchSendAsImage?: boolean;
+  monitoringSendAsImage?: boolean;
   // Empty string explicitly clears the preference; undefined leaves it
   // unchanged (matches proto3 optional semantics on the wire).
   instanceId?: string;
@@ -424,6 +430,8 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     listIncludeImage: automation.listIncludeImage,
     listSendAsImage: automation.listSendAsImage,
     offerGenerateSendAsImage: automation.offerGenerateSendAsImage,
+    searchSendAsImage: automation.searchSendAsImage,
+    monitoringSendAsImage: automation.monitoringSendAsImage,
     instanceId: automation.instanceId,
     instanceIds: [...(automation.instanceIds ?? [])],
     // Proto map<string,string> deserializes as a plain object; copy to a
@@ -578,6 +586,8 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listIncludeImage: params.listIncludeImage,
           listSendAsImage: params.listSendAsImage,
           offerGenerateSendAsImage: params.offerGenerateSendAsImage,
+          searchSendAsImage: params.searchSendAsImage,
+          monitoringSendAsImage: params.monitoringSendAsImage,
           instanceId: params.instanceId,
           instanceIds: params.instanceIds ?? [],
           chipOverrides: params.chipOverrides ?? {},
@@ -654,6 +664,8 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           listIncludeImage: params.listIncludeImage,
           listSendAsImage: params.listSendAsImage,
           offerGenerateSendAsImage: params.offerGenerateSendAsImage,
+          searchSendAsImage: params.searchSendAsImage,
+          monitoringSendAsImage: params.monitoringSendAsImage,
           instanceId: params.instanceId,
           instanceIds: params.instanceIds ?? [],
           chipOverrides: params.chipOverrides ?? {},
