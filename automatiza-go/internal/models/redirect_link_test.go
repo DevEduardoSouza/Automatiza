@@ -192,7 +192,7 @@ func TestRedirectLink_GetAvailableGroup(t *testing.T) {
 			Strategy:     RedirectStrategyMemberLimit,
 			TargetGroups: []GroupPriority{activeGroup("g1", 0, 0)},
 		}
-		// 977 < 1024 default cap → still returns g1.
+		// 977 < 1000 default cap → still returns g1.
 		result := r.GetAvailableGroup(map[string]int{"g1": 977})
 		require.NotNil(t, result)
 		assert.Equal(t, "g1", result.GroupID)
@@ -200,7 +200,7 @@ func TestRedirectLink_GetAvailableGroup(t *testing.T) {
 
 	t.Run("member_limit/unset limit rotates to next group when first reaches WhatsApp cap", func(t *testing.T) {
 		t.Parallel()
-		// Both groups have no explicit limit (0). The first is at the 1024 cap,
+		// Both groups have no explicit limit (0). The first is at the default cap,
 		// so the link must rotate to the second instead of always returning the
 		// first. This is the dayanemira/isa "doesn't switch when full" bug.
 		r := &RedirectLink{

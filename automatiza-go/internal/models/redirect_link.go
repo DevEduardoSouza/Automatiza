@@ -50,10 +50,14 @@ const (
 
 // DefaultGroupMemberLimit is the fallback per-group capacity used by the
 // member_limit strategy when a target group has no explicit limit configured.
-// It matches WhatsApp's standard group cap (1024). Without this fallback, an
-// unset/zero limit was treated as "infinite capacity", so the link always
-// returned the first group and never rotated when it filled up.
-const DefaultGroupMemberLimit = 1024
+// Set slightly BELOW WhatsApp's hard group cap (1024) on purpose: members_count
+// is refreshed by the groups sync only periodically (~25min), so a group sitting
+// right at the 1024 cap reads as "still has a few slots" while already full in
+// WhatsApp — the link would jam newcomers into a full group and never rotate.
+// The ~24-slot buffer makes the link advance to the next group before the real
+// cap, so clicks always land somewhere joinable. (The earlier bug was treating
+// an unset/zero limit as INFINITE capacity, pinning every click to the 1st group.)
+const DefaultGroupMemberLimit = 1000
 
 // RedirectLinkCreateRequest represents a request to create a redirect link
 type RedirectLinkCreateRequest struct {
