@@ -150,6 +150,11 @@ jobs:
           IMAGE_RELAY_MAX_ASPECT=${{ vars.IMAGE_RELAY_MAX_ASPECT }}
           FEATURE_ENFORCE_PLAN_GROUP_LIMITS=${{ vars.FEATURE_ENFORCE_PLAN_GROUP_LIMITS }}
           FEATURE_KIWIFY_STRICT_SIGNATURE=${{ vars.FEATURE_KIWIFY_STRICT_SIGNATURE }}
+          # Image pins: o compose usa ${BACKEND_IMAGE:-...latest}. Sem estes pins no
+          # .env, qualquer `docker compose up` MANUAL no box (fora do CI) derruba a
+          # build pra :latest. O CI ja passa os tags inline; isto protege ops manuais.
+          BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${{ needs.build-and-push.outputs.version }}
+          FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${{ needs.build-and-push.outputs.version }}
           EOF
           # Remove leading whitespace from heredoc
           sed 's/^          //' /tmp/.env.deploy > /tmp/.env.clean
