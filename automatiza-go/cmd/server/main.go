@@ -530,6 +530,43 @@ func main() {
 		})
 	}
 
+	// Sync periódico de grupos (15 min): mantém groups.members_count fresco.
+	// Antes o tamanho do grupo só era atualizado no connect da sessão ou no
+	// "Sincronizar" manual — entre isso, a contagem congelava, e o redirect
+	// (estratégia member_limit) superlotava grupos por achar que ainda tinham
+	// vaga. No engine GOWS o sync custa ~1 chamada por chip (os tamanhos vêm
+	// embutidos no GetGroups), então rodar a cada 15 min é barato. A fila do
+	// worker (concorrência limitada) naturalmente escalona os enqueues.
+	cronService.RegisterTask("periodic_group_sync", 15*time.Minute, func(ctx context.Context) error {
+		instances, err := instanceRepo.GetAllConnectedInstances(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to list connected instances for periodic group sync: %w", err)
+		}
+		enqueued := 0
+		for i := range instances {
+			inst := &instances[i]
+			if inst.InstanceID == "" {
+				continue
+			}
+			if _, err := queueClient.EnqueueGroupsSync(ctx, &workers.GroupsSyncJobData{
+				UserID:       inst.UserID,
+				InstanceName: inst.InstanceID,
+				InstanceID:   inst.ID,
+			}); err != nil {
+				logger.Warn("Failed to enqueue periodic group sync",
+					zap.Int("instanceID", inst.ID),
+					zap.String("userID", inst.UserID),
+					zap.Error(err))
+				continue
+			}
+			enqueued++
+		}
+		logger.Info("Periodic group sync enqueued",
+			zap.Int("connectedInstances", len(instances)),
+			zap.Int("enqueued", enqueued))
+		return nil
+	})
+
 	monitoringService := monitoring.NewMonitoringService(
 		automationRepo,
 		instanceRepo,
