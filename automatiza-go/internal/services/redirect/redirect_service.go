@@ -143,8 +143,18 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 	})
 	link.TargetGroups = sortedGroups
 
-	// Get the available group based on strategy
-	targetGroup := link.GetAvailableGroup(groupMemberCounts)
+	// Get the available group based on strategy. For member_limit, the cached
+	// members_count can lag reality (the periodic/connect sync may be minutes
+	// old, and WhatsApp's reported group size under-counts near the cap), so a
+	// group reading just under the limit may already be full. pickMemberLimitGroupLive
+	// re-verifies any boundary candidate against WhatsApp's live participant
+	// count before committing, so the link never hands out a full group.
+	var targetGroup *models.GroupPriority
+	if link.Strategy == models.RedirectStrategyMemberLimit {
+		targetGroup = s.pickMemberLimitGroupLive(ctx, link, groupMemberCounts)
+	} else {
+		targetGroup = link.GetAvailableGroup(groupMemberCounts)
+	}
 	if targetGroup == nil {
 		return &models.ProcessRedirectResult{
 			Success: false,
@@ -276,6 +286,83 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 		GroupID:     group.ID,
 		WAGroupID:   group.WAGroupID,
 	}, nil
+}
+
+// liveRefreshMargin bounds how close to the limit a cached count must be before
+// ProcessRedirect re-verifies it against WhatsApp's live participant count.
+// Groups reading comfortably below the limit are trusted from cache (no WAHA
+// call) since even a stale count that far down won't be full. The margin covers
+// both sync lag and WhatsApp's tendency to under-report group size near the cap.
+const liveRefreshMargin = 150
+
+// pickMemberLimitGroupLive selects the target group for the member_limit
+// strategy, re-verifying boundary candidates against WhatsApp's live participant
+// count. Each candidate is live-checked at most once; a candidate found full is
+// persisted and skipped, then selection re-runs. Falls back to the cached pick
+// when the live count can't be fetched.
+func (s *redirectService) pickMemberLimitGroupLive(
+	ctx context.Context,
+	link *models.RedirectLink,
+	counts map[string]int,
+) *models.GroupPriority {
+	verified := make(map[string]bool)
+	for {
+		candidate := link.GetAvailableGroup(counts)
+		if candidate == nil {
+			return nil
+		}
+		limit := candidate.MemberLimit
+		if limit <= 0 {
+			limit = models.DefaultGroupMemberLimit
+		}
+		// Trust the cache when the candidate is comfortably below the limit, or
+		// when it was already live-verified during this call.
+		if verified[candidate.GroupID] || counts[candidate.GroupID] < limit-liveRefreshMargin {
+			return candidate
+		}
+		verified[candidate.GroupID] = true
+		liveCount, ok := s.refreshGroupMemberCount(ctx, candidate.GroupID)
+		if !ok {
+			return candidate // couldn't refresh — best effort, use cached pick
+		}
+		counts[candidate.GroupID] = liveCount
+		// Loop: re-evaluate. If now full, GetAvailableGroup skips to the next.
+	}
+}
+
+// refreshGroupMemberCount fetches a group's current participant count from
+// WhatsApp and persists it to members_count. Returns (count, true) on success.
+func (s *redirectService) refreshGroupMemberCount(ctx context.Context, groupID string) (int, bool) {
+	if s.wahaProvider == nil {
+		return 0, false
+	}
+	group, err := s.groupRepo.GetGroupByID(ctx, groupID)
+	if err != nil || group == nil {
+		return 0, false
+	}
+	instanceIDInt, parseErr := strconv.Atoi(group.InstanceID)
+	if parseErr != nil || instanceIDInt <= 0 {
+		return 0, false
+	}
+	instance, err := s.instanceRepo.GetInstanceByID(ctx, instanceIDInt)
+	if err != nil || instance == nil {
+		return 0, false
+	}
+	participants, err := s.wahaProvider.GetGroupParticipants(ctx, instance.InstanceID, group.WAGroupID)
+	if err != nil {
+		s.logger.Warn("Live member-count refresh failed; falling back to cached count",
+			zap.String("groupID", groupID),
+			zap.String("waGroupID", group.WAGroupID),
+			zap.Error(err))
+		return 0, false
+	}
+	count := len(participants)
+	if err := s.groupRepo.UpdateGroup(ctx, groupID, map[string]interface{}{"members_count": count}); err != nil {
+		s.logger.Warn("Failed to persist refreshed member count",
+			zap.String("groupID", groupID),
+			zap.Error(err))
+	}
+	return count, true
 }
 
 // ListGroups lists all groups available for redirect links for a user
