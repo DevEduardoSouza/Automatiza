@@ -145,6 +145,11 @@ jobs:
           SESSION_PACE_MS=${{ vars.SESSION_PACE_MS }}
           MEDIA_PACE_MS=${{ vars.MEDIA_PACE_MS }}
           PRODUCER_USER_MAX_ENQUEUED_10MIN=${{ vars.PRODUCER_USER_MAX_ENQUEUED_10MIN }}
+          # Scheduler paralelo (default 1 = serial). Sem isto, uma API externa
+          # degradada (ex.: Shopee em timeout) pendura cada busca no loop serial
+          # e starva TODAS as automacoes — intervalo de 3min vira entrega de 30min.
+          # Vazio cai pro default 1 (seguro). Valor de prod na var de repo.
+          SCHEDULER_CONCURRENCY=${{ vars.SCHEDULER_CONCURRENCY }}
           IMAGE_MIN_ASPECT=${{ vars.IMAGE_MIN_ASPECT }}
           IMAGE_MAX_ASPECT=${{ vars.IMAGE_MAX_ASPECT }}
           IMAGE_RELAY_MAX_ASPECT=${{ vars.IMAGE_RELAY_MAX_ASPECT }}
