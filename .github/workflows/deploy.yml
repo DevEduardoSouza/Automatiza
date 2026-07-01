@@ -150,6 +150,11 @@ jobs:
           # e starva TODAS as automacoes — intervalo de 3min vira entrega de 30min.
           # Vazio cai pro default 1 (seguro). Valor de prod na var de repo.
           SCHEDULER_CONCURRENCY=${{ vars.SCHEDULER_CONCURRENCY }}
+          # Concorrencia do worker asynq (default viper 20). Subido pra 40 porque
+          # o WHATSAPP_HOOK_EVENTS=message.any faz TODO envio do bot ecoar como
+          # webhook fromMe (~2x o volume) — a 20 a fila de webhooks acumulava
+          # (backlog 3k+) e o relay atrasava 4-5min. Vazio cai pro default 20.
+          WORKER_CONCURRENCY=${{ vars.WORKER_CONCURRENCY }}
           IMAGE_MIN_ASPECT=${{ vars.IMAGE_MIN_ASPECT }}
           IMAGE_MAX_ASPECT=${{ vars.IMAGE_MAX_ASPECT }}
           IMAGE_RELAY_MAX_ASPECT=${{ vars.IMAGE_RELAY_MAX_ASPECT }}
