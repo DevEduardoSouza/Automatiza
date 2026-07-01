@@ -90,7 +90,14 @@ services:
       WAHA_WORKER_MODE: GOWS
       WHATSAPP_RESTART_ALL_SESSIONS: "true"
       WHATSAPP_HOOK_URL: http://server:3000/api/v1/webhooks/waha
-      WHATSAPP_HOOK_EVENTS: message,message.ack,session.status,group.join,group.leave
+      # message.any (nao "message"): entrega TAMBEM as mensagens fromMe (posts
+      # do proprio dono do chip). Necessario pro offer_generate repassar o post
+      # que o dono faz no grupo de origem. Com "message" o WAHA/GOWS nao entrega
+      # fromMe, e so ~1 de 360 sessoes recebia — quebrava offer_generate de
+      # post-proprio em massa. message.any e superset de message (worker roteia
+      # os dois igual, webhook_consumer_worker.go). NAO adicionar "message"
+      # junto: duplicaria os incoming.
+      WHATSAPP_HOOK_EVENTS: message.any,message.ack,session.status,group.join,group.leave
       WHATSAPP_HOOK_HMAC_KEY: ${WEBHOOK_SECRET}
       WHATSAPP_FILES_LIFETIME: "600"
       WAHA_DASHBOARD_ENABLED: "false"
