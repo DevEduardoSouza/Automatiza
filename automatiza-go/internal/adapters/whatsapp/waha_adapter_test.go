@@ -398,22 +398,24 @@ func TestWahaAdapter_SendImage(t *testing.T) {
 	})
 }
 
-// TestWahaAdapter_SendImage_SquaresBase64Relay verifies the relay fix: an image
-// supplied as base64 (the offer-generate/monitor relay path) is padded to a
-// SQUARE before upload — the group bubble on mobile only shows square images in
-// full, so a wide coupon banner must be squared (white top/bottom) to reach the
-// group without WhatsApp side-cropping its badge/icon. Product photos sent by
-// URL keep their rectangular shape (separate path).
-func TestWahaAdapter_SendImage_SquaresBase64Relay(t *testing.T) {
+// TestWahaAdapter_SendImage_RelayBase64Unchanged verifies that relayed/forwarded
+// media (the offer-generate/monitor relay path, supplied as base64) is sent
+// byte-for-byte AS-IS — no aspect padding. Squaring it onto a white canvas added
+// huge borders to wide coupon banners and portrait coupon grids; verified on a
+// real device that the group bubble does not crop these, and a forwarded post is
+// required to look identical to the source. Product photos sent by URL still get
+// aspect-normalized (separate path, asserted elsewhere).
+func TestWahaAdapter_SendImage_RelayBase64Unchanged(t *testing.T) {
 	ctx := context.Background()
 
-	// 1910x500 (3.82:1) wide banner → must come out square (1910x1910).
+	// 1910x500 (3.82:1) wide banner → must reach the wire unchanged (1910x500).
 	var src bytes.Buffer
 	img := image.NewRGBA(image.Rect(0, 0, 1910, 500))
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: color.RGBA{R: 10, G: 120, B: 200, A: 255}}, image.Point{}, draw.Src)
 	require.NoError(t, jpeg.Encode(&src, img, &jpeg.Options{Quality: 90}))
 	wideB64 := base64.StdEncoding.EncodeToString(src.Bytes())
 
+	var gotData string
 	var gotW, gotH int
 	adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/api/sessions/") && r.Method == http.MethodGet {
@@ -424,8 +426,8 @@ func TestWahaAdapter_SendImage_SquaresBase64Relay(t *testing.T) {
 		var payload map[string]interface{}
 		require.NoError(t, json.Unmarshal(body, &payload))
 		file, _ := payload["file"].(map[string]interface{})
-		data, _ := file["data"].(string)
-		raw, derr := base64.StdEncoding.DecodeString(data)
+		gotData, _ = file["data"].(string)
+		raw, derr := base64.StdEncoding.DecodeString(gotData)
 		require.NoError(t, derr)
 		cfg, _, cerr := image.DecodeConfig(bytes.NewReader(raw))
 		require.NoError(t, cerr)
@@ -440,8 +442,9 @@ func TestWahaAdapter_SendImage_SquaresBase64Relay(t *testing.T) {
 		ImageBase64: wideB64,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, gotW, gotH, "relayed base64 banner must be squared for the group bubble")
-	assert.Equal(t, 1910, gotW, "square side should match the banner width (1910x1910)")
+	assert.Equal(t, wideB64, gotData, "relayed base64 must be forwarded byte-for-byte, unmodified")
+	assert.Equal(t, 1910, gotW, "relayed banner width must be preserved")
+	assert.Equal(t, 500, gotH, "relayed banner height must be preserved (not squared)")
 }
 
 func TestIsTransientWahaUploadError(t *testing.T) {

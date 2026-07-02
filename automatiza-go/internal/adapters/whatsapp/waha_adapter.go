@@ -1253,17 +1253,18 @@ func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*Mes
 		zap.String("imageURL", input.ImageURL),
 		zap.Bool("hasBase64", input.ImageBase64 != ""))
 
-	// Normalize the image to WhatsApp's safe aspect window so wide banners and
-	// tall portraits aren't center-cropped ("zoomed") in the chat bubble. This
-	// is the single chokepoint every send path flows through (list, monitoring,
-	// offer-generate, search, scheduled jobs), so all of them are covered here
-	// instead of per-producer. Both inputs are normalized: send-by-URL (most
-	// product photos) and send-by-base64 (the offer-generate/monitor RELAY,
-	// which downloads source media and forwards base64 — a wide coupon banner
-	// relayed this way used to ship raw and get cropped). Fail-open on any
-	// download/decode error (e.g. webp): keep the original so sends never break.
-	switch {
-	case input.ImageURL != "" && input.ImageBase64 == "":
+	// Normalize ONLY images sent by URL (product photos from list/search/
+	// generated offers) to WhatsApp's safe aspect window, so wide banners and
+	// tall portraits aren't center-cropped ("zoomed") in the chat bubble.
+	//
+	// Relayed/forwarded media (offer-generate & monitor relay) arrives here as
+	// base64 and is sent AS-IS — no padding, byte-for-byte the source image.
+	// It used to be squared onto a white canvas, which added huge borders to
+	// wide coupon banners and portrait coupon grids. Verified on a real device
+	// that the group bubble does NOT crop these, and the requirement is that a
+	// forwarded post look identical to the original, so the relay must not touch
+	// the pixels. Fail-open on any URL download/decode error: keep the original.
+	if input.ImageURL != "" && input.ImageBase64 == "" {
 		if b64, perr := imagepad.FetchAndPadToSafeAspectJPEGBase64(ctx, input.ImageURL); perr == nil {
 			input.ImageBase64 = b64
 			input.Mimetype = "image/jpeg"
@@ -1271,19 +1272,6 @@ func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*Mes
 		} else {
 			a.logger.Warn("Image aspect-normalize failed, sending original URL",
 				zap.String("imageURL", input.ImageURL),
-				zap.Error(perr))
-		}
-	case input.ImageBase64 != "":
-		// Base64 here means forwarded/relayed media (offer-generate & monitor
-		// relay). It lands in the group bubble, which on mobile only shows a
-		// SQUARE image in full — wider banners get side-cropped (badge/icon
-		// lost). So square it, separately from the URL path above which keeps
-		// product photos rectangular. Fail-open: keep the original on error.
-		if b64, perr := imagepad.PadToSquareJPEGBase64(input.ImageBase64); perr == nil {
-			input.ImageBase64 = b64
-			input.Mimetype = "image/jpeg"
-		} else {
-			a.logger.Warn("Image square-normalize (base64) failed, sending original",
 				zap.Error(perr))
 		}
 	}
