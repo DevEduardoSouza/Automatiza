@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -520,6 +521,28 @@ func (s *automationService) fetchGroupInstancesIfEnabled(ctx context.Context, us
 	return groupInstances
 }
 
+// defaultSearchDroughtPages é o teto de páginas que a busca percorre quando as
+// páginas normais (maxSearchPages) deduplicam tudo. O probe em prod (2026-07-02)
+// mostrou que categorias têm estoque linear-fundo (>=500 distintos em 20 páginas),
+// então continuar paginando em drought quase sempre acha produto fresco. Só é
+// exercitado quando a rodada ia enviar 0 — dia normal para em maxSearchPages.
+const defaultSearchDroughtPages = 15
+
+// searchDroughtPagesFromEnv lê SEARCH_MAX_DROUGHT_PAGES (default 15). Valores
+// inválidos ou menores que maxSearchPages caem no default — a escalação nunca
+// pode encurtar a janela normal de páginas.
+func searchDroughtPagesFromEnv(maxSearchPages int) int {
+	v := strings.TrimSpace(os.Getenv("SEARCH_MAX_DROUGHT_PAGES"))
+	if v == "" {
+		return defaultSearchDroughtPages
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < maxSearchPages {
+		return defaultSearchDroughtPages
+	}
+	return n
+}
+
 func (s *automationService) executeSearchAutomation(ctx context.Context, automation *models.Automation, historyID string) (*models.RunAutomationResult, error) {
 	// Get target groups
 	targetGroups := automation.GetTargetGroups()
@@ -642,8 +665,15 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 
 	// Pagination: when all offers from page N are deduped, try page N+1.
 	// This prevents niche categories with limited product variety from getting stuck.
+	//
+	// Normal runs cover the rotated window of maxSearchPages (~150 offers). Quando
+	// TODAS essas páginas deduplicam (drought), a busca continua paginando fundo
+	// até maxDroughtPages antes de desistir — o loop já para no primeiro envio, então
+	// as páginas fundas só são buscadas quando a rodada ia enviar 0. Ver o probe
+	// documentado: profundidade de página é o lever real contra "não envia nada".
 	const maxSearchPages = 3
 	const limitPerKeyword = 50
+	maxDroughtPages := searchDroughtPagesFromEnv(maxSearchPages)
 	var totalOffersFound int
 
 	// Page rotation: start from a different page each run for product variety.
@@ -711,8 +741,21 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 			zap.Int("subsetSize", len(searchCategories)))
 	}
 
-	for pageAttempt := 0; pageAttempt < maxSearchPages; pageAttempt++ {
-		currentPage := (startPage + pageAttempt) % maxSearchPages
+	for pageAttempt := 0; pageAttempt < maxDroughtPages; pageAttempt++ {
+		// Normal window: rotate within the first maxSearchPages (pages 1..3 in
+		// rotated order). Drought escalation: once past the window, go strictly
+		// deeper (pages 4, 5, …) — never re-covering the rotated pages.
+		var currentPage int
+		if pageAttempt < maxSearchPages {
+			currentPage = (startPage + pageAttempt) % maxSearchPages
+		} else {
+			currentPage = pageAttempt
+			s.logger.Info("Dedup drought: escalating to deeper search page",
+				zap.String("automationID", automation.ID),
+				zap.Int("page", currentPage+1),
+				zap.Int("maxDroughtPages", maxDroughtPages),
+				zap.Int("skippedSoFar", skippedCount))
+		}
 		searchOffset := currentPage * limitPerKeyword
 
 		// Search for products

@@ -217,6 +217,114 @@ func TestProcessSearchMode_DedupeFilters(t *testing.T) {
 	assert.Contains(t, result.Message, "ignoradas")
 }
 
+func TestProcessSearchMode_DroughtEscalatesToDeeperPage(t *testing.T) {
+	// Drought: as páginas normais (1-3, offset 0/50/100) deduplicam tudo. A busca
+	// deve ESCALAR pra páginas mais fundas (offset >= 150) e enviar a oferta fresca
+	// que aparece lá, em vez de terminar a rodada com 0 envios. Reproduz o "não
+	// envia nada" quando o cap de 3 páginas estrangula categorias com estoque fundo.
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	keyword := "smartphone"
+	dedupeHours := 24
+	automation := &models.Automation{
+		ID:          "auto-123",
+		UserID:      "user-1",
+		Name:        "Search Automation",
+		Status:      models.AutomationStatusActive,
+		Type:        &searchType,
+		Keyword:     &keyword,
+		GroupIDs:    []string{"group1@g.us"},
+		Stores:      []string{"shopee"},
+		DedupeHours: &dedupeHours,
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	// Páginas 1-3 (offset < 150): sempre o MESMO produto já enviado → dedupe.
+	dupedResult := &models.ShopeeSearchResult{
+		Offers: []models.ShopeeOffer{{
+			ItemID:        12345,
+			ShopID:        67890,
+			Name:          "Produto Já Enviado",
+			Price:         499.90,
+			OriginalPrice: 699.90,
+			Discount:      29,
+			AffiliateLink: "https://affiliate.shopee.com/old",
+			ProductURL:    "https://shopee.com.br/product/67890/12345",
+		}},
+		Total: 1,
+	}
+	// Página 4+ (offset >= 150): produto fresco que ainda não foi enviado.
+	freshResult := &models.ShopeeSearchResult{
+		Offers: []models.ShopeeOffer{{
+			ItemID:        99999,
+			ShopID:        88888,
+			Name:          "Produto Fresco Página 4",
+			Price:         100.00,
+			OriginalPrice: 200.00,
+			Discount:      50,
+			AffiliateLink: "https://affiliate.shopee.com/fresh",
+			ProductURL:    "https://shopee.com.br/product/88888/99999",
+		}},
+		Total: 1,
+	}
+
+	existingLog := &models.DispatchLog{
+		ID:        1,
+		UserID:    "user-1",
+		Status:    "sent",
+		CreatedAt: time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
+	}
+
+	lockTime := time.Now().Add(10 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(nil, nil)
+	deps.automationRunRepo.On("AcquireLock", ctx, "auto-123", mock.AnythingOfType("time.Duration")).Return(&lockTime, nil)
+	deps.automationRunRepo.On("ReleaseLock", ctx, "auto-123").Return(nil)
+	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
+	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+
+	// Páginas normais deduplicam; página funda traz produto novo.
+	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.MatchedBy(func(p models.ShopeeSearchParams) bool {
+		return p.Offset < 150
+	})).Return(dupedResult, nil)
+	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.MatchedBy(func(p models.ShopeeSearchParams) bool {
+		return p.Offset >= 150
+	})).Return(freshResult, nil)
+
+	// Dedup: chave do produto velho já existe; a do fresco não.
+	// O 5º arg é time.Duration (time.Duration(hours)*time.Hour), não int.
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", "group1@g.us", "shopee:67890:12345", 24*time.Hour).Return(existingLog, nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", "group1@g.us", "shopee:88888:99999", 24*time.Hour).Return(nil, nil)
+
+	// Refetch de preço e link de afiliado do produto enviado (best-effort).
+	deps.shopeeService.On("GetProduct", ctx, int64(99999), int64(88888), "user-1").Return(nil, errors.New("skip refetch")).Maybe()
+	deps.shopeeService.On("GenerateAffiliateLink", ctx, mock.AnythingOfType("string"), "user-1").Return(&models.ShopeeAffiliateLink{
+		AffiliateLink: "https://s.shopee.com.br/fresh",
+	}, nil).Maybe()
+	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+	// UpdateLastRunAt roda em contexto próprio (context.WithTimeout), então casa por Anything.
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.Success)
+	// A oferta fresca da página funda foi enviada — sem a escalação isto seria 0.
+	assert.Equal(t, 1, result.MessagesSent)
+	// Prova que a busca de fato foi além da janela normal de 3 páginas.
+	deps.shopeeService.AssertCalled(t, "SearchOffers", ctx, "user-1", mock.MatchedBy(func(p models.ShopeeSearchParams) bool {
+		return p.Offset >= 150
+	}))
+}
+
 func TestProcessSearchMode_NoTargetGroups(t *testing.T) {
 	// Error: no target groups configured
 	svc, deps := newTestService(t)
