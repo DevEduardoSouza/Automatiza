@@ -114,6 +114,44 @@ func TestProcessarMensagem(t *testing.T) {
 			},
 			want: "remove ] from text",
 		},
+		{
+			// The lay-user case: the client pastes the footer exactly as it
+			// appears on screen (no asterisks), but the inbound WhatsApp message
+			// carries *bold* markers and hard line breaks. Tolerant matching
+			// removes it and preserves the offer above.
+			name: "remove terms tolerant removes footer with whatsapp bold and newlines",
+			text: "🛒 Oferta top\nhttps://meli.la/2nxYtCP\n\n💖 *Nos siga no instagram* @canal.oficial e caso *esse número pare* entre por aqui https://site.com.br/",
+			rules: &models.MonitoringTextRules{
+				RemoverTermos: []string{"💖 Nos siga no instagram @canal.oficial e caso esse número pare entre por aqui https://site.com.br/"},
+			},
+			want: "🛒 Oferta top\nhttps://meli.la/2nxYtCP",
+		},
+		{
+			// Same idea but the client used the Substituições field with an empty
+			// "para" (a very common way people try to delete a footer). Exact
+			// match fails on the bold markers; tolerant fallback removes it.
+			name: "substitution tolerant fallback removes footer pasted as-seen",
+			text: "Produto X\n*Nos siga* aqui @loja",
+			rules: &models.MonitoringTextRules{
+				Substituicoes: []models.Substituicao{
+					{De: "Nos siga aqui @loja", Para: ""},
+				},
+			},
+			want: "Produto X",
+		},
+		{
+			// Rebrand case: the client's pasted term spans a bold boundary
+			// ("@canal *antigo*"), so exact match fails and tolerant kicks in;
+			// the orphaned "*" delimiters are absorbed, no stray markers leak.
+			name: "substitution tolerant fallback rebrands across bold boundary",
+			text: "confira @canal *antigo* hoje",
+			rules: &models.MonitoringTextRules{
+				Substituicoes: []models.Substituicao{
+					{De: "@canal antigo", Para: "@novoperfil"},
+				},
+			},
+			want: "confira @novoperfil hoje",
+		},
 	}
 
 	for _, tt := range tests {
