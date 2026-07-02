@@ -309,7 +309,7 @@ func TestProcessSearchMode_DroughtEscalatesToDeeperPage(t *testing.T) {
 		AffiliateLink: "https://s.shopee.com.br/fresh",
 	}, nil).Maybe()
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	// UpdateLastRunAt roda em contexto independente (context.WithTimeout), então casa por Anything.
+	// UpdateLastRunAt roda em contexto próprio (context.WithTimeout), então casa por Anything.
 	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
