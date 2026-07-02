@@ -4,6 +4,7 @@ import (
 	"automatiza-go/internal/models"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 var (
@@ -22,18 +23,37 @@ func ProcessarMensagem(text string, rules *models.MonitoringTextRules) string {
 
 	result := text
 
-	// 1. Apply substitutions
+	// 1. Apply substitutions.
+	//    Exact match first (preserves historical behavior). If the exact string
+	//    is not present, fall back to a forgiving match that ignores WhatsApp
+	//    formatting (*_~), collapsed whitespace/newlines and case — so a client
+	//    can paste the footer exactly as they SEE it and it still matches, even
+	//    though the raw message carries invisible bold markers and line breaks.
 	for _, sub := range rules.Substituicoes {
-		result = strings.ReplaceAll(result, sub.De, sub.Para)
+		if strings.Contains(result, sub.De) {
+			result = strings.ReplaceAll(result, sub.De, sub.Para)
+		} else {
+			result = replaceTolerant(result, sub.De, sub.Para)
+		}
 	}
 
-	// 2. Remove terms
+	// 2. Remove terms.
+	//    Regex/exact first (historical behavior); if that removed nothing, retry
+	//    with the same forgiving match used for substitutions. This is what lets
+	//    a non-technical user delete a channel footer by pasting the visible text
+	//    without knowing regex or reproducing the WhatsApp bold markers.
 	for _, termo := range rules.RemoverTermos {
-		// Try as regex first
+		if termo == "" {
+			continue
+		}
+		before := result
 		if re, err := regexp.Compile(termo); err == nil {
 			result = re.ReplaceAllString(result, "")
 		} else {
 			result = strings.ReplaceAll(result, termo, "")
+		}
+		if result == before {
+			result = replaceTolerant(result, termo, "")
 		}
 	}
 
@@ -62,6 +82,121 @@ func ProcessarMensagem(text string, rules *models.MonitoringTextRules) string {
 	}
 
 	return strings.TrimSpace(result)
+}
+
+// replaceTolerant replaces every occurrence of `from` inside `text` with `to`,
+// matching in a formatting-insensitive way: both sides are normalized (WhatsApp
+// bold/italic delimiters *_~` stripped, runs of whitespace collapsed to a single
+// space, lower-cased) before comparing. The replacement is written back onto the
+// ORIGINAL text (via a rune→byte offset map) so untouched parts of the message
+// keep their original formatting, emojis and spacing.
+//
+// This is what makes footer removal usable for non-technical users: they paste
+// the footer as it appears on screen ("💖 Nos siga no instagram @canal ... link")
+// and it matches even though the raw inbound message contains "*Nos siga*",
+// double spaces and hard line breaks the user never sees. Passing to == "" turns
+// it into a removal.
+func replaceTolerant(text, from, to string) string {
+	fromRunes, _ := normalizeForMatch(from)
+	fromRunes = trimSpaceRunes(fromRunes)
+	if len(fromRunes) == 0 {
+		return text
+	}
+
+	textRunes, offsets := normalizeForMatch(text)
+	if len(fromRunes) > len(textRunes) {
+		return text
+	}
+
+	var b strings.Builder
+	lastOrigEnd := 0
+	i := 0
+	for i+len(fromRunes) <= len(textRunes) {
+		if runesEqualAt(textRunes, fromRunes, i) {
+			origStart := offsets[i]
+			origEnd := offsets[i+len(fromRunes)]
+			// Absorb WhatsApp formatting delimiters (* _ ~ `) left orphaned right
+			// up against the match boundary — e.g. a footer where only part is
+			// bold ("*Nos siga* @canal ...") would otherwise leak a stray "*".
+			for origStart > lastOrigEnd && isFormatDelim(text[origStart-1]) {
+				origStart--
+			}
+			for origEnd < len(text) && isFormatDelim(text[origEnd]) {
+				origEnd++
+			}
+			b.WriteString(text[lastOrigEnd:origStart])
+			b.WriteString(to)
+			lastOrigEnd = origEnd
+			i += len(fromRunes)
+		} else {
+			i++
+		}
+	}
+	b.WriteString(text[lastOrigEnd:])
+	return b.String()
+}
+
+// isFormatDelim reports whether b is a WhatsApp inline-formatting delimiter.
+func isFormatDelim(b byte) bool {
+	return b == '*' || b == '_' || b == '~' || b == '`'
+}
+
+// normalizeForMatch returns the normalized rune slice of s together with a
+// parallel offset slice. offsets[k] is the byte index in the ORIGINAL string
+// where the k-th normalized rune began; a final sentinel offsets[len] == len(s)
+// lets callers compute the end byte offset of the last matched rune.
+//
+// Normalization: drop WhatsApp formatting delimiters (* _ ~ `), collapse any run
+// of whitespace (spaces, tabs, newlines) into a single ASCII space, and
+// lower-case everything.
+func normalizeForMatch(s string) ([]rune, []int) {
+	runes := make([]rune, 0, len(s))
+	offsets := make([]int, 0, len(s)+1)
+	lastWasSpace := false
+	for i, r := range s {
+		switch r {
+		case '*', '_', '~', '`':
+			continue
+		}
+		if unicode.IsSpace(r) {
+			if lastWasSpace {
+				continue
+			}
+			runes = append(runes, ' ')
+			offsets = append(offsets, i)
+			lastWasSpace = true
+			continue
+		}
+		runes = append(runes, unicode.ToLower(r))
+		offsets = append(offsets, i)
+		lastWasSpace = false
+	}
+	offsets = append(offsets, len(s))
+	return runes, offsets
+}
+
+// trimSpaceRunes strips leading/trailing single-space runes left by
+// normalizeForMatch so a pasted term with surrounding whitespace still matches.
+func trimSpaceRunes(r []rune) []rune {
+	start := 0
+	for start < len(r) && r[start] == ' ' {
+		start++
+	}
+	end := len(r)
+	for end > start && r[end-1] == ' ' {
+		end--
+	}
+	return r[start:end]
+}
+
+// runesEqualAt reports whether needle occurs in hay starting at index i.
+func runesEqualAt(hay, needle []rune, i int) bool {
+	for j := range needle {
+		if hay[i+j] != needle[j] {
+			return false
+		}
+	}
+	return true
 }
 
 // ExtractLinks extracts HTTP/HTTPS links from text.
