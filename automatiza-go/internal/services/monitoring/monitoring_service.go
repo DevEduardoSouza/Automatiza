@@ -443,6 +443,28 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		return nil
 	}
 
+	// Map connected chips (db id → session) and the automation's pinned chip
+	// preference, so a destination group can be dispatched from the chip the
+	// user actually selected instead of the arbitrary group owner. Mirrors the
+	// offer_generate chip preference (migrations 049/050).
+	connectedSessionByID := make(map[string]string, len(instances))
+	for i := range instances {
+		if instances[i].Status == "connected" {
+			connectedSessionByID[fmt.Sprintf("%d", instances[i].ID)] = instances[i].InstanceID
+		}
+	}
+	preferredChipIDs := make([]string, 0, len(automation.InstanceIDs)+1)
+	for _, id := range automation.InstanceIDs {
+		if _, ok := connectedSessionByID[id]; ok {
+			preferredChipIDs = append(preferredChipIDs, id)
+		}
+	}
+	if len(preferredChipIDs) == 0 && automation.InstanceID != nil && *automation.InstanceID != "" {
+		if _, ok := connectedSessionByID[*automation.InstanceID]; ok {
+			preferredChipIDs = append(preferredChipIDs, *automation.InstanceID)
+		}
+	}
+
 	// 10. Get destination groups
 	destinationGroups := automation.SendGroups
 	if len(destinationGroups) == 0 {
@@ -467,6 +489,23 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				zap.Error(gErr))
 		} else {
 			groupInstances = gi
+		}
+	}
+
+	// Per-group participation (participating_instance_ids), loaded only when the
+	// automation pins a chip. Used to honor the pinned chip only when it's an
+	// actual member of the destination group — otherwise WAHA rejects the send
+	// with "not participating", so we keep the owner/fallback routing.
+	var groupParticipants map[string][]string
+	if len(preferredChipIDs) > 0 && s.groupRepo != nil {
+		if grps, gErr := s.groupRepo.GetGroupsByWAGroupIDs(ctx, automation.UserID, destinationGroups); gErr != nil {
+			s.logger.Warn("Failed to load destination group participants; keeping owner routing",
+				zap.String("automationID", automation.ID), zap.Error(gErr))
+		} else {
+			groupParticipants = make(map[string][]string, len(grps))
+			for _, g := range grps {
+				groupParticipants[g.WAGroupID] = g.ParticipatingInstanceIDs
+			}
 		}
 	}
 
@@ -496,6 +535,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			if owner, ok := groupInstances[groupID]; ok && owner != nil && owner.IsConnected() {
 				senderSession = owner.InstanceID
 			}
+		}
+		// Prefer the chip the user pinned on the automation when it's a
+		// connected member of this destination group. Makes the "Número"
+		// selection control the sender instead of the arbitrary group owner;
+		// stays on owner/fallback when the pinned chip isn't in the group.
+		if pinned := preferredParticipantSession(preferredChipIDs, groupParticipants[groupID], connectedSessionByID); pinned != "" {
+			senderSession = pinned
 		}
 
 		// Pula grupos onde a sessao sabidamente nao e mais membro. Sem isso, o
@@ -621,6 +667,31 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	}
 
 	return nil
+}
+
+// preferredParticipantSession returns the session of the first pinned chip
+// that is both connected and a participant of the group. Returns "" when no
+// pinned chip qualifies, signalling the caller to keep the default routing
+// (group owner / first-connected fallback). Guarding on participation avoids
+// forcing a send from a chip that isn't in the group (WAHA "not participating").
+func preferredParticipantSession(preferredChipIDs, participants []string, connectedSessionByID map[string]string) string {
+	if len(preferredChipIDs) == 0 || len(participants) == 0 {
+		return ""
+	}
+	participantSet := make(map[string]struct{}, len(participants))
+	for _, p := range participants {
+		participantSet[p] = struct{}{}
+	}
+	for _, id := range preferredChipIDs {
+		session, connected := connectedSessionByID[id]
+		if !connected {
+			continue
+		}
+		if _, ok := participantSet[id]; ok {
+			return session
+		}
+	}
+	return ""
 }
 
 func (s *monitoringService) findMatchingAutomations(ctx context.Context, instanceName, groupJID string) ([]models.Automation, error) {
