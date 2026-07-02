@@ -215,7 +215,12 @@ func (h *CouponHandler) ApplyCouponWithPreloaded(
 func normalizeStoreName(store string) string {
 	switch strings.ToLower(strings.TrimSpace(store)) {
 	case "ml", "mercadolivre", "mercado_livre":
-		return "mercadolivre"
+		// Forma canonica DEVE bater com coupon_rules.platform ("mercado_livre",
+		// com underscore — ver proto/coupons/v1/coupons.proto). Retornar
+		// "mercadolivre" (sem underscore) fazia o WHERE cr.platform = $2 nunca
+		// casar as regras ML -> TODO cupom avancado de Mercado Livre era
+		// silenciosamente descartado (Shopee funcionava por coincidir o nome).
+		return "mercado_livre"
 	case "shopee":
 		return "shopee"
 	case "amazon":
