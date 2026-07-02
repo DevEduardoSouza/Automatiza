@@ -671,7 +671,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 
 // preferredParticipantSession returns the session of the first pinned chip
 // that is both connected and a participant of the group. Returns "" when no
-// pinned chip qualifies, signalling the caller to keep the default routing
+// pinned chip qualifies, signaling the caller to keep the default routing
 // (group owner / first-connected fallback). Guarding on participation avoids
 // forcing a send from a chip that isn't in the group (WAHA "not participating").
 func preferredParticipantSession(preferredChipIDs, participants []string, connectedSessionByID map[string]string) string {
