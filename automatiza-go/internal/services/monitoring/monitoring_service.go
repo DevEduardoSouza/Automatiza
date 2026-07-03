@@ -723,7 +723,7 @@ func (s *monitoringService) renderMonitorDispatchText(
 	}
 	body := dispatchText.Body
 	if len(dispatchText.Copies) > 0 {
-		body = dispatchText.Copies[rand.IntN(len(dispatchText.Copies))]
+		body = dispatchText.Copies[rand.IntN(len(dispatchText.Copies))] //nolint:gosec // G404: non-security random for copy rotation
 	}
 	if body == "" {
 		return ""
@@ -731,60 +731,79 @@ func (s *monitoringService) renderMonitorDispatchText(
 
 	cta := ""
 	if len(automation.CTAs) > 0 {
-		cta = automation.CTAs[rand.IntN(len(automation.CTAs))]
+		cta = automation.CTAs[rand.IntN(len(automation.CTAs))] //nolint:gosec // G404: non-security random for CTA rotation
 	}
 
-	// Shopee: enrich for price/title via GetProduct. Best-effort — render with
-	// whatever we have (at minimum the affiliate link) if enrichment fails.
 	if shopeeAff != nil && shopeeAff.AffiliateLink != "" {
-		vars := text.ShopeeOfferVars{
-			AffiliateLink: shopeeAff.AffiliateLink,
-			Link:          shopeeOriginalLink,
-			Image:         shopeeAff.ImageURL,
-			Store:         "Shopee",
-			CTA:           cta,
-		}
-		if s.shopeeService != nil && shopeeAff.ItemID > 0 && shopeeAff.ShopID > 0 {
-			if product, prodErr := s.shopeeService.GetProduct(ctx, shopeeAff.ItemID, shopeeAff.ShopID, automation.UserID); prodErr != nil {
-				s.logger.Warn("Failed to enrich Shopee product for monitor dispatch text, rendering without price",
-					zap.String("automationID", automation.ID), zap.Error(prodErr))
-			} else if product != nil {
-				vars.Title = product.Name
-				vars.Price = product.Price
-				vars.Discount = product.Discount
-				if product.OriginalPrice > product.Price {
-					vars.OriginalPrice = product.OriginalPrice
-				}
-				if product.Image != "" {
-					vars.Image = product.Image
-				}
-			}
-		}
-		return text.RenderShopeeOfferTemplate(body, vars)
+		return s.renderShopeeDispatchTemplate(ctx, automation, body, cta, shopeeAff, shopeeOriginalLink)
 	}
-
-	// ML: best-effort preview (often blocked by ML anti-bot — price may be empty).
 	if mlAffiliateLink != "" && s.mlService != nil {
-		vars := text.MLOfferVars{
-			AffiliateLink: mlAffiliateLink,
-			Link:          mlOriginalLink,
-			Image:         fallbackImageURL,
-			CTA:           cta,
-		}
-		if preview, prevErr := s.mlService.GetProductPreview(ctx, mlOriginalLink, automation.UserID); prevErr == nil && preview != nil {
-			vars.Title = preview.Title
-			vars.Price = preview.Price
-			if preview.Image != "" {
-				vars.Image = preview.Image
-			}
-			if preview.OriginalPrice != nil && *preview.OriginalPrice > preview.Price {
-				vars.OriginalPrice = *preview.OriginalPrice
-			}
-		}
-		return text.RenderMLOfferTemplate(body, vars)
+		return s.renderMLDispatchTemplate(ctx, automation, body, cta, mlOriginalLink, mlAffiliateLink, fallbackImageURL)
 	}
-
 	return ""
+}
+
+// renderShopeeDispatchTemplate enriches the Shopee product via GetProduct
+// (best-effort — renders with at least the affiliate link if it fails) and
+// fills the dispatch-text template.
+func (s *monitoringService) renderShopeeDispatchTemplate(
+	ctx context.Context,
+	automation *models.Automation,
+	body, cta string,
+	shopeeAff *models.ShopeeAffiliateLink,
+	shopeeOriginalLink string,
+) string {
+	vars := text.ShopeeOfferVars{
+		AffiliateLink: shopeeAff.AffiliateLink,
+		Link:          shopeeOriginalLink,
+		Image:         shopeeAff.ImageURL,
+		Store:         "Shopee",
+		CTA:           cta,
+	}
+	if s.shopeeService != nil && shopeeAff.ItemID > 0 && shopeeAff.ShopID > 0 {
+		product, prodErr := s.shopeeService.GetProduct(ctx, shopeeAff.ItemID, shopeeAff.ShopID, automation.UserID)
+		if prodErr != nil {
+			s.logger.Warn("Failed to enrich Shopee product for monitor dispatch text, rendering without price",
+				zap.String("automationID", automation.ID), zap.Error(prodErr))
+		} else if product != nil {
+			vars.Title = product.Name
+			vars.Price = product.Price
+			vars.Discount = product.Discount
+			if product.OriginalPrice > product.Price {
+				vars.OriginalPrice = product.OriginalPrice
+			}
+			if product.Image != "" {
+				vars.Image = product.Image
+			}
+		}
+	}
+	return text.RenderShopeeOfferTemplate(body, vars)
+}
+
+// renderMLDispatchTemplate fills the dispatch-text template for an ML offer.
+// The preview is best-effort (often blocked by ML anti-bot — price may be empty).
+func (s *monitoringService) renderMLDispatchTemplate(
+	ctx context.Context,
+	automation *models.Automation,
+	body, cta, mlOriginalLink, mlAffiliateLink, fallbackImageURL string,
+) string {
+	vars := text.MLOfferVars{
+		AffiliateLink: mlAffiliateLink,
+		Link:          mlOriginalLink,
+		Image:         fallbackImageURL,
+		CTA:           cta,
+	}
+	if preview, prevErr := s.mlService.GetProductPreview(ctx, mlOriginalLink, automation.UserID); prevErr == nil && preview != nil {
+		vars.Title = preview.Title
+		vars.Price = preview.Price
+		if preview.Image != "" {
+			vars.Image = preview.Image
+		}
+		if preview.OriginalPrice != nil && *preview.OriginalPrice > preview.Price {
+			vars.OriginalPrice = *preview.OriginalPrice
+		}
+	}
+	return text.RenderMLOfferTemplate(body, vars)
 }
 
 // preferredParticipantSession returns the session of the first pinned chip
