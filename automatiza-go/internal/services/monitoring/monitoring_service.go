@@ -36,6 +36,7 @@ type monitoringService struct {
 	instanceRepo    repository.InstanceRepository
 	groupRepo       repository.GroupRepository
 	dispatchLogRepo repository.DispatchLogRepository
+	settingsRepo    repository.SettingsRepository
 
 	shopeeService shopee.Service
 	mlService     mercadolivre.Service
@@ -54,6 +55,7 @@ func NewMonitoringService(
 	instanceRepo repository.InstanceRepository,
 	groupRepo repository.GroupRepository,
 	dispatchLogRepo repository.DispatchLogRepository,
+	settingsRepo repository.SettingsRepository,
 	shopeeService shopee.Service,
 	mlService mercadolivre.Service,
 	waProvider whatsapp.WhatsAppProvider,
@@ -65,6 +67,7 @@ func NewMonitoringService(
 		instanceRepo:    instanceRepo,
 		groupRepo:       groupRepo,
 		dispatchLogRepo: dispatchLogRepo,
+		settingsRepo:    settingsRepo,
 		shopeeService:   shopeeService,
 		mlService:       mlService,
 		waProvider:      waProvider,
@@ -237,6 +240,12 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	affiliateLinks := make(map[string]string)
 	var productImageURL string
 
+	// Captured only to enrich + render a dispatch-text template below (opt-in).
+	// firstShopeeAff carries ItemID/ShopID so we can call GetProduct for the price;
+	// the ML pair carries the affiliate link for the ML template.
+	var firstShopeeAff *models.ShopeeAffiliateLink
+	var firstShopeeOriginalLink, firstMLOriginalLink, firstMLAffiliateLink string
+
 	for _, link := range shopeeLinks {
 		if s.shopeeService != nil {
 			aff, err := s.shopeeService.GenerateAffiliateLink(ctx, link, automation.UserID)
@@ -274,6 +283,10 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				affiliateLinks[link] = aff.AffiliateLink
 				if aff.ImageURL != "" && productImageURL == "" {
 					productImageURL = aff.ImageURL
+				}
+				if firstShopeeAff == nil {
+					firstShopeeAff = aff
+					firstShopeeOriginalLink = link
 				}
 			}
 		}
@@ -315,29 +328,49 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 					zap.Error(err))
 			} else if aff != nil && aff.AffiliateLink != "" {
 				affiliateLinks[link] = aff.AffiliateLink
+				if firstMLAffiliateLink == "" {
+					firstMLOriginalLink = link
+					firstMLAffiliateLink = aff.AffiliateLink
+				}
 			}
 		}
 	}
 
-	// 5. Apply text transformation rules
+	// 5. Build the outgoing body.
+	//
+	// Opt-in dispatch text: when the automation has a dispatch_text_id, render
+	// that template as the body (enriching the product for price/title) INSTEAD
+	// of relaying the source text. Sem dispatch text → comportamento histórico:
+	// repassa msg.Body com as regras de rodapé + troca de links por afiliado.
 	processedText := msg.Body
-
-	// Get monitoring text rules if configured
-	if automation.MonitoringTextRules != nil {
-		processedText = text.ProcessarMensagem(processedText, automation.MonitoringTextRules)
+	dispatchTextRendered := ""
+	if automation.DispatchTextID != nil && *automation.DispatchTextID != "" && s.settingsRepo != nil {
+		dispatchTextRendered = s.renderMonitorDispatchText(
+			ctx, automation, firstShopeeAff, firstShopeeOriginalLink, firstMLOriginalLink, firstMLAffiliateLink, productImageURL)
 	}
 
-	// 6. Replace original links with affiliate links
-	for orig, aff := range affiliateLinks {
-		processedText = strings.ReplaceAll(processedText, orig, aff)
-	}
+	if dispatchTextRendered != "" {
+		// Template is self-contained (already carries the affiliate link), so we
+		// skip the source-text rules and link substitution entirely.
+		processedText = dispatchTextRendered
+	} else {
+		// Get monitoring text rules if configured
+		if automation.MonitoringTextRules != nil {
+			processedText = text.ProcessarMensagem(processedText, automation.MonitoringTextRules)
+		}
 
-	// 6b. Block ML relay: strip any ML links the source posted when this
-	// automation has mercadolivre disabled. Pure-ML messages were already
-	// dropped by the store filter above; this covers mixed messages where a
-	// Shopee link keeps the relay alive but an ML link rode along in the body.
-	for _, mlLink := range blockedMLLinks {
-		processedText = strings.ReplaceAll(processedText, mlLink, "")
+		// 6. Replace original links with affiliate links
+		for orig, aff := range affiliateLinks {
+			processedText = strings.ReplaceAll(processedText, orig, aff)
+		}
+
+		// 6b. Block ML relay: strip any ML links the source posted when this
+		// automation has mercadolivre disabled. Pure-ML messages were already
+		// dropped by the store filter above; this covers mixed messages where a
+		// Shopee link keeps the relay alive but an ML link rode along in the body.
+		for _, mlLink := range blockedMLLinks {
+			processedText = strings.ReplaceAll(processedText, mlLink, "")
+		}
 	}
 
 	// 7. Normalize text
@@ -667,6 +700,91 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	}
 
 	return nil
+}
+
+// renderMonitorDispatchText renders the automation's configured dispatch-text
+// template for a monitored offer, so the relay can send the operator's own copy
+// instead of the source group's text. Shopee is enriched via GetProduct (the
+// item/shop id comes from the affiliate step) so {preco}/{nome_produto} fill in;
+// ML uses the affiliate preview (best-effort). Returns "" when there's no
+// template or no affiliated product — the caller then relays the source text.
+func (s *monitoringService) renderMonitorDispatchText(
+	ctx context.Context,
+	automation *models.Automation,
+	shopeeAff *models.ShopeeAffiliateLink,
+	shopeeOriginalLink, mlOriginalLink, mlAffiliateLink, fallbackImageURL string,
+) string {
+	dispatchText, err := s.settingsRepo.GetActiveDispatchTextByID(ctx, *automation.DispatchTextID, automation.UserID)
+	if err != nil || dispatchText == nil {
+		s.logger.Warn("Failed to load dispatch text for monitor, relaying source text",
+			zap.String("automationID", automation.ID),
+			zap.Error(err))
+		return ""
+	}
+	body := dispatchText.Body
+	if len(dispatchText.Copies) > 0 {
+		body = dispatchText.Copies[rand.IntN(len(dispatchText.Copies))]
+	}
+	if body == "" {
+		return ""
+	}
+
+	cta := ""
+	if len(automation.CTAs) > 0 {
+		cta = automation.CTAs[rand.IntN(len(automation.CTAs))]
+	}
+
+	// Shopee: enrich for price/title via GetProduct. Best-effort — render with
+	// whatever we have (at minimum the affiliate link) if enrichment fails.
+	if shopeeAff != nil && shopeeAff.AffiliateLink != "" {
+		vars := text.ShopeeOfferVars{
+			AffiliateLink: shopeeAff.AffiliateLink,
+			Link:          shopeeOriginalLink,
+			Image:         shopeeAff.ImageURL,
+			Store:         "Shopee",
+			CTA:           cta,
+		}
+		if s.shopeeService != nil && shopeeAff.ItemID > 0 && shopeeAff.ShopID > 0 {
+			if product, prodErr := s.shopeeService.GetProduct(ctx, shopeeAff.ItemID, shopeeAff.ShopID, automation.UserID); prodErr != nil {
+				s.logger.Warn("Failed to enrich Shopee product for monitor dispatch text, rendering without price",
+					zap.String("automationID", automation.ID), zap.Error(prodErr))
+			} else if product != nil {
+				vars.Title = product.Name
+				vars.Price = product.Price
+				vars.Discount = product.Discount
+				if product.OriginalPrice > product.Price {
+					vars.OriginalPrice = product.OriginalPrice
+				}
+				if product.Image != "" {
+					vars.Image = product.Image
+				}
+			}
+		}
+		return text.RenderShopeeOfferTemplate(body, vars)
+	}
+
+	// ML: best-effort preview (often blocked by ML anti-bot — price may be empty).
+	if mlAffiliateLink != "" && s.mlService != nil {
+		vars := text.MLOfferVars{
+			AffiliateLink: mlAffiliateLink,
+			Link:          mlOriginalLink,
+			Image:         fallbackImageURL,
+			CTA:           cta,
+		}
+		if preview, prevErr := s.mlService.GetProductPreview(ctx, mlOriginalLink, automation.UserID); prevErr == nil && preview != nil {
+			vars.Title = preview.Title
+			vars.Price = preview.Price
+			if preview.Image != "" {
+				vars.Image = preview.Image
+			}
+			if preview.OriginalPrice != nil && *preview.OriginalPrice > preview.Price {
+				vars.OriginalPrice = *preview.OriginalPrice
+			}
+		}
+		return text.RenderMLOfferTemplate(body, vars)
+	}
+
+	return ""
 }
 
 // preferredParticipantSession returns the session of the first pinned chip

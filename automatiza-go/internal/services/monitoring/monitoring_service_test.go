@@ -308,6 +308,7 @@ func (m *mockDispatchLogRepo) DeleteOldLogsByStatus(ctx context.Context, status 
 type mockShopeeService struct {
 	GenerateAffiliateLinkFn func(ctx context.Context, productURL, userID string) (*models.ShopeeAffiliateLink, error)
 	ExtractProductIDsFn     func(productURL string) (shopID, itemID int64, err error)
+	GetProductFn            func(ctx context.Context, itemID, shopID int64, userID string) (*models.ShopeeOffer, error)
 }
 
 func (m *mockShopeeService) SearchOffers(_ context.Context, _ string, _ models.ShopeeSearchParams) (*models.ShopeeSearchResult, error) {
@@ -322,7 +323,10 @@ func (m *mockShopeeService) GenerateAffiliateLink(ctx context.Context, productUR
 func (m *mockShopeeService) GetCategories(_ context.Context, _ *int64) ([]models.ShopeeCategory, error) {
 	return nil, nil
 }
-func (m *mockShopeeService) GetProduct(_ context.Context, _, _ int64, _ string) (*models.ShopeeOffer, error) {
+func (m *mockShopeeService) GetProduct(ctx context.Context, itemID, shopID int64, userID string) (*models.ShopeeOffer, error) {
+	if m.GetProductFn != nil {
+		return m.GetProductFn(ctx, itemID, shopID, userID)
+	}
 	return nil, nil
 }
 func (m *mockShopeeService) ExpandURL(_ context.Context, _ string) (string, error) {
@@ -1222,6 +1226,7 @@ func TestNewMonitoringService(t *testing.T) {
 		&mockInstanceRepo{},
 		nil, // groupRepo: per-group routing disabled (tests don't exercise multi-instance path)
 		&mockDispatchLogRepo{},
+		nil, // settingsRepo: dispatch-text templates disabled in this path
 		&mockShopeeService{},
 		&mockMLService{},
 		&mockWAProvider{},

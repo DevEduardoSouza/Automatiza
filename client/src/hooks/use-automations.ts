@@ -585,10 +585,10 @@ export function useAutomations(): UseAutomationsReturn {
       let dispatchTextId: string | undefined;
       let mlLinkListId: string | undefined;
 
-      if (mode === 'search') {
+      if (mode === 'search' || mode === 'list' || mode === 'monitor') {
         dispatchTextId = formData.dispatch_text_id || undefined;
-      } else if (mode === 'list') {
-        dispatchTextId = formData.dispatch_text_id || undefined;
+      }
+      if (mode === 'list') {
         mlLinkListId = formData.ml_link_list_id || undefined;
       }
 
