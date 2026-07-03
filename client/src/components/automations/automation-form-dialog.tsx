@@ -523,6 +523,27 @@ export function AutomationFormDialog({
             />
           </div>
 
+          {/* "Enviar como imagem" (Monitoramento) — logo abaixo dos cupons */}
+          {formData.mode === 'monitor' && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+              <div className="space-y-1">
+                <Label htmlFor="monitoring-send-as-image" className="cursor-pointer">
+                  {t('pages.offerAutomations.form.sendAsImage')}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('pages.offerAutomations.form.sendAsImageHint')}
+                </p>
+              </div>
+              <Switch
+                id="monitoring-send-as-image"
+                checked={Boolean(formData.monitoring_send_as_image ?? false)}
+                onCheckedChange={(v) =>
+                  setFormData((prev) => ({ ...prev, monitoring_send_as_image: Boolean(v) }))
+                }
+              />
+            </div>
+          )}
+
           {/* CTA selection removed: o sistema agora usa automaticamente
               o pool inteiro de CTAs ativos do user, filtrado por platform
               do produto. Veja /ctas para gerenciar. Override via cta_ids
@@ -645,26 +666,6 @@ export function AutomationFormDialog({
                 checked={Boolean(formData.search_send_as_image ?? true)}
                 onCheckedChange={(v) =>
                   setFormData((prev) => ({ ...prev, search_send_as_image: Boolean(v) }))
-                }
-              />
-            </div>
-          )}
-
-          {formData.mode === 'monitor' && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
-              <div className="space-y-1">
-                <Label htmlFor="monitoring-send-as-image" className="cursor-pointer">
-                  {t('pages.offerAutomations.form.sendAsImage')}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t('pages.offerAutomations.form.sendAsImageHint')}
-                </p>
-              </div>
-              <Switch
-                id="monitoring-send-as-image"
-                checked={Boolean(formData.monitoring_send_as_image ?? false)}
-                onCheckedChange={(v) =>
-                  setFormData((prev) => ({ ...prev, monitoring_send_as_image: Boolean(v) }))
                 }
               />
             </div>
