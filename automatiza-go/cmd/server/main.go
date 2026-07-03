@@ -535,6 +535,7 @@ func main() {
 		instanceRepo,
 		groupRepo,
 		dispatchLogRepo,
+		settingsRepo,
 		shopeeService,
 		mlService,
 		wahaAdapter,

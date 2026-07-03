@@ -550,12 +550,38 @@ export function AutomationFormDialog({
           )}
 
           {/* Dispatch Text */}
-          {(formData.mode === 'search' || formData.mode === 'list') && (
+          {(formData.mode === 'search' ||
+            formData.mode === 'list' ||
+            formData.mode === 'monitor') && (
             <DispatchTextSelector
               formData={formData}
               setFormData={setFormData}
               dispatchTexts={dispatchTexts}
             />
+          )}
+
+          {/* Monitor: texto de disparo é opcional. Vazio = repassa o texto do grupo. */}
+          {formData.mode === 'monitor' && (
+            <div
+              className="rounded-xl border px-4 py-3 text-sm"
+              style={{
+                backgroundColor: 'rgba(141, 45, 83, 0.06)',
+                borderColor: 'rgba(141, 45, 83, 0.15)',
+              }}
+            >
+              <div className="flex items-start gap-3">
+                <Info
+                  className="h-4 w-4 mt-0.5 shrink-0"
+                  style={{ color: 'rgba(141, 45, 83, 0.6)' }}
+                />
+                <p style={{ color: 'rgba(141, 45, 83, 0.8)' }}>
+                  {t(
+                    'pages.offerAutomations.form.dispatchTextMonitorHint',
+                    'Opcional. Deixe vazio para continuar repassando o texto do grupo monitorado (padrão). Se escolher um texto de disparo, ele substitui a mensagem original — o preço/nome do produto são buscados automaticamente (Shopee).'
+                  )}
+                </p>
+              </div>
+            </div>
           )}
 
           {formData.mode === 'search' && formData.dispatch_text_id && (
@@ -624,7 +650,7 @@ export function AutomationFormDialog({
             </div>
           )}
 
-          {formData.mode === 'monitoring' && (
+          {formData.mode === 'monitor' && (
             <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
               <div className="space-y-1">
                 <Label htmlFor="monitoring-send-as-image" className="cursor-pointer">

@@ -585,10 +585,10 @@ export function useAutomations(): UseAutomationsReturn {
       let dispatchTextId: string | undefined;
       let mlLinkListId: string | undefined;
 
-      if (mode === 'search') {
+      if (mode === 'search' || mode === 'list' || mode === 'monitor') {
         dispatchTextId = formData.dispatch_text_id || undefined;
-      } else if (mode === 'list') {
-        dispatchTextId = formData.dispatch_text_id || undefined;
+      }
+      if (mode === 'list') {
         mlLinkListId = formData.ml_link_list_id || undefined;
       }
 
@@ -640,7 +640,7 @@ export function useAutomations(): UseAutomationsReturn {
           searchSendAsImage:
             mode === 'search' ? Boolean(formData.search_send_as_image ?? true) : undefined,
           monitoringSendAsImage:
-            mode === 'monitoring'
+            mode === 'monitor'
               ? Boolean(formData.monitoring_send_as_image ?? false)
               : undefined,
           // Empty string sent on update explicitly clears the saved
@@ -707,7 +707,7 @@ export function useAutomations(): UseAutomationsReturn {
           searchSendAsImage:
             mode === 'search' ? Boolean(formData.search_send_as_image ?? true) : undefined,
           monitoringSendAsImage:
-            mode === 'monitoring'
+            mode === 'monitor'
               ? Boolean(formData.monitoring_send_as_image ?? false)
               : undefined,
           instanceId: formData.instance_id ?? undefined,
