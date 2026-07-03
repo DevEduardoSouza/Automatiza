@@ -640,7 +640,7 @@ export function useAutomations(): UseAutomationsReturn {
           searchSendAsImage:
             mode === 'search' ? Boolean(formData.search_send_as_image ?? true) : undefined,
           monitoringSendAsImage:
-            mode === 'monitoring'
+            mode === 'monitor'
               ? Boolean(formData.monitoring_send_as_image ?? false)
               : undefined,
           // Empty string sent on update explicitly clears the saved
@@ -707,7 +707,7 @@ export function useAutomations(): UseAutomationsReturn {
           searchSendAsImage:
             mode === 'search' ? Boolean(formData.search_send_as_image ?? true) : undefined,
           monitoringSendAsImage:
-            mode === 'monitoring'
+            mode === 'monitor'
               ? Boolean(formData.monitoring_send_as_image ?? false)
               : undefined,
           instanceId: formData.instance_id ?? undefined,
