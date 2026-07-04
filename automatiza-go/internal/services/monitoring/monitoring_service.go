@@ -637,14 +637,24 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// preview-first (comportamento atual). nil = false (default do schema).
 		monitoringSendAsImage := automation.MonitoringSendAsImage != nil && *automation.MonitoringSendAsImage
 
-		// Priority 1: Link custom preview (source had WhatsApp link preview)
-		if !monitoringSendAsImage && firstAffiliateURL != "" && msg.LinkPreviewTitle != "" {
+		// Priority 1: Link custom preview.
+		// "Enviar como imagem" DESLIGADO => sempre tenta o card de preview quando
+		// há link afiliado, gerando um título quando a mensagem de origem não
+		// trouxe um (paridade com offer_generate/busca, que montam o preview a
+		// partir dos dados do produto). Antes exigíamos msg.LinkPreviewTitle != "",
+		// então espelho de fonte SEM preview caía sempre em imagem — contrariando
+		// o que o toggle promete ("preview nativo do WhatsApp").
+		if !monitoringSendAsImage && firstAffiliateURL != "" {
+			previewTitle := msg.LinkPreviewTitle
+			if previewTitle == "" {
+				previewTitle = firstNonEmptyLine(processedText)
+			}
 			_, err = s.waProvider.SendLinkCustomPreview(sendCtx, whatsapp.SendLinkPreviewInput{
 				SessionName: senderSession,
 				ChatID:      groupID,
 				Text:        processedText,
 				URL:         firstAffiliateURL,
-				Title:       msg.LinkPreviewTitle,
+				Title:       previewTitle,
 				Description: msg.LinkPreviewDescription,
 				ImageURL:    imageURL,
 				ImageBase64: imageBase64,
@@ -1165,4 +1175,23 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return s[:max] + "..."
+}
+
+// firstNonEmptyLine returns the first non-blank line of s (trimmed, rune-capped),
+// used as a fallback link-preview title when the source message carried none.
+// The first line of an offer body is typically the product headline/name, which
+// makes a reasonable preview title — mirroring how offer_generate derives one.
+func firstNonEmptyLine(s string) string {
+	const maxRunes = 120
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if r := []rune(line); len(r) > maxRunes {
+			return string(r[:maxRunes])
+		}
+		return line
+	}
+	return ""
 }
