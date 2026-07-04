@@ -238,23 +238,47 @@ func (r *groupRepository) SyncGroups(ctx context.Context, userID string, instanc
 // "owner") to avoid ping-pong on shared groups; participating_instance_ids
 // accumulates every chip whose sync has seen the group, deduped, so the
 // frontend can filter by chip and render multi-chip badges.
+//
+// admin_instance_ids tracks per-chip admin the same way: this chip's sync
+// ADDS itself when it is admin ($9=true) and REMOVES itself when it is not,
+// so the array is the union of admin chips. is_admin is derived from it
+// ("any chip admin") instead of being blindly overwritten by the last chip
+// to sync — the old EXCLUDED.is_admin overwrite made a non-admin chip hide a
+// group where another chip was still admin. Deriving in-SQL keeps the
+// existing `WHERE is_admin = true` list filter correct with no read changes.
 const upsertGroupQuery = `
 	INSERT INTO groups (user_id, instance_id, wa_group_id, name, description, picture_url,
 	                    members_count, member_limit, is_admin, admin_only,
-	                    participating_instance_ids, created_at, updated_at)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, ARRAY[$2::INTEGER], $11, $12)
+	                    participating_instance_ids, admin_instance_ids, created_at, updated_at)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, ARRAY[$2::INTEGER],
+	        CASE WHEN $9 THEN ARRAY[$2::INTEGER] ELSE ARRAY[]::INTEGER[] END, $11, $12)
 	ON CONFLICT (user_id, wa_group_id) DO UPDATE SET
 		name = EXCLUDED.name,
 		description = EXCLUDED.description,
 		picture_url = EXCLUDED.picture_url,
 		members_count = EXCLUDED.members_count,
 		member_limit = EXCLUDED.member_limit,
-		is_admin = EXCLUDED.is_admin,
 		admin_only = EXCLUDED.admin_only,
 		participating_instance_ids = (
 			SELECT ARRAY(
 				SELECT DISTINCT unnest(groups.participating_instance_ids || ARRAY[EXCLUDED.instance_id])
 			)
+		),
+		admin_instance_ids = (
+			SELECT ARRAY(
+				SELECT DISTINCT unnest(
+					CASE WHEN EXCLUDED.is_admin
+						THEN groups.admin_instance_ids || ARRAY[EXCLUDED.instance_id]
+						ELSE array_remove(groups.admin_instance_ids, EXCLUDED.instance_id)
+					END
+				)
+			)
+		),
+		is_admin = (
+			CASE WHEN EXCLUDED.is_admin
+				THEN TRUE
+				ELSE array_length(array_remove(groups.admin_instance_ids, EXCLUDED.instance_id), 1) IS NOT NULL
+			END
 		),
 		updated_at = EXCLUDED.updated_at
 `
@@ -300,7 +324,9 @@ func loadParticipatingGroupIDs(ctx context.Context, tx pgx.Tx, userID string, in
 func removeChipFromGroup(ctx context.Context, tx pgx.Tx, userID string, instanceID int, waGroupID string) error {
 	_, err := tx.Exec(ctx, `
 		WITH target AS (
-			SELECT id, instance_id, array_remove(participating_instance_ids, $2::INTEGER) AS remaining
+			SELECT id, instance_id,
+			       array_remove(participating_instance_ids, $2::INTEGER) AS remaining,
+			       array_remove(admin_instance_ids, $2::INTEGER) AS admin_remaining
 			FROM groups
 			WHERE user_id = $1 AND wa_group_id = $3
 			FOR UPDATE
@@ -313,6 +339,8 @@ func removeChipFromGroup(ctx context.Context, tx pgx.Tx, userID string, instance
 		)
 		UPDATE groups g
 		SET participating_instance_ids = t.remaining,
+		    admin_instance_ids = t.admin_remaining,
+		    is_admin = COALESCE(array_length(t.admin_remaining, 1), 0) > 0,
 		    instance_id = CASE
 		        WHEN g.instance_id = $2 THEN t.remaining[1]
 		        ELSE g.instance_id
