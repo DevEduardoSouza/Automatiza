@@ -132,24 +132,33 @@ func (s *monitoringService) ProcessIncomingMessage(ctx context.Context, msg *mod
 		zap.Int("links", len(links)),
 		zap.String("bodyPreview", truncateStr(msg.Body, 100)))
 
-	// 4. Content fingerprint dedup (2 min window)
-	contentKey := s.buildContentKey(msg.InstanceName, msg.RemoteJID, msg.Body)
-	if s.isDuplicateContent(ctx, contentKey) {
+	// 4. Content fingerprint dedup (2 min window).
+	//
+	// Keyed by (group, body-hash) — SEM o instance — pra que a mesma
+	// mensagem vista por vários chips do MESMO dono no grupo de origem
+	// dispare só 1 processamento. Se N chips do user são membros do grupo
+	// monitorado, a WAHA fira N webhooks (mesmo corpo); o primeiro reivindica
+	// a key e os outros N-1 caem aqui ANTES do fan-out (link afiliado,
+	// GetProduct, download de mídia) — evita envio duplicado/triplicado e N×
+	// o custo. claimProductSlot() no loop de dispatch segue como cinto de
+	// segurança por (user, destino, canonicalKey).
+	contentKey := s.buildContentKey(msg.RemoteJID, msg.Body)
+	if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
 		s.logger.Debug("Duplicate content detected, skipping")
 		return nil
 	}
-	s.markContentProcessed(ctx, contentKey)
 
-	// 5. Message ID dedup (10 min window)
-	msgKey := fmt.Sprintf("msg_dedup:%s:%s:%s", msg.InstanceName, msg.RemoteJID, msg.MessageID)
-	if s.isDuplicateContent(ctx, msgKey) {
-		s.logger.Debug("Duplicate message ID detected, skipping")
-		return nil
-	}
-	if cacheErr := s.cache.Set(ctx, msgKey, "1", 10*time.Minute); cacheErr != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to set message ID dedup cache key", cacheErr, map[string]string{
-			"module": "monitoring", "operation": "msg_dedup_set", "cache_policy": "fail-open",
-		})
+	// 5. Message ID dedup (10 min window). Mesma motivação — keyed por
+	// (group, msgID), não por instance: o key.id do WhatsApp é idêntico nos
+	// N webhooks (é a mesma mensagem), então colapsa os chips. Se o MessageID
+	// vier vazio, pula esse dedup pra não colapsar mensagens distintas numa
+	// chave vazia (o dedup de conteúdo acima já cobre esse caso).
+	if msg.MessageID != "" {
+		msgKey := fmt.Sprintf("msg_dedup:%s:%s", msg.RemoteJID, msg.MessageID)
+		if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
+			s.logger.Debug("Duplicate message ID detected, skipping")
+			return nil
+		}
 	}
 
 	// 6. Find matching monitoring automations for this group
@@ -902,9 +911,11 @@ func (s *monitoringService) categorizeLinks(links []string) (shopeeLinks, mlLink
 	return
 }
 
-func (s *monitoringService) buildContentKey(instanceName, groupID, body string) string {
-	// Create a hash of the content for deduplication
-	hash := sha256.Sum256([]byte(instanceName + ":" + groupID + ":" + body))
+// buildContentKey monta a chave de dedup de conteúdo por (grupo, body-hash),
+// SEM o instance de propósito: a mesma mensagem entregue a vários chips do
+// mesmo dono no grupo de origem colapsa numa chave só (dedup multi-chip).
+func (s *monitoringService) buildContentKey(groupID, body string) string {
+	hash := sha256.Sum256([]byte(groupID + ":" + body))
 	return "content:" + hex.EncodeToString(hash[:])
 }
 
@@ -970,6 +981,32 @@ func (s *monitoringService) extractCanonicalKey(links []string) string {
 	}
 
 	return ""
+}
+
+// claimOnce marca `key` como processado por `ttl` de forma ATÔMICA e retorna
+// true só pro PRIMEIRO caller na janela. Substitui o par isDuplicateContent()
+// (GET) + markContentProcessed()/Set() (SET), cujo gap check-then-set deixava
+// entregas duplicadas concorrentes passarem todas: a mesma mensagem de origem
+// vista por N chips do mesmo dono no grupo monitor (a WAHA fira um webhook por
+// chip, todos com o mesmo key.id) passava o GET antes de qualquer SET, então
+// os N processamentos faziam fan-out da mesma oferta pros grupos de destino,
+// gerando envios duplicados/triplicados no mesmo segundo. O SetNX fecha o gap.
+//
+// Fail-open: sem cache, ou em erro de Redis, retorna true (processa) pra nunca
+// descartar mensagem real; claimProductSlot ainda barra duplicação no dispatch
+// nesse caso degradado.
+func (s *monitoringService) claimOnce(ctx context.Context, key string, ttl time.Duration) bool {
+	if s.cache == nil {
+		return true
+	}
+	claimed, err := s.cache.SetNX(ctx, key, "1", ttl)
+	if err != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "monitoring dedup SetNX failed, processing fail-open", err, map[string]string{
+			"module": "monitoring", "operation": "dedup_claim",
+		})
+		return true
+	}
+	return claimed
 }
 
 // claimProductSlot atomically checks and claims a dedup slot using Redis SetNX + DB fallback.

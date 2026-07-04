@@ -886,24 +886,35 @@ func TestBuildContentKey(t *testing.T) {
 	svc := newTestService(t)
 
 	t.Run("deterministic hash", func(t *testing.T) {
-		key1 := svc.buildContentKey("inst1", "group1", "hello")
-		key2 := svc.buildContentKey("inst1", "group1", "hello")
+		key1 := svc.buildContentKey("group1", "hello")
+		key2 := svc.buildContentKey("group1", "hello")
 		if key1 != key2 {
 			t.Errorf("expected deterministic keys, got %q and %q", key1, key2)
 		}
 	})
 
-	t.Run("different inputs produce different keys", func(t *testing.T) {
-		key1 := svc.buildContentKey("inst1", "group1", "hello")
-		key2 := svc.buildContentKey("inst2", "group1", "hello")
+	t.Run("different groups produce different keys", func(t *testing.T) {
+		key1 := svc.buildContentKey("group1", "hello")
+		key2 := svc.buildContentKey("group2", "hello")
 		if key1 == key2 {
-			t.Error("expected different keys for different instances")
+			t.Error("expected different keys for different groups")
+		}
+	})
+
+	t.Run("instance-independent: same group+body collapses across chips", func(t *testing.T) {
+		// A chave NÃO inclui o instance de propósito — a mesma mensagem vista
+		// por chips diferentes do mesmo grupo tem que colapsar (dedup multi-chip).
+		key := svc.buildContentKey("group1", "hello")
+		hash := sha256.Sum256([]byte("group1:hello"))
+		expected := "content:" + hex.EncodeToString(hash[:])
+		if key != expected {
+			t.Errorf("key = %q, want %q", key, expected)
 		}
 	})
 
 	t.Run("prefix is content:", func(t *testing.T) {
-		key := svc.buildContentKey("a", "b", "c")
-		hash := sha256.Sum256([]byte("a:b:c"))
+		key := svc.buildContentKey("b", "c")
+		hash := sha256.Sum256([]byte("b:c"))
 		expected := "content:" + hex.EncodeToString(hash[:])
 		if key != expected {
 			t.Errorf("key = %q, want %q", key, expected)
