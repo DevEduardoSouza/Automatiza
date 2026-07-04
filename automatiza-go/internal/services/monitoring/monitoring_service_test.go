@@ -399,10 +399,11 @@ func (m *mockMLService) InvalidatePreviewCache(ctx context.Context, originURL st
 }
 
 type mockWAProvider struct {
-	SendTextFn           func(ctx context.Context, input whatsapp.SendTextInput) (*whatsapp.MessageResult, error)
-	SendImageFn          func(ctx context.Context, input whatsapp.SendImageInput) (*whatsapp.MessageResult, error)
-	DownloadMediaByURLFn func(ctx context.Context, mediaURL string) (*whatsapp.DownloadMediaResult, error)
-	RedownloadMediaFn    func(ctx context.Context, sessionName, chatID, messageID string) (*whatsapp.DownloadMediaResult, error)
+	SendTextFn              func(ctx context.Context, input whatsapp.SendTextInput) (*whatsapp.MessageResult, error)
+	SendImageFn             func(ctx context.Context, input whatsapp.SendImageInput) (*whatsapp.MessageResult, error)
+	SendLinkCustomPreviewFn func(ctx context.Context, input whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error)
+	DownloadMediaByURLFn    func(ctx context.Context, mediaURL string) (*whatsapp.DownloadMediaResult, error)
+	RedownloadMediaFn       func(ctx context.Context, sessionName, chatID, messageID string) (*whatsapp.DownloadMediaResult, error)
 }
 
 // SessionManager methods
@@ -483,7 +484,10 @@ func (m *mockWAProvider) SendVoice(_ context.Context, _ whatsapp.SendVoiceInput)
 func (m *mockWAProvider) SendPoll(_ context.Context, _ whatsapp.SendPollInput) (*whatsapp.MessageResult, error) {
 	return nil, nil
 }
-func (m *mockWAProvider) SendLinkCustomPreview(_ context.Context, _ whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+func (m *mockWAProvider) SendLinkCustomPreview(ctx context.Context, input whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+	if m.SendLinkCustomPreviewFn != nil {
+		return m.SendLinkCustomPreviewFn(ctx, input)
+	}
 	return nil, nil
 }
 
@@ -1333,6 +1337,105 @@ func TestProcessAutomation_SameGroupSkipped(t *testing.T) {
 		if g == "source@g.us" {
 			t.Error("should not send to source group")
 		}
+	}
+}
+
+// TestProcessAutomation_PreviewWithoutSourceTitle guards the preview-mode
+// parity fix: with "enviar como imagem" OFF and an affiliate link present, the
+// relay must send a link-preview card even when the SOURCE message carried no
+// WhatsApp preview (LinkPreviewTitle == ""), deriving the title from the first
+// line of the body — instead of falling back to a plain image.
+func TestProcessAutomation_PreviewWithoutSourceTitle(t *testing.T) {
+	var previewInput *whatsapp.SendLinkPreviewInput
+	var imageCalled, textCalled bool
+
+	svc := newTestService(t, func(s *monitoringService) {
+		s.shopeeService = &mockShopeeService{
+			GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+				return &models.ShopeeAffiliateLink{
+					AffiliateLink: "https://s.shopee.com.br/aff123",
+					ImageURL:      "https://cf.shopee.com.br/file/img.jpg",
+				}, nil
+			},
+		}
+		s.waProvider = &mockWAProvider{
+			SendLinkCustomPreviewFn: func(_ context.Context, in whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+				captured := in
+				previewInput = &captured
+				return &whatsapp.MessageResult{ID: "msg-1"}, nil
+			},
+			SendImageFn: func(_ context.Context, _ whatsapp.SendImageInput) (*whatsapp.MessageResult, error) {
+				imageCalled = true
+				return &whatsapp.MessageResult{ID: "img-1"}, nil
+			},
+			SendTextFn: func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+				textCalled = true
+				return &whatsapp.MessageResult{ID: "txt-1"}, nil
+			},
+		}
+	})
+
+	delayZero := 0
+	auto := &models.Automation{
+		ID:           "auto-1",
+		UserID:       "user-1",
+		Name:         "test",
+		Stores:       []string{"shopee"},
+		SendGroups:   []string{"dest@g.us"},
+		Status:       "active",
+		DelaySeconds: &delayZero,
+		// MonitoringSendAsImage nil => OFF => preview mode expected
+	}
+
+	err := svc.processAutomation(context.Background(), auto, &models.IncomingMessage{
+		InstanceName: "inst1",
+		RemoteJID:    "source@g.us",
+		Body:         "Mascara Kerastase 200ml\nhttps://shopee.com.br/product-i.123.456",
+		// LinkPreviewTitle intentionally empty (source had no preview)
+	}, []string{"https://shopee.com.br/product-i.123.456"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if previewInput == nil {
+		t.Fatal("expected SendLinkCustomPreview to be called in preview mode, but it was not")
+	}
+	if imageCalled {
+		t.Error("SendImage should not be called when preview mode succeeds")
+	}
+	if textCalled {
+		t.Error("SendText should not be called when preview mode succeeds")
+	}
+	if previewInput.Title != "Mascara Kerastase 200ml" {
+		t.Errorf("preview Title = %q, want the first line of the body", previewInput.Title)
+	}
+	if previewInput.URL != "https://s.shopee.com.br/aff123" {
+		t.Errorf("preview URL = %q, want the affiliate link", previewInput.URL)
+	}
+}
+
+func TestFirstNonEmptyLine(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"", ""},
+		{"\n\n   \n", ""},
+		{"Produto X\nhttps://x", "Produto X"},
+		{"   \n  Segunda linha  \nterceira", "Segunda linha"},
+		{"*Negrito* no titulo", "*Negrito* no titulo"},
+	}
+	for _, c := range cases {
+		if got := firstNonEmptyLine(c.in); got != c.want {
+			t.Errorf("firstNonEmptyLine(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+
+	// Rune cap: a very long first line is truncated to 120 runes without
+	// splitting a multibyte character.
+	long := ""
+	for i := 0; i < 200; i++ {
+		long += "á"
+	}
+	if got := firstNonEmptyLine(long); len([]rune(got)) != 120 {
+		t.Errorf("expected first line capped at 120 runes, got %d", len([]rune(got)))
 	}
 }
 
