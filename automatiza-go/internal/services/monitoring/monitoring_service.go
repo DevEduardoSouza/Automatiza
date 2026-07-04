@@ -132,29 +132,36 @@ func (s *monitoringService) ProcessIncomingMessage(ctx context.Context, msg *mod
 		zap.Int("links", len(links)),
 		zap.String("bodyPreview", truncateStr(msg.Body, 100)))
 
-	// 4. Content fingerprint dedup (2 min window).
-	//
-	// Keyed by (group, body-hash) — SEM o instance — pra que a mesma
-	// mensagem vista por vários chips do MESMO dono no grupo de origem
-	// dispare só 1 processamento. Se N chips do user são membros do grupo
-	// monitorado, a WAHA fira N webhooks (mesmo corpo); o primeiro reivindica
-	// a key e os outros N-1 caem aqui ANTES do fan-out (link afiliado,
-	// GetProduct, download de mídia) — evita envio duplicado/triplicado e N×
-	// o custo. claimProductSlot() no loop de dispatch segue como cinto de
-	// segurança por (user, destino, canonicalKey).
-	contentKey := s.buildContentKey(msg.RemoteJID, msg.Body)
+	// Resolve o DONO (user) do chip que entregou a mensagem ANTES do dedup.
+	// As chaves abaixo TÊM que ser escopadas por esse dono: um grupo de origem
+	// popular é entregue ao chip de TODO membro, então keyar só por (grupo,
+	// msgID) faz o PRIMEIRO chip a processar (de qualquer usuário) reivindicar
+	// o slot e ESFOMEAR todos os outros usuários que monitoram o mesmo grupo —
+	// inclusive um usuário cujo chip ganhou a corrida mas não tem automação
+	// aqui (→ "No matching automations", nada enviado). Escopar por dono ainda
+	// colapsa os N chips do MESMO dono (resolvem pro mesmo userID), preservando
+	// o dedup multichip do #245, mas mantém usuários diferentes independentes.
+	// Fallback pro InstanceName se não resolver o dono (nunca colide global).
+	dedupScope := msg.InstanceName
+	if inst, ierr := s.instanceRepo.GetInstanceByName(ctx, msg.InstanceName); ierr == nil && inst != nil && inst.UserID != "" {
+		dedupScope = inst.UserID
+	}
+
+	// 4. Content fingerprint dedup (2 min window). Keyed por (dono, grupo,
+	// body-hash): colapsa os N chips do MESMO dono, mantém donos distintos
+	// independentes.
+	contentKey := s.buildContentKey(dedupScope, msg.RemoteJID, msg.Body)
 	if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
 		s.logger.Debug("Duplicate content detected, skipping")
 		return nil
 	}
 
-	// 5. Message ID dedup (10 min window). Mesma motivação — keyed por
-	// (group, msgID), não por instance: o key.id do WhatsApp é idêntico nos
-	// N webhooks (é a mesma mensagem), então colapsa os chips. Se o MessageID
-	// vier vazio, pula esse dedup pra não colapsar mensagens distintas numa
-	// chave vazia (o dedup de conteúdo acima já cobre esse caso).
+	// 5. Message ID dedup (10 min window). Mesma chave por (dono, grupo, msgID).
+	// O key.id do WhatsApp é idêntico nos N webhooks do mesmo grupo, então
+	// dentro de um dono colapsa os chips. Se o MessageID vier vazio, pula (o
+	// dedup de conteúdo acima já cobre).
 	if msg.MessageID != "" {
-		msgKey := fmt.Sprintf("msg_dedup:%s:%s", msg.RemoteJID, msg.MessageID)
+		msgKey := fmt.Sprintf("msg_dedup:%s:%s:%s", dedupScope, msg.RemoteJID, msg.MessageID)
 		if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
 			s.logger.Debug("Duplicate message ID detected, skipping")
 			return nil
@@ -911,11 +918,13 @@ func (s *monitoringService) categorizeLinks(links []string) (shopeeLinks, mlLink
 	return
 }
 
-// buildContentKey monta a chave de dedup de conteúdo por (grupo, body-hash),
-// SEM o instance de propósito: a mesma mensagem entregue a vários chips do
-// mesmo dono no grupo de origem colapsa numa chave só (dedup multi-chip).
-func (s *monitoringService) buildContentKey(groupID, body string) string {
-	hash := sha256.Sum256([]byte(groupID + ":" + body))
+// buildContentKey monta a chave de dedup de conteúdo por (scope, grupo,
+// body-hash). scope = userID do dono do chip que entregou (com fallback pro
+// instanceName): colapsa os N chips do MESMO dono numa chave só (dedup
+// multi-chip do #245), mas mantém usuários diferentes independentes num grupo
+// de origem popular — sem isso, o chip do primeiro user esfomeia os demais.
+func (s *monitoringService) buildContentKey(scope, groupID, body string) string {
+	hash := sha256.Sum256([]byte(scope + ":" + groupID + ":" + body))
 	return "content:" + hex.EncodeToString(hash[:])
 }
 

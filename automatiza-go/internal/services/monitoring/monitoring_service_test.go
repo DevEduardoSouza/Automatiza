@@ -886,35 +886,37 @@ func TestBuildContentKey(t *testing.T) {
 	svc := newTestService(t)
 
 	t.Run("deterministic hash", func(t *testing.T) {
-		key1 := svc.buildContentKey("group1", "hello")
-		key2 := svc.buildContentKey("group1", "hello")
+		key1 := svc.buildContentKey("user1", "group1", "hello")
+		key2 := svc.buildContentKey("user1", "group1", "hello")
 		if key1 != key2 {
 			t.Errorf("expected deterministic keys, got %q and %q", key1, key2)
 		}
 	})
 
-	t.Run("different groups produce different keys", func(t *testing.T) {
-		key1 := svc.buildContentKey("group1", "hello")
-		key2 := svc.buildContentKey("group2", "hello")
+	t.Run("different owners produce different keys (no cross-user collision)", func(t *testing.T) {
+		// Mesma mensagem, mesmo grupo, DONOS diferentes → chaves diferentes.
+		// Sem isso, o chip do primeiro user reivindica o dedup e esfomeia os
+		// outros que monitoram o mesmo grupo de origem popular.
+		key1 := svc.buildContentKey("user1", "group1", "hello")
+		key2 := svc.buildContentKey("user2", "group1", "hello")
 		if key1 == key2 {
-			t.Error("expected different keys for different groups")
+			t.Error("expected different keys for different owners")
 		}
 	})
 
-	t.Run("instance-independent: same group+body collapses across chips", func(t *testing.T) {
-		// A chave NÃO inclui o instance de propósito — a mesma mensagem vista
-		// por chips diferentes do mesmo grupo tem que colapsar (dedup multi-chip).
-		key := svc.buildContentKey("group1", "hello")
-		hash := sha256.Sum256([]byte("group1:hello"))
-		expected := "content:" + hex.EncodeToString(hash[:])
-		if key != expected {
-			t.Errorf("key = %q, want %q", key, expected)
+	t.Run("same owner+group+body collapses across that owner's chips", func(t *testing.T) {
+		// O scope é o DONO (não o chip), então os N chips do mesmo dono no
+		// grupo colapsam numa chave só (dedup multi-chip do #245 preservado).
+		key1 := svc.buildContentKey("user1", "group1", "hello")
+		key2 := svc.buildContentKey("user1", "group1", "hello")
+		if key1 != key2 {
+			t.Error("expected same key for same owner regardless of chip")
 		}
 	})
 
 	t.Run("prefix is content:", func(t *testing.T) {
-		key := svc.buildContentKey("b", "c")
-		hash := sha256.Sum256([]byte("b:c"))
+		key := svc.buildContentKey("a", "b", "c")
+		hash := sha256.Sum256([]byte("a:b:c"))
 		expected := "content:" + hex.EncodeToString(hash[:])
 		if key != expected {
 			t.Errorf("key = %q, want %q", key, expected)
