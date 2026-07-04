@@ -262,10 +262,17 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 	}
 
 	if len(shopeeLinks) == 0 && len(mlLinks) == 0 {
-		s.logger.Info("No links matching configured stores for offer_generate",
+		// A mensagem tem link, mas nenhum é de LOJA (Shopee/ML) — ex: convite
+		// de grupo, Instagram, site. Em vez de dropar, cai no relay: repassa a
+		// original como veio pros destinos DESTA automação, igual ao caminho
+		// sem-link (ProcessIncomingMessage:139). Consistência do "gerar oferta
+		// repassa qualquer conteúdo": só link de loja é enriquecido, o resto é
+		// repassado. processAutomationRelay já deduplica por destino
+		// (claimProductSlot, chave relay:).
+		s.logger.Info("No store links matched — relaying original message as-is",
 			zap.String("automationID", auto.ID),
 			zap.Strings("stores", stores))
-		return nil
+		return s.processAutomationRelay(ctx, auto, msg)
 	}
 
 	// 4. Parse discount and info tags from message body
@@ -632,12 +639,12 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 
 	chipForGroup := func(waGroupID string) string {
 		return PickChipForGroup(ChipRoutingInput{
-			WaGroupID:        waGroupID,
-			PreferenceIDs:    preferenceIDs,
+			WaGroupID:         waGroupID,
+			PreferenceIDs:     preferenceIDs,
 			GroupParticipants: groupParticipants[waGroupID],
-			ConnectedByID:    connectedByID,
-			ChipOverrides:    auto.ChipOverrides,
-			SenderSession:    senderSession,
+			ConnectedByID:     connectedByID,
+			ChipOverrides:     auto.ChipOverrides,
+			SenderSession:     senderSession,
 		})
 	}
 
