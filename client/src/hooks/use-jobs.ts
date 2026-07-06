@@ -68,6 +68,8 @@ interface UseJobsReturn {
   resetForm: () => void;
   handleEditJob: (job: LocalJob) => void;
   toggleGroup: (groupId: string) => void;
+  selectAllGroups: (groupIds: string[]) => void;
+  clearGroups: () => void;
   insertMention: (mention: string) => void;
   addPollOption: () => void;
   removePollOption: (index: number) => void;
@@ -193,6 +195,16 @@ export function useJobs(): UseJobsReturn {
     setSelectedGroups((prev) =>
       prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]
     );
+  }, []);
+
+  // Seleção em lote (merge, dedup) dos grupos passados — o GroupSelector
+  // manda os visíveis após a busca, então "Selecionar todos" respeita o filtro.
+  const selectAllGroups = useCallback((groupIds: string[]) => {
+    setSelectedGroups((prev) => Array.from(new Set([...prev, ...groupIds])));
+  }, []);
+
+  const clearGroups = useCallback(() => {
+    setSelectedGroups([]);
   }, []);
 
   const insertMention = useCallback((mention: string) => {
@@ -531,6 +543,8 @@ export function useJobs(): UseJobsReturn {
     resetForm,
     handleEditJob,
     toggleGroup,
+    selectAllGroups,
+    clearGroups,
     insertMention,
     addPollOption,
     removePollOption,

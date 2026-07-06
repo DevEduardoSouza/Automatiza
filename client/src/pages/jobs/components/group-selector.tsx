@@ -21,6 +21,10 @@ interface GroupSelectorProps {
   loading?: boolean;
   onSearchChange: (value: string) => void;
   onToggleGroup: (groupId: string) => void;
+  // Seleciona em lote os grupos passados (os visíveis após a busca) e limpa
+  // tudo. Batch via setSelectedGroups no hook, não N toggles.
+  onSelectAll: (groupIds: string[]) => void;
+  onClearAll: () => void;
 }
 
 const VIRTUALIZATION_THRESHOLD = 50;
@@ -36,6 +40,8 @@ export function GroupSelector({
   loading = false,
   onSearchChange,
   onToggleGroup,
+  onSelectAll,
+  onClearAll,
 }: GroupSelectorProps) {
   const { t } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
@@ -107,6 +113,27 @@ export function GroupSelector({
           className="pl-9 cursor-text"
         />
       </div>
+      {!loading && filteredGroups.length > 0 && (
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <button
+            type="button"
+            onClick={() => onSelectAll(filteredGroups.map((g) => g.id))}
+            className="text-xs font-medium text-primary hover:underline cursor-pointer"
+          >
+            {t('pages.jobs.form.selectAll', 'Selecionar todos')}
+            {` (${filteredGroups.length})`}
+          </button>
+          {selectedGroups.length > 0 && (
+            <button
+              type="button"
+              onClick={onClearAll}
+              className="text-xs text-muted-foreground hover:underline cursor-pointer"
+            >
+              {t('pages.jobs.form.clearSelection', 'Limpar')}
+            </button>
+          )}
+        </div>
+      )}
       <div ref={parentRef} className="border rounded-lg p-2 xs:p-3 sm:p-4 space-y-1.5 xs:space-y-2 max-h-36 xs:max-h-44 sm:max-h-48 lg:max-h-64 xl:max-h-72 2xl:max-h-80 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-4">
