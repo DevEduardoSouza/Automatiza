@@ -400,7 +400,7 @@ func (s *standaloneJobsService) ListJobsPaginated(ctx context.Context, params re
 var ErrJobNotPending = errors.New("apenas jobs pendentes podem ser atualizados")
 
 // ErrJobNotDeletable is returned by DeleteJob when the job is neither pending
-// nor cancelled and thus cannot be removed.
+// nor canceled and thus cannot be removed.
 var ErrJobNotDeletable = errors.New("apenas jobs pendentes ou cancelados podem ser deletados")
 
 // UpdateJob updates a job (only pending jobs can be updated).
