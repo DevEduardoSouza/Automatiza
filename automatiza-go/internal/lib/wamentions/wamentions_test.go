@@ -28,13 +28,13 @@ func TestExpand_NoMarker(t *testing.T) {
 
 	got := Expand(context.Background(), provider, "s", "g@g.us", "sem marcador")
 	assert.Nil(t, got)
-	// Não deve nem buscar participantes quando não há @todos.
+	// Não deve nem buscar os membros quando não há @todos.
 	assert.Equal(t, 0, provider.CallCount("GetGroupParticipants"))
 }
 
 func TestExpand_ResolvedPhone(t *testing.T) {
 	// Quando PhoneNumber está resolvido, usa o telefone bare — o WAHA resolve
-	// para @s.whatsapp.net e o participante real é notificado.
+	// para @s.whatsapp.net e o membro real é notificado.
 	provider := whatsapp.NewFakeAdapter()
 	provider.SetParticipants("s", "g@g.us", []whatsapp.ParticipantInfo{
 		{ID: "16785386532987@lid", PhoneNumber: "557488359787"},

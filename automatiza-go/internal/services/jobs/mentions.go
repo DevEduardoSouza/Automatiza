@@ -14,7 +14,7 @@ import (
 //
 // This is a thin wrapper over wamentions.Expand — the shared, domain-neutral
 // implementation also used by the monitoring and offer_generate relays so the
-// @todos behaviour stays identical across features.
+// @todos behavior stays identical across features.
 func ExpandMentions(ctx context.Context, provider whatsapp.WhatsAppProvider, sessionName, groupID, message string) ([]string, string) {
 	return wamentions.Expand(ctx, provider, sessionName, groupID, message), message
 }

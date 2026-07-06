@@ -811,7 +811,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				switch {
 				case hasMentions && imageURL != "":
 					// @todos precisa de menção e o card do WAHA a dropa: força
-					// imagem+legenda (honra mentionedJid) independente do toggle.
+					// imagem+legenda (honra mentionedJid) seja qual for o toggle.
 					_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
 						SessionName: dispatchSession,
 						ChatID:      groupID,

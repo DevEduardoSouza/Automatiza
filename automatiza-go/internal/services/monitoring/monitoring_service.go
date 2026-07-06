@@ -637,7 +637,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// destino vê) contém "@todos", pinga todos os membros DESTE grupo de
 		// destino via contextInfo.mentionedJid. Opt-in por-mensagem — só dispara
 		// quando o texto realmente traz @todos (anti-ban: nunca em toda oferta).
-		// Calculado uma vez por destino, buscando os participantes pela sessão
+		// Calculado uma vez por destino, buscando os membros pela sessão
 		// que está enviando.
 		var mentions []string
 		if wamentions.Contains(processedText) {
