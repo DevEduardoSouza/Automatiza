@@ -1,3 +1,4 @@
+import { Code, ConnectError } from '@connectrpc/connect';
 import { useAuth } from '@/contexts';
 import {
   type CreateAutomationParams,
@@ -230,6 +231,10 @@ export function useOfferGenerate() {
         // to true when unset so the rule engine still kicks in for
         // existing rows that pre-date the field.
         applyCouponRules: formData.apply_coupon_rules ?? true,
+        // "Enviar como imagem": default true preserva o comportamento
+        // histórico (offer_generate sempre mandou imagem). Desligar usa
+        // o preview nativo do WhatsApp.
+        offerGenerateSendAsImage: formData.offer_generate_send_as_image ?? true,
       };
 
       if (config) {
@@ -249,6 +254,19 @@ export function useOfferGenerate() {
       await loadConfig();
     } catch (error: unknown) {
       captureHookError(error, 'useOfferGenerate', 'handleSave');
+      // Plan group-limit (and other quota) blocks come back as ResourceExhausted
+      // with a user-facing message from the backend (e.g. "Limite de 5 grupos do
+      // seu plano atingido…"). Surface that instead of the generic save error so
+      // the user knows to reduce groups or upgrade — same treatment as the
+      // regular automations form (use-automations.ts handleSave).
+      if (error instanceof ConnectError && error.code === Code.ResourceExhausted) {
+        toast({
+          title: t('pages.offerAutomations.limits.groupsReached'),
+          description: error.rawMessage,
+          variant: 'destructive',
+        });
+        return;
+      }
       toast({ title: t('pages.offerGenerate.errors.saveFailed'), variant: 'destructive' });
     }
   }, [formData, config, activeStores, automationsConnect, toast, t, loadConfig]);
