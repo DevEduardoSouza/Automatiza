@@ -205,7 +205,7 @@ func (h *JobsHandler) UpdateJob(
 		// the raw "[internal] failed to update job: …" that leaked before.
 		if errors.Is(err, jobs.ErrJobNotPending) {
 			return nil, connect.NewError(connect.CodeFailedPrecondition,
-				errors.New("Este agendamento já foi executado e não pode mais ser editado. Crie um novo agendamento."))
+				errors.New("Este agendamento já foi executado e não pode mais ser editado. Crie um novo agendamento.")) //nolint:revive // mensagem user-facing (capitalizada/pontuada de propósito)
 		}
 		h.logger.Error("Failed to update job",
 			zap.String("jobID", req.Msg.GetId()),
@@ -240,7 +240,7 @@ func (h *JobsHandler) DeleteJob(
 		}
 		if errors.Is(err, jobs.ErrJobNotDeletable) {
 			return nil, connect.NewError(connect.CodeFailedPrecondition,
-				errors.New("Este agendamento já foi executado e não pode mais ser excluído."))
+				errors.New("Este agendamento já foi executado e não pode mais ser excluído.")) //nolint:revive // mensagem user-facing (capitalizada/pontuada de propósito)
 		}
 		h.logger.Error("Failed to delete job",
 			zap.String("jobID", req.Msg.GetId()),
