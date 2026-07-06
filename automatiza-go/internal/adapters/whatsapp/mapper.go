@@ -445,9 +445,10 @@ func (m *Mapper) SendVideoToWaha(input *SendVideoInput) *wahaSendVideoRequest {
 	}
 
 	req := &wahaSendVideoRequest{
-		Session: input.SessionName,
-		ChatID:  input.ChatID,
-		Caption: input.Caption,
+		Session:  input.SessionName,
+		ChatID:   input.ChatID,
+		Caption:  input.Caption,
+		Mentions: input.Mentions,
 	}
 
 	if input.MediaURL != "" {
@@ -470,9 +471,10 @@ func (m *Mapper) SendDocumentToWaha(input *SendDocumentInput) *wahaSendFileReque
 	}
 
 	req := &wahaSendFileRequest{
-		Session: input.SessionName,
-		ChatID:  input.ChatID,
-		Caption: input.Caption,
+		Session:  input.SessionName,
+		ChatID:   input.ChatID,
+		Caption:  input.Caption,
+		Mentions: input.Mentions,
 	}
 
 	if input.MediaURL != "" {

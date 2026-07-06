@@ -16,6 +16,7 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/deadgroup"
 	"automatiza-go/internal/lib/text"
+	"automatiza-go/internal/lib/wamentions"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
@@ -632,6 +633,18 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		var err error
 		var sent bool
 
+		// @todos no repasse: quando a mensagem processada (= o que o grupo de
+		// destino vê) contém "@todos", pinga todos os membros DESTE grupo de
+		// destino via contextInfo.mentionedJid. Opt-in por-mensagem — só dispara
+		// quando o texto realmente traz @todos (anti-ban: nunca em toda oferta).
+		// Calculado uma vez por destino, buscando os participantes pela sessão
+		// que está enviando.
+		var mentions []string
+		if wamentions.Contains(processedText) {
+			mentions = wamentions.Expand(sendCtx, s.waProvider, senderSession, groupID, processedText)
+		}
+		hasMentions := len(mentions) > 0
+
 		// "Enviar como imagem" (MONITORING, default FALSE): ligado pula o
 		// preview nativo e força imagem baixada + legenda; desligado mantém o
 		// preview-first (comportamento atual). nil = false (default do schema).
@@ -644,7 +657,12 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// partir dos dados do produto). Antes exigíamos msg.LinkPreviewTitle != "",
 		// então espelho de fonte SEM preview caía sempre em imagem — contrariando
 		// o que o toggle promete ("preview nativo do WhatsApp").
-		if !monitoringSendAsImage && firstAffiliateURL != "" {
+		//
+		// hasMentions força pular o card: o endpoint link-custom-preview do WAHA
+		// (GOWS) aceita o payload mas DROPA o campo mentions silenciosamente —
+		// ninguém é notificado. Quando há @todos, caímos para imagem+legenda ou
+		// texto (Priority 2/3), que honram mentionedJid.
+		if !monitoringSendAsImage && firstAffiliateURL != "" && !hasMentions {
 			previewTitle := msg.LinkPreviewTitle
 			if previewTitle == "" {
 				previewTitle = firstNonEmptyLine(processedText)
@@ -679,6 +697,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				ImageURL:    imageURL,
 				ImageBase64: imageBase64,
 				Mimetype:    imageMimetype,
+				Mentions:    mentions,
 			})
 			if err == nil {
 				sent = true
@@ -691,6 +710,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				SessionName: senderSession,
 				ChatID:      groupID,
 				Text:        processedText,
+				Mentions:    mentions,
 			})
 		}
 		sendCancel()
@@ -717,6 +737,14 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 
 		s.logDispatch(ctx, automation, groupID, links[0], "sent", "", canonicalKey, store)
+
+		if hasMentions {
+			// Observabilidade anti-ban: quantos @todos-relays saem por hora.
+			s.logger.Info("Relay @todos mention dispatched",
+				zap.String("automationID", automation.ID),
+				zap.String("toGroup", groupID),
+				zap.Int("mentionCount", len(mentions)))
+		}
 
 		s.logger.Info("Message forwarded successfully",
 			zap.String("fromGroup", msg.RemoteJID),

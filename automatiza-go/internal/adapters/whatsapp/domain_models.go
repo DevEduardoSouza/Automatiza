@@ -380,6 +380,9 @@ type SendDocumentInput struct {
 	// Filename is the document filename (required for documents).
 	Filename string `json:"filename" validate:"required"`
 
+	// Mentions is the list of WhatsApp IDs to mention in the caption.
+	Mentions []string `json:"mentions,omitempty"`
+
 	// QuotedMessageID is the ID of a message to reply to.
 	QuotedMessageID string `json:"quotedMessageId,omitempty"`
 }

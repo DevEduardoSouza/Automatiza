@@ -16,6 +16,7 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/ctapicker"
 	"automatiza-go/internal/lib/text"
+	"automatiza-go/internal/lib/wamentions"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
@@ -796,7 +797,36 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				if auto.OfferGenerateSendAsImage != nil {
 					sendAsImage = *auto.OfferGenerateSendAsImage
 				}
+
+				// @todos no repasse: se o POST de ORIGEM traz "@todos", pinga todos
+				// os membros do grupo de DESTINO via mentionedJid. Opt-in por
+				// mensagem (anti-ban). Calculado uma vez por destino via a sessão
+				// que envia.
+				var mentions []string
+				if wamentions.Contains(msg.Body) {
+					mentions = wamentions.Expand(sendCtx, s.waProvider, dispatchSession, groupID, msg.Body)
+				}
+				hasMentions := len(mentions) > 0
+
 				switch {
+				case hasMentions && imageURL != "":
+					// @todos precisa de menção e o card do WAHA a dropa: força
+					// imagem+legenda (honra mentionedJid) independente do toggle.
+					_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
+						SessionName: dispatchSession,
+						ChatID:      groupID,
+						Caption:     renderedMessage,
+						ImageURL:    imageURL,
+						Mentions:    mentions,
+					})
+				case hasMentions:
+					// @todos sem imagem: texto com menção (o card também não serve).
+					_, sendErr = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
+						SessionName: dispatchSession,
+						ChatID:      groupID,
+						Text:        renderedMessage,
+						Mentions:    mentions,
+					})
 				case imageURL != "" && sendAsImage:
 					_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
 						SessionName: dispatchSession,
@@ -835,6 +865,14 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				}
 
 				s.logDispatch(ctx, auto, groupID, links[0], "sent", "", canonicalKey, store)
+
+				if hasMentions {
+					// Observabilidade anti-ban: quantos @todos-relays saem por hora.
+					s.logger.Info("Relay @todos mention dispatched",
+						zap.String("automationID", auto.ID),
+						zap.String("toGroup", groupID),
+						zap.Int("mentionCount", len(mentions)))
+				}
 
 				s.logger.Info("Offer generated and sent successfully",
 					zap.String("fromGroup", msg.RemoteJID),
@@ -1326,6 +1364,15 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 // link preview JPEG do WhatsApp). Áudio só funciona via Base64 — o input
 // SendVoiceInput não tem campo URL.
 func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, chatID string, msg *models.IncomingMessage) error {
+	// @todos no relay: se a mensagem de origem traz "@todos", pinga todos os
+	// membros do grupo de DESTINO (chatID) via mentionedJid. Opt-in por
+	// mensagem (anti-ban). O relay nunca usa card, então texto/imagem/vídeo/
+	// documento honram a menção diretamente. Calculado uma vez.
+	var mentions []string
+	if wamentions.Contains(msg.Body) {
+		mentions = wamentions.Expand(ctx, s.waProvider, session, chatID, msg.Body)
+	}
+
 	// Sem mídia → texto puro
 	if !msg.HasMedia {
 		if strings.TrimSpace(msg.Body) == "" {
@@ -1337,6 +1384,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 			SessionName: session,
 			ChatID:      chatID,
 			Text:        msg.Body,
+			Mentions:    mentions,
 		})
 		return err
 	}
@@ -1369,6 +1417,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 			ChatID:      chatID,
 			Caption:     msg.Body,
 			Mimetype:    mediaMime,
+			Mentions:    mentions,
 		}
 		if mediaB64 != "" {
 			input.ImageBase64 = mediaB64
@@ -1385,6 +1434,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 			SessionName: session,
 			ChatID:      chatID,
 			Caption:     msg.Body,
+			Mentions:    mentions,
 		}
 		if mediaB64 != "" {
 			input.MediaBase64 = mediaB64
@@ -1421,6 +1471,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 			SessionName: session,
 			ChatID:      chatID,
 			Caption:     msg.Body,
+			Mentions:    mentions,
 		}
 		if mediaB64 != "" {
 			input.MediaBase64 = mediaB64
@@ -1444,6 +1495,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 				ChatID:      chatID,
 				Caption:     msg.Body,
 				Mimetype:    mediaMime,
+				Mentions:    mentions,
 			}
 			if mediaB64 != "" {
 				input.ImageBase64 = mediaB64
@@ -1463,6 +1515,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 				SessionName: session,
 				ChatID:      chatID,
 				Text:        msg.Body,
+				Mentions:    mentions,
 			})
 			return err
 		}
