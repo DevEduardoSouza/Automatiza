@@ -1,3 +1,4 @@
+import { ConnectError } from '@connectrpc/connect';
 import { useAuth } from '@/contexts';
 import { useAiToolsConnect } from '@/hooks/use-ai-tools-connect';
 import { useGroupsConnect } from '@/hooks/use-groups-connect';
@@ -365,7 +366,15 @@ export function useJobs(): UseJobsReturn {
       toast({
         variant: 'destructive',
         title: t('pages.jobs.errors.schedule'),
-        description: error instanceof Error ? error.message : t('pages.jobs.errors.schedule'),
+        // rawMessage drops the "[code]" prefix connect puts on .message, so
+        // the backend's user-facing text (e.g. "Este agendamento já foi
+        // executado…") shows clean instead of "[internal] failed to update…".
+        description:
+          error instanceof ConnectError
+            ? error.rawMessage
+            : error instanceof Error
+              ? error.message
+              : t('pages.jobs.errors.schedule'),
       });
     }
   }, [
@@ -401,7 +410,12 @@ export function useJobs(): UseJobsReturn {
         toast({
           variant: 'destructive',
           title: t('pages.jobs.errors.delete'),
-          description: error instanceof Error ? error.message : t('pages.jobs.errors.delete'),
+          description:
+            error instanceof ConnectError
+              ? error.rawMessage
+              : error instanceof Error
+                ? error.message
+                : t('pages.jobs.errors.delete'),
         });
       }
     },

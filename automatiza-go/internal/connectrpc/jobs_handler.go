@@ -199,6 +199,14 @@ func (h *JobsHandler) UpdateJob(
 		if isNotFoundError(err) {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("job not found"))
 		}
+		// Business rule, not a server fault: the job already ran (left the
+		// pending state). Return a clean FailedPrecondition with a
+		// user-facing message so the UI shows "já foi executado…" instead of
+		// the raw "[internal] failed to update job: …" that leaked before.
+		if errors.Is(err, jobs.ErrJobNotPending) {
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("Este agendamento já foi executado e não pode mais ser editado. Crie um novo agendamento."))
+		}
 		h.logger.Error("Failed to update job",
 			zap.String("jobID", req.Msg.GetId()),
 			zap.String("userID", user.ID),
@@ -229,6 +237,10 @@ func (h *JobsHandler) DeleteJob(
 	if err != nil {
 		if isNotFoundError(err) {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("job not found"))
+		}
+		if errors.Is(err, jobs.ErrJobNotDeletable) {
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("Este agendamento já foi executado e não pode mais ser excluído."))
 		}
 		h.logger.Error("Failed to delete job",
 			zap.String("jobID", req.Msg.GetId()),
