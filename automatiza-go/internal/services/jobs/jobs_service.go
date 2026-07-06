@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -392,6 +393,16 @@ func (s *standaloneJobsService) ListJobsPaginated(ctx context.Context, params re
 	return s.jobRepo.ListByUserID(ctx, params)
 }
 
+// ErrJobNotPending is returned by UpdateJob when the target job already left
+// the pending state (e.g. already ran) and can no longer be edited. Exported
+// so the connect handler maps it to a clean FailedPrecondition + user-facing
+// message instead of a raw "[internal]" error leaking to the UI.
+var ErrJobNotPending = errors.New("apenas jobs pendentes podem ser atualizados")
+
+// ErrJobNotDeletable is returned by DeleteJob when the job is neither pending
+// nor cancelled and thus cannot be removed.
+var ErrJobNotDeletable = errors.New("apenas jobs pendentes ou cancelados podem ser deletados")
+
 // UpdateJob updates a job (only pending jobs can be updated).
 func (s *standaloneJobsService) UpdateJob(ctx context.Context, id, userID string, updates map[string]interface{}) (*models.StandaloneJob, error) {
 	job, err := s.GetJob(ctx, id, userID)
@@ -400,7 +411,7 @@ func (s *standaloneJobsService) UpdateJob(ctx context.Context, id, userID string
 	}
 
 	if job.Status != models.StandaloneJobStatusPending {
-		return nil, fmt.Errorf("apenas jobs pendentes podem ser atualizados")
+		return nil, ErrJobNotPending
 	}
 
 	if err := s.jobRepo.Update(ctx, id, updates); err != nil {
@@ -418,7 +429,7 @@ func (s *standaloneJobsService) DeleteJob(ctx context.Context, id, userID string
 	}
 
 	if job.Status != models.StandaloneJobStatusPending && job.Status != models.StandaloneJobStatusCancelled {
-		return fmt.Errorf("apenas jobs pendentes ou cancelados podem ser deletados")
+		return ErrJobNotDeletable
 	}
 
 	return s.jobRepo.Delete(ctx, id, userID)
