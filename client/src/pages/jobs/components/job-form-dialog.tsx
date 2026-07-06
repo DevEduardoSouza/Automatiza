@@ -59,6 +59,8 @@ interface JobFormDialogProps {
   onSearchTermChange: (value: string) => void;
   onPollQuestionChange: (value: string) => void;
   onToggleGroup: (groupId: string) => void;
+  onSelectAllGroups: (groupIds: string[]) => void;
+  onClearGroups: () => void;
   onInsertMention: (mention: string) => void;
   onAddPollOption: () => void;
   onRemovePollOption: (index: number) => void;
@@ -99,6 +101,8 @@ export function JobFormDialog({
   onSearchTermChange,
   onPollQuestionChange,
   onToggleGroup,
+  onSelectAllGroups,
+  onClearGroups,
   onInsertMention,
   onAddPollOption,
   onRemovePollOption,
@@ -178,6 +182,8 @@ export function JobFormDialog({
             loading={loadingGroups}
             onSearchChange={onSearchTermChange}
             onToggleGroup={onToggleGroup}
+            onSelectAll={onSelectAllGroups}
+            onClearAll={onClearGroups}
           />
 
           <div className="grid gap-3 xs:gap-4 xs:grid-cols-2">

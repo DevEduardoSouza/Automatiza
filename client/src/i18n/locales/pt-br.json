@@ -1864,6 +1864,8 @@
         "searchGroups": "Pesquisar grupos...",
         "noGroups": "Nenhum grupo disponível. Importe grupos primeiro.",
         "groupsSelected": "grupo(s) selecionado(s)",
+        "selectAll": "Selecionar todos",
+        "clearSelection": "Limpar",
         "date": "Data",
         "time": "Hora",
         "message": "Mensagem",

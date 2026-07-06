@@ -111,6 +111,8 @@ export default function JobsPage() {
                   onSearchTermChange={jobs.setSearchTerm}
                   onPollQuestionChange={jobs.setPollQuestion}
                   onToggleGroup={jobs.toggleGroup}
+                  onSelectAllGroups={jobs.selectAllGroups}
+                  onClearGroups={jobs.clearGroups}
                   onInsertMention={jobs.insertMention}
                   onAddPollOption={jobs.addPollOption}
                   onRemovePollOption={jobs.removePollOption}
