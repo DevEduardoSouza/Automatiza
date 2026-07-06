@@ -503,19 +503,21 @@ type wahaMessagePayload struct {
 // wahaSendVideoRequest represents a WAHA video message request.
 // Maps to POST /api/sendVideo request body.
 type wahaSendVideoRequest struct {
-	Session string    `json:"session"`
-	ChatID  string    `json:"chatId"`
-	Caption string    `json:"caption,omitempty"`
-	File    *wahaFile `json:"file,omitempty"`
+	Session  string    `json:"session"`
+	ChatID   string    `json:"chatId"`
+	Caption  string    `json:"caption,omitempty"`
+	File     *wahaFile `json:"file,omitempty"`
+	Mentions []string  `json:"mentions,omitempty"`
 }
 
 // wahaSendFileRequest represents a WAHA file/document message request.
 // Maps to POST /api/sendFile request body.
 type wahaSendFileRequest struct {
-	Session string    `json:"session"`
-	ChatID  string    `json:"chatId"`
-	Caption string    `json:"caption,omitempty"`
-	File    *wahaFile `json:"file,omitempty"`
+	Session  string    `json:"session"`
+	ChatID   string    `json:"chatId"`
+	Caption  string    `json:"caption,omitempty"`
+	File     *wahaFile `json:"file,omitempty"`
+	Mentions []string  `json:"mentions,omitempty"`
 }
 
 // =============================================================================
