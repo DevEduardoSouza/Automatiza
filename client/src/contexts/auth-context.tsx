@@ -227,36 +227,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * Network errors and other transient failures preserve existing state.
    */
   useEffect(() => {
+    // Fetches the current user and hydrates auth state.
+    // Returns true when a valid user/session was restored, false otherwise.
+    const hydrateFromCurrentUser = async (): Promise<boolean> => {
+      const response = await authClient.getCurrentUser(create(GetCurrentUserRequestSchema, {}));
+
+      if (!response.user || !response.session) {
+        return false;
+      }
+
+      const restoredUser = protoToAuthUser(response.user);
+      setUser(restoredUser);
+      setSession(protoToSessionInfo(response.session));
+      setSentryUser({
+        id: restoredUser.id,
+        email: restoredUser.email,
+        role: restoredUser.role,
+      });
+      // Restore CSRF token from cookie if not in memory
+      // This handles page reloads where the in-memory token is lost
+      if (!getCsrfToken()) {
+        const cookieToken = getCsrfTokenFromCookie();
+        if (cookieToken) {
+          setCsrfToken(cookieToken);
+        }
+      }
+      return true;
+    };
+
     const checkSession = async () => {
       try {
-        const response = await authClient.getCurrentUser(create(GetCurrentUserRequestSchema, {}));
-
-        if (response.user && response.session) {
-          const restoredUser = protoToAuthUser(response.user);
-          setUser(restoredUser);
-          setSession(protoToSessionInfo(response.session));
-          setSentryUser({
-            id: restoredUser.id,
-            email: restoredUser.email,
-            role: restoredUser.role,
-          });
-          // Restore CSRF token from cookie if not in memory
-          // This handles page reloads where the in-memory token is lost
-          if (!getCsrfToken()) {
-            const cookieToken = getCsrfTokenFromCookie();
-            if (cookieToken) {
-              setCsrfToken(cookieToken);
-            }
-          }
-        } else {
-          setUser(null);
-          setSession(null);
-          clearCsrfToken();
+        if (await hydrateFromCurrentUser()) {
+          return;
         }
+        // Successful response but no user/session → genuinely logged out.
+        setUser(null);
+        setSession(null);
+        clearCsrfToken();
       } catch (error) {
-        // Only clear state on explicit authentication errors
-        // For network errors or transient failures, preserve existing state
+        // Only clear state on explicit authentication errors.
+        // For network errors or transient failures, preserve existing state.
         if (error instanceof ConnectError && error.code === Code.Unauthenticated) {
+          // A full page reload (e.g. forced by a deploy shipping a new bundle)
+          // drops the in-memory access token, and GetCurrentUser is excluded
+          // from the transport's auto-refresh interceptor. So recover here:
+          // use the httpOnly refresh cookie to mint a fresh access token, then
+          // retry once before treating the user as logged out. Without this a
+          // still-valid session is thrown away on every reload.
+          try {
+            const refreshResponse = await authClient.refreshSession({});
+            if (refreshResponse.csrfToken) {
+              setCsrfToken(refreshResponse.csrfToken);
+            }
+            if (await hydrateFromCurrentUser()) {
+              return;
+            }
+          } catch {
+            // Refresh failed (no/expired session) → fall through to clearing state.
+          }
           setUser(null);
           setSession(null);
           setSentryUser(null);
