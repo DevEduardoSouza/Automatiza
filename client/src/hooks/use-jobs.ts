@@ -337,6 +337,50 @@ export function useJobs(): UseJobsReturn {
     } else if (actionType === 'change_group_name') {
       jobPayload.name = payload;
       jobPayload.autoNumber = autoNumberGroups;
+    } else if (actionType === 'change_group_photo') {
+      // O input de foto usa mediaFile (novo arquivo). Ao editar sem trocar o
+      // arquivo, handleEditJob deixa a imagem existente (base64) em `payload`.
+      if (mediaFile) {
+        const MAX_MEDIA_BYTES = 7 * 1024 * 1024;
+        if (mediaFile.size > MAX_MEDIA_BYTES) {
+          toast({
+            variant: 'destructive',
+            title: t('pages.jobs.errors.fileTooLarge'),
+            description: t('pages.jobs.errors.fileTooLargeMessage'),
+          });
+          return;
+        }
+
+        try {
+          const imageDataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(mediaFile);
+          });
+          jobPayload.image = imageDataUrl;
+        } catch (error: unknown) {
+          captureHookError(error, 'useJobs', 'readGroupPhotoFile');
+          toast({
+            variant: 'destructive',
+            title: t('pages.jobs.errors.fileReadError'),
+            description: t('pages.jobs.errors.fileReadMessage'),
+          });
+          return;
+        }
+      } else if (payload) {
+        // Edição sem novo arquivo: reaproveita a imagem já salva no job.
+        jobPayload.image = payload;
+      }
+
+      if (!jobPayload.image) {
+        toast({
+          variant: 'destructive',
+          title: t('pages.jobs.errors.noImage'),
+          description: t('pages.jobs.errors.noImageMessage'),
+        });
+        return;
+      }
     }
 
     const localDateTime = new Date(`${scheduledDate}T${scheduledTime}:00`);
