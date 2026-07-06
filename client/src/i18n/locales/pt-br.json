@@ -1983,6 +1983,8 @@
         "fileTooLargeMessage": "Use um arquivo menor (máx. ~7MB) para agendamento.",
         "fileReadError": "Erro ao processar anexo",
         "fileReadMessage": "Não foi possível ler o arquivo selecionado.",
+        "noImage": "Imagem obrigatória",
+        "noImageMessage": "Selecione uma imagem para a nova foto do grupo",
         "schedule": "Erro ao agendar",
         "update": "Erro ao atualizar",
         "delete": "Erro ao excluir",
