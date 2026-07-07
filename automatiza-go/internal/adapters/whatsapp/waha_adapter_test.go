@@ -1064,6 +1064,50 @@ func TestWahaAdapter_SendVoice(t *testing.T) {
 	})
 }
 
+func TestWahaAdapter_SendVideo(t *testing.T) {
+	ctx := context.Background()
+
+	// Regressão: o send de vídeo DEVE mandar convert:true pro WAHA. Sem isso,
+	// vídeo repassado (não-streamable) fica preso em ack=1 (aceito pelo servidor
+	// do WhatsApp mas nunca entregue aos aparelhos).
+	t.Run("sends video with convert:true so WhatsApp delivers it", func(t *testing.T) {
+		adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/api/sessions/") && r.Method == http.MethodGet {
+				jsonResponse(t, http.StatusOK, map[string]interface{}{
+					"name":   "test-session",
+					"status": "WORKING",
+				})(w, r)
+				return
+			}
+
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Contains(t, r.URL.Path, "/sendVideo")
+
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]interface{}
+			_ = json.Unmarshal(body, &payload)
+
+			assert.Equal(t, "group@g.us", payload["chatId"])
+			assert.Equal(t, true, payload["convert"], "video send must request WAHA transcode (convert:true)")
+
+			jsonResponse(t, http.StatusOK, map[string]interface{}{
+				"id":        "msg-video-123",
+				"timestamp": 1234567890,
+			})(w, r)
+		})
+
+		result, err := adapter.SendVideo(ctx, SendVideoInput{
+			SessionName: "test-session",
+			ChatID:      "group@g.us",
+			MediaBase64: "SGVsbG8gV29ybGQ=",
+			MimeType:    "video/mp4",
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, "msg-video-123", result.ID)
+	})
+}
+
 // =============================================================================
 // SendImage Additional Tests
 // =============================================================================

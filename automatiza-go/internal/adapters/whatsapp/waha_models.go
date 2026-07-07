@@ -508,6 +508,13 @@ type wahaSendVideoRequest struct {
 	Caption  string    `json:"caption,omitempty"`
 	File     *wahaFile `json:"file,omitempty"`
 	Mentions []string  `json:"mentions,omitempty"`
+	// Convert pede ao WAHA que transcodifique o vídeo (ffmpeg) para o formato
+	// streamable que o WhatsApp exige (H.264/AAC MP4 com faststart). Vídeo
+	// repassado (baixado do WhatsApp e reenviado) costuma NÃO estar nesse
+	// formato: sem convert o WhatsApp aceita a mensagem no servidor (ack=1)
+	// mas nunca a distribui aos aparelhos (nunca vira ack=2). Voz já usa o
+	// mesmo mecanismo. Ver hotfix do relay de vídeo travado em ack=1.
+	Convert bool `json:"convert"`
 }
 
 // wahaSendFileRequest represents a WAHA file/document message request.
