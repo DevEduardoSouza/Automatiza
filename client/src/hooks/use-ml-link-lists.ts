@@ -97,6 +97,31 @@ function parseCsvRecords(text: string, sep: string): string[][] {
 }
 
 /**
+ * Lê o arquivo de importação como texto detectando o encoding, em vez de
+ * assumir UTF-8 como o `File.text()` faz. O Excel em pt-BR salva "CSV comum"
+ * em Windows-1252/ANSI: nesse caso cada acento é um byte solto (é=0xE9,
+ * ç=0xE7, ã=0xE3…) que, decodificado como UTF-8, vira `�` (U+FFFD) e corrompe
+ * o texto de info já na importação.
+ *
+ * Estratégia: se houver BOM UTF-8, é UTF-8. Senão tenta UTF-8 estrito; se o
+ * arquivo não for UTF-8 válido (caso do ANSI), cai para windows-1252, que
+ * decodifica qualquer sequência de bytes sem erro e cobre o export do Excel
+ * pt-BR. Arquivos já em UTF-8 continuam intactos.
+ */
+async function readSpreadsheetText(file: File): Promise<string> {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  // BOM UTF-8 (EF BB BF) → já é UTF-8; remove o BOM pra não sujar a 1ª célula.
+  if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
+    return new TextDecoder('utf-8').decode(buf).slice(1);
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+  } catch {
+    return new TextDecoder('windows-1252').decode(buf);
+  }
+}
+
+/**
  * Faz o parse do arquivo de importação em linhas {url, info}. Detecta o
  * separador (',' ou ';' — Excel pt-BR exporta com ';') a partir da 1ª linha
  * física (o cabeçalho não tem aspas), pula um cabeçalho "URL" opcional, e
@@ -650,7 +675,7 @@ export function useMlLinkLists(): UseMlLinkListsReturn {
     }
     setImporting(true);
     try {
-      const fileText = await file.text();
+      const fileText = await readSpreadsheetText(file);
       const rows = parseImportRows(fileText);
 
       console.log('[import] rows parsed:', rows.length);
