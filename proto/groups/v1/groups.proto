@@ -428,6 +428,38 @@ message UpdateGroupPictureResponse {
 }
 
 // ============================================================
+// Update Group Pictures (bulk, multi-chip fan-out)
+// ============================================================
+
+message UpdateGroupPicturesRequest {
+  // WhatsApp group IDs (format: 123456789@g.us) to update.
+  repeated string group_ids = 1;
+
+  // Base64 encoded image data (with or without a data: URI prefix).
+  string base64_data = 2 [(buf.validate.field).string.min_len = 1];
+
+  // Image mimetype (e.g., image/jpeg).
+  optional string mimetype = 3;
+}
+
+// UpdateGroupPictureResult is the per-group outcome of a bulk picture update.
+message UpdateGroupPictureResult {
+  string group_id = 1;
+  bool success = 2;
+  // Human-readable error (empty on success).
+  string error = 3;
+  // Session name of the chip used to apply the change; empty when no admin
+  // chip was eligible for the group.
+  string used_instance = 4;
+}
+
+message UpdateGroupPicturesResponse {
+  repeated UpdateGroupPictureResult results = 1;
+  int32 success_count = 2;
+  int32 failed_count = 3;
+}
+
+// ============================================================
 // Update Group Settings
 // ============================================================
 
@@ -693,6 +725,11 @@ service GroupsService {
 
   // Updates the group picture.
   rpc UpdateGroupPicture(UpdateGroupPictureRequest) returns (UpdateGroupPictureResponse);
+
+  // Updates the picture of many groups at once. Each group is routed through a
+  // chip that administers it (multi-chip aware) and changes are paced per chip
+  // to avoid WhatsApp anti-spam. Returns a per-group result.
+  rpc UpdateGroupPictures(UpdateGroupPicturesRequest) returns (UpdateGroupPicturesResponse);
 
   // Updates group settings (e.g., announcement mode).
   rpc UpdateGroupSettings(UpdateGroupSettingsRequest) returns (UpdateGroupSettingsResponse);

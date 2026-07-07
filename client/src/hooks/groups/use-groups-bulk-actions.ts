@@ -32,7 +32,7 @@ export function useGroupsBulkActions({
   const {
     updateGroupSettings,
     updateGroupSubject,
-    updateGroupPicture,
+    updateGroupPictures,
     updateGroupDescription,
     updateGroup,
   } = useGroupsConnect();
@@ -83,125 +83,137 @@ export function useGroupsBulkActions({
       const actionConfig = actionType ? BULK_ACTION_CONFIG[actionType] : null;
 
       try {
-        for (const group of selectedGroupsData) {
-          try {
-            switch (action) {
-              case 'Fechar grupos': {
-                // Close group (announcement mode = admin only)
-                const closeResult = await updateGroupSettings({
-                  instance_name: instanceName,
-                  group_id: group.wa_group_id,
-                  messages_admin_only: true,
-                });
-                if (!closeResult) {
-                  throw new Error(t('pages.groups.errors.closeGroup'));
-                }
+        // "Alterar foto" é um caminho em lote: o backend roteia cada grupo
+        // pelo chip que é ADMIN dele (multi-chip) e espaça as trocas por chip
+        // pra não bater no anti-spam do WhatsApp (401 not-authorized). As
+        // demais ações seguem no loop por-grupo abaixo.
+        if (action === 'Alterar foto') {
+          if (!groupPhoto) {
+            throw new Error(t('pages.groups.errors.noPhotoSelected'));
+          }
 
-                // Update local status
-                await updateGroup({ id: group.id, status: 'closed' });
-                successCount++;
-                break;
-              }
+          const base64Image = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const base64 = reader.result as string;
+              resolve(base64.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(groupPhoto);
+          });
 
-              case 'Abrir grupos': {
-                // Open group (not announcement mode = everyone can send)
-                const openResult = await updateGroupSettings({
-                  instance_name: instanceName,
-                  group_id: group.wa_group_id,
-                  messages_admin_only: false,
-                });
-                if (!openResult) {
-                  throw new Error(t('pages.groups.errors.openGroup'));
-                }
-
-                // Update local status
-                await updateGroup({ id: group.id, status: 'open' });
-                successCount++;
-                break;
-              }
-
-              case 'Alterar nome': {
-                if (!autoNumberGroups && !groupName.trim()) {
-                  throw new Error(t('pages.groups.errors.nameRequired'));
-                }
-
-                const newGroupName = autoNumberGroups
-                  ? `#${selectedGroupsData.indexOf(group) + 1} ${
-                      groupName || t('pages.groups.defaults.newGroupName')
-                    }`
-                  : groupName;
-
-                const subjectResult = await updateGroupSubject({
-                  instance_name: instanceName,
-                  group_id: group.wa_group_id,
-                  subject: newGroupName,
-                });
-                if (!subjectResult) {
-                  throw new Error(t('pages.groups.errors.changeName'));
-                }
-
-                // Update local name
-                await updateGroup({ id: group.id, name: newGroupName });
-                successCount++;
-                break;
-              }
-
-              case 'Alterar foto': {
-                if (!groupPhoto) {
-                  throw new Error(t('pages.groups.errors.noPhotoSelected'));
-                }
-
-                const reader = new FileReader();
-                const base64Image = await new Promise<string>((resolve, reject) => {
-                  reader.onload = () => {
-                    const base64 = reader.result as string;
-                    const base64Data = base64.split(',')[1];
-                    resolve(base64Data);
-                  };
-                  reader.onerror = reject;
-                  reader.readAsDataURL(groupPhoto);
-                });
-
-                const pictureResult = await updateGroupPicture({
-                  instance_name: instanceName,
-                  group_id: group.wa_group_id,
-                  base64_data: base64Image,
-                  mimetype: groupPhoto.type,
-                });
-                if (!pictureResult) {
-                  throw new Error(t('pages.groups.errors.changePhoto'));
-                }
-                successCount++;
-                break;
-              }
-
-              case 'Alterar descrição': {
-                if (!description.trim()) {
-                  throw new Error(t('pages.groups.errors.descriptionRequired'));
-                }
-                const descResult = await updateGroupDescription({
-                  instance_name: instanceName,
-                  group_id: group.wa_group_id,
-                  description,
-                });
-                if (!descResult) {
-                  throw new Error(t('pages.groups.errors.changeDescription'));
-                }
-
-                // Update local description
-                await updateGroup({ id: group.id, description });
-                successCount++;
-                break;
-              }
-
-              default:
-                throw new Error(t('pages.groups.errors.unknownAction'));
+          const bulk = await updateGroupPictures({
+            group_ids: selectedGroupsData.map((g) => g.wa_group_id),
+            base64_data: base64Image,
+            mimetype: groupPhoto.type,
+          });
+          successCount = bulk.success_count;
+          errorCount = bulk.failed_count;
+          const nameByWaId = new Map(
+            selectedGroupsData.map((g) => [g.wa_group_id, g.name] as const)
+          );
+          for (const r of bulk.results) {
+            if (!r.success) {
+              errorDetails.push(
+                `${nameByWaId.get(r.group_id) ?? r.group_id}: ${
+                  r.error || t('pages.groups.errors.changePhoto')
+                }`
+              );
             }
-          } catch (error) {
-            captureHookError(error, 'useGroupsBulkActions', 'executeBulkAction');
-            const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
-            errorDetails.push(`${group.name}: ${errorMessage}`);
-            errorCount++;
+          }
+        } else {
+          for (const group of selectedGroupsData) {
+            try {
+              switch (action) {
+                case 'Fechar grupos': {
+                  // Close group (announcement mode = admin only)
+                  const closeResult = await updateGroupSettings({
+                    instance_name: instanceName,
+                    group_id: group.wa_group_id,
+                    messages_admin_only: true,
+                  });
+                  if (!closeResult) {
+                    throw new Error(t('pages.groups.errors.closeGroup'));
+                  }
+
+                  // Update local status
+                  await updateGroup({ id: group.id, status: 'closed' });
+                  successCount++;
+                  break;
+                }
+
+                case 'Abrir grupos': {
+                  // Open group (not announcement mode = everyone can send)
+                  const openResult = await updateGroupSettings({
+                    instance_name: instanceName,
+                    group_id: group.wa_group_id,
+                    messages_admin_only: false,
+                  });
+                  if (!openResult) {
+                    throw new Error(t('pages.groups.errors.openGroup'));
+                  }
+
+                  // Update local status
+                  await updateGroup({ id: group.id, status: 'open' });
+                  successCount++;
+                  break;
+                }
+
+                case 'Alterar nome': {
+                  if (!autoNumberGroups && !groupName.trim()) {
+                    throw new Error(t('pages.groups.errors.nameRequired'));
+                  }
+
+                  const newGroupName = autoNumberGroups
+                    ? `#${selectedGroupsData.indexOf(group) + 1} ${
+                        groupName || t('pages.groups.defaults.newGroupName')
+                      }`
+                    : groupName;
+
+                  const subjectResult = await updateGroupSubject({
+                    instance_name: instanceName,
+                    group_id: group.wa_group_id,
+                    subject: newGroupName,
+                  });
+                  if (!subjectResult) {
+                    throw new Error(t('pages.groups.errors.changeName'));
+                  }
+
+                  // Update local name
+                  await updateGroup({ id: group.id, name: newGroupName });
+                  successCount++;
+                  break;
+                }
+
+                case 'Alterar descrição': {
+                  if (!description.trim()) {
+                    throw new Error(t('pages.groups.errors.descriptionRequired'));
+                  }
+                  const descResult = await updateGroupDescription({
+                    instance_name: instanceName,
+                    group_id: group.wa_group_id,
+                    description,
+                  });
+                  if (!descResult) {
+                    throw new Error(t('pages.groups.errors.changeDescription'));
+                  }
+
+                  // Update local description
+                  await updateGroup({ id: group.id, description });
+                  successCount++;
+                  break;
+                }
+
+                default:
+                  throw new Error(t('pages.groups.errors.unknownAction'));
+              }
+            } catch (error) {
+              captureHookError(error, 'useGroupsBulkActions', 'executeBulkAction');
+              const errorMessage =
+                error instanceof Error ? error.message : t('common.unknownError');
+              errorDetails.push(`${group.name}: ${errorMessage}`);
+              errorCount++;
+            }
           }
         }
 
@@ -259,7 +271,7 @@ export function useGroupsBulkActions({
       setLoading,
       updateGroupSettings,
       updateGroupSubject,
-      updateGroupPicture,
+      updateGroupPictures,
       updateGroupDescription,
       updateGroup,
     ]

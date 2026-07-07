@@ -30,6 +30,10 @@ type fakeQuotaGroupRepo struct {
 	err     error
 }
 
+func (f *fakeQuotaGroupRepo) GetAdminInstanceIDsForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string][]string, error) {
+	return map[string][]string{}, nil
+}
+
 func (f *fakeQuotaGroupRepo) GetInstancesForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string]*models.Instance, error) {
 	if f.err != nil {
 		return nil, f.err

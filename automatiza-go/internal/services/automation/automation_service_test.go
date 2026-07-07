@@ -385,6 +385,10 @@ func (m *MockGroupRepository) CountGroupsByInstance(ctx context.Context, userID 
 	return args.Int(0), args.Error(1)
 }
 
+func (m *MockGroupRepository) GetAdminInstanceIDsForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string][]string, error) {
+	return map[string][]string{}, nil
+}
+
 func (m *MockGroupRepository) GetInstancesForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string]*models.Instance, error) {
 	args := m.Called(ctx, userID, waGroupIDs)
 	if args.Get(0) == nil {

@@ -123,6 +123,11 @@ type GroupRepository interface {
 	// router to send messages through the chip that owns the group instead of the
 	// user's first connected instance. Missing groups are simply absent from the map.
 	GetInstancesForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string]*models.Instance, error)
+	// GetAdminInstanceIDsForGroups returns a map keyed by wa_group_id of the
+	// chip ids (stringified) that administer each group (groups.admin_instance_ids).
+	// Used by the bulk picture fan-out to route each group through a chip that
+	// can actually change its photo.
+	GetAdminInstanceIDsForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string][]string, error)
 }
 
 // SyncOptions represents options for group syncing
