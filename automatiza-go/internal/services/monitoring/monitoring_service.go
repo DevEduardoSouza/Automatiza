@@ -663,16 +663,18 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// ninguém é notificado. Quando há @todos, caímos para imagem+legenda ou
 		// texto (Priority 2/3), que honram mentionedJid.
 		if !monitoringSendAsImage && firstAffiliateURL != "" && !hasMentions {
-			previewTitle := msg.LinkPreviewTitle
-			if previewTitle == "" {
-				previewTitle = firstNonEmptyLine(processedText)
-			}
+			// Título do card: SÓ o título de preview que a origem trouxe. NÃO
+			// cair pra primeira linha do corpo — essa linha (um CTA/cabeçalho
+			// promocional) já está no texto, então usá-la como título do card
+			// DUPLICA o CTA (glauribs "Espelhamento MAH": o cabeçalho aparecia
+			// no card E no corpo). Título vazio deixa o próprio WhatsApp montar
+			// o card a partir do link.
 			_, err = s.waProvider.SendLinkCustomPreview(sendCtx, whatsapp.SendLinkPreviewInput{
 				SessionName: senderSession,
 				ChatID:      groupID,
 				Text:        processedText,
 				URL:         firstAffiliateURL,
-				Title:       previewTitle,
+				Title:       msg.LinkPreviewTitle,
 				Description: msg.LinkPreviewDescription,
 				ImageURL:    imageURL,
 				ImageBase64: imageBase64,
@@ -1203,23 +1205,4 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return s[:max] + "..."
-}
-
-// firstNonEmptyLine returns the first non-blank line of s (trimmed, rune-capped),
-// used as a fallback link-preview title when the source message carried none.
-// The first line of an offer body is typically the product headline/name, which
-// makes a reasonable preview title — mirroring how offer_generate derives one.
-func firstNonEmptyLine(s string) string {
-	const maxRunes = 120
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if r := []rune(line); len(r) > maxRunes {
-			return string(r[:maxRunes])
-		}
-		return line
-	}
-	return ""
 }
