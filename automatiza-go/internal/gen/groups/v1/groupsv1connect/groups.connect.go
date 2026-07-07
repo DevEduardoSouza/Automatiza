@@ -83,6 +83,9 @@ const (
 	// GroupsServiceUpdateGroupPictureProcedure is the fully-qualified name of the GroupsService's
 	// UpdateGroupPicture RPC.
 	GroupsServiceUpdateGroupPictureProcedure = "/groups.v1.GroupsService/UpdateGroupPicture"
+	// GroupsServiceUpdateGroupPicturesProcedure is the fully-qualified name of the GroupsService's
+	// UpdateGroupPictures RPC.
+	GroupsServiceUpdateGroupPicturesProcedure = "/groups.v1.GroupsService/UpdateGroupPictures"
 	// GroupsServiceUpdateGroupSettingsProcedure is the fully-qualified name of the GroupsService's
 	// UpdateGroupSettings RPC.
 	GroupsServiceUpdateGroupSettingsProcedure = "/groups.v1.GroupsService/UpdateGroupSettings"
@@ -145,6 +148,10 @@ type GroupsServiceClient interface {
 	UpdateGroupDescription(context.Context, *connect.Request[v1.UpdateGroupDescriptionRequest]) (*connect.Response[v1.UpdateGroupDescriptionResponse], error)
 	// Updates the group picture.
 	UpdateGroupPicture(context.Context, *connect.Request[v1.UpdateGroupPictureRequest]) (*connect.Response[v1.UpdateGroupPictureResponse], error)
+	// Updates the picture of many groups at once. Each group is routed through a
+	// chip that administers it (multi-chip aware) and changes are paced per chip
+	// to avoid WhatsApp anti-spam. Returns a per-group result.
+	UpdateGroupPictures(context.Context, *connect.Request[v1.UpdateGroupPicturesRequest]) (*connect.Response[v1.UpdateGroupPicturesResponse], error)
 	// Updates group settings (e.g., announcement mode).
 	UpdateGroupSettings(context.Context, *connect.Request[v1.UpdateGroupSettingsRequest]) (*connect.Response[v1.UpdateGroupSettingsResponse], error)
 	// Gets the invite code for a group.
@@ -276,6 +283,12 @@ func NewGroupsServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(groupsServiceMethods.ByName("UpdateGroupPicture")),
 			connect.WithClientOptions(opts...),
 		),
+		updateGroupPictures: connect.NewClient[v1.UpdateGroupPicturesRequest, v1.UpdateGroupPicturesResponse](
+			httpClient,
+			baseURL+GroupsServiceUpdateGroupPicturesProcedure,
+			connect.WithSchema(groupsServiceMethods.ByName("UpdateGroupPictures")),
+			connect.WithClientOptions(opts...),
+		),
 		updateGroupSettings: connect.NewClient[v1.UpdateGroupSettingsRequest, v1.UpdateGroupSettingsResponse](
 			httpClient,
 			baseURL+GroupsServiceUpdateGroupSettingsProcedure,
@@ -346,6 +359,7 @@ type groupsServiceClient struct {
 	updateGroupSubject     *connect.Client[v1.UpdateGroupSubjectRequest, v1.UpdateGroupSubjectResponse]
 	updateGroupDescription *connect.Client[v1.UpdateGroupDescriptionRequest, v1.UpdateGroupDescriptionResponse]
 	updateGroupPicture     *connect.Client[v1.UpdateGroupPictureRequest, v1.UpdateGroupPictureResponse]
+	updateGroupPictures    *connect.Client[v1.UpdateGroupPicturesRequest, v1.UpdateGroupPicturesResponse]
 	updateGroupSettings    *connect.Client[v1.UpdateGroupSettingsRequest, v1.UpdateGroupSettingsResponse]
 	getGroupInviteCode     *connect.Client[v1.GetGroupInviteCodeRequest, v1.GetGroupInviteCodeResponse]
 	getGroupParticipants   *connect.Client[v1.GetGroupParticipantsRequest, v1.GetGroupParticipantsResponse]
@@ -441,6 +455,11 @@ func (c *groupsServiceClient) UpdateGroupPicture(ctx context.Context, req *conne
 	return c.updateGroupPicture.CallUnary(ctx, req)
 }
 
+// UpdateGroupPictures calls groups.v1.GroupsService.UpdateGroupPictures.
+func (c *groupsServiceClient) UpdateGroupPictures(ctx context.Context, req *connect.Request[v1.UpdateGroupPicturesRequest]) (*connect.Response[v1.UpdateGroupPicturesResponse], error) {
+	return c.updateGroupPictures.CallUnary(ctx, req)
+}
+
 // UpdateGroupSettings calls groups.v1.GroupsService.UpdateGroupSettings.
 func (c *groupsServiceClient) UpdateGroupSettings(ctx context.Context, req *connect.Request[v1.UpdateGroupSettingsRequest]) (*connect.Response[v1.UpdateGroupSettingsResponse], error) {
 	return c.updateGroupSettings.CallUnary(ctx, req)
@@ -517,6 +536,10 @@ type GroupsServiceHandler interface {
 	UpdateGroupDescription(context.Context, *connect.Request[v1.UpdateGroupDescriptionRequest]) (*connect.Response[v1.UpdateGroupDescriptionResponse], error)
 	// Updates the group picture.
 	UpdateGroupPicture(context.Context, *connect.Request[v1.UpdateGroupPictureRequest]) (*connect.Response[v1.UpdateGroupPictureResponse], error)
+	// Updates the picture of many groups at once. Each group is routed through a
+	// chip that administers it (multi-chip aware) and changes are paced per chip
+	// to avoid WhatsApp anti-spam. Returns a per-group result.
+	UpdateGroupPictures(context.Context, *connect.Request[v1.UpdateGroupPicturesRequest]) (*connect.Response[v1.UpdateGroupPicturesResponse], error)
 	// Updates group settings (e.g., announcement mode).
 	UpdateGroupSettings(context.Context, *connect.Request[v1.UpdateGroupSettingsRequest]) (*connect.Response[v1.UpdateGroupSettingsResponse], error)
 	// Gets the invite code for a group.
@@ -644,6 +667,12 @@ func NewGroupsServiceHandler(svc GroupsServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(groupsServiceMethods.ByName("UpdateGroupPicture")),
 		connect.WithHandlerOptions(opts...),
 	)
+	groupsServiceUpdateGroupPicturesHandler := connect.NewUnaryHandler(
+		GroupsServiceUpdateGroupPicturesProcedure,
+		svc.UpdateGroupPictures,
+		connect.WithSchema(groupsServiceMethods.ByName("UpdateGroupPictures")),
+		connect.WithHandlerOptions(opts...),
+	)
 	groupsServiceUpdateGroupSettingsHandler := connect.NewUnaryHandler(
 		GroupsServiceUpdateGroupSettingsProcedure,
 		svc.UpdateGroupSettings,
@@ -728,6 +757,8 @@ func NewGroupsServiceHandler(svc GroupsServiceHandler, opts ...connect.HandlerOp
 			groupsServiceUpdateGroupDescriptionHandler.ServeHTTP(w, r)
 		case GroupsServiceUpdateGroupPictureProcedure:
 			groupsServiceUpdateGroupPictureHandler.ServeHTTP(w, r)
+		case GroupsServiceUpdateGroupPicturesProcedure:
+			groupsServiceUpdateGroupPicturesHandler.ServeHTTP(w, r)
 		case GroupsServiceUpdateGroupSettingsProcedure:
 			groupsServiceUpdateGroupSettingsHandler.ServeHTTP(w, r)
 		case GroupsServiceGetGroupInviteCodeProcedure:
@@ -819,6 +850,10 @@ func (UnimplementedGroupsServiceHandler) UpdateGroupDescription(context.Context,
 
 func (UnimplementedGroupsServiceHandler) UpdateGroupPicture(context.Context, *connect.Request[v1.UpdateGroupPictureRequest]) (*connect.Response[v1.UpdateGroupPictureResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("groups.v1.GroupsService.UpdateGroupPicture is not implemented"))
+}
+
+func (UnimplementedGroupsServiceHandler) UpdateGroupPictures(context.Context, *connect.Request[v1.UpdateGroupPicturesRequest]) (*connect.Response[v1.UpdateGroupPicturesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("groups.v1.GroupsService.UpdateGroupPictures is not implemented"))
 }
 
 func (UnimplementedGroupsServiceHandler) UpdateGroupSettings(context.Context, *connect.Request[v1.UpdateGroupSettingsRequest]) (*connect.Response[v1.UpdateGroupSettingsResponse], error) {

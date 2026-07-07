@@ -47,6 +47,8 @@ import {
   type UpdateGroupDescriptionResponse,
   UpdateGroupPictureRequestSchema,
   type UpdateGroupPictureResponse,
+  UpdateGroupPicturesRequestSchema,
+  type UpdateGroupPicturesResponse,
   UpdateGroupRequestSchema,
   type UpdateGroupResponse,
   UpdateGroupSettingsRequestSchema,
@@ -216,6 +218,26 @@ export interface UpdateSettingsParams {
   messages_admin_only: boolean;
 }
 
+export interface UpdatePicturesBulkParams {
+  // WhatsApp group IDs (format: 123456789@g.us).
+  group_ids: string[];
+  base64_data: string;
+  mimetype?: string;
+}
+
+export interface GroupPictureResult {
+  group_id: string;
+  success: boolean;
+  error: string;
+  used_instance: string;
+}
+
+export interface UpdatePicturesBulkResult {
+  results: GroupPictureResult[];
+  success_count: number;
+  failed_count: number;
+}
+
 export interface GetInviteCodeResult {
   invite_code: string;
   invite_url: string;
@@ -327,6 +349,7 @@ interface UseGroupsConnectReturn {
   updateGroupSubject: (params: UpdateSubjectParams) => Promise<boolean>;
   updateGroupDescription: (params: UpdateDescriptionParams) => Promise<boolean>;
   updateGroupPicture: (params: UpdatePictureParams) => Promise<boolean>;
+  updateGroupPictures: (params: UpdatePicturesBulkParams) => Promise<UpdatePicturesBulkResult>;
   updateGroupSettings: (params: UpdateSettingsParams) => Promise<boolean>;
 
   // Utilities
@@ -1120,6 +1143,41 @@ export function useGroupsConnect(): UseGroupsConnectReturn {
   });
 
   // ============================================================
+  // Picture - Update many group pictures (multi-chip fan-out)
+  // ============================================================
+
+  const updateGroupPicturesMutation = useMutation({
+    mutationFn: async (params: UpdatePicturesBulkParams): Promise<UpdatePicturesBulkResult> => {
+      if (!user?.id) {
+        throw new Error(t('common.errors.notAuthenticated'));
+      }
+
+      const client = createClient(GroupsService, transport);
+      const response: UpdateGroupPicturesResponse = await client.updateGroupPictures(
+        create(UpdateGroupPicturesRequestSchema, {
+          groupIds: params.group_ids,
+          base64Data: params.base64_data,
+          mimetype: params.mimetype,
+        })
+      );
+
+      return {
+        results: response.results.map((r) => ({
+          group_id: r.groupId,
+          success: r.success,
+          error: r.error,
+          used_instance: r.usedInstance,
+        })),
+        success_count: response.successCount,
+        failed_count: response.failedCount,
+      };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+    },
+  });
+
+  // ============================================================
   // Settings - Update Group Settings
   // ============================================================
 
@@ -1515,6 +1573,13 @@ export function useGroupsConnect(): UseGroupsConnectReturn {
     [updateGroupPictureMutation.mutateAsync]
   );
 
+  const updateGroupPictures = useCallback(
+    async (params: UpdatePicturesBulkParams): Promise<UpdatePicturesBulkResult> => {
+      return updateGroupPicturesMutation.mutateAsync(params);
+    },
+    [updateGroupPicturesMutation.mutateAsync]
+  );
+
   const updateGroupSettings = useCallback(
     async (params: UpdateSettingsParams): Promise<boolean> => {
       return updateGroupSettingsMutation.mutateAsync(params);
@@ -1603,6 +1668,7 @@ export function useGroupsConnect(): UseGroupsConnectReturn {
     updateGroupSubject,
     updateGroupDescription,
     updateGroupPicture,
+    updateGroupPictures,
     updateGroupSettings,
 
     // Utilities

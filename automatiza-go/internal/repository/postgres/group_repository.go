@@ -661,6 +661,42 @@ func (r *groupRepository) GetGroupsByWAGroupIDs(ctx context.Context, userID stri
 	return r.scanGroups(rows)
 }
 
+// GetAdminInstanceIDsForGroups returns a map keyed by wa_group_id of the chip
+// ids (stringified, matching Instance.ID's wire format) that ADMINISTER each
+// group — i.e. groups.admin_instance_ids. Used by the bulk picture fan-out to
+// route each group through a chip that can actually change its photo; a chip
+// that merely participates but isn't admin gets a "not-authorized" from
+// WhatsApp. Missing/empty groups are simply absent from the map.
+func (r *groupRepository) GetAdminInstanceIDsForGroups(ctx context.Context, userID string, waGroupIDs []string) (map[string][]string, error) {
+	result := make(map[string][]string)
+	if len(waGroupIDs) == 0 {
+		return result, nil
+	}
+
+	query := `
+		SELECT wa_group_id, admin_instance_ids
+		FROM groups
+		WHERE user_id = $1 AND wa_group_id = ANY($2)
+	`
+
+	rows, err := r.db.Query(ctx, query, userID, waGroupIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var waGroupID string
+		var adminIDs []int32
+		if err := rows.Scan(&waGroupID, &adminIDs); err != nil {
+			return nil, err
+		}
+		result[waGroupID] = stringifyInstanceIDs(adminIDs)
+	}
+
+	return result, rows.Err()
+}
+
 // CreateGroup creates a new group in the database
 func (r *groupRepository) CreateGroup(ctx context.Context, userID string, group *models.Group) (*models.Group, error) {
 	query := `
