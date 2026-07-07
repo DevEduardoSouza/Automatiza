@@ -1341,10 +1341,13 @@ func TestProcessAutomation_SameGroupSkipped(t *testing.T) {
 }
 
 // TestProcessAutomation_PreviewWithoutSourceTitle guards the preview-mode
-// parity fix: with "enviar como imagem" OFF and an affiliate link present, the
+// behaviour: with "enviar como imagem" OFF and an affiliate link present, the
 // relay must send a link-preview card even when the SOURCE message carried no
-// WhatsApp preview (LinkPreviewTitle == ""), deriving the title from the first
-// line of the body — instead of falling back to a plain image.
+// WhatsApp preview (LinkPreviewTitle == "") — instead of falling back to a
+// plain image. The card title is left EMPTY in that case (NOT the body's first
+// line): that line is a CTA/headline already in the body, so using it as the
+// title duplicates the CTA. Empty title lets the WhatsApp client derive the
+// card from the link itself.
 func TestProcessAutomation_PreviewWithoutSourceTitle(t *testing.T) {
 	var previewInput *whatsapp.SendLinkPreviewInput
 	var imageCalled, textCalled bool
@@ -1406,36 +1409,11 @@ func TestProcessAutomation_PreviewWithoutSourceTitle(t *testing.T) {
 	if textCalled {
 		t.Error("SendText should not be called when preview mode succeeds")
 	}
-	if previewInput.Title != "Mascara Kerastase 200ml" {
-		t.Errorf("preview Title = %q, want the first line of the body", previewInput.Title)
+	if previewInput.Title != "" {
+		t.Errorf("preview Title = %q, want empty (must NOT duplicate the body's first line/CTA)", previewInput.Title)
 	}
 	if previewInput.URL != "https://s.shopee.com.br/aff123" {
 		t.Errorf("preview URL = %q, want the affiliate link", previewInput.URL)
-	}
-}
-
-func TestFirstNonEmptyLine(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"", ""},
-		{"\n\n   \n", ""},
-		{"Produto X\nhttps://x", "Produto X"},
-		{"   \n  Segunda linha  \nterceira", "Segunda linha"},
-		{"*Negrito* no titulo", "*Negrito* no titulo"},
-	}
-	for _, c := range cases {
-		if got := firstNonEmptyLine(c.in); got != c.want {
-			t.Errorf("firstNonEmptyLine(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-
-	// Rune cap: a very long first line is truncated to 120 runes without
-	// splitting a multibyte character.
-	long := ""
-	for i := 0; i < 200; i++ {
-		long += "á"
-	}
-	if got := firstNonEmptyLine(long); len([]rune(got)) != 120 {
-		t.Errorf("expected first line capped at 120 runes, got %d", len([]rune(got)))
 	}
 }
 
