@@ -449,6 +449,11 @@ func (m *Mapper) SendVideoToWaha(input *SendVideoInput) *wahaSendVideoRequest {
 		ChatID:   input.ChatID,
 		Caption:  input.Caption,
 		Mentions: input.Mentions,
+		// Sempre transcodifica: garante que o vídeo saia streamable e o
+		// WhatsApp de fato entregue (senão trava em ack=1). Fase 2 vai
+		// transcodificar 1x no worker e mandar convert:false no fan-out
+		// pra não rodar ffmpeg por grupo em automações com muitos destinos.
+		Convert: true,
 	}
 
 	if input.MediaURL != "" {
