@@ -585,7 +585,8 @@ export function useAutomations(): UseAutomationsReturn {
       let dispatchTextId: string | undefined;
       let mlLinkListId: string | undefined;
 
-      if (mode === 'search' || mode === 'list' || mode === 'monitor') {
+      const usesDispatchText = mode === 'search' || mode === 'list' || mode === 'monitor';
+      if (usesDispatchText) {
         dispatchTextId = formData.dispatch_text_id || undefined;
       }
       if (mode === 'list') {
@@ -607,7 +608,12 @@ export function useAutomations(): UseAutomationsReturn {
           id: editingId,
           name: formData.name,
           mode,
-          dispatchTextId,
+          // Voltar para "padrão" seta dispatch_text_id = null. No update é
+          // preciso enviar '' (string vazia) para LIMPAR o campo no backend;
+          // undefined deixaria o texto personalizado anterior intacto (mesmo
+          // padrão do instanceId abaixo). No create seguimos com undefined
+          // (grava NULL limpo, sem "" no banco).
+          dispatchTextId: usesDispatchText ? (formData.dispatch_text_id ?? '') : undefined,
           monitoringTextRules:
             mode === 'monitor' ? toLocalMonitoringRules(formData.monitoring_text_rules) : undefined,
           startTime: formData.start_time,
