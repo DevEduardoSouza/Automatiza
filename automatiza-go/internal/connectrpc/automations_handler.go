@@ -1106,6 +1106,20 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 	return automation
 }
 
+// setNullableUUIDUpdate stores a UUID foreign-key column in the update map,
+// mapping the empty string to NULL. These columns (dispatch_text_id,
+// coupon_id, ml_link_list_id) are UUID in Postgres, and passing "" blows up
+// the UPDATE with `invalid input syntax for type uuid: ""`. An empty value on
+// the wire means "cleared / use the default", so it must become NULL; any
+// non-empty value is the selected reference.
+func setNullableUUIDUpdate(updates map[string]interface{}, key, value string) {
+	if value == "" {
+		updates[key] = nil
+	} else {
+		updates[key] = value
+	}
+}
+
 func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[string]interface{} {
 	updates := make(map[string]interface{})
 
@@ -1128,7 +1142,7 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 		updates["categories"] = msg.GetCategories()
 	}
 	if msg.DispatchTextId != nil {
-		updates["dispatch_text_id"] = msg.GetDispatchTextId()
+		setNullableUUIDUpdate(updates, "dispatch_text_id", msg.GetDispatchTextId())
 	}
 	if msg.StartTime != nil {
 		updates["start_time"] = msg.GetStartTime()
@@ -1182,12 +1196,12 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 
 	// Coupon ID
 	if msg.CouponId != nil {
-		updates["coupon_id"] = msg.GetCouponId()
+		setNullableUUIDUpdate(updates, "coupon_id", msg.GetCouponId())
 	}
 
 	// LIST mode specific fields
 	if msg.MlLinkListId != nil {
-		updates["ml_link_list_id"] = msg.GetMlLinkListId()
+		setNullableUUIDUpdate(updates, "ml_link_list_id", msg.GetMlLinkListId())
 	}
 	if msg.ListItemsPerRun != nil {
 		updates["list_items_per_run"] = int(msg.GetListItemsPerRun())

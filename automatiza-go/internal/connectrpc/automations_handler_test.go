@@ -705,3 +705,49 @@ func TestDispatchLogWithGroupToProto_MinimalFields(t *testing.T) {
 	// CreatedAt is nil when the string is empty (time.Parse fails)
 	assert.Nil(t, result.CreatedAt)
 }
+
+// TestProtoToAutomationUpdate_NullableUUIDClearing locks in that clearing a
+// UUID foreign-key field (dispatch_text_id / coupon_id / ml_link_list_id) via
+// an empty string maps to NULL, not "". Passing "" straight through crashed
+// the UPDATE with `invalid input syntax for type uuid: ""` (regression when
+// the monitoring dispatch-text selector was switched back to "system default").
+func TestProtoToAutomationUpdate_NullableUUIDClearing(t *testing.T) {
+	sptr := func(s string) *string { return &s }
+
+	t.Run("empty string clears to nil (NULL)", func(t *testing.T) {
+		updates := protoToAutomationUpdate(&automationsv1.UpdateAutomationRequest{
+			DispatchTextId: sptr(""),
+			CouponId:       sptr(""),
+			MlLinkListId:   sptr(""),
+		})
+
+		for _, key := range []string{"dispatch_text_id", "coupon_id", "ml_link_list_id"} {
+			val, ok := updates[key]
+			require.True(t, ok, "%s must be present in updates so the column is cleared", key)
+			assert.Nil(t, val, "%s empty string must map to nil (NULL), not \"\"", key)
+		}
+	})
+
+	t.Run("non-empty value is preserved", func(t *testing.T) {
+		updates := protoToAutomationUpdate(&automationsv1.UpdateAutomationRequest{
+			DispatchTextId: sptr("dt-uuid"),
+			CouponId:       sptr("coupon-uuid"),
+			MlLinkListId:   sptr("list-uuid"),
+		})
+
+		assert.Equal(t, "dt-uuid", updates["dispatch_text_id"])
+		assert.Equal(t, "coupon-uuid", updates["coupon_id"])
+		assert.Equal(t, "list-uuid", updates["ml_link_list_id"])
+	})
+
+	t.Run("unset field is absent (leaves column untouched)", func(t *testing.T) {
+		updates := protoToAutomationUpdate(&automationsv1.UpdateAutomationRequest{})
+
+		_, hasDispatch := updates["dispatch_text_id"]
+		_, hasCoupon := updates["coupon_id"]
+		_, hasList := updates["ml_link_list_id"]
+		assert.False(t, hasDispatch)
+		assert.False(t, hasCoupon)
+		assert.False(t, hasList)
+	})
+}
