@@ -339,6 +339,24 @@ func (r *automationRepository) UpdateAutomation(ctx context.Context, automationI
 		}
 	}
 
+	// Defensive sanitize against a dead chip reference. When a user re-pairs a
+	// chip, the old instances row is deleted and a new one takes its place with
+	// a fresh serial id. The automation's instance_ids array (INTEGER[], no
+	// per-element FK) keeps pointing at the deleted id, and on the next save the
+	// handler derives the legacy scalar instance_id = instance_ids[0] — which
+	// still carries the FK automations_instance_id_fkey. Writing a dead id there
+	// blows up the whole UPDATE (SQLSTATE 23503), so the user can't save *any*
+	// change to the automation. Drop ids that no longer exist for this owner so
+	// the save self-heals: valid chips are kept, dead ones fall back to NULL
+	// ("no preference" → default chip).
+	if err := r.dropDeadInstanceIDs(ctx, automationID, updates); err != nil {
+		// Best-effort: a lookup failure shouldn't block the save. Worst case the
+		// original FK error surfaces below, which is the pre-existing behavior.
+		r.logger.Warn("Failed to sanitize instance ids on update",
+			zap.String("automationID", automationID),
+			zap.Error(err))
+	}
+
 	// Build dynamic UPDATE query
 	setClauses := ""
 	args := make([]interface{}, 0, len(updates)+1)
@@ -369,6 +387,93 @@ func (r *automationRepository) UpdateAutomation(ctx context.Context, automationI
 			zap.String("automationID", automationID),
 			zap.Error(err))
 		return err
+	}
+
+	return nil
+}
+
+// dropDeadInstanceIDs rewrites the instance_id / instance_ids entries in the
+// updates map so they only reference chips that still exist for the owner of
+// automationID. Ids that don't resolve (e.g. a chip deleted on re-pair) are
+// removed; an emptied list / scalar collapses to nil (NULL → default chip).
+// It only touches keys already present in updates, so it never introduces a
+// write the caller didn't intend. No-op when neither key carries a positive id.
+func (r *automationRepository) dropDeadInstanceIDs(ctx context.Context, automationID string, updates map[string]interface{}) error {
+	scalarID, hasScalar := 0, false
+	if v, ok := updates["instance_id"]; ok {
+		if n, isInt := v.(int); isInt && n > 0 {
+			scalarID, hasScalar = n, true
+		}
+	}
+
+	var listIDs []int
+	if v, ok := updates["instance_ids"]; ok {
+		if ids, isIntSlice := v.([]int); isIntSlice {
+			listIDs = ids
+		}
+	}
+
+	if !hasScalar && len(listIDs) == 0 {
+		return nil
+	}
+
+	// Collect the distinct candidate ids to check in a single round-trip.
+	candidateSet := make(map[int]struct{}, len(listIDs)+1)
+	if hasScalar {
+		candidateSet[scalarID] = struct{}{}
+	}
+	for _, id := range listIDs {
+		candidateSet[id] = struct{}{}
+	}
+	candidates := make([]int, 0, len(candidateSet))
+	for id := range candidateSet {
+		candidates = append(candidates, id)
+	}
+
+	rows, err := r.db.pool.Query(ctx,
+		`SELECT id FROM instances
+		 WHERE id = ANY($1)
+		   AND user_id = (SELECT user_id FROM automations WHERE id = $2)`,
+		candidates, automationID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	valid := make(map[int]struct{}, len(candidates))
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		valid[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Rewrite the scalar: keep only if it still exists, else clear.
+	if hasScalar {
+		if _, ok := valid[scalarID]; !ok {
+			updates["instance_id"] = nil
+		}
+	}
+
+	// Rewrite the list: drop dead ids preserving order; empty → NULL.
+	if _, ok := updates["instance_ids"]; ok {
+		if ids, isIntSlice := updates["instance_ids"].([]int); isIntSlice {
+			kept := make([]int, 0, len(ids))
+			for _, id := range ids {
+				if _, ok := valid[id]; ok {
+					kept = append(kept, id)
+				}
+			}
+			if len(kept) == 0 {
+				updates["instance_ids"] = nil
+			} else {
+				updates["instance_ids"] = kept
+			}
+		}
 	}
 
 	return nil
