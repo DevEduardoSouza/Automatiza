@@ -1106,6 +1106,41 @@ func TestWahaAdapter_SendVideo(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "msg-video-123", result.ID)
 	})
+
+	// Fase 2: quando o vídeo já foi normalizado (faststart) pelo caller, o WAHA
+	// NÃO deve transcodificar de novo (convert:false) — evita ffmpeg por grupo.
+	t.Run("sends convert:false when video is already streamable", func(t *testing.T) {
+		adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/api/sessions/") && r.Method == http.MethodGet {
+				jsonResponse(t, http.StatusOK, map[string]interface{}{
+					"name":   "test-session",
+					"status": "WORKING",
+				})(w, r)
+				return
+			}
+
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]interface{}
+			_ = json.Unmarshal(body, &payload)
+			assert.Equal(t, false, payload["convert"], "pre-normalized video must not be transcoded again")
+
+			jsonResponse(t, http.StatusOK, map[string]interface{}{
+				"id":        "msg-video-456",
+				"timestamp": 1234567890,
+			})(w, r)
+		})
+
+		result, err := adapter.SendVideo(ctx, SendVideoInput{
+			SessionName:       "test-session",
+			ChatID:            "group@g.us",
+			MediaBase64:       "SGVsbG8gV29ybGQ=",
+			MimeType:          "video/mp4",
+			AlreadyStreamable: true,
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, "msg-video-456", result.ID)
+	})
 }
 
 // =============================================================================

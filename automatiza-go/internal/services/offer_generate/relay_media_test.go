@@ -34,7 +34,7 @@ func TestSendRelayMessage_ImageDownloadsAndSendsBase64(t *testing.T) {
 		Body:      "AGORA É A HORA DE COMPRAR OS COREANOS AMIGAS",
 	}
 
-	if err := svc.sendRelayMessage(context.Background(), "sess", "120363@g.us", msg); err != nil {
+	if err := svc.sendRelayMessage(context.Background(), "sess", "120363@g.us", msg, false); err != nil {
 		t.Fatalf("sendRelayMessage retornou erro: %v", err)
 	}
 
@@ -78,7 +78,7 @@ func TestSendRelayMessage_ImageUsesExistingBase64(t *testing.T) {
 		Body:        "legenda",
 	}
 
-	if err := svc.sendRelayMessage(context.Background(), "sess", "120363@g.us", msg); err != nil {
+	if err := svc.sendRelayMessage(context.Background(), "sess", "120363@g.us", msg, false); err != nil {
 		t.Fatalf("sendRelayMessage retornou erro: %v", err)
 	}
 
