@@ -16,6 +16,7 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/ctapicker"
 	"automatiza-go/internal/lib/text"
+	"automatiza-go/internal/lib/videostream"
 	"automatiza-go/internal/lib/wamentions"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
@@ -1275,6 +1276,22 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 	canonicalKey := fmt.Sprintf("relay:%s", hashStr(msg.MessageID+":"+msg.RemoteJID))
 	const dedupeWindow = 30 * time.Minute
 
+	// Fase 2 — vídeo: normaliza (faststart) UMA vez antes do fan-out e reusa o
+	// resultado, mandando convert:false em cada envio. Sem isso, o WAHA rodaria
+	// ffmpeg por grupo (o mesmo vídeo N vezes) — pesado em automações com muitos
+	// destinos, e o WAHA é o gargalo. Feito antes de qualquer goroutine de envio
+	// (happens-before), então a mutação de msg.MediaBase64 é segura. Se o preparo
+	// falhar, videoStreamable fica false e cada envio cai no convert do WAHA
+	// (Fase 1) — a entrega nunca fica pior.
+	videoStreamable := false
+	if b64, ok := s.prepareStreamableVideo(ctx, msg); ok {
+		msg.MediaBase64 = b64
+		videoStreamable = true
+		s.logger.Info("Relay video normalized once (faststart) — fan-out skips WAHA transcode",
+			zap.String("automationID", auto.ID),
+			zap.Int("destinations", len(destinationGroups)))
+	}
+
 	// Fan out in PARALLEL BY CHIP — same rationale as the offer flow: group the
 	// destinations by their hosting chip so every chip relays at once instead
 	// of one group at a time, with the per-group delay pacing each chip on its
@@ -1329,7 +1346,7 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 				}
 
 				sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
-				sendErr := s.sendRelayMessage(sendCtx, dispatchSession, groupID, msg)
+				sendErr := s.sendRelayMessage(sendCtx, dispatchSession, groupID, msg, videoStreamable)
 				sendCancel()
 
 				if sendErr != nil {
@@ -1358,12 +1375,54 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 	return nil
 }
 
+// prepareStreamableVideo baixa/decodifica o vídeo do relay UMA vez e o remuxa
+// para faststart, devolvendo o base64 pronto para reuso no fan-out. Retorna
+// ok=false quando não é vídeo, o ffmpeg não está disponível, não há bytes ou a
+// normalização falha — nesses casos o envio cai no convert do WAHA (Fase 1),
+// então a entrega nunca fica pior. Chamado antes do fan-out (1x por mensagem).
+func (s *offerGenerateService) prepareStreamableVideo(ctx context.Context, msg *models.IncomingMessage) (string, bool) {
+	if strings.ToLower(msg.MediaType) != "video" || !videostream.Available() {
+		return "", false
+	}
+
+	// Obtém os bytes originais uma única vez: base64 inline se veio no webhook,
+	// senão baixa do store do WAHA (mesma origem que o sendRelayMessage usaria).
+	var raw []byte
+	if msg.MediaBase64 != "" {
+		if b, err := base64.StdEncoding.DecodeString(msg.MediaBase64); err == nil {
+			raw = b
+		}
+	}
+	if len(raw) == 0 && msg.MediaURL != "" {
+		if res, err := s.waProvider.DownloadMediaByURL(ctx, msg.MediaURL); err == nil && res != nil {
+			raw = res.Data
+		}
+	}
+	if len(raw) == 0 {
+		return "", false
+	}
+
+	// Remux é rápido, mas limita o tempo pra não prender o worker num vídeo
+	// patológico.
+	fctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	out, err := videostream.EnsureFaststart(fctx, raw)
+	if err != nil {
+		s.logger.Warn("Relay video: faststart remux failed, falling back to WAHA convert",
+			zap.String("group", msg.RemoteJID),
+			zap.Error(err))
+		return "", false
+	}
+	return base64.StdEncoding.EncodeToString(out), true
+}
+
 // sendRelayMessage dispara o método WAHA correto baseado no tipo da
 // mensagem original. Pra mídia, prefere MediaURL (mais leve, sem reupload);
 // cai pra MediaBase64 quando URL não está disponível (caso comum no
 // link preview JPEG do WhatsApp). Áudio só funciona via Base64 — o input
 // SendVoiceInput não tem campo URL.
-func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, chatID string, msg *models.IncomingMessage) error {
+func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, chatID string, msg *models.IncomingMessage, videoStreamable bool) error {
 	// @todos no relay: se a mensagem de origem traz "@todos", pinga todos os
 	// membros do grupo de DESTINO (chatID) via mentionedJid. Opt-in por
 	// mensagem (anti-ban). O relay nunca usa card, então texto/imagem/vídeo/
@@ -1435,6 +1494,10 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 			ChatID:      chatID,
 			Caption:     msg.Body,
 			Mentions:    mentions,
+			// videoStreamable=true quando o relay já normalizou o vídeo
+			// (faststart) 1x antes do fan-out — evita o WAHA transcodificar
+			// por grupo. Quando false, o WAHA converte (Fase 1).
+			AlreadyStreamable: videoStreamable,
 		}
 		if mediaB64 != "" {
 			input.MediaBase64 = mediaB64

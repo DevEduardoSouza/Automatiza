@@ -344,6 +344,13 @@ type SendVideoInput struct {
 
 	// QuotedMessageID is the ID of a message to reply to.
 	QuotedMessageID string `json:"quotedMessageId,omitempty"`
+
+	// AlreadyStreamable indica que o vídeo já foi normalizado (faststart) pelo
+	// caller, dispensando a transcodificação do WAHA (convert:false). Usado no
+	// relay para transcodificar 1x e reusar no fan-out sem rodar ffmpeg por
+	// grupo. Quando false (default), o WAHA converte — seguro para qualquer
+	// vídeo. Campo interno, não serializado para o WAHA.
+	AlreadyStreamable bool `json:"-"`
 }
 
 // Validate checks if the input has valid media source.

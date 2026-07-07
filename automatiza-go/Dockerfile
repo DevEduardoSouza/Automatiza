@@ -25,8 +25,10 @@ FROM alpine:3.20
 
 WORKDIR /app
 
-# Install ca-certificates, timezone data, psql client (migrations), and curl (healthcheck)
-RUN apk --no-cache add ca-certificates tzdata postgresql16-client curl bash
+# Install ca-certificates, timezone data, psql client (migrations), curl
+# (healthcheck) and ffmpeg (relay de vídeo: normaliza para faststart 1x antes
+# do fan-out para não transcodificar o mesmo vídeo por grupo no WAHA).
+RUN apk --no-cache add ca-certificates tzdata postgresql16-client curl bash ffmpeg
 
 # Create non-root user
 RUN addgroup -g 1001 -S appgroup && \

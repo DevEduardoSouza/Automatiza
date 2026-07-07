@@ -195,6 +195,13 @@ issues:
       linters:
         - forbidigo
 
+    # videostream é um wrapper controlado de ffmpeg sobre arquivos temporários
+    # (MkdirTemp + nomes fixos); o comando é constante. G204/G304 aqui são
+    # falso-positivo — os inputs não vêm do usuário.
+    - path: internal/lib/videostream/
+      linters:
+        - gosec
+
   # Don't skip any directories for issue reporting
   exclude-dirs-use-default: false
 
