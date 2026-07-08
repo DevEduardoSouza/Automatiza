@@ -32,6 +32,16 @@ type Service interface {
 	ProcessIncomingMessage(ctx context.Context, msg *models.IncomingMessage) error
 }
 
+// monitorDispatchTextEnabled desativa temporariamente o texto de disparo no
+// modo monitoramento (2026-07-08): a feature vinha causando bugs em produção,
+// então todo espelhamento volta ao comportamento padrão (repassa o texto do
+// grupo monitorado). O dispatch_text_id salvo nas automations é preservado,
+// apenas ignorado aqui — para reativar a feature, volte esta flag para true.
+// Search, list e offer_generate não passam por este caminho e seguem usando
+// texto de disparo normalmente. Var (e não const) para não disparar lint de
+// condição constante.
+var monitorDispatchTextEnabled = false
+
 type monitoringService struct {
 	automationRepo  repository.AutomationRepository
 	instanceRepo    repository.InstanceRepository
@@ -359,9 +369,10 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	// that template as the body (enriching the product for price/title) INSTEAD
 	// of relaying the source text. Sem dispatch text → comportamento histórico:
 	// repassa msg.Body com as regras de rodapé + troca de links por afiliado.
+	// Atualmente desativado via monitorDispatchTextEnabled (ver declaração).
 	processedText := msg.Body
 	dispatchTextRendered := ""
-	if automation.DispatchTextID != nil && *automation.DispatchTextID != "" && s.settingsRepo != nil {
+	if monitorDispatchTextEnabled && automation.DispatchTextID != nil && *automation.DispatchTextID != "" && s.settingsRepo != nil {
 		dispatchTextRendered = s.renderMonitorDispatchText(
 			ctx, automation, firstShopeeAff, firstShopeeOriginalLink, firstMLOriginalLink, firstMLAffiliateLink, productImageURL)
 	}
