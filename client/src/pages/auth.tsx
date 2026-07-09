@@ -105,18 +105,6 @@ export default function Auth() {
                 </p>
               </div>
 
-              {/* Maintenance Notice Banner */}
-              <div className="mb-5 xs:mb-6 sm:mb-8 rounded-xl border border-amber-200 bg-amber-50 p-3 xs:p-4 text-center">
-                <p className="text-xs xs:text-sm font-semibold text-amber-900 leading-relaxed">
-                  🔧 Manutenção Programada
-                </p>
-                <p className="mt-2 text-xs xs:text-sm text-amber-800 leading-relaxed">
-                  Hoje, das <strong>00h às 04h</strong>, realizaremos uma manutenção programada.
-                  Amanhã será necessário <strong>reconectar seu WhatsApp</strong> na Automatize.
-                  Agradecemos a compreensão!
-                </p>
-              </div>
-
               {/* Magic Link Success State */}
               {magicLinkSent ? (
                 <div className="space-y-6">
