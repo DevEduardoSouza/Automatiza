@@ -287,6 +287,83 @@ func TestWahaAdapter_DeleteSession(t *testing.T) {
 	})
 }
 
+func TestWahaAdapter_CleanupFailedSessions(t *testing.T) {
+	ctx := context.Background()
+
+	// WAHA session list. A FAILED status is transient for real numbers, and WAHA
+	// reports me=null while FAILED — so status alone can't tell a dead zombie from a
+	// live paired number having a bad minute.
+	sessionList := []map[string]interface{}{
+		{"name": "zombie-1", "status": "FAILED"},      // never paired -> deletable
+		{"name": "paired-failed", "status": "FAILED"}, // paired -> protected by predicate
+		{"name": "lookup-err", "status": "FAILED"},    // predicate errors -> fail-safe protect
+		{"name": "failed-with-me", "status": "FAILED", // WAHA still reports me -> skipped pre-predicate
+			"me": map[string]interface{}{"id": "5511999@c.us", "pushName": "X"}},
+		{"name": "working-1", "status": "WORKING", // not a cleanup candidate
+			"me": map[string]interface{}{"id": "5511888@c.us", "pushName": "Y"}},
+	}
+
+	newHarness := func(t *testing.T) (*WahaAdapter, map[string]bool) {
+		deleted := map[string]bool{}
+		adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/api/sessions":
+				jsonResponse(t, http.StatusOK, sessionList)(w, r)
+			case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/sessions/"):
+				deleted[strings.TrimPrefix(r.URL.Path, "/api/sessions/")] = true
+				w.WriteHeader(http.StatusOK)
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		})
+		return adapter, deleted
+	}
+
+	t.Run("protects paired sessions, deletes only never-paired zombies", func(t *testing.T) {
+		adapter, deleted := newHarness(t)
+
+		var predicateCalls []string
+		isProtected := func(_ context.Context, name string) (bool, error) {
+			predicateCalls = append(predicateCalls, name)
+			switch name {
+			case "paired-failed":
+				return true, nil // paired -> protect
+			case "lookup-err":
+				return false, errors.New("db unavailable") // fail-safe -> protect
+			default:
+				return false, nil
+			}
+		}
+
+		n, err := adapter.CleanupFailedSessions(ctx, isProtected)
+		require.NoError(t, err)
+		assert.Equal(t, 1, n, "only the never-paired zombie should be deleted")
+
+		assert.True(t, deleted["zombie-1"], "unprotected zombie should be deleted")
+		assert.False(t, deleted["paired-failed"], "paired session must be protected")
+		assert.False(t, deleted["lookup-err"], "lookup error must fail-safe protect")
+		assert.False(t, deleted["failed-with-me"], "session with me!=null must be skipped")
+		assert.False(t, deleted["working-1"], "WORKING session is not a cleanup candidate")
+
+		// Predicate is consulted only for FAILED candidates without me — never for
+		// failed-with-me (skipped earlier) or working-1 (not FAILED).
+		assert.ElementsMatch(t, []string{"zombie-1", "paired-failed", "lookup-err"}, predicateCalls)
+	})
+
+	t.Run("nil protector deletes all FAILED sessions without me", func(t *testing.T) {
+		adapter, deleted := newHarness(t)
+
+		n, err := adapter.CleanupFailedSessions(ctx, nil)
+		require.NoError(t, err)
+		assert.Equal(t, 3, n)
+		assert.True(t, deleted["zombie-1"])
+		assert.True(t, deleted["paired-failed"])
+		assert.True(t, deleted["lookup-err"])
+		assert.False(t, deleted["failed-with-me"], "me!=null still protects even with nil predicate")
+		assert.False(t, deleted["working-1"])
+	})
+}
+
 // =============================================================================
 // Message Sender Tests
 // =============================================================================

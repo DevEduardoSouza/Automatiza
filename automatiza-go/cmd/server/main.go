@@ -482,8 +482,28 @@ func main() {
 
 	// Register WAHA failed session cleanup job (P0: reclaims RAM from zombie sessions)
 	if concreteAdapter, ok := wahaAdapter.(*whatsapp.WahaAdapter); ok {
+		// Protege números reais da limpeza: um chip PAREADO que esteja
+		// momentaneamente FAILED (blip de rede / restart do WAHA) NUNCA pode ser
+		// deletado — isso é um despareamento irreversível (o dono teria que reler o
+		// QR). O status FAILED do WAHA não distingue um zumbi nunca-pareado de um
+		// número vivo com um minuto ruim (nos dois casos me=null). A fonte de verdade
+		// é o registro da instância: quem pareou ao menos uma vez tem phone_number
+		// setado (ou está 'connected'). Fail-safe: qualquer erro no lookup protege a
+		// sessão (retorna err -> o adapter pula o delete).
+		isSessionPaired := func(ctx context.Context, sessionName string) (bool, error) {
+			inst, err := instanceRepo.GetInstanceByName(ctx, sessionName)
+			if err != nil {
+				return false, err
+			}
+			if inst == nil {
+				return false, nil // sem registro de instância -> nunca pareou -> pode reclamar
+			}
+			paired := (inst.PhoneNumber != nil && *inst.PhoneNumber != "") ||
+				inst.Status == models.InstanceStatusConnected
+			return paired, nil
+		}
 		cronService.RegisterTask("cleanup_waha_failed_sessions", 1*time.Hour, func(ctx context.Context) error {
-			deleted, err := concreteAdapter.CleanupFailedSessions(ctx)
+			deleted, err := concreteAdapter.CleanupFailedSessions(ctx, isSessionPaired)
 			if err != nil {
 				return err
 			}

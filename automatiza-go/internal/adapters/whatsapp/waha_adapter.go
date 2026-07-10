@@ -1609,11 +1609,28 @@ func (a *WahaAdapter) ListAllSessions(ctx context.Context) ([]SessionInfo, error
 	return sessions, nil
 }
 
-// CleanupFailedSessions lists all WAHA sessions and deletes those in FAILED status.
-// Returns the number of sessions deleted. This is intended to be called periodically
-// from a cron job to reclaim resources from zombie sessions (e.g., sessions where the
-// user never scanned the QR code or disconnected WhatsApp without ending the session).
-func (a *WahaAdapter) CleanupFailedSessions(ctx context.Context) (int, error) {
+// SessionProtector reports whether a WAHA session must be protected from cleanup —
+// i.e. it belongs to a real number that paired at least once. It is consulted before
+// deleting any FAILED session. Returning a non-nil error is treated fail-safe (the
+// session IS protected), so a transient lookup failure can never cause an irreversible
+// unpair. A nil SessionProtector disables protection (delete every FAILED session).
+type SessionProtector func(ctx context.Context, sessionName string) (protected bool, err error)
+
+// CleanupFailedSessions lists all WAHA sessions and deletes those in FAILED status,
+// EXCEPT sessions that isProtected reports as protected. Returns the number deleted.
+// It runs periodically from a cron job to reclaim resources from zombie sessions
+// (abandoned QR scans that never paired).
+//
+// CRITICAL — why isProtected exists: a FAILED status is frequently TRANSIENT for a
+// real, paired number (a network blip, a WAHA restart, GOWS reconnecting). While a
+// session is FAILED, WAHA reports it with me=null, so status + me alone cannot tell a
+// dead never-paired zombie from a live number having a bad minute. Deleting a paired
+// session is an IRREVERSIBLE unpair — the owner must physically re-scan the QR. So we
+// consult the source of truth (the backend instance record: a number that paired at
+// least once has a phone_number set) and never delete a protected session here; the
+// waha-monitor cron restarts those instead. This is the backend-side fix that pairs
+// with the structural block in waha-router.
+func (a *WahaAdapter) CleanupFailedSessions(ctx context.Context, isProtected SessionProtector) (int, error) {
 	sessions, err := a.ListAllSessions(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to list sessions for cleanup: %w", err)
@@ -1621,9 +1638,15 @@ func (a *WahaAdapter) CleanupFailedSessions(ctx context.Context) (int, error) {
 
 	var failed []string
 	for _, s := range sessions {
-		if s.Status == SessionStatusFailed {
-			failed = append(failed, s.Name)
+		if s.Status != SessionStatusFailed {
+			continue
 		}
+		// Defense-in-depth: never touch a session WAHA still reports as
+		// authenticated (me != null), regardless of the FAILED flag.
+		if s.AuthenticatedUser != nil {
+			continue
+		}
+		failed = append(failed, s.Name)
 	}
 
 	if len(failed) == 0 {
@@ -1637,7 +1660,27 @@ func (a *WahaAdapter) CleanupFailedSessions(ctx context.Context) (int, error) {
 		zap.Int("totalSessions", len(sessions)))
 
 	deleted := 0
+	protectedCount := 0
 	for _, name := range failed {
+		if isProtected != nil {
+			protected, perr := isProtected(ctx, name)
+			if perr != nil {
+				// Fail-safe: on any uncertainty, protect the session (skip delete)
+				// rather than risk unpairing a real number.
+				a.logger.Warn("skipping cleanup of FAILED session: paired-check failed (protecting)",
+					zap.String("session", name),
+					zap.Error(perr))
+				protectedCount++
+				continue
+			}
+			if protected {
+				a.logger.Info("protected paired session from cleanup (FAILED but paired at least once)",
+					zap.String("session", name))
+				protectedCount++
+				continue
+			}
+		}
+
 		if err := a.DeleteSession(ctx, name); err != nil {
 			a.logger.Warn("failed to delete FAILED session",
 				zap.String("session", name),
@@ -1649,13 +1692,14 @@ func (a *WahaAdapter) CleanupFailedSessions(ctx context.Context) (int, error) {
 			zap.String("session", name))
 	}
 
-	if deleted > 0 {
+	if deleted > 0 || protectedCount > 0 {
 		observability.CaptureMessage(sentry.LevelInfo,
-			fmt.Sprintf("WAHA session cleanup: deleted %d/%d FAILED sessions", deleted, len(failed)),
+			fmt.Sprintf("WAHA session cleanup: deleted %d, protected %d of %d FAILED sessions", deleted, protectedCount, len(failed)),
 			map[string]string{
 				"module":         "waha-adapter",
 				"flow":           "session-cleanup",
 				"deleted":        strconv.Itoa(deleted),
+				"protected":      strconv.Itoa(protectedCount),
 				"failed_total":   strconv.Itoa(len(failed)),
 				"sessions_total": strconv.Itoa(len(sessions)),
 			})
