@@ -168,10 +168,24 @@ jobs:
           EOF
           # Remove leading whitespace from heredoc
           sed 's/^          //' /tmp/.env.deploy > /tmp/.env.clean
+          # Ship the CI-managed .env to a staging path, then MERGE server-side. Some
+          # vars are ops-managed and live ONLY on the VPS (WAHA S3 media credentials
+          # and the per-session proxy pool, added out-of-band by the waha-fix ops
+          # toolkit — they are intentionally not CI secrets). Overwriting .env wholesale
+          # would strip them and break WAHA media storage, so we preserve them here.
           scp -i ~/.ssh/deploy_key /tmp/.env.clean \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/automatiza/docker/.env
-          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            'chmod 600 /opt/automatiza/docker/.env'
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/automatiza/docker/.env.ci
+          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+            cd /opt/automatiza/docker
+            OPS=$(grep -E "^(WAHA_MEDIA_STORAGE|WAHA_S3_[A-Z_]+|WAHA_SESSION_PROXIES)=|^#\[proxy-disabled" .env 2>/dev/null || true)
+            cp .env.ci .env
+            if [ -n "$OPS" ]; then
+              printf "\n# --- ops-managed, preserved across deploys: WAHA S3 media + session proxies ---\n" >> .env
+              printf "%s\n" "$OPS" >> .env
+            fi
+            chmod 600 .env
+            rm -f .env.ci
+          '
           rm -f /tmp/.env.deploy /tmp/.env.clean
 
       - name: Validate .env on VPS
@@ -203,6 +217,19 @@ jobs:
             docker/docker-compose.prod.yml \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/automatiza/docker/docker-compose.yml
 
+      - name: Copy waha-router source to VPS
+        run: |
+          # waha-router is built ON the VPS (compose `build: ./waha-router`), so its
+          # source must be present there. Ship the latest code (session sharding +
+          # QR-fix path resolver + anti-unpair guard) so `up -d --build` rebuilds it.
+          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'mkdir -p /opt/automatiza/docker/waha-router'
+          scp -i ~/.ssh/deploy_key \
+            docker/waha-router/main.go \
+            docker/waha-router/go.mod \
+            docker/waha-router/Dockerfile \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/automatiza/docker/waha-router/
+
       - name: Deploy containers
         env:
           VERSION: ${{ needs.build-and-push.outputs.version }}
@@ -218,7 +245,7 @@ jobs:
 
           # Step 2: Pull new images (with explicit image tags)
           $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose pull server worker frontend postgres redis"
-          $SSH_CMD "cd /opt/automatiza/docker && docker compose pull waha" || echo "WARNING: WAHA pull failed (using cached image)"
+          $SSH_CMD "cd /opt/automatiza/docker && docker compose pull waha waha-2" || echo "WARNING: WAHA pull failed (using cached image)"
 
           # Step 3: Run migrations (allowed to fail without blocking deploy)
           echo "=== Running migrations ==="
@@ -229,7 +256,11 @@ jobs:
           $SSH_CMD "cd /opt/automatiza/docker && docker compose down --timeout 30" || true
 
           echo "=== Starting services with new images ==="
-          $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose up -d postgres redis waha server worker frontend"
+          # --build rebuilds waha-router from the source we just copied. waha-2 and
+          # waha-router MUST be in this list: server/worker point WAHA_API_URL at the
+          # router, and `compose down` above stops every service — omitting them would
+          # leave the router down and the whole WhatsApp path broken.
+          $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose up -d --build postgres redis waha waha-2 waha-router server worker frontend"
 
           echo "=== Verifying containers ==="
           sleep 5

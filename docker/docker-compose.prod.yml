@@ -83,12 +83,14 @@ services:
     image: devlikeapro/waha-plus:gows-2026.3.2
     container_name: automatiza-waha
     restart: unless-stopped
-    logging: *default-logging
     environment:
       WHATSAPP_API_KEY: ${WAHA_API_KEY}
       WHATSAPP_DEFAULT_ENGINE: GOWS
       WAHA_WORKER_MODE: GOWS
       WHATSAPP_RESTART_ALL_SESSIONS: "true"
+      # Phase 2: stagger the reconnect herd on restart (520 sessions no longer
+      # all reconnect at once -> avoids the rate-limit/ban risk of a mass re-pair).
+      WAHA_AUTO_START_DELAY_SECONDS: "2"
       WHATSAPP_HOOK_URL: http://server:3000/api/v1/webhooks/waha
       # message.any (nao "message"): entrega TAMBEM as mensagens fromMe (posts
       # do proprio dono do chip). Necessario pro offer_generate repassar o post
@@ -101,17 +103,151 @@ services:
       WHATSAPP_HOOK_HMAC_KEY: ${WEBHOOK_SECRET}
       WHATSAPP_FILES_LIFETIME: "600"
       WAHA_DASHBOARD_ENABLED: "false"
-      WAHA_LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Phase 2: cut the ~5500 lines/min firehose (was info) — big CPU/IO relief.
+      WAHA_LOG_LEVEL: warn
+      WAHA_HTTP_LOG_LEVEL: warn
+      WAHA_PRINT_QR: "False"
+      # Phase 2: pure-Go DNS resolver — fixes 'lookup a.whatsapp.net: no such
+      # host' seen under high concurrency with the default cgo resolver.
+      GODEBUG: netdns=go
+      # Phase 2: bound GOWS history sync so storage/CPU stay low after re-pair.
+      WAHA_GOWS_DEVICE_HISTORY_SYNC_RECENT_SYNC_DAYS_LIMIT: "7"
+      WAHA_GOWS_DEVICE_HISTORY_SYNC_FULL_SYNC_DAYS_LIMIT: "30"
+      WAHA_GOWS_DEVICE_HISTORY_SYNC_INITIAL_SYNC_MAX_MESSAGES_PER_CHAT: "100"
+      # Phase 2: stop the 5s file-watcher polling over the session tree.
+      CHOKIDAR_USEPOLLING: "0"
+      # Phase 3: store media in S3 instead of on the shared disk. PROXY_FILES=True
+      # keeps WAHA-hosted media URLs (backend-visible behaviour unchanged); flip
+      # to False later (via .env) if you want to offload bandwidth to S3 directly.
+      WAHA_MEDIA_STORAGE: ${WAHA_MEDIA_STORAGE:-S3}
+      WAHA_S3_REGION: ${WAHA_S3_REGION}
+      WAHA_S3_BUCKET: ${WAHA_S3_BUCKET}
+      WAHA_S3_ACCESS_KEY_ID: ${WAHA_S3_ACCESS_KEY_ID}
+      WAHA_S3_SECRET_ACCESS_KEY: ${WAHA_S3_SECRET_ACCESS_KEY}
+      WAHA_S3_PROXY_FILES: ${WAHA_S3_PROXY_FILES:-True}
+    # Phase 2: pin DNS resolvers (pairs with GODEBUG=netdns=go).
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    # Phase 2: hard resource ceilings (was unbounded: 31GB RAM / 6254 FDs).
+    mem_limit: 24g
+    cpus: "12"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     volumes:
       - waha_data:/app/.sessions
     ports:
       - "127.0.0.1:3001:3000"
+    # Phase 2: dedicated tighter log rotation for the noisy WAHA container.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf -H 'X-Api-Key: '$$WHATSAPP_API_KEY http://localhost:3000/api/server/status"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
+    networks:
+      - automatiza
+
+  # =============================================================================
+  # WAHA Plus — second shard (Phase 5). Mirror of `waha`, own volume + port.
+  # New sessions are routed here by waha-router when waha-1 is over the cap.
+  # =============================================================================
+  waha-2:
+    image: devlikeapro/waha-plus:gows-2026.3.2
+    container_name: automatiza-waha-2
+    restart: unless-stopped
+    environment:
+      WHATSAPP_API_KEY: ${WAHA_API_KEY}
+      WHATSAPP_DEFAULT_ENGINE: GOWS
+      WAHA_WORKER_MODE: GOWS
+      WAHA_WORKER_ID: waha-2
+      WHATSAPP_RESTART_ALL_SESSIONS: "true"
+      WAHA_AUTO_START_DELAY_SECONDS: "2"
+      WHATSAPP_HOOK_URL: http://server:3000/api/v1/webhooks/waha
+      WHATSAPP_HOOK_EVENTS: message.any,message.ack,session.status,group.join,group.leave
+      WHATSAPP_HOOK_HMAC_KEY: ${WEBHOOK_SECRET}
+      WHATSAPP_FILES_LIFETIME: "600"
+      WAHA_DASHBOARD_ENABLED: "false"
+      WAHA_LOG_LEVEL: warn
+      WAHA_HTTP_LOG_LEVEL: warn
+      WAHA_PRINT_QR: "False"
+      GODEBUG: netdns=go
+      WAHA_GOWS_DEVICE_HISTORY_SYNC_RECENT_SYNC_DAYS_LIMIT: "7"
+      WAHA_GOWS_DEVICE_HISTORY_SYNC_FULL_SYNC_DAYS_LIMIT: "30"
+      WAHA_GOWS_DEVICE_HISTORY_SYNC_INITIAL_SYNC_MAX_MESSAGES_PER_CHAT: "100"
+      CHOKIDAR_USEPOLLING: "0"
+      WAHA_MEDIA_STORAGE: ${WAHA_MEDIA_STORAGE:-S3}
+      WAHA_S3_REGION: ${WAHA_S3_REGION}
+      WAHA_S3_BUCKET: ${WAHA_S3_BUCKET}
+      WAHA_S3_ACCESS_KEY_ID: ${WAHA_S3_ACCESS_KEY_ID}
+      WAHA_S3_SECRET_ACCESS_KEY: ${WAHA_S3_SECRET_ACCESS_KEY}
+      WAHA_S3_PROXY_FILES: ${WAHA_S3_PROXY_FILES:-True}
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    mem_limit: 24g
+    cpus: "12"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - waha2_data:/app/.sessions
+    ports:
+      - "127.0.0.1:3002:3000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -H 'X-Api-Key: '$$WHATSAPP_API_KEY http://localhost:3000/api/server/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - automatiza
+
+  # =============================================================================
+  # waha-router (Phase 5) — routes session->instance, merges the session list,
+  # and BLOCKS DELETE/logout of a paired session without X-Confirm-Unpair:true
+  # (structural anti-destruction). Backend points WAHA_API_URL here.
+  # Emergency bypass: set WAHA_API_URL back to http://waha:3000 on server+worker.
+  # =============================================================================
+  waha-router:
+    build: ./waha-router
+    image: waha-router:local
+    container_name: automatiza-waha-router
+    restart: unless-stopped
+    environment:
+      WAHA_UPSTREAMS: "waha-1=http://waha:3000,waha-2=http://waha-2:3000"
+      WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_CAP: "367"
+#      WAHA_SESSION_PROXIES: ${WAHA_SESSION_PROXIES}
+    ports:
+      - "127.0.0.1:3003:3000"
+    depends_on:
+      - waha
+      - waha-2
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/router/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     networks:
       - automatiza
 
@@ -156,7 +292,7 @@ services:
       - DB_HOST=postgres
       - DB_PORT=5432
       - CACHE_REDIS_URI=redis://redis:6379/0
-      - WAHA_API_URL=http://waha:3000
+      - WAHA_API_URL=http://waha-router:3000
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -189,7 +325,7 @@ services:
       - DB_PORT=5432
       - DB_MAX_CONNS=10
       - CACHE_REDIS_URI=redis://redis:6379/0
-      - WAHA_API_URL=http://waha:3000
+      - WAHA_API_URL=http://waha-router:3000
     depends_on:
       postgres:
         condition: service_healthy
@@ -226,6 +362,8 @@ volumes:
     name: docker_redis_data
   waha_data:
     name: docker_waha_data
+  waha2_data:
+    name: docker_waha2_data
 
 networks:
   automatiza:
