@@ -364,6 +364,35 @@ func TestWahaAdapter_CleanupFailedSessions(t *testing.T) {
 	})
 }
 
+func TestWahaSession_ProxyFieldTolerance(t *testing.T) {
+	t.Run("proxy as object does not break session list parse", func(t *testing.T) {
+		// Repro of the ListAllSessions failure: a session carries config.proxy as an
+		// object (the form waha-router injects). The WHOLE array must still parse — a
+		// single object-form proxy previously failed json.Unmarshal for every session.
+		raw := `[
+			{"name":"a","status":"WORKING","config":{"proxy":"host:1080"}},
+			{"name":"b","status":"FAILED","config":{"proxy":{"server":"1.2.3.4:12323","username":"u","password":"p"}}},
+			{"name":"c","status":"SCAN_QR_CODE","config":{"gows":{}}}
+		]`
+		var sessions []wahaSession
+		require.NoError(t, json.Unmarshal([]byte(raw), &sessions))
+		require.Len(t, sessions, 3)
+		assert.Equal(t, wahaProxy("host:1080"), sessions[0].Config.ProxyURL, "string form preserved")
+		assert.Equal(t, wahaProxy("1.2.3.4:12323"), sessions[1].Config.ProxyURL, "object form -> server")
+		assert.Equal(t, wahaProxy(""), sessions[2].Config.ProxyURL, "no proxy -> empty")
+	})
+
+	t.Run("null and missing proxy", func(t *testing.T) {
+		var c wahaSessionConfig
+		require.NoError(t, json.Unmarshal([]byte(`{"proxy":null}`), &c))
+		assert.Equal(t, wahaProxy(""), c.ProxyURL)
+
+		var c2 wahaSessionConfig
+		require.NoError(t, json.Unmarshal([]byte(`{"debug":true}`), &c2))
+		assert.Equal(t, wahaProxy(""), c2.ProxyURL)
+	})
+}
+
 // =============================================================================
 // Message Sender Tests
 // =============================================================================

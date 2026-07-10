@@ -40,8 +40,44 @@ type wahaSessionMe struct {
 // wahaSessionConfig contains WAHA session configuration.
 type wahaSessionConfig struct {
 	Webhooks  []wahaWebhookConfig `json:"webhooks,omitempty"`
-	ProxyURL  string              `json:"proxy,omitempty"`
+	ProxyURL  wahaProxy           `json:"proxy,omitempty"`
 	DebugMode bool                `json:"debug,omitempty"`
+}
+
+// wahaProxy tolerates WAHA's `config.proxy`, which may be EITHER a plain string
+// ("host:port" or "scheme://host:port") OR an object
+// {"server":...,"username":...,"password":...} — the form waha-router injects for
+// per-session proxies, and WAHA's own structured proxy config. With a rigid `string`
+// field, json.Unmarshal failed for the ENTIRE session list whenever any session
+// carried the object form, which broke ListAllSessions (and with it the FAILED-session
+// cleanup and the instance-status reconciler). This normalizes both shapes to the
+// server string and never fails the surrounding parse over this one field.
+type wahaProxy string
+
+func (p *wahaProxy) UnmarshalJSON(b []byte) error {
+	s := strings.TrimSpace(string(b))
+	if s == "" || s == "null" {
+		*p = ""
+		return nil
+	}
+	if s[0] == '"' { // string form
+		var str string
+		if err := json.Unmarshal(b, &str); err != nil {
+			return err
+		}
+		*p = wahaProxy(str)
+		return nil
+	}
+	// object form: keep the server address; do not fail the whole list over a proxy.
+	var obj struct {
+		Server string `json:"server"`
+	}
+	if err := json.Unmarshal(b, &obj); err != nil {
+		*p = ""
+		return nil
+	}
+	*p = wahaProxy(obj.Server)
+	return nil
 }
 
 // wahaWebhookConfig represents a webhook configuration in WAHA.

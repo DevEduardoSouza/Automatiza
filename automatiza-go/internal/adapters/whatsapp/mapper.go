@@ -80,7 +80,7 @@ func (m *Mapper) SessionFromWaha(w *wahaSession) *Session {
 
 	if w.Config != nil {
 		session.Config = &SessionConfig{
-			ProxyURL:  w.Config.ProxyURL,
+			ProxyURL:  string(w.Config.ProxyURL),
 			DebugMode: w.Config.DebugMode,
 		}
 		for _, wh := range w.Config.Webhooks {
