@@ -41,6 +41,10 @@ type MessageJobData struct {
 	AutomationID  string           `json:"automationId,omitempty"`
 	TraceID       string           `json:"trace_id,omitempty"`
 	LinkPreview   *LinkPreviewData `json:"linkPreview,omitempty"`
+	// HumanizeMode is the per-automation anti-ban preset (off|low|medium|high).
+	// nil/empty => the global default ("high"). Consumed by the worker to scale
+	// the presence choreography and per-recipient content variation.
+	HumanizeMode *string `json:"humanizeMode,omitempty"`
 }
 
 // LinkPreviewData contains custom link preview metadata for WhatsApp messages.
@@ -91,10 +95,22 @@ func NewQueueClient(redisAddr string, logger *zap.Logger) *QueueClient {
 		logger: logger,
 	}
 
-	if ms := sessionPaceMsFromEnv(); ms > 0 {
+	// Per-session pacer spacing: SESSION_PACE_MS takes precedence; otherwise
+	// derive it from the (previously dead) WHATSAPP_SEND_LIMIT_PER_MINUTE so that
+	// limit becomes a REAL smoothing per-chip cap — spacing = 60000/limit — that
+	// pushes the schedule instead of dropping sends.
+	ms := sessionPaceMsFromEnv()
+	spacingSource := "SESSION_PACE_MS"
+	if ms == 0 {
+		if lpm := sendLimitPerMinuteFromEnv(); lpm > 0 {
+			ms = 60000 / lpm
+			spacingSource = "WHATSAPP_SEND_LIMIT_PER_MINUTE"
+		}
+	}
+	if ms > 0 {
 		q.rdb = redis.NewClient(&redis.Options{Addr: redisAddr})
 		q.pacer = newSessionPacer(q.rdb, time.Duration(ms)*time.Millisecond, logger)
-		logger.Info("session pacer enabled", zap.Int("spacingMs", ms))
+		logger.Info("session pacer enabled", zap.Int("spacingMs", ms), zap.String("source", spacingSource))
 	}
 
 	return q

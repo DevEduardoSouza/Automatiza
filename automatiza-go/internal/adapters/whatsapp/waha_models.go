@@ -374,6 +374,26 @@ type wahaSendTextRequest struct {
 	Mentions []string `json:"mentions,omitempty"`
 }
 
+// wahaChatRequest is the body for POST /api/startTyping and /api/stopTyping.
+type wahaChatRequest struct {
+	Session string `json:"session"`
+	ChatID  string `json:"chatId"`
+}
+
+// wahaSendSeenRequest is the body for POST /api/sendSeen.
+type wahaSendSeenRequest struct {
+	Session     string `json:"session"`
+	ChatID      string `json:"chatId"`
+	MessageID   string `json:"messageId,omitempty"`
+	Participant string `json:"participant,omitempty"`
+}
+
+// wahaSetPresenceRequest is the body for POST /api/{session}/presence.
+// The session is a PATH parameter, so it is not part of the body.
+type wahaSetPresenceRequest struct {
+	Presence string `json:"presence"`
+}
+
 // wahaSendImageRequest represents a WAHA image message request.
 // Maps to POST /api/sendImage request body.
 type wahaSendImageRequest struct {

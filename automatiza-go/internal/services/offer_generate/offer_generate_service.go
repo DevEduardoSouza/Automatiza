@@ -15,6 +15,7 @@ import (
 	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/ctapicker"
+	"automatiza-go/internal/lib/humanize"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/videostream"
 	"automatiza-go/internal/lib/wamentions"
@@ -758,12 +759,27 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		chipGroups[dispatchSession] = append(chipGroups[dispatchSession], groupID)
 	}
 
+	// Anti-ban: resolve pacing/humanize preset once; shared read-only across the
+	// per-chip goroutines below (resolved/rt/baseDelay are never mutated).
+	resolved := config.GetHumanization().ForMode(auto.HumanizeMode)
+	rt := config.GetAntiBanRuntime()
+	baseDelay := 0
+	if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
+		baseDelay = *auto.DelaySeconds
+	}
 	var wg sync.WaitGroup
 	for dispatchSession, groupIDs := range chipGroups {
 		wg.Add(1)
 		go func(dispatchSession string, groupIDs []string) {
 			defer wg.Done()
+			// Shuffle this chip's destination order (anti-ban).
+			resolved.Pacing.Shuffle(groupIDs)
 			for _, groupID := range groupIDs {
+				// Anti-ban: skip groups with a bad reputation (fail-open).
+				if rt.Reputation.IsSuppressed(ctx, dispatchSession, groupID) {
+					s.logDispatch(ctx, auto, groupID, links[0], "skipped", "reputacao (grupo problematico)", canonicalKey, store)
+					continue
+				}
 				// Dedup by (userID, groupID, canonicalKey). claimProductSlot,
 				// logDispatch, markOwnOutgoing and the provider sends are all
 				// concurrency-safe (Redis SetNX / DB / per-session HTTP), and
@@ -777,17 +793,15 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 					continue
 				}
 
-				// Per-chip pacing (anti-ban): space this chip's own sends.
-				delay := 1 + rand.IntN(3)
-				if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
-					delay = *auto.DelaySeconds
-				}
-				time.Sleep(time.Duration(delay) * time.Second)
+				// Anti-ban pacing: jittered per-chip delay (honors delay_seconds)
+				// plus an occasional micro-break, keyed on the sending chip.
+				time.Sleep(resolved.Pacing.Step(baseDelay) + rt.Pacing.MicroBreak(ctx, dispatchSession, resolved.Pacing))
 
-				// Mark this body as our own outgoing BEFORE sending so the
-				// FromMe webhook for our send is recognized (loop guard).
-				// Indexed by the sending session so chips don't share keys.
-				s.markOwnOutgoing(ctx, dispatchSession, groupID, renderedMessage)
+				// Anti-ban: per-recipient content variation (URLs never mutated).
+				// markOwnOutgoing MUST key on the VARIED body — that's the exact text
+				// WhatsApp echoes back — or the FromMe loop-guard misses it.
+				perGroupMessage := text.Vary(renderedMessage, resolved.Vary, groupID)
+				s.markOwnOutgoing(ctx, dispatchSession, groupID, perGroupMessage)
 
 				// Send via WhatsApp
 				sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -809,6 +823,16 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				}
 				hasMentions := len(mentions) > 0
 
+				// Anti-ban: human presence choreography (typing/online/seen) before
+				// the real send, using the varied per-group text.
+				stopTyping := rt.Humanizer.BeforeSend(sendCtx, humanize.Plan{
+					Session:  dispatchSession,
+					ChatID:   groupID,
+					Text:     perGroupMessage,
+					HasMedia: imageURL != "",
+					Cfg:      resolved.Humanize,
+				})
+
 				switch {
 				case hasMentions && imageURL != "":
 					// @todos precisa de menção e o card do WAHA a dropa: força
@@ -816,7 +840,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 					_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
 						SessionName: dispatchSession,
 						ChatID:      groupID,
-						Caption:     renderedMessage,
+						Caption:     perGroupMessage,
 						ImageURL:    imageURL,
 						Mentions:    mentions,
 					})
@@ -825,14 +849,14 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 					_, sendErr = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
 						SessionName: dispatchSession,
 						ChatID:      groupID,
-						Text:        renderedMessage,
+						Text:        perGroupMessage,
 						Mentions:    mentions,
 					})
 				case imageURL != "" && sendAsImage:
 					_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
 						SessionName: dispatchSession,
 						ChatID:      groupID,
-						Caption:     renderedMessage,
+						Caption:     perGroupMessage,
 						ImageURL:    imageURL,
 					})
 				case !sendAsImage && previewURL != "":
@@ -840,7 +864,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 					_, sendErr = s.waProvider.SendLinkCustomPreview(sendCtx, whatsapp.SendLinkPreviewInput{
 						SessionName: dispatchSession,
 						ChatID:      groupID,
-						Text:        renderedMessage,
+						Text:        perGroupMessage,
 						URL:         previewURL,
 						Title:       previewTitle,
 						Description: previewDesc,
@@ -850,9 +874,10 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 					_, sendErr = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
 						SessionName: dispatchSession,
 						ChatID:      groupID,
-						Text:        renderedMessage,
+						Text:        perGroupMessage,
 					})
 				}
+				stopTyping()
 				sendCancel()
 
 				if sendErr != nil {
@@ -1312,12 +1337,27 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 		chipGroups[dispatchSession] = append(chipGroups[dispatchSession], groupID)
 	}
 
+	// Anti-ban: resolve pacing/humanize preset once; shared read-only across the
+	// per-chip relay goroutines.
+	resolved := config.GetHumanization().ForMode(auto.HumanizeMode)
+	rt := config.GetAntiBanRuntime()
+	baseDelay := 0
+	if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
+		baseDelay = *auto.DelaySeconds
+	}
 	var wg sync.WaitGroup
 	for dispatchSession, groupIDs := range chipGroups {
 		wg.Add(1)
 		go func(dispatchSession string, groupIDs []string) {
 			defer wg.Done()
+			// Shuffle this chip's destination order (anti-ban).
+			resolved.Pacing.Shuffle(groupIDs)
 			for _, groupID := range groupIDs {
+				// Anti-ban: skip groups with a bad reputation (fail-open).
+				if rt.Reputation.IsSuppressed(ctx, dispatchSession, groupID) {
+					s.logDispatch(ctx, auto, groupID, "", "skipped", "reputacao (grupo problematico)", canonicalKey, "")
+					continue
+				}
 				if !s.claimProductSlot(ctx, auto.UserID, groupID, canonicalKey, dedupeWindow) {
 					s.logger.Info("Relay message already sent (dedup), skipping",
 						zap.String("automationID", auto.ID),
@@ -1327,12 +1367,9 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 					continue
 				}
 
-				// Per-chip pacing (anti-ban).
-				delay := 1 + rand.IntN(3)
-				if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
-					delay = *auto.DelaySeconds
-				}
-				time.Sleep(time.Duration(delay) * time.Second)
+				// Anti-ban pacing: jittered per-chip delay (honors delay_seconds)
+				// plus an occasional micro-break, keyed on the sending chip.
+				time.Sleep(resolved.Pacing.Step(baseDelay) + rt.Pacing.MicroBreak(ctx, dispatchSession, resolved.Pacing))
 
 				// Marca o body+mídia como nosso próprio outgoing pra que o
 				// webhook FromMe que retorna seja distinguido de um chip user
@@ -1346,7 +1383,18 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 				}
 
 				sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				// Anti-ban: typing/online/seen choreography before the relay send.
+				// Text is the relayed body (used only to size the typing time — the
+				// relay content itself is forwarded unchanged).
+				stopTyping := rt.Humanizer.BeforeSend(sendCtx, humanize.Plan{
+					Session:  dispatchSession,
+					ChatID:   groupID,
+					Text:     msg.Body,
+					HasMedia: msg.MediaURL != "",
+					Cfg:      resolved.Humanize,
+				})
 				sendErr := s.sendRelayMessage(sendCtx, dispatchSession, groupID, msg, videoStreamable)
+				stopTyping()
 				sendCancel()
 
 				if sendErr != nil {

@@ -41,6 +41,9 @@ import (
 	"automatiza-go/internal/handlers"
 	"automatiza-go/internal/lib/backpressure"
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/humanize"
+	"automatiza-go/internal/lib/pacing"
+	"automatiza-go/internal/lib/reputation"
 	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/middleware"
 	"automatiza-go/internal/models"
@@ -293,6 +296,34 @@ func main() {
 		}
 	} else {
 		logger.Warn("WAHA not configured, WhatsApp adapter disabled")
+	}
+
+	// Anti-ban runtime: presence choreographer (typing/online/seen) + Redis-backed
+	// reputation and pacing (micro-break) limiter. Read process-wide via
+	// config.GetAntiBanRuntime() by the dispatch services and the send worker, so
+	// they don't thread these through their (large) constructors. Nil-safe / fail-open.
+	{
+		humanizeCfg := config.GetHumanization()
+		var presenceThrottle humanize.Throttle
+		var reputationStore *reputation.Store
+		var pacingLimiter *pacing.Limiter
+		if redisClient != nil {
+			presenceThrottle = humanize.NewRedisThrottle(redisClient.Client, humanizeCfg.PresenceTTL, config.NewModuleLogger(logger, "humanize-presence"))
+			reputationStore = reputation.NewStore(redisClient.Client, 0, 0, config.NewModuleLogger(logger, "reputation"))
+			pacingLimiter = pacing.NewLimiter(redisClient.Client, config.NewModuleLogger(logger, "pacing"))
+		} else {
+			reputationStore = reputation.NewStore(nil, 0, 0, logger)
+			pacingLimiter = pacing.NewLimiter(nil, logger)
+		}
+		humanizer := humanize.New(wahaAdapter, presenceThrottle, config.NewModuleLogger(logger, "humanize"))
+		config.SetAntiBanRuntime(&config.AntiBanRuntime{
+			Humanizer:  humanizer,
+			Reputation: reputationStore,
+			Pacing:     pacingLimiter,
+		})
+		logger.Info("anti-ban runtime enabled",
+			zap.Bool("humanizeEnabled", humanizeCfg.Enabled),
+			zap.Bool("redis", redisClient != nil))
 	}
 
 	// Shorthand references for services
@@ -998,6 +1029,8 @@ func main() {
 
 	// Register dispatch texts service handler (requires auth)
 	dispatchTextsHandler := connectrpc.NewDispatchTextsHandler(settingsRepo)
+	// Anti-ban: enable warn-only spam-phrase linting on dispatch-text copies.
+	connectrpc.SetDispatchTextsSpamLogger(config.NewModuleLogger(logger, "dispatch-texts-spam"))
 	dispatchTextsPath, dispatchTextsHTTPHandler := dispatchtextsv1connect.NewDispatchTextsServiceHandler(
 		dispatchTextsHandler,
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),

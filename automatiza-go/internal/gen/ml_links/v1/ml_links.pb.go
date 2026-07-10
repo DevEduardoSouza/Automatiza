@@ -23,7 +23,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-//*
+// *
 // Represents a Mercado Livre link list.
 type MlLinkList struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -124,7 +124,7 @@ func (x *MlLinkList) GetUpdatedAt() string {
 	return ""
 }
 
-//*
+// *
 // Represents an item in a Mercado Livre link list.
 type MlLinkListItem struct {
 	state protoimpl.MessageState `protogen:"open.v1"`

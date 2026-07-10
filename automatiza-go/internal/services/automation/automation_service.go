@@ -906,6 +906,13 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				}
 			}
 
+			// Anti-ban pacing for SEARCH: per-chip jittered delay accumulator +
+			// micro-breaks (parity with LIST, honoring delay_seconds), destination
+			// shuffle, and reputation-based suppression.
+			perChipDelay := make(map[string]time.Duration)
+			pacingCfg := config.GetHumanization().PacingConfigForMode(automation.HumanizeMode)
+			rt := config.GetAntiBanRuntime()
+			pacingCfg.Shuffle(targetGroups)
 			for _, groupID := range targetGroups {
 				// Per-group dedup check (an offer may be new for some groups but not others)
 				if s.isDuplicate(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
@@ -980,6 +987,12 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					continue
 				}
 
+				// Anti-ban: skip groups with a bad reputation (fail-open).
+				if rt.Reputation.IsSuppressed(ctx, senderSession, groupID) {
+					s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", "reputacao (grupo problematico)", withCanonicalKey(canonicalKey, store))
+					continue
+				}
+
 				// "Enviar como imagem" (SEARCH, default TRUE): ligado envia a
 				// imagem baixada + legenda (comportamento histórico da Busca);
 				// desligado usa o preview nativo do WhatsApp (mais leve).
@@ -992,6 +1005,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					Message:      message,
 					HistoryID:    &historyID,
 					AutomationID: automation.ID,
+					HumanizeMode: automation.HumanizeMode,
 				}
 				if searchSendAsImage {
 					jobData.ImageURL = imageURL
@@ -1004,7 +1018,9 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				}
 
 				if s.queueClient != nil {
-					delay := time.Duration(sentCount) * time.Duration(automation.GetDelaySeconds()) * time.Second
+					// Per-chip jittered accumulator (anti-ban) instead of a global
+					// sentCount×delay ramp — advanced after each successful enqueue.
+					delay := perChipDelay[senderSession]
 					_, err := s.queueClient.EnqueueMessage(ctx, jobData, delay)
 					if err != nil {
 						s.logger.Error("Failed to enqueue message",
@@ -1020,6 +1036,11 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				s.markAsSent(ctx, automation.UserID, groupID, canonicalKey, dedupeHours)
 				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "sent", "", withCanonicalKey(canonicalKey, store), withCopyIndex(copyIndex), withAffiliateLink(offer.AffiliateLink))
 				sentCount++
+				// Advance this chip's jittered delay accumulator (+ occasional micro-break).
+				perChipDelay[senderSession] = pacingCfg.ClampSpread(
+					perChipDelay[senderSession] +
+						pacingCfg.Step(automation.GetDelaySeconds()) +
+						rt.Pacing.MicroBreak(ctx, senderSession, pacingCfg))
 
 				// Record backpressure
 				if s.backpressure != nil {

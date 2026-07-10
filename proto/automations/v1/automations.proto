@@ -214,6 +214,11 @@ message Automation {
   // Ligar força imagem baixada quando há.
   optional bool monitoring_send_as_image = 41;
 
+  // Intensidade da humanização anti-ban (off/low/medium/high). Default
+  // 'high' em novas automations (migration 060). Quanto maior, mais o
+  // backend disfarça o comportamento (delays variáveis, jitter, etc.).
+  optional string humanize_mode = 42;
+
   // Preferred sender chip — when set and connected, every dispatch from
   // this automation goes through this chip; otherwise falls back to the
   // group's owner chip and then to the first connected instance.
@@ -390,6 +395,9 @@ message CreateAutomationRequest {
   // MONITORING: enviar oferta como imagem anexada. Unset = default do server
   // (false). Ver Automation.monitoring_send_as_image.
   optional bool monitoring_send_as_image = 36;
+  // Intensidade da humanização anti-ban. Unset = default do server
+  // ('high'). Ver Automation.humanize_mode.
+  optional string humanize_mode = 37;
 }
 
 message CreateAutomationResponse {
@@ -462,6 +470,9 @@ message UpdateAutomationRequest {
   // MONITORING: enviar oferta como imagem anexada. Unset = leave unchanged.
   // Ver Automation.monitoring_send_as_image.
   optional bool monitoring_send_as_image = 37;
+  // Intensidade da humanização anti-ban. Unset = leave unchanged.
+  // Ver Automation.humanize_mode.
+  optional string humanize_mode = 38;
 }
 
 message UpdateAutomationResponse {

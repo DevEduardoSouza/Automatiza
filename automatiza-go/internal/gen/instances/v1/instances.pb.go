@@ -22,7 +22,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-//*
+// *
 // Status of a WhatsApp instance.
 type InstanceStatus int32
 
@@ -82,7 +82,7 @@ func (InstanceStatus) EnumDescriptor() ([]byte, []int) {
 	return file_instances_v1_instances_proto_rawDescGZIP(), []int{0}
 }
 
-//*
+// *
 // Represents a WhatsApp instance connection.
 type Instance struct {
 	state protoimpl.MessageState `protogen:"open.v1"`

@@ -197,6 +197,7 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     chip_overrides: local.chipOverrides ?? {},
     apply_coupon_rules: local.applyCouponRules ?? true,
     repeat_when_finished: local.repeatWhenFinished ?? true,
+    humanize_mode: (local.humanizeMode ?? 'high') as 'off' | 'low' | 'medium' | 'high',
     start_date: local.startDate,
     end_date: local.endDate,
   };
@@ -657,6 +658,7 @@ export function useAutomations(): UseAutomationsReturn {
           chipOverrides: formData.chip_overrides ?? {},
           applyCouponRules: formData.apply_coupon_rules,
           repeatWhenFinished: formData.repeat_when_finished,
+          humanizeMode: formData.humanize_mode,
           startDate: formData.start_date,
           endDate: formData.end_date,
         };
@@ -726,6 +728,8 @@ export function useAutomations(): UseAutomationsReturn {
           // Default true: lista LIST mode roda em loop por padrão
           // (auto-reseta items consumidos quando esgota).
           repeatWhenFinished: formData.repeat_when_finished ?? true,
+          // Default 'high': humanização anti-ban no máximo por padrão.
+          humanizeMode: formData.humanize_mode ?? 'high',
           // Data de agendamento (LIST mode). Empty = sem agendamento.
           startDate: formData.start_date,
           // Data de expiração (LIST mode). Empty = sem expiração.

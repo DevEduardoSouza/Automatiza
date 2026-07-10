@@ -15,6 +15,7 @@ import (
 	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/deadgroup"
+	"automatiza-go/internal/lib/humanize"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/wamentions"
 	"automatiza-go/internal/models"
@@ -583,6 +584,16 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	store := s.detectStore(links)
 
 	// 13. Send to destination groups
+	// Anti-ban: resolve pacing + humanize preset for this automation, shuffle the
+	// destination order, and compute the base delay (delay_seconds or 0 => pacing
+	// default). resolved/rt drive jitter, micro-breaks, typing and content variation.
+	resolved := config.GetHumanization().ForMode(automation.HumanizeMode)
+	rt := config.GetAntiBanRuntime()
+	resolved.Pacing.Shuffle(destinationGroups)
+	baseDelay := 0
+	if automation.DelaySeconds != nil && *automation.DelaySeconds > 0 {
+		baseDelay = *automation.DelaySeconds
+	}
 	for _, groupID := range destinationGroups {
 		// Skip if same group
 		if groupID == msg.RemoteJID {
@@ -603,6 +614,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// stays on owner/fallback when the pinned chip isn't in the group.
 		if pinned := preferredParticipantSession(preferredChipIDs, groupParticipants[groupID], connectedSessionByID); pinned != "" {
 			senderSession = pinned
+		}
+
+		// Anti-ban: skip groups with a bad reputation (repeated failures / bot
+		// removed). Quality-based suppression, not volume — fail-open.
+		if rt.Reputation.IsSuppressed(ctx, senderSession, groupID) {
+			s.logDispatch(ctx, automation, groupID, links[0], "skipped", "reputacao (grupo problematico)", canonicalKey, store)
+			continue
 		}
 
 		// Pula grupos onde a sessao sabidamente nao e mais membro. Sem isso, o
@@ -629,12 +647,9 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			continue
 		}
 
-		// Apply delay
-		delay := 1 + rand.IntN(3) // 1-3 seconds random
-		if automation.DelaySeconds != nil && *automation.DelaySeconds > 0 {
-			delay = *automation.DelaySeconds
-		}
-		time.Sleep(time.Duration(delay) * time.Second)
+		// Anti-ban pacing: jittered inter-message delay (honors delay_seconds) plus
+		// an occasional micro-break, keyed on the sending chip.
+		time.Sleep(resolved.Pacing.Step(baseDelay) + rt.Pacing.MicroBreak(ctx, senderSession, resolved.Pacing))
 
 		// Send message via WhatsAppProvider using the automation owner's session
 		// Priority 1: Link custom preview (source had WhatsApp link preview)
@@ -655,6 +670,19 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			mentions = wamentions.Expand(sendCtx, s.waProvider, senderSession, groupID, processedText)
 		}
 		hasMentions := len(mentions) > 0
+
+		// Anti-ban: per-recipient content variation (URLs never mutated) + human
+		// presence choreography (typing/online/seen) before the real send. The
+		// @todos scan above stays on the ORIGINAL processedText so variation can
+		// never hide the trigger token.
+		perGroupText := text.Vary(processedText, resolved.Vary, groupID)
+		stopTyping := rt.Humanizer.BeforeSend(sendCtx, humanize.Plan{
+			Session:  senderSession,
+			ChatID:   groupID,
+			Text:     perGroupText,
+			HasMedia: imageURL != "" || imageBase64 != "",
+			Cfg:      resolved.Humanize,
+		})
 
 		// "Enviar como imagem" (MONITORING, default FALSE): ligado pula o
 		// preview nativo e força imagem baixada + legenda; desligado mantém o
@@ -683,7 +711,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			_, err = s.waProvider.SendLinkCustomPreview(sendCtx, whatsapp.SendLinkPreviewInput{
 				SessionName: senderSession,
 				ChatID:      groupID,
-				Text:        processedText,
+				Text:        perGroupText,
 				URL:         firstAffiliateURL,
 				Title:       msg.LinkPreviewTitle,
 				Description: msg.LinkPreviewDescription,
@@ -706,7 +734,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			_, err = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
 				SessionName: senderSession,
 				ChatID:      groupID,
-				Caption:     processedText,
+				Caption:     perGroupText,
 				ImageURL:    imageURL,
 				ImageBase64: imageBase64,
 				Mimetype:    imageMimetype,
@@ -722,10 +750,11 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			_, err = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
 				SessionName: senderSession,
 				ChatID:      groupID,
-				Text:        processedText,
+				Text:        perGroupText,
 				Mentions:    mentions,
 			})
 		}
+		stopTyping()
 		sendCancel()
 
 		if err != nil {

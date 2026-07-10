@@ -100,6 +100,9 @@ export interface Automation {
   // automation continua rodando em loop. Quando false, a automation
   // para após esgotar.
   repeat_when_finished?: boolean;
+  // Intensidade da humanização anti-ban aplicada aos disparos. Quanto
+  // maior, mais o backend disfarça o comportamento. Default 'high'.
+  humanize_mode?: 'off' | 'low' | 'medium' | 'high';
   // Data calendário (YYYY-MM-DD) a partir da qual o scheduler ativa.
   // Empty/unset = sem agendamento, roda imediatamente.
   start_date?: string;

@@ -484,6 +484,12 @@ func (m *mockWAProvider) SendVoice(_ context.Context, _ whatsapp.SendVoiceInput)
 func (m *mockWAProvider) SendPoll(_ context.Context, _ whatsapp.SendPollInput) (*whatsapp.MessageResult, error) {
 	return nil, nil
 }
+func (m *mockWAProvider) StartTyping(_ context.Context, _ whatsapp.TypingInput) error { return nil }
+func (m *mockWAProvider) StopTyping(_ context.Context, _ whatsapp.TypingInput) error  { return nil }
+func (m *mockWAProvider) SendSeen(_ context.Context, _ whatsapp.SendSeenInput) error  { return nil }
+func (m *mockWAProvider) SetPresence(_ context.Context, _ whatsapp.SetPresenceInput) error {
+	return nil
+}
 func (m *mockWAProvider) SendLinkCustomPreview(ctx context.Context, input whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
 	if m.SendLinkCustomPreviewFn != nil {
 		return m.SendLinkCustomPreviewFn(ctx, input)

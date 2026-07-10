@@ -10,6 +10,7 @@ import (
 
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
+	"automatiza-go/internal/lib/humanize"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/observability"
@@ -36,6 +37,8 @@ type MessageWorker struct {
 
 // NewMessageWorker creates a new message worker.
 // IMPORTANT: This now requires a WhatsAppProvider instead of waha.Service.
+// The anti-ban runtime (humanizer + reputation store) is read process-wide via
+// config.GetAntiBanRuntime() inside ProcessTask, so it isn't threaded here.
 func NewMessageWorker(
 	whatsappProvider whatsapp.WhatsAppProvider,
 	urlSafetyService *urlsafety.Service,
@@ -107,8 +110,16 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		}
 	}
 
-	// 2. Text Normalization
+	// 2. Text Normalization + per-recipient variation (anti-ban).
+	// Resolve the automation's humanize preset once (default "high") and grab the
+	// process-wide anti-ban runtime (humanizer + reputation store; both nil-safe).
+	resolved := config.GetHumanization().ForMode(data.HumanizeMode)
+	rt := config.GetAntiBanRuntime()
 	normalizedMessage := text.NormalizeOutgoingWhatsAppText(data.Message)
+	// Vary runs AFTER normalize (normalize strips zero-width chars) and is seeded
+	// by the group JID so each group gets byte-distinct text while an asynq retry
+	// re-sends identical bytes. URLs are never mutated (masked inside Vary).
+	normalizedMessage = text.Vary(normalizedMessage, resolved.Vary, data.GroupID)
 	if text.IsEffectivelyEmptyWhatsAppText(normalizedMessage) {
 		w.logger.Info("Message empty after normalization, skipping",
 			zap.String("automationID", data.AutomationID))
@@ -118,6 +129,21 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		})
 		return nil // Empty message after normalization
 	}
+
+	// 2b. Human-presence choreography (typing / online / seen) before the real
+	// send. Fail-open and nil-safe; the returned cleanup stops the typing
+	// indicator. defer so it always clears even on an early error path.
+	hasMedia := (data.ImageURL != nil && *data.ImageURL != "") ||
+		(data.ImageBase64 != nil && *data.ImageBase64 != "") ||
+		(data.AudioBase64 != nil && *data.AudioBase64 != "")
+	stopTyping := rt.Humanizer.BeforeSend(ctx, humanize.Plan{
+		Session:  data.InstanceName,
+		ChatID:   data.GroupID,
+		Text:     normalizedMessage,
+		HasMedia: hasMedia,
+		Cfg:      resolved.Humanize,
+	})
+	defer stopTyping()
 
 	// 3. Send Message via WhatsAppProvider
 	var sendErr error
@@ -352,6 +378,9 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		// próximos envios saírem cedo (passo 0) e encerra sem retry.
 		if isNotParticipatingError(sendErr) {
 			w.deadGroups.markDead(data.InstanceName, data.GroupID, time.Now())
+			// Being removed from a group is the strongest block/report proxy —
+			// weight it heavily so the dispatchers suppress this group. Fail-open.
+			rt.Reputation.Penalize(ctx, data.InstanceName, data.GroupID, 3)
 			w.logger.Warn("Session not participating in group, skipping (no retry)",
 				zap.String("automationID", data.AutomationID),
 				zap.String("instanceName", data.InstanceName),
@@ -379,6 +408,9 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 	}
 
 	// 5. Success
+	// A successful send re-establishes the group's standing so a recovered group
+	// returns to rotation. Fail-open / nil-safe.
+	rt.Reputation.Clear(ctx, data.InstanceName, data.GroupID)
 	w.logger.Info("Message sent successfully",
 		zap.String("automationID", data.AutomationID),
 		zap.String("instanceName", data.InstanceName),

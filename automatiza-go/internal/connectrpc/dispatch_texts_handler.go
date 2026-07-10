@@ -6,11 +6,38 @@ import (
 	"strings"
 
 	dispatchtextsv1 "automatiza-go/internal/gen/dispatch_texts/v1"
+	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
 
 	"connectrpc.com/connect"
+	"go.uber.org/zap"
 )
+
+// dispatchTextsSpamLogger is an OPTIONAL logger for warn-only spam-phrase linting
+// on dispatch-text copies (anti-ban content hygiene). Installed once at startup
+// via SetDispatchTextsSpamLogger; nil disables the warning. Kept package-level so
+// the handler constructor signature (and its many test call sites) is unchanged.
+var dispatchTextsSpamLogger *zap.Logger
+
+// spamLinter flags high-risk phrases; warn-only, never blocks a save.
+var spamLinter = text.DefaultSpamLinter()
+
+// SetDispatchTextsSpamLogger installs the spam-phrase warning logger.
+func SetDispatchTextsSpamLogger(l *zap.Logger) { dispatchTextsSpamLogger = l }
+
+// warnSpamPhrases logs (never blocks) any high-risk spam phrases found in copies.
+func warnSpamPhrases(copies []string) {
+	if dispatchTextsSpamLogger == nil {
+		return
+	}
+	for i, c := range copies {
+		if hits := spamLinter.Check(c); len(hits) > 0 {
+			dispatchTextsSpamLogger.Warn("dispatch copy contains high-risk spam phrases (anti-ban warning)",
+				zap.Int("copyIndex", i+1), zap.Strings("phrases", hits))
+		}
+	}
+}
 
 // DispatchTextsHandler implements the dispatch_textsv1connect.DispatchTextsServiceHandler interface.
 type DispatchTextsHandler struct {
@@ -97,6 +124,8 @@ func (h *DispatchTextsHandler) CreateDispatchText(
 	if err := validateCopies(copies); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	// Anti-ban content hygiene: warn (never block) on high-risk spam phrases.
+	warnSpamPhrases(copies)
 
 	// Default is_active to true if not provided
 	isActive := true
@@ -149,6 +178,7 @@ func (h *DispatchTextsHandler) UpdateDispatchText(
 		if err := validateCopies(req.Msg.GetCopies()); err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
+		warnSpamPhrases(req.Msg.GetCopies())
 		updates["copies"] = req.Msg.GetCopies()
 	} else if req.Msg.Body != nil {
 		updates["body"] = req.Msg.GetBody()

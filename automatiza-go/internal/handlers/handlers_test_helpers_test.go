@@ -252,15 +252,15 @@ func (m *mockProfileRepo) GetProfileStats(ctx context.Context) (*repository.Prof
 // ---------------------------------------------------------------------------
 
 type mockInstanceRepo struct {
-	GetInstanceByUserAndNameFunc func(ctx context.Context, userID, name string) (*models.Instance, error)
-	GetInstanceByNameFunc       func(ctx context.Context, name string) (*models.Instance, error)
-	GetAllConnectedFunc         func(ctx context.Context) ([]models.Instance, error)
-	UpsertInstanceFunc          func(ctx context.Context, userID string, data *models.Instance) (*models.Instance, error)
-	UpdateInstanceStatusFunc    func(ctx context.Context, instanceID int, status string) error
-	DeleteInstanceFunc          func(ctx context.Context, instanceID int) error
-	SetDefaultInstanceFunc      func(ctx context.Context, userID string, instanceID int) error
-	CountUserInstancesFunc      func(ctx context.Context, userID string) (int, error)
-	UpdateInstanceLabelFunc     func(ctx context.Context, userID string, instanceID int, friendlyName string) error
+	GetInstanceByUserAndNameFunc  func(ctx context.Context, userID, name string) (*models.Instance, error)
+	GetInstanceByNameFunc         func(ctx context.Context, name string) (*models.Instance, error)
+	GetAllConnectedFunc           func(ctx context.Context) ([]models.Instance, error)
+	UpsertInstanceFunc            func(ctx context.Context, userID string, data *models.Instance) (*models.Instance, error)
+	UpdateInstanceStatusFunc      func(ctx context.Context, instanceID int, status string) error
+	DeleteInstanceFunc            func(ctx context.Context, instanceID int) error
+	SetDefaultInstanceFunc        func(ctx context.Context, userID string, instanceID int) error
+	CountUserInstancesFunc        func(ctx context.Context, userID string) (int, error)
+	UpdateInstanceLabelFunc       func(ctx context.Context, userID string, instanceID int, friendlyName string) error
 	UpdateInstancePhoneNumberFunc func(ctx context.Context, instanceID int, phoneNumber string) error
 }
 
@@ -340,10 +340,10 @@ func (m *mockInstanceRepo) UpdateInstancePhoneNumber(ctx context.Context, instan
 // ---------------------------------------------------------------------------
 
 type mockGroupRepo struct {
-	GetUserGroupsFunc          func(ctx context.Context, userID string, adminOnly bool) ([]models.Group, error)
-	GetGroupByIDFunc           func(ctx context.Context, groupID string) (*models.Group, error)
-	DeleteByInstanceFn         func(ctx context.Context, userID string, instanceID int) error
-	CountGroupsByInstanceFunc  func(ctx context.Context, userID string, instanceID int) (int, error)
+	GetUserGroupsFunc         func(ctx context.Context, userID string, adminOnly bool) ([]models.Group, error)
+	GetGroupByIDFunc          func(ctx context.Context, groupID string) (*models.Group, error)
+	DeleteByInstanceFn        func(ctx context.Context, userID string, instanceID int) error
+	CountGroupsByInstanceFunc func(ctx context.Context, userID string, instanceID int) (int, error)
 }
 
 func (m *mockGroupRepo) GetUserGroups(ctx context.Context, userID string, adminOnly bool) ([]models.Group, error) {
@@ -425,11 +425,11 @@ func (m *mockGroupRepo) GetInstancesForGroups(ctx context.Context, userID string
 // ---------------------------------------------------------------------------
 
 type mockAutomationRepo struct {
-	GetUserAutomationsFunc     func(ctx context.Context, userID string) ([]models.Automation, error)
-	GetByIDAndUserFunc         func(ctx context.Context, id, userID string) (*models.Automation, error)
-	CreateAutomationFunc       func(ctx context.Context, userID string, data *models.Automation) (*models.Automation, error)
-	UpdateAutomationFunc       func(ctx context.Context, id string, updates map[string]interface{}) error
-	DeleteAutomationFunc       func(ctx context.Context, id, userID string) error
+	GetUserAutomationsFunc func(ctx context.Context, userID string) ([]models.Automation, error)
+	GetByIDAndUserFunc     func(ctx context.Context, id, userID string) (*models.Automation, error)
+	CreateAutomationFunc   func(ctx context.Context, userID string, data *models.Automation) (*models.Automation, error)
+	UpdateAutomationFunc   func(ctx context.Context, id string, updates map[string]interface{}) error
+	DeleteAutomationFunc   func(ctx context.Context, id, userID string) error
 }
 
 func (m *mockAutomationRepo) GetUserAutomations(ctx context.Context, userID string) ([]models.Automation, error) {
@@ -736,19 +736,19 @@ func (m *mockUserRoleRepo) GetAdminUsers(ctx context.Context) ([]models.UserRole
 // ---------------------------------------------------------------------------
 
 type mockWhatsAppProvider struct {
-	CreateSessionFunc         func(ctx context.Context, input whatsapp.CreateSessionInput) (*whatsapp.SessionInfo, error)
-	DeleteSessionFunc         func(ctx context.Context, name string) error
-	GetSessionStatusFunc      func(ctx context.Context, name string) (*whatsapp.SessionInfo, error)
-	GetQRCodeFunc             func(ctx context.Context, name string) (*whatsapp.QRCodeData, error)
-	RestartSessionFunc        func(ctx context.Context, name string) error
-	GetGroupsFunc             func(ctx context.Context, name string) ([]whatsapp.GroupInfo, error)
-	GetGroupParticipantsFunc  func(ctx context.Context, name, groupID string) ([]whatsapp.ParticipantInfo, error)
-	SendPollFunc              func(ctx context.Context, input whatsapp.SendPollInput) (*whatsapp.MessageResult, error)
-	UpdateGroupSubjectFunc    func(ctx context.Context, input whatsapp.UpdateGroupSubjectInput) error
-	UpdateGroupDescFunc       func(ctx context.Context, input whatsapp.UpdateGroupDescriptionInput) error
-	UpdateGroupPictureFunc    func(ctx context.Context, input whatsapp.UpdateGroupPictureInput) error
-	SetGroupAnnouncementFunc  func(ctx context.Context, input whatsapp.SetGroupAnnouncementInput) error
-	SetWebhookFunc            func(ctx context.Context, input whatsapp.SetWebhookInput) error
+	CreateSessionFunc        func(ctx context.Context, input whatsapp.CreateSessionInput) (*whatsapp.SessionInfo, error)
+	DeleteSessionFunc        func(ctx context.Context, name string) error
+	GetSessionStatusFunc     func(ctx context.Context, name string) (*whatsapp.SessionInfo, error)
+	GetQRCodeFunc            func(ctx context.Context, name string) (*whatsapp.QRCodeData, error)
+	RestartSessionFunc       func(ctx context.Context, name string) error
+	GetGroupsFunc            func(ctx context.Context, name string) ([]whatsapp.GroupInfo, error)
+	GetGroupParticipantsFunc func(ctx context.Context, name, groupID string) ([]whatsapp.ParticipantInfo, error)
+	SendPollFunc             func(ctx context.Context, input whatsapp.SendPollInput) (*whatsapp.MessageResult, error)
+	UpdateGroupSubjectFunc   func(ctx context.Context, input whatsapp.UpdateGroupSubjectInput) error
+	UpdateGroupDescFunc      func(ctx context.Context, input whatsapp.UpdateGroupDescriptionInput) error
+	UpdateGroupPictureFunc   func(ctx context.Context, input whatsapp.UpdateGroupPictureInput) error
+	SetGroupAnnouncementFunc func(ctx context.Context, input whatsapp.SetGroupAnnouncementInput) error
+	SetWebhookFunc           func(ctx context.Context, input whatsapp.SetWebhookInput) error
 }
 
 func (m *mockWhatsAppProvider) CreateSession(ctx context.Context, input whatsapp.CreateSessionInput) (*whatsapp.SessionInfo, error) {
@@ -863,6 +863,12 @@ func (m *mockWhatsAppProvider) SendPoll(ctx context.Context, input whatsapp.Send
 func (m *mockWhatsAppProvider) SendLinkCustomPreview(ctx context.Context, input whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
 	return &whatsapp.MessageResult{ID: "msg-1"}, nil
 }
+func (m *mockWhatsAppProvider) StartTyping(context.Context, whatsapp.TypingInput) error { return nil }
+func (m *mockWhatsAppProvider) StopTyping(context.Context, whatsapp.TypingInput) error  { return nil }
+func (m *mockWhatsAppProvider) SendSeen(context.Context, whatsapp.SendSeenInput) error  { return nil }
+func (m *mockWhatsAppProvider) SetPresence(context.Context, whatsapp.SetPresenceInput) error {
+	return nil
+}
 func (m *mockWhatsAppProvider) SetWebhook(ctx context.Context, input whatsapp.SetWebhookInput) error {
 	if m.SetWebhookFunc != nil {
 		return m.SetWebhookFunc(ctx, input)
@@ -887,7 +893,7 @@ func (m *mockWhatsAppProvider) RedownloadMedia(ctx context.Context, sessionName,
 // ---------------------------------------------------------------------------
 
 type mockShopeeService struct {
-	SearchOffersFunc         func(ctx context.Context, userID string, params models.ShopeeSearchParams) (*models.ShopeeSearchResult, error)
+	SearchOffersFunc          func(ctx context.Context, userID string, params models.ShopeeSearchParams) (*models.ShopeeSearchResult, error)
 	GenerateAffiliateLinkFunc func(ctx context.Context, productURL, userID string) (*models.ShopeeAffiliateLink, error)
 }
 
@@ -1033,12 +1039,12 @@ func (m *mockUserService) SuspendUser(ctx context.Context, userID, reason string
 func (m *mockUserService) ReactivateUser(ctx context.Context, userID string) error { return nil }
 
 type mockCouponsService struct {
-	GetUserCouponsFunc   func(ctx context.Context, userID string, filters *coupons.CouponFilters) ([]models.Coupon, error)
-	GetCouponByIDFunc    func(ctx context.Context, couponID, userID string) (*models.Coupon, error)
+	GetUserCouponsFunc    func(ctx context.Context, userID string, filters *coupons.CouponFilters) ([]models.Coupon, error)
+	GetCouponByIDFunc     func(ctx context.Context, couponID, userID string) (*models.Coupon, error)
 	GetCouponsByStoreFunc func(ctx context.Context, userID, store string) ([]models.Coupon, error)
-	CreateCouponFunc     func(ctx context.Context, userID string, data *coupons.CreateCouponData) (*models.Coupon, error)
-	UpdateCouponFunc     func(ctx context.Context, couponID, userID string, data *coupons.UpdateCouponData) (*models.Coupon, error)
-	DeleteCouponFunc     func(ctx context.Context, couponID, userID string) error
+	CreateCouponFunc      func(ctx context.Context, userID string, data *coupons.CreateCouponData) (*models.Coupon, error)
+	UpdateCouponFunc      func(ctx context.Context, couponID, userID string, data *coupons.UpdateCouponData) (*models.Coupon, error)
+	DeleteCouponFunc      func(ctx context.Context, couponID, userID string) error
 }
 
 func (m *mockCouponsService) GetUserCoupons(ctx context.Context, userID string, filters *coupons.CouponFilters) ([]models.Coupon, error) {
@@ -1211,4 +1217,3 @@ func mustParseBody(w *httptest.ResponseRecorder) map[string]interface{} {
 func parseJSON(data []byte, v interface{}) error {
 	return json.Unmarshal(data, v)
 }
-

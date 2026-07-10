@@ -247,6 +247,13 @@ type WahaAdapter struct {
 	// uploadPacer, when set, spaces media uploads per session before they hit
 	// WAHA, to keep them under WhatsApp's media-server rate limit. nil = off.
 	uploadPacer UploadPacer
+
+	// mediaJitter, when true, re-encodes URL-fetched product images with a tiny
+	// per-chat quality delta so the same photo isn't broadcast with a byte-
+	// identical hash to every group (anti-ban). Relayed/forwarded base64 media is
+	// NEVER jittered (it must stay byte-for-byte identical to the source).
+	// Controlled by HUMANIZE_MEDIA_JITTER (default: true).
+	mediaJitter bool
 }
 
 // SetUploadPacer installs (or clears, with nil) the per-session media-upload
@@ -422,7 +429,15 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 		namedLogger.Info("WAHA retry with backoff is DISABLED via WAHA_RETRY_ENABLED env var")
 	}
 
+	// Anti-ban: per-recipient media-hash jitter on URL-fetched product images.
+	// Default ON; disable with HUMANIZE_MEDIA_JITTER=false/0.
+	mediaJitter := true
+	if v := os.Getenv("HUMANIZE_MEDIA_JITTER"); v == "false" || v == "0" {
+		mediaJitter = false
+	}
+
 	return &WahaAdapter{
+		mediaJitter:    mediaJitter,
 		apiURL:         cfg.APIURL,
 		apiKey:         cfg.APIKey,
 		webhookBaseURL: cfg.WebhookBaseURL,
@@ -431,15 +446,15 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 			Timeout:   httpTimeout,
 			Transport: transport,
 		},
-		logger:         namedLogger,
-		mapper:         newMapperWithLogger(namedLogger),
-		statusCache:    make(map[string]*statusCacheEntry),
-		statusCacheTTL: statusCacheTTL,
+		logger:          namedLogger,
+		mapper:          newMapperWithLogger(namedLogger),
+		statusCache:     make(map[string]*statusCacheEntry),
+		statusCacheTTL:  statusCacheTTL,
 		circuitBreakers: make(map[string]*circuitBreaker),
 		cbThreshold:     3,                // 3 failures before opening circuit
 		cbBackoffTime:   60 * time.Second, // 60s backoff (aligned with watchdog CheckInterval)
-		retryEnabled:   retryEnabled,
-		retryCfg:       defaultRetryConfig(),
+		retryEnabled:    retryEnabled,
+		retryCfg:        defaultRetryConfig(),
 	}, nil
 }
 
@@ -1128,10 +1143,10 @@ func (a *WahaAdapter) parseMemberOperationResult(resp []byte, requestedNumbers [
 			"WAHA member operation returned empty body — assuming success without confirmation (potential data corruption)",
 			fmt.Errorf("empty response body for member operation on %d numbers", len(requestedNumbers)),
 			map[string]string{
-				"module":           "waha-adapter",
-				"flow":             "member-operation",
-				"requested_count":  strconv.Itoa(len(requestedNumbers)),
-				"data_integrity":   "unverified",
+				"module":          "waha-adapter",
+				"flow":            "member-operation",
+				"requested_count": strconv.Itoa(len(requestedNumbers)),
+				"data_integrity":  "unverified",
 			},
 		)
 		return &MemberOperationResult{
@@ -1264,15 +1279,28 @@ func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*Mes
 	// that the group bubble does NOT crop these, and the requirement is that a
 	// forwarded post look identical to the original, so the relay must not touch
 	// the pixels. Fail-open on any URL download/decode error: keep the original.
+	fetchedFromURL := false
 	if input.ImageURL != "" && input.ImageBase64 == "" {
 		if b64, perr := imagepad.FetchAndPadToSafeAspectJPEGBase64(ctx, input.ImageURL); perr == nil {
 			input.ImageBase64 = b64
 			input.Mimetype = "image/jpeg"
 			input.ImageURL = ""
+			fetchedFromURL = true
 		} else {
 			a.logger.Warn("Image aspect-normalize failed, sending original URL",
 				zap.String("imageURL", input.ImageURL),
 				zap.Error(perr))
+		}
+	}
+
+	// Anti-ban: per-recipient media-hash jitter. Re-encode the product image with
+	// a tiny, deterministic per-chat quality delta so the same photo doesn't go
+	// out with a byte-identical hash to every group. ONLY on URL-fetched images —
+	// relayed/forwarded base64 stays byte-for-byte identical (see note above).
+	// Fail-safe: JitterJPEGBase64 returns the input unchanged on any error.
+	if a.mediaJitter && fetchedFromURL && input.ChatID != "" {
+		if jb, jerr := imagepad.JitterJPEGBase64(input.ImageBase64, input.ChatID); jerr == nil {
+			input.ImageBase64 = jb
 		}
 	}
 
@@ -1345,6 +1373,77 @@ func (a *WahaAdapter) SendVoice(ctx context.Context, input SendVoiceInput) (*Mes
 	a.logger.Info("[DEBUG SendVoice] WAHA response", zap.String("body", string(resp)))
 
 	return a.parseMessageResult(resp)
+}
+
+// =============================================================================
+// PresenceController Implementation
+// =============================================================================
+//
+// These are best-effort anti-ban choreography calls. They deliberately DO NOT
+// gate on requireWorkingSession (the subsequent real send already does that; a
+// presence call must not add a blocking status round-trip) and they FAIL-OPEN:
+// any error is logged at debug and swallowed so it can never block the send.
+
+// StartTyping shows the typing indicator in a chat (POST /api/startTyping).
+func (a *WahaAdapter) StartTyping(ctx context.Context, input TypingInput) error {
+	if input.SessionName == "" || input.ChatID == "" {
+		return nil
+	}
+	req := &wahaChatRequest{Session: input.SessionName, ChatID: input.ChatID}
+	if _, err := a.doRequest(ctx, http.MethodPost, "/api/startTyping", req); err != nil {
+		a.logger.Debug("startTyping failed (ignored)",
+			zap.String("session", input.SessionName),
+			zap.String("chatId", input.ChatID), zap.Error(err))
+	}
+	return nil
+}
+
+// StopTyping clears the typing indicator (POST /api/stopTyping).
+func (a *WahaAdapter) StopTyping(ctx context.Context, input TypingInput) error {
+	if input.SessionName == "" || input.ChatID == "" {
+		return nil
+	}
+	req := &wahaChatRequest{Session: input.SessionName, ChatID: input.ChatID}
+	if _, err := a.doRequest(ctx, http.MethodPost, "/api/stopTyping", req); err != nil {
+		a.logger.Debug("stopTyping failed (ignored)",
+			zap.String("session", input.SessionName),
+			zap.String("chatId", input.ChatID), zap.Error(err))
+	}
+	return nil
+}
+
+// SendSeen marks a chat/message as read (POST /api/sendSeen).
+func (a *WahaAdapter) SendSeen(ctx context.Context, input SendSeenInput) error {
+	if input.SessionName == "" || input.ChatID == "" {
+		return nil
+	}
+	req := &wahaSendSeenRequest{
+		Session:     input.SessionName,
+		ChatID:      input.ChatID,
+		MessageID:   input.MessageID,
+		Participant: input.Participant,
+	}
+	if _, err := a.doRequest(ctx, http.MethodPost, "/api/sendSeen", req); err != nil {
+		a.logger.Debug("sendSeen failed (ignored)",
+			zap.String("session", input.SessionName),
+			zap.String("chatId", input.ChatID), zap.Error(err))
+	}
+	return nil
+}
+
+// SetPresence sets session-level presence online/offline (POST /api/{session}/presence).
+func (a *WahaAdapter) SetPresence(ctx context.Context, input SetPresenceInput) error {
+	if input.SessionName == "" || input.Presence == "" {
+		return nil
+	}
+	path := "/api/" + url.PathEscape(input.SessionName) + "/presence"
+	req := &wahaSetPresenceRequest{Presence: string(input.Presence)}
+	if _, err := a.doRequest(ctx, http.MethodPost, path, req); err != nil {
+		a.logger.Debug("setPresence failed (ignored)",
+			zap.String("session", input.SessionName),
+			zap.String("presence", string(input.Presence)), zap.Error(err))
+	}
+	return nil
 }
 
 // SendPoll sends a poll message to a chat.

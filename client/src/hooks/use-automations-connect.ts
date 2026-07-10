@@ -113,6 +113,8 @@ export interface LocalAutomation {
   // LIST mode auto-repeat: true (default) reseta items consumidos quando
   // todos foram enviados, mantendo a automation em loop.
   repeatWhenFinished?: boolean;
+  // Intensidade da humanização anti-ban (off/low/medium/high). Default 'high'.
+  humanizeMode?: string;
   // Data de início (YYYY-MM-DD). Empty/undef = sem agendamento.
   startDate?: string;
   // Data de expiração (YYYY-MM-DD). Empty/undef = sem expiração.
@@ -175,6 +177,7 @@ export interface CreateAutomationParams {
   chipOverrides?: Record<string, string>;
   applyCouponRules?: boolean;
   repeatWhenFinished?: boolean;
+  humanizeMode?: string;
   startDate?: string;
   endDate?: string;
 }
@@ -222,6 +225,7 @@ export interface UpdateAutomationParams {
   chipOverrides?: Record<string, string>;
   applyCouponRules?: boolean;
   repeatWhenFinished?: boolean;
+  humanizeMode?: string;
   startDate?: string;
   endDate?: string;
 }
@@ -439,6 +443,7 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     chipOverrides: { ...(automation.chipOverrides ?? {}) },
     applyCouponRules: automation.applyCouponRules,
     repeatWhenFinished: automation.repeatWhenFinished,
+    humanizeMode: automation.humanizeMode,
     startDate: automation.startDate,
     endDate: automation.endDate,
   };
@@ -593,6 +598,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           chipOverrides: params.chipOverrides ?? {},
           applyCouponRules: params.applyCouponRules,
           repeatWhenFinished: params.repeatWhenFinished,
+          humanizeMode: params.humanizeMode,
           startDate: params.startDate,
           endDate: params.endDate,
         })
@@ -671,6 +677,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           chipOverrides: params.chipOverrides ?? {},
           applyCouponRules: params.applyCouponRules,
           repeatWhenFinished: params.repeatWhenFinished,
+          humanizeMode: params.humanizeMode,
           startDate: params.startDate,
           endDate: params.endDate,
         })

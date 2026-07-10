@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"hash/fnv"
 	"image"
 	"image/color"
 	"image/draw"
@@ -314,4 +315,37 @@ func decodeBase64Image(b64 string) ([]byte, error) {
 		return nil, fmt.Errorf("decode base64: %w", err)
 	}
 	return raw, nil
+}
+
+// fnv32 hashes s with FNV-1a (32-bit). It's a cheap, stable, non-cryptographic
+// hash used only to derive a seed-deterministic value — same input, same output
+// across processes and builds.
+func fnv32(s string) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	return h.Sum32()
+}
+
+// JitterJPEGBase64 re-encodes a base64 JPEG with a tiny, seed-DETERMINISTIC perturbation
+// (a small JPEG quality delta) so the output BYTES differ per seed while the image looks
+// identical to a human. Purpose: anti-ban — avoid broadcasting a byte-identical media hash
+// to many WhatsApp groups. Deterministic: same (b64, seed) => same output bytes, so an
+// at-least-once retry re-sends identical bytes. FAIL-SAFE: on any decode/encode error it
+// returns the ORIGINAL b64 unchanged with a nil error (never break a send over cosmetics).
+func JitterJPEGBase64(b64 string, seed string) (string, error) {
+	raw, err := decodeBase64Image(b64)
+	if err != nil {
+		return b64, nil
+	}
+	img, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return b64, nil
+	}
+	// Deterministic quality in [82, 92] derived from the seed.
+	q := 82 + int(fnv32(seed)%11)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: q}); err != nil {
+		return b64, nil
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }

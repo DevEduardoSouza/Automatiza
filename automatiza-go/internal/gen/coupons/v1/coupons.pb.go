@@ -22,7 +22,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-//*
+// *
 // DiscountType defines the type of discount a coupon provides.
 type DiscountType int32
 
@@ -73,7 +73,7 @@ func (DiscountType) EnumDescriptor() ([]byte, []int) {
 	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{0}
 }
 
-//*
+// *
 // Store defines the affiliate store for a coupon.
 type Store int32
 
@@ -139,7 +139,7 @@ func (Store) EnumDescriptor() ([]byte, []int) {
 	return file_coupons_v1_coupons_proto_rawDescGZIP(), []int{1}
 }
 
-//*
+// *
 // Coupon represents a discount coupon for affiliate marketing.
 type Coupon struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -321,7 +321,7 @@ func (x *Coupon) GetUpdatedAt() string {
 	return ""
 }
 
-//*
+// *
 // CouponFilter defines filters for listing coupons.
 type CouponFilter struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1083,7 +1083,7 @@ func (x *ListCouponsByStoreResponse) GetCoupons() []*Coupon {
 	return nil
 }
 
-//*
+// *
 // CouponRule defines when a Coupon should be auto-injected into a
 // dispatched offer. The matcher uses platform + period + min_price as
 // filters; tie-break order: highest min_price the product clears, then

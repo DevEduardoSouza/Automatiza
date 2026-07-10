@@ -231,7 +231,13 @@ services:
       WAHA_UPSTREAMS: "waha-1=http://waha:3000,waha-2=http://waha-2:3000"
       WAHA_API_KEY: ${WAHA_API_KEY}
       WAHA_CAP: "367"
-#      WAHA_SESSION_PROXIES: ${WAHA_SESSION_PROXIES}
+      # Anti-ban (Layer 4A): route every NEW session pairing through a rotating
+      # residential/ISP proxy so sessions never egress on the bare Hetzner
+      # datacenter IP (which WhatsApp distrusts). Provide a comma-separated pool
+      # of "server;username;password" entries in .env as WAHA_SESSION_PROXIES.
+      # Empty/unset => injectProxy no-ops (sessions pair on the host IP), so set
+      # this in production. The proxy is bound at pairing and sticky per session.
+      WAHA_SESSION_PROXIES: ${WAHA_SESSION_PROXIES:-}
     ports:
       - "127.0.0.1:3003:3000"
     depends_on:

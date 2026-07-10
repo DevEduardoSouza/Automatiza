@@ -85,3 +85,18 @@ func sessionPaceMsFromEnv() int {
 	}
 	return n
 }
+
+// sendLimitPerMinuteFromEnv lê WHATSAPP_SEND_LIMIT_PER_MINUTE (envios/min por
+// chip). Ausente/0/invalido => 0 (sem limite derivado). Usado como fonte de
+// espaçamento do pacer quando SESSION_PACE_MS não está setado.
+func sendLimitPerMinuteFromEnv() int {
+	v := os.Getenv("WHATSAPP_SEND_LIMIT_PER_MINUTE")
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}

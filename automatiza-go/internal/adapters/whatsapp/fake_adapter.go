@@ -51,13 +51,19 @@ type FakeAdapter struct {
 	DemoteMemberFunc       func(ctx context.Context, input DemoteMemberInput) error
 
 	// Messaging function overrides
-	SendTextFunc     func(ctx context.Context, input SendTextInput) (*MessageResult, error)
-	SendImageFunc    func(ctx context.Context, input SendImageInput) (*MessageResult, error)
-	SendVideoFunc    func(ctx context.Context, input SendVideoInput) (*MessageResult, error)
-	SendDocumentFunc func(ctx context.Context, input SendDocumentInput) (*MessageResult, error)
-	SendVoiceFunc    func(ctx context.Context, input SendVoiceInput) (*MessageResult, error)
+	SendTextFunc              func(ctx context.Context, input SendTextInput) (*MessageResult, error)
+	SendImageFunc             func(ctx context.Context, input SendImageInput) (*MessageResult, error)
+	SendVideoFunc             func(ctx context.Context, input SendVideoInput) (*MessageResult, error)
+	SendDocumentFunc          func(ctx context.Context, input SendDocumentInput) (*MessageResult, error)
+	SendVoiceFunc             func(ctx context.Context, input SendVoiceInput) (*MessageResult, error)
 	SendPollFunc              func(ctx context.Context, input SendPollInput) (*MessageResult, error)
 	SendLinkCustomPreviewFunc func(ctx context.Context, input SendLinkPreviewInput) (*MessageResult, error)
+
+	// Presence/typing/seen function overrides
+	StartTypingFunc func(ctx context.Context, input TypingInput) error
+	StopTypingFunc  func(ctx context.Context, input TypingInput) error
+	SendSeenFunc    func(ctx context.Context, input SendSeenInput) error
+	SetPresenceFunc func(ctx context.Context, input SetPresenceInput) error
 
 	// Webhook function overrides
 	SetWebhookFunc func(ctx context.Context, input SetWebhookInput) error
@@ -133,6 +139,10 @@ func (f *FakeAdapter) Reset() {
 	f.SendImageFunc = nil
 	f.SendVoiceFunc = nil
 	f.SendPollFunc = nil
+	f.StartTypingFunc = nil
+	f.StopTypingFunc = nil
+	f.SendSeenFunc = nil
+	f.SetPresenceFunc = nil
 	f.SetWebhookFunc = nil
 	f.GetMessagesFunc = nil
 	f.DownloadMediaFunc = nil
@@ -833,6 +843,46 @@ func (f *FakeAdapter) SendLinkCustomPreview(ctx context.Context, input SendLinkP
 		ID:        generateFakeMessageID(),
 		Timestamp: time.Now(),
 	}, nil
+}
+
+// -----------------------------------------------------------------------------
+// PresenceController Implementation
+// -----------------------------------------------------------------------------
+
+// StartTyping implements PresenceController.StartTyping.
+func (f *FakeAdapter) StartTyping(ctx context.Context, input TypingInput) error {
+	f.recordCall("StartTyping", input)
+	if f.StartTypingFunc != nil {
+		return f.StartTypingFunc(ctx, input)
+	}
+	return nil
+}
+
+// StopTyping implements PresenceController.StopTyping.
+func (f *FakeAdapter) StopTyping(ctx context.Context, input TypingInput) error {
+	f.recordCall("StopTyping", input)
+	if f.StopTypingFunc != nil {
+		return f.StopTypingFunc(ctx, input)
+	}
+	return nil
+}
+
+// SendSeen implements PresenceController.SendSeen.
+func (f *FakeAdapter) SendSeen(ctx context.Context, input SendSeenInput) error {
+	f.recordCall("SendSeen", input)
+	if f.SendSeenFunc != nil {
+		return f.SendSeenFunc(ctx, input)
+	}
+	return nil
+}
+
+// SetPresence implements PresenceController.SetPresence.
+func (f *FakeAdapter) SetPresence(ctx context.Context, input SetPresenceInput) error {
+	f.recordCall("SetPresence", input)
+	if f.SetPresenceFunc != nil {
+		return f.SetPresenceFunc(ctx, input)
+	}
+	return nil
 }
 
 // -----------------------------------------------------------------------------

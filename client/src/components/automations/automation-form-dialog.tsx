@@ -32,6 +32,7 @@ import {
   DateWindowInputs,
   DispatchTextSelector,
   FiltersSection,
+  HumanizationSection,
   IntervalSelector,
   ListModeConfig,
   ModeSection,
@@ -351,6 +352,9 @@ export function AutomationFormDialog({
               loadingMlLinkLists={loadingMlLinkLists}
             />
           )}
+
+          {/* Humanização anti-ban (aplica a todos os modos) */}
+          <HumanizationSection formData={formData} setFormData={setFormData} />
 
           {/* Chip selector — picks which WhatsApp number(s) this automation
               uses. Buscar e Monitoramento mantêm o dropdown legado em

@@ -3,12 +3,106 @@ package imagepad
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
 	"testing"
 )
+
+// makeNoisyImage builds a JPEG whose pixels vary per position, so a change in
+// JPEG quality actually changes the encoded bytes (a solid-color image can
+// compress to identical bytes across nearby qualities).
+func makeNoisyImage(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{
+				R: uint8((x*7 + y*13) % 256),
+				G: uint8((x*29 + y*3) % 256),
+				B: uint8((x*x + y*y) % 256),
+				A: 255,
+			})
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatalf("encode noisy jpeg: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// JitterJPEGBase64 must produce a valid JPEG, be seed-deterministic (same seed →
+// identical bytes), vary bytes across seeds that map to different qualities, and
+// fail-safe by returning the input unchanged on undecodable base64.
+func TestJitterJPEGBase64(t *testing.T) {
+	b64 := base64.StdEncoding.EncodeToString(makeNoisyImage(t, 64, 64))
+
+	// Output decodes as a valid JPEG.
+	out, err := JitterJPEGBase64(b64, "seed-a")
+	if err != nil {
+		t.Fatalf("jitter: %v", err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(out)
+	if err != nil {
+		t.Fatalf("result not valid base64: %v", err)
+	}
+	if _, _, err := image.Decode(bytes.NewReader(raw)); err != nil {
+		t.Fatalf("output must decode as an image: %v", err)
+	}
+
+	// Deterministic: same seed → identical output bytes.
+	out2, err := JitterJPEGBase64(b64, "seed-a")
+	if err != nil {
+		t.Fatalf("jitter (2nd): %v", err)
+	}
+	if out != out2 {
+		t.Fatal("same seed must yield identical output bytes")
+	}
+
+	// Two seeds that map to different qualities must produce different bytes.
+	// Pick them deterministically so the assertion never flakes on a collision.
+	var seedLo, seedHi string
+	qLo := -1
+	for i := 0; i < 10000; i++ {
+		s := fmt.Sprintf("seed-%d", i)
+		q := 82 + int(fnv32(s)%11)
+		if qLo == -1 {
+			qLo, seedLo = q, s
+			continue
+		}
+		if q != qLo {
+			seedHi = s
+			break
+		}
+	}
+	if seedHi == "" {
+		t.Fatal("could not find two seeds with distinct quality (unexpected)")
+	}
+	outLo, err := JitterJPEGBase64(b64, seedLo)
+	if err != nil {
+		t.Fatalf("jitter lo: %v", err)
+	}
+	outHi, err := JitterJPEGBase64(b64, seedHi)
+	if err != nil {
+		t.Fatalf("jitter hi: %v", err)
+	}
+	if outLo == outHi {
+		t.Fatal("different-quality seeds must yield different output bytes")
+	}
+
+	// Fail-safe: undecodable base64 is returned unchanged with a nil error.
+	const bad = "!!!not base64!!!"
+	got, err := JitterJPEGBase64(bad, "seed-a")
+	if err != nil {
+		t.Fatalf("bad input must not error, got: %v", err)
+	}
+	if got != bad {
+		t.Fatalf("bad input must be returned unchanged, got %q", got)
+	}
+}
 
 // makeImage builds a solid-color image of the given size, encoded as jpeg or png.
 func makeImage(t *testing.T, w, h int, format string) []byte {

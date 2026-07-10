@@ -90,21 +90,23 @@ func (m *mockCheckpointRepo) GetOrCreate(ctx context.Context, sessionName, chatI
 		}
 	}
 	cp := reconciliation.Checkpoint{
-		SessionName:         sessionName,
-		ChatID:              chatID,
+		SessionName:          sessionName,
+		ChatID:               chatID,
 		LastMessageTimestamp: 0,
-		LastMessageID:       "",
-		LastRunAt:           time.Now(),
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "",
+		LastRunAt:            time.Now(),
+		Status:               reconciliation.CheckpointStatusIdle,
 	}
 	m.checkpoints[sessionName] = append(m.checkpoints[sessionName], cp)
 	return &cp, nil
 }
 
-func (m *mockCheckpointRepo) MarkRunning(context.Context, string, string) error                    { return nil }
-func (m *mockCheckpointRepo) MarkIdle(context.Context, string, string) error                       { return nil }
-func (m *mockCheckpointRepo) MarkFailed(context.Context, string, string) error                     { return nil }
-func (m *mockCheckpointRepo) UpdateCheckpoint(context.Context, string, string, int64, string) error { return nil }
+func (m *mockCheckpointRepo) MarkRunning(context.Context, string, string) error { return nil }
+func (m *mockCheckpointRepo) MarkIdle(context.Context, string, string) error    { return nil }
+func (m *mockCheckpointRepo) MarkFailed(context.Context, string, string) error  { return nil }
+func (m *mockCheckpointRepo) UpdateCheckpoint(context.Context, string, string, int64, string) error {
+	return nil
+}
 
 func (m *mockCheckpointRepo) GetActiveSessionsChats(ctx context.Context) ([]reconciliation.SessionChat, error) {
 	var result []reconciliation.SessionChat
@@ -267,6 +269,10 @@ func (m *mockWahaProvider) SendPoll(context.Context, whatsapp.SendPollInput) (*w
 func (m *mockWahaProvider) SendLinkCustomPreview(context.Context, whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
 	return nil, nil
 }
+func (m *mockWahaProvider) StartTyping(context.Context, whatsapp.TypingInput) error      { return nil }
+func (m *mockWahaProvider) StopTyping(context.Context, whatsapp.TypingInput) error       { return nil }
+func (m *mockWahaProvider) SendSeen(context.Context, whatsapp.SendSeenInput) error       { return nil }
+func (m *mockWahaProvider) SetPresence(context.Context, whatsapp.SetPresenceInput) error { return nil }
 func (m *mockWahaProvider) SendVideo(context.Context, whatsapp.SendVideoInput) (*whatsapp.MessageResult, error) {
 	return nil, nil
 }
@@ -280,10 +286,14 @@ func (m *mockWahaProvider) AddGroupMembers(_ context.Context, input whatsapp.Add
 func (m *mockWahaProvider) RemoveGroupMembers(_ context.Context, input whatsapp.RemoveGroupMembersInput) (*whatsapp.MemberOperationResult, error) {
 	return &whatsapp.MemberOperationResult{SuccessCount: len(input.PhoneNumbers)}, nil
 }
-func (m *mockWahaProvider) LeaveGroup(context.Context, whatsapp.LeaveGroupInput) error   { return nil }
-func (m *mockWahaProvider) PromoteMember(context.Context, whatsapp.PromoteMemberInput) error { return nil }
-func (m *mockWahaProvider) DemoteMember(context.Context, whatsapp.DemoteMemberInput) error { return nil }
-func (m *mockWahaProvider) ClearStatusCache(string)                                        {}
+func (m *mockWahaProvider) LeaveGroup(context.Context, whatsapp.LeaveGroupInput) error { return nil }
+func (m *mockWahaProvider) PromoteMember(context.Context, whatsapp.PromoteMemberInput) error {
+	return nil
+}
+func (m *mockWahaProvider) DemoteMember(context.Context, whatsapp.DemoteMemberInput) error {
+	return nil
+}
+func (m *mockWahaProvider) ClearStatusCache(string) {}
 func (m *mockWahaProvider) DownloadMedia(context.Context, whatsapp.DownloadMediaInput) (*whatsapp.DownloadMediaResult, error) {
 	return nil, nil
 }
@@ -501,10 +511,10 @@ func TestRunOnStartup_SkipsDisconnectedSessions(t *testing.T) {
 
 	cp := newMockCheckpointRepo()
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat1@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat1@g.us",
 		LastMessageTimestamp: time.Now().Add(-time.Hour).UnixMilli(),
-		Status:              reconciliation.CheckpointStatusIdle,
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 
 	svc := newTestService(
@@ -564,11 +574,11 @@ func TestRunOnStartup_WithGaps_EnqueuesChatReconciliation(t *testing.T) {
 
 	cp := newMockCheckpointRepo()
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat1@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat1@g.us",
 		LastMessageTimestamp: now.Add(-2 * time.Minute).UnixMilli(),
-		LastMessageID:       "msg1",
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "msg1",
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 
 	enq := newMockEnqueuer()
@@ -608,11 +618,11 @@ func TestRunOnStartup_NoGaps(t *testing.T) {
 
 	cp := newMockCheckpointRepo()
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat1@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat1@g.us",
 		LastMessageTimestamp: now.Add(-10 * time.Second).UnixMilli(),
-		LastMessageID:       "msg1",
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "msg1",
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 
 	enq := newMockEnqueuer()
@@ -726,11 +736,11 @@ func TestRunOnStartup_MultipleSessions_Concurrent(t *testing.T) {
 		{ID: "msg2", ChatID: "chat1@g.us", Timestamp: now, Body: "new"},
 	})
 	cp.AddCheckpoint("s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "chat1@g.us",
+		SessionName:          "s1",
+		ChatID:               "chat1@g.us",
 		LastMessageTimestamp: now.Add(-5 * time.Minute).UnixMilli(),
-		LastMessageID:       "msg1",
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "msg1",
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 
 	// Session 2: no gap (within threshold, same message ID)
@@ -738,11 +748,11 @@ func TestRunOnStartup_MultipleSessions_Concurrent(t *testing.T) {
 		{ID: "msg1", ChatID: "chat2@g.us", Timestamp: now, Body: "same"},
 	})
 	cp.AddCheckpoint("s2", reconciliation.Checkpoint{
-		SessionName:         "s2",
-		ChatID:              "chat2@g.us",
+		SessionName:          "s2",
+		ChatID:               "chat2@g.us",
 		LastMessageTimestamp: now.Add(-5 * time.Second).UnixMilli(),
-		LastMessageID:       "msg1",
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "msg1",
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 
 	// Session 3: no checkpoints → enqueue session reconciliation
@@ -787,11 +797,11 @@ func TestProcessSession_HealthCheckError_Continues(t *testing.T) {
 
 	cp := newMockCheckpointRepo()
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat1@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat1@g.us",
 		LastMessageTimestamp: time.Now().UnixMilli(),
-		LastMessageID:       "msg1",
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "msg1",
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 	wp.SetMessages("session1", "chat1@g.us", []whatsapp.Message{
 		{ID: "msg1", ChatID: "chat1@g.us", Timestamp: time.Now(), Body: "test"},
@@ -881,16 +891,16 @@ func TestProcessSession_ChatGapCheckError_Continues(t *testing.T) {
 
 	cp := newMockCheckpointRepo()
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat1@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat1@g.us",
 		LastMessageTimestamp: time.Now().Add(-5 * time.Minute).UnixMilli(),
-		Status:              reconciliation.CheckpointStatusIdle,
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat2@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat2@g.us",
 		LastMessageTimestamp: time.Now().Add(-5 * time.Minute).UnixMilli(),
-		Status:              reconciliation.CheckpointStatusIdle,
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 
 	svc := newTestService(
@@ -925,18 +935,18 @@ func TestProcessSession_EnqueueChatError_Continues(t *testing.T) {
 
 	cp := newMockCheckpointRepo()
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat1@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat1@g.us",
 		LastMessageTimestamp: now.Add(-5 * time.Minute).UnixMilli(),
-		LastMessageID:       "msg1",
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "msg1",
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat2@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat2@g.us",
 		LastMessageTimestamp: now.Add(-5 * time.Minute).UnixMilli(),
-		LastMessageID:       "msg3",
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "msg3",
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 
 	enq := newMockEnqueuer()
@@ -981,25 +991,25 @@ func TestProcessSession_MultipleChats_MixedGaps(t *testing.T) {
 
 	cp := newMockCheckpointRepo()
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat1@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat1@g.us",
 		LastMessageTimestamp: now.Add(-5 * time.Minute).UnixMilli(),
-		LastMessageID:       "msg1",
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "msg1",
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat2@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat2@g.us",
 		LastMessageTimestamp: now.Add(-10 * time.Second).UnixMilli(),
-		LastMessageID:       "msg3",
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "msg3",
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 	cp.AddCheckpoint("session1", reconciliation.Checkpoint{
-		SessionName:         "session1",
-		ChatID:              "chat3@g.us",
+		SessionName:          "session1",
+		ChatID:               "chat3@g.us",
 		LastMessageTimestamp: now.Add(-10 * time.Second).UnixMilli(),
-		LastMessageID:       "msg-old",
-		Status:              reconciliation.CheckpointStatusIdle,
+		LastMessageID:        "msg-old",
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 
 	enq := newMockEnqueuer()
@@ -1034,8 +1044,8 @@ func TestCheckChatForGap_GetMessagesError(t *testing.T) {
 	svc := newTestService(&mockInstanceRepo{}, newMockCheckpointRepo(), wp, nil, nil, DefaultBackfillConfig())
 
 	_, err := svc.checkChatForGap(context.Background(), "s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "c1@g.us",
+		SessionName:          "s1",
+		ChatID:               "c1@g.us",
 		LastMessageTimestamp: time.Now().UnixMilli(),
 	})
 	if err == nil {
@@ -1052,8 +1062,8 @@ func TestCheckChatForGap_NoMessages(t *testing.T) {
 	svc := newTestService(&mockInstanceRepo{}, newMockCheckpointRepo(), wp, nil, nil, DefaultBackfillConfig())
 
 	hasGap, err := svc.checkChatForGap(context.Background(), "s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "c1@g.us",
+		SessionName:          "s1",
+		ChatID:               "c1@g.us",
 		LastMessageTimestamp: time.Now().Add(-time.Hour).UnixMilli(),
 	})
 	if err != nil {
@@ -1075,8 +1085,8 @@ func TestCheckChatForGap_ZeroCheckpointTimestamp(t *testing.T) {
 	svc := newTestService(&mockInstanceRepo{}, newMockCheckpointRepo(), wp, nil, nil, DefaultBackfillConfig())
 
 	hasGap, err := svc.checkChatForGap(context.Background(), "s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "c1@g.us",
+		SessionName:          "s1",
+		ChatID:               "c1@g.us",
 		LastMessageTimestamp: 0,
 	})
 	if err != nil {
@@ -1101,10 +1111,10 @@ func TestCheckChatForGap_WithinThreshold_SameID(t *testing.T) {
 	)
 
 	hasGap, err := svc.checkChatForGap(context.Background(), "s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "c1@g.us",
+		SessionName:          "s1",
+		ChatID:               "c1@g.us",
 		LastMessageTimestamp: now.Add(-30 * time.Second).UnixMilli(),
-		LastMessageID:       "msg1",
+		LastMessageID:        "msg1",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1128,10 +1138,10 @@ func TestCheckChatForGap_ExceedsThreshold(t *testing.T) {
 	)
 
 	hasGap, err := svc.checkChatForGap(context.Background(), "s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "c1@g.us",
+		SessionName:          "s1",
+		ChatID:               "c1@g.us",
 		LastMessageTimestamp: now.Add(-2 * time.Minute).UnixMilli(),
-		LastMessageID:       "msg1",
+		LastMessageID:        "msg1",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1155,10 +1165,10 @@ func TestCheckChatForGap_DifferentMessageID_Newer(t *testing.T) {
 	)
 
 	hasGap, err := svc.checkChatForGap(context.Background(), "s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "c1@g.us",
+		SessionName:          "s1",
+		ChatID:               "c1@g.us",
 		LastMessageTimestamp: now.Add(-30 * time.Second).UnixMilli(), // within threshold
-		LastMessageID:       "msg1",                                  // different
+		LastMessageID:        "msg1",                                 // different
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1183,10 +1193,10 @@ func TestCheckChatForGap_DifferentMessageID_Older(t *testing.T) {
 	)
 
 	hasGap, err := svc.checkChatForGap(context.Background(), "s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "c1@g.us",
+		SessionName:          "s1",
+		ChatID:               "c1@g.us",
 		LastMessageTimestamp: now.UnixMilli(), // checkpoint is newer
-		LastMessageID:       "msg1",
+		LastMessageID:        "msg1",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1210,10 +1220,10 @@ func TestCheckChatForGap_EmptyLastMessageID(t *testing.T) {
 	)
 
 	hasGap, err := svc.checkChatForGap(context.Background(), "s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "c1@g.us",
+		SessionName:          "s1",
+		ChatID:               "c1@g.us",
 		LastMessageTimestamp: now.Add(-10 * time.Second).UnixMilli(),
-		LastMessageID:       "", // empty — should skip ID comparison
+		LastMessageID:        "", // empty — should skip ID comparison
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1362,10 +1372,10 @@ func TestRunWithReconciliationService_WithCheckpoints_Skips(t *testing.T) {
 
 	cp := newMockCheckpointRepo()
 	cp.AddCheckpoint("s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "c1@g.us",
+		SessionName:          "s1",
+		ChatID:               "c1@g.us",
 		LastMessageTimestamp: time.Now().UnixMilli(),
-		Status:              reconciliation.CheckpointStatusIdle,
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 
 	rec := newMockReconciler()
@@ -1421,10 +1431,10 @@ func TestRunWithReconciliationService_FullFlow(t *testing.T) {
 	cp := newMockCheckpointRepo()
 	// s1 has checkpoints → skipped
 	cp.AddCheckpoint("s1", reconciliation.Checkpoint{
-		SessionName:         "s1",
-		ChatID:              "c1@g.us",
+		SessionName:          "s1",
+		ChatID:               "c1@g.us",
 		LastMessageTimestamp: time.Now().UnixMilli(),
-		Status:              reconciliation.CheckpointStatusIdle,
+		Status:               reconciliation.CheckpointStatusIdle,
 	})
 	// s2 has no checkpoints → reconciled
 

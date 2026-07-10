@@ -27,6 +27,9 @@ type WhatsAppProvider interface {
 	// Messaging
 	MessageSender
 
+	// Human-presence choreography (typing / online / read receipts)
+	PresenceController
+
 	// Webhook Configuration
 	WebhookManager
 
@@ -181,6 +184,25 @@ type MessageSender interface {
 	// SendLinkCustomPreview sends a message with a custom link preview card.
 	// Used for controlling the preview title, description, and image shown in WhatsApp.
 	SendLinkCustomPreview(ctx context.Context, input SendLinkPreviewInput) (*MessageResult, error)
+}
+
+// PresenceController drives WhatsApp human-presence signals: the typing indicator
+// ("digitando…"), session online/offline presence, and read receipts (sendSeen).
+// These are best-effort ANTI-BAN choreography calls made around a real send.
+// Implementations MUST fail-open: an error from any of these must never propagate
+// and must never block the actual message send.
+type PresenceController interface {
+	// StartTyping shows the typing indicator in a chat (POST /api/startTyping).
+	StartTyping(ctx context.Context, input TypingInput) error
+
+	// StopTyping clears the typing indicator (POST /api/stopTyping).
+	StopTyping(ctx context.Context, input TypingInput) error
+
+	// SendSeen marks a chat (and optionally a specific message) as read (POST /api/sendSeen).
+	SendSeen(ctx context.Context, input SendSeenInput) error
+
+	// SetPresence sets session-level presence to online/offline (POST /api/{session}/presence).
+	SetPresence(ctx context.Context, input SetPresenceInput) error
 }
 
 // WebhookManager handles webhook configuration for receiving WhatsApp events.
@@ -586,6 +608,54 @@ type MessageResult struct {
 
 	// Timestamp is when the message was sent.
 	Timestamp time.Time
+}
+
+// -----------------------------------------------------------------------------
+// Presence / Typing / Seen Types
+// -----------------------------------------------------------------------------
+
+// TypingInput contains parameters for the typing indicator.
+type TypingInput struct {
+	// SessionName is the session to use.
+	SessionName string
+
+	// ChatID is the target chat (group or individual WhatsApp ID).
+	ChatID string
+}
+
+// SendSeenInput contains parameters for marking a chat/message as read.
+type SendSeenInput struct {
+	// SessionName is the session to use.
+	SessionName string
+
+	// ChatID is the target chat.
+	ChatID string
+
+	// MessageID optionally scopes the receipt to a specific message.
+	MessageID string
+
+	// Participant optionally identifies the group author of the message being ack'd.
+	Participant string
+}
+
+// PresenceKind is a session-level presence state.
+type PresenceKind string
+
+const (
+	// PresenceOnline marks the session as online.
+	PresenceOnline PresenceKind = "online"
+
+	// PresenceOffline marks the session as offline.
+	PresenceOffline PresenceKind = "offline"
+)
+
+// SetPresenceInput contains parameters for setting session presence.
+type SetPresenceInput struct {
+	// SessionName is the session to use.
+	SessionName string
+
+	// Presence is the desired presence state (online/offline).
+	Presence PresenceKind
 }
 
 // -----------------------------------------------------------------------------

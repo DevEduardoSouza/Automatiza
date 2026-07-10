@@ -227,17 +227,17 @@ var _ repository.GroupRepository = (*mockGroupRepo)(nil)
 // ---------------------------------------------------------------------------
 
 type mockInstanceRepo struct {
-	GetUserInstancesFn        func(ctx context.Context, userID string) ([]models.Instance, error)
-	GetInstanceByIDFn         func(ctx context.Context, instanceID int) (*models.Instance, error)
-	GetInstanceByNameFn       func(ctx context.Context, instanceName string) (*models.Instance, error)
-	GetInstanceByUserAndNameFn func(ctx context.Context, userID, instanceName string) (*models.Instance, error)
-	GetAllConnectedInstancesFn func(ctx context.Context) ([]models.Instance, error)
-	UpsertInstanceFn          func(ctx context.Context, userID string, data *models.Instance) (*models.Instance, error)
-	UpdateInstanceStatusFn    func(ctx context.Context, instanceID int, status string) error
-	DeleteInstanceFn          func(ctx context.Context, instanceID int) error
-	SetDefaultInstanceFn      func(ctx context.Context, userID string, instanceID int) error
-	CountUserInstancesFn      func(ctx context.Context, userID string) (int, error)
-	UpdateInstanceLabelFn     func(ctx context.Context, userID string, instanceID int, friendlyName string) error
+	GetUserInstancesFn          func(ctx context.Context, userID string) ([]models.Instance, error)
+	GetInstanceByIDFn           func(ctx context.Context, instanceID int) (*models.Instance, error)
+	GetInstanceByNameFn         func(ctx context.Context, instanceName string) (*models.Instance, error)
+	GetInstanceByUserAndNameFn  func(ctx context.Context, userID, instanceName string) (*models.Instance, error)
+	GetAllConnectedInstancesFn  func(ctx context.Context) ([]models.Instance, error)
+	UpsertInstanceFn            func(ctx context.Context, userID string, data *models.Instance) (*models.Instance, error)
+	UpdateInstanceStatusFn      func(ctx context.Context, instanceID int, status string) error
+	DeleteInstanceFn            func(ctx context.Context, instanceID int) error
+	SetDefaultInstanceFn        func(ctx context.Context, userID string, instanceID int) error
+	CountUserInstancesFn        func(ctx context.Context, userID string) (int, error)
+	UpdateInstanceLabelFn       func(ctx context.Context, userID string, instanceID int, friendlyName string) error
 	UpdateInstancePhoneNumberFn func(ctx context.Context, instanceID int, phoneNumber string) error
 }
 
@@ -403,6 +403,12 @@ func (m *mockWAProvider) SendPoll(_ context.Context, _ whatsapp.SendPollInput) (
 }
 func (m *mockWAProvider) SendLinkCustomPreview(_ context.Context, _ whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
 	return nil, nil
+}
+func (m *mockWAProvider) StartTyping(_ context.Context, _ whatsapp.TypingInput) error { return nil }
+func (m *mockWAProvider) StopTyping(_ context.Context, _ whatsapp.TypingInput) error  { return nil }
+func (m *mockWAProvider) SendSeen(_ context.Context, _ whatsapp.SendSeenInput) error  { return nil }
+func (m *mockWAProvider) SetPresence(_ context.Context, _ whatsapp.SetPresenceInput) error {
+	return nil
 }
 
 // WebhookManager
@@ -1684,4 +1690,3 @@ func TestCheckSlugAvailability(t *testing.T) {
 		}
 	})
 }
-

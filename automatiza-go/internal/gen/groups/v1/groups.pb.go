@@ -22,7 +22,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-//*
+// *
 // Status of a WhatsApp group.
 type GroupStatus int32
 
@@ -76,7 +76,7 @@ func (GroupStatus) EnumDescriptor() ([]byte, []int) {
 	return file_groups_v1_groups_proto_rawDescGZIP(), []int{0}
 }
 
-//*
+// *
 // Represents a WhatsApp group managed by the system.
 type Group struct {
 	state protoimpl.MessageState `protogen:"open.v1"`

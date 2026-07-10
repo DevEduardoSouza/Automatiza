@@ -457,6 +457,19 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		// ~(grupos/chips)*3s. O session pacer (atômico por sessão) continua
 		// garantindo o anti-ban entre automações que dividem o mesmo chip.
 		perChipSent := make(map[string]int)
+		// Anti-ban pacing: jittered per-chip delay accumulator + micro-breaks,
+		// destination shuffle, and reputation-based suppression. Resolved for this
+		// automation's humanize preset (default "high").
+		perChipDelay := make(map[string]time.Duration)
+		pacingCfg := config.GetHumanization().PacingConfigForMode(automation.HumanizeMode)
+		rt := config.GetAntiBanRuntime()
+		pacingCfg.Shuffle(validGroups)
+		// Base delay: the user's delay_seconds when set, else 0 so pacing.Config's
+		// BaseDelaySeconds (default 3s — the LIST mode's historical spacing) applies.
+		baseDelay := 0
+		if automation.DelaySeconds != nil && *automation.DelaySeconds > 0 {
+			baseDelay = *automation.DelaySeconds
+		}
 		for _, groupID := range validGroups {
 			// Apply URL safety check
 			if s.urlSafetyService != nil {
@@ -479,6 +492,24 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 					s.logDispatch(ctx, automation, groupID, originURL, "skipped", "backpressure")
 					continue
 				}
+			}
+
+			// Resolve the sending chip up-front so we can reputation-gate the group
+			// before creating a dispatch log.
+			senderSession := s.resolveSenderForGroup(connectedInstance, groupInstances, groupID)
+			if senderSession == "" {
+				s.logger.Warn("No connected chip for group, skipping LIST dispatch",
+					zap.String("automationID", automation.ID),
+					zap.String("groupID", groupID))
+				continue
+			}
+
+			// Anti-ban: skip groups with a bad reputation (repeated failures / bot
+			// removed). Quality-based suppression, not volume — fail-open (Redis
+			// down => not suppressed).
+			if rt.Reputation.IsSuppressed(ctx, senderSession, groupID) {
+				s.logDispatch(ctx, automation, groupID, originURL, "skipped", "reputacao (grupo problematico)")
+				continue
 			}
 
 			// Create dispatch log BEFORE enqueueing so the worker can update its status.
@@ -507,14 +538,6 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				}
 			}
 
-			senderSession := s.resolveSenderForGroup(connectedInstance, groupInstances, groupID)
-			if senderSession == "" {
-				s.logger.Warn("No connected chip for group, skipping LIST dispatch",
-					zap.String("automationID", automation.ID),
-					zap.String("groupID", groupID))
-				continue
-			}
-
 			// Enqueue message for sending
 			jobData := &workers.MessageJobData{
 				InstanceName:  senderSession,
@@ -525,12 +548,14 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				AutomationID:  automation.ID,
 				DispatchLogID: dispatchLogID,
 				LinkPreview:   linkPreview,
+				HumanizeMode:  automation.HumanizeMode,
 			}
 
 			if s.queueClient != nil {
-				// Delay acumulado por chip (ver perChipSent acima): o N-ésimo
-				// envio DESTE chip espera N*3s, em vez de N*3s global.
-				delayMs := time.Duration(perChipSent[senderSession]*3) * time.Second
+				// Delay acumulado por chip com jitter anti-ban (ver perChipDelay
+				// acima): o N-ésimo envio DESTE chip espera o acumulado jittered,
+				// em vez de N*3s fixo — e agora honra o delay_seconds da automação.
+				delayMs := perChipDelay[senderSession]
 
 				_, err := s.queueClient.EnqueueMessage(ctx, jobData, delayMs)
 				if err != nil {
@@ -548,6 +573,13 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			}
 			groupIDsSent = append(groupIDsSent, groupID)
 			perChipSent[senderSession]++
+			// Advance this chip's jittered delay accumulator: base (delay_seconds)
+			// × jitter, plus an occasional micro-break, clamped so a big list can't
+			// overrun the interval.
+			perChipDelay[senderSession] = pacingCfg.ClampSpread(
+				perChipDelay[senderSession] +
+					pacingCfg.Step(baseDelay) +
+					rt.Pacing.MicroBreak(ctx, senderSession, pacingCfg))
 			result.MessagesSent++
 		}
 

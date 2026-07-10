@@ -69,8 +69,12 @@ func RenderTemplate(template string, vars map[string]string) string {
 		result = strings.ReplaceAll(result, "{"+key+"}", value)
 	}
 
-	// Clean up any remaining unreplaced variables
-	unreplacedRegex := regexp.MustCompile(`\{\{[^}]+\}\}|\{[^}]+\}`)
+	// Clean up any remaining unreplaced variables.
+	// Exclude spintax alternations ({a|b|c}) from the sweep so authored spintax
+	// survives rendering and is expanded later, per-recipient, by text.Vary.
+	// Disambiguation: a placeholder is {single_token} (no '|'); spintax is
+	// {a|b} (contains '|'). The [^{}|] classes stop the match at a '|'.
+	unreplacedRegex := regexp.MustCompile(`\{\{[^{}|]+\}\}|\{[^{}|]+\}`)
 	result = unreplacedRegex.ReplaceAllString(result, "")
 
 	// Clean up multiple newlines that might result from empty variables

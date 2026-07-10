@@ -587,6 +587,18 @@ func (h *AutomationsHandler) ListDispatchLogs(
 
 // Helper functions
 
+// normalizeHumanizeMode valida o preset de humanização anti-ban. Valores
+// aceitos: off, low, medium, high. Qualquer outro valor (incluindo vazio)
+// é coagido para "high" (default mais seguro) em vez de retornar erro.
+func normalizeHumanizeMode(v string) string {
+	switch v {
+	case "off", "low", "medium", "high":
+		return v
+	default:
+		return "high"
+	}
+}
+
 func automationToProto(a *models.Automation) *automationsv1.Automation {
 	if a == nil {
 		return nil
@@ -717,6 +729,9 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 
 	// Auto-repeat de lista LIST mode (default true server-side, migration 052).
 	proto.RepeatWhenFinished = a.RepeatWhenFinished
+
+	// Humanização anti-ban (default "high" server-side, migration 060).
+	proto.HumanizeMode = a.HumanizeMode
 
 	// Data de agendamento (migration 053). Empty/unset = sem agendamento.
 	if a.StartDate != nil && *a.StartDate != "" {
@@ -1081,6 +1096,16 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.RepeatWhenFinished = true
 	}
 
+	// Humanização anti-ban (default "high" quando o client não envia).
+	// Valor inválido é coagido para "high" em vez de retornar erro.
+	{
+		hm := "high"
+		if msg.HumanizeMode != nil {
+			hm = normalizeHumanizeMode(*msg.HumanizeMode)
+		}
+		automation.HumanizeMode = &hm
+	}
+
 	// Data de agendamento. Empty string = sem agendamento (column NULL).
 	if msg.StartDate != nil && *msg.StartDate != "" {
 		automation.StartDate = msg.StartDate
@@ -1263,6 +1288,11 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 	// Auto-repeat de lista (LIST mode)
 	if msg.RepeatWhenFinished != nil {
 		updates["repeat_when_finished"] = *msg.RepeatWhenFinished
+	}
+
+	// Humanização anti-ban. Valor inválido é coagido para "high".
+	if msg.HumanizeMode != nil {
+		updates["humanize_mode"] = normalizeHumanizeMode(*msg.HumanizeMode)
 	}
 
 	// Data de agendamento (LIST mode). Empty string = clear (NULL).

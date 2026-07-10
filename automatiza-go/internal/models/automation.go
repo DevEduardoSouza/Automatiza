@@ -74,6 +74,9 @@ type Automation struct {
 	// RepeatWhenFinished (LIST mode): true = reseta items consumidos automaticamente
 	// quando a lista esgota e continua o loop. Default TRUE (definido no schema).
 	RepeatWhenFinished bool `json:"repeat_when_finished" db:"repeat_when_finished"`
+	// HumanizeMode: intensidade da humanização anti-ban aplicada aos disparos.
+	// Valores: off, low, medium, high. Default 'high' (definido no schema).
+	HumanizeMode *string `json:"humanize_mode,omitempty" db:"humanize_mode"`
 
 	// Priority and filter settings
 	PriorityType *string `json:"priority_type,omitempty" db:"priority_type"` // "discount" | "price" | "commission"
@@ -290,6 +293,9 @@ type UpdateAutomationRequest struct {
 	// non-empty = set the new list. The repo also writes InstanceID
 	// (the legacy single field) as InstanceIDs[0] for rollback compat.
 	InstanceIDs *[]string `json:"instance_ids,omitempty"`
+	// HumanizeMode: intensidade da humanização anti-ban (off/low/medium/high).
+	// nil = não fornecido (sem alteração).
+	HumanizeMode *string `json:"humanize_mode,omitempty"`
 }
 
 // ToMap converts UpdateAutomationRequest to a map for database updates
@@ -380,6 +386,9 @@ func (r *UpdateAutomationRequest) ToMap() map[string]interface{} {
 		// nil = not provided (no change); empty = explicit clear; non-empty
 		// = set. Repo coerces the string IDs to ints when writing the array.
 		result["instance_ids"] = *r.InstanceIDs
+	}
+	if r.HumanizeMode != nil {
+		result["humanize_mode"] = *r.HumanizeMode
 	}
 
 	return result

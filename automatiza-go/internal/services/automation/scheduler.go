@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"strconv"
 	"strings"
@@ -10,11 +11,20 @@ import (
 	"sync/atomic"
 	"time"
 
+	"automatiza-go/internal/config"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
 
 	"go.uber.org/zap"
 )
+
+// fnv32 is a small stable hash used to derive a deterministic per-automation
+// scheduler jitter offset (anti-ban de-synchronization).
+func fnv32(s string) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	return h.Sum32()
+}
 
 // perAutomationTimeout caps a single automation's execution inside a
 // ProcessActiveAutomations tick. Normal runs finish in well under this; the
@@ -319,8 +329,16 @@ func (s *Scheduler) isDueForExecution(automation *models.Automation, now time.Ti
 		return true
 	}
 
-	// Check if next run time has passed
-	nextRunAt := lastRunAt.Add(time.Duration(intervalMinutes) * time.Minute)
+	// Check if next run time has passed.
+	// Anti-ban: add a DETERMINISTIC per-automation offset (0..SchedulerJitterSec)
+	// so automations don't all fire on the exact same minute boundary. Stable per
+	// ID (no tick-to-tick flapping) and bounded well under the interval, so the
+	// due comparison and the next_run_at guard below remain correct.
+	jitter := time.Duration(0)
+	if jitterSec := config.GetHumanization().SchedulerJitterSec; jitterSec > 0 {
+		jitter = time.Duration(fnv32(automation.ID)%uint32(jitterSec+1)) * time.Second
+	}
+	nextRunAt := lastRunAt.Add(time.Duration(intervalMinutes)*time.Minute + jitter)
 	if !now.After(nextRunAt) && !now.Equal(nextRunAt) {
 		return false
 	}
