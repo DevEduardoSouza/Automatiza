@@ -711,6 +711,7 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 	}
 
 	// Extract item and shop IDs from URL
+	var expandedURL string
 	shopID, itemID, err := s.ExtractProductIDs(productURL)
 	if err != nil {
 		// Short URL? Try expanding first (s.shopee.com.br, shp.ee, shope.ee)
@@ -719,6 +720,7 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 			if expandErr != nil {
 				return nil, fmt.Errorf("failed to expand short URL: %w", expandErr)
 			}
+			expandedURL = expanded
 			shopID, itemID, err = s.ExtractProductIDs(expanded)
 			if err != nil {
 				// Non-product pages (coupons, campaigns) — convert via generateShortLink
@@ -753,6 +755,31 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		return nil, fmt.Errorf("shopee credentials not configured")
 	}
 	appID, secret := getShopeeCredentials(creds)
+
+	// Link que JÁ carrega o tracking do próprio afiliado (utm_source=an_<app_id>):
+	// o cliente importou um shortlink gerado pela própria conta — reconverter
+	// gasta uma chamada de API redundante que disputa a cota (10030) com o
+	// resto do fluxo dele. A comissão já é dele; repassa o link como veio,
+	// custo zero de quota. (Link de OUTRO afiliado não casa com o app_id e
+	// segue o fluxo normal de conversão, que troca o tracking pelo do dono.)
+	if trackedSource := "utm_source=an_" + appID; appID != "" &&
+		(strings.Contains(productURL, trackedSource) || strings.Contains(expandedURL, trackedSource)) {
+		own := &models.ShopeeAffiliateLink{
+			OriginalURL:   productURL,
+			AffiliateLink: productURL,
+			ShortLink:     productURL,
+			ItemID:        itemID,
+			ShopID:        shopID,
+		}
+		if s.cache != nil {
+			_ = s.cache.SetJSON(ctx, cacheKey, *own, time.Hour)
+		}
+		s.logger.Info("Own-affiliate link detected, relaying as-is (no API call)",
+			zap.String("productURL", productURL),
+			zap.Int64("itemID", itemID),
+			zap.Int64("shopID", shopID))
+		return own, nil
+	}
 
 	s.logger.Info("AffiliateLink API call",
 		zap.Int64("itemID", itemID),
@@ -901,6 +928,24 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 		return nil, fmt.Errorf("shopee credentials not configured")
 	}
 	appID, secret := getShopeeCredentials(creds)
+
+	// Cache GLOBAL por produto: nome/preço/imagem/loja são dados de catálogo,
+	// idênticos para qualquer afiliado — o enriquecimento pago por um usuário
+	// serve a todos e alivia o productOfferV2, o endpoint mais rate-limitado
+	// (10030) da plataforma. Nenhum consumidor de GetProduct usa o
+	// offerLink/commission do resultado (o link de comissão vem sempre do
+	// GenerateAffiliateLink, por usuário) e a cópia cacheada vai com esses
+	// campos zerados, então não há vazamento de tracking entre contas.
+	productCacheKey := fmt.Sprintf("shopee_product:%d:%d", shopID, itemID)
+	if s.cache != nil {
+		var cachedOffer models.ShopeeOffer
+		if cacheErr := s.cache.GetJSON(ctx, productCacheKey, &cachedOffer); cacheErr == nil && cachedOffer.ItemID != 0 {
+			s.logger.Info("GetProduct cache hit (global product cache)",
+				zap.Int64("itemID", itemID),
+				zap.Int64("shopID", shopID))
+			return &cachedOffer, nil
+		}
+	}
 
 	// Use productOfferV2 with itemId and shopId to get product details.
 	// shopType is included so the model's IsMall flag (= shopType == 1)

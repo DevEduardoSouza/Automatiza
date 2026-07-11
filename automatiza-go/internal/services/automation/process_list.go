@@ -377,9 +377,23 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				if link.ImageURL != "" {
 					shopeeImageURL = link.ImageURL
 				}
-				// Fetch product details (title, price) for the message template
+				// Fetch product details (title, price) for the message template.
+				// Retry espaçado: o rate limit da Shopee (10030) é janela rolante
+				// com brechas — a sondagem em produção mostrou chamadas passando
+				// entre bursts. Sem retry, uma única brecha perdida custa o ciclo
+				// inteiro da lista (o transient dá break lá embaixo).
 				if link.ItemID > 0 && link.ShopID > 0 {
-					product, prodErr := s.shopeeService.GetProduct(ctx, link.ItemID, link.ShopID, automation.UserID)
+					var product *models.ShopeeOffer
+					var prodErr error
+					for attempt := 0; attempt < 3; attempt++ {
+						product, prodErr = s.shopeeService.GetProduct(ctx, link.ItemID, link.ShopID, automation.UserID)
+						if prodErr == nil || !isTransientShopeeEnrichError(prodErr) {
+							break
+						}
+						if attempt < 2 {
+							time.Sleep(2 * time.Second)
+						}
+					}
 					if prodErr != nil {
 						shopeeEnrichErr = prodErr
 						s.logger.Warn("Failed to get Shopee product details for list item",
