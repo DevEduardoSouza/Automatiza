@@ -333,6 +333,7 @@ func (m *mockWAProvider) CreateSession(_ context.Context, _ whatsapp.CreateSessi
 	return nil, nil
 }
 func (m *mockWAProvider) DeleteSession(_ context.Context, _ string) error { return nil }
+func (m *mockWAProvider) UnpairSession(_ context.Context, _ string) error { return nil }
 func (m *mockWAProvider) GetSessionStatus(_ context.Context, _ string) (*whatsapp.SessionInfo, error) {
 	return nil, nil
 }

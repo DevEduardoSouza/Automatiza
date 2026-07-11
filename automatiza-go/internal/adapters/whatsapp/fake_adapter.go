@@ -29,6 +29,7 @@ type FakeAdapter struct {
 	// Session Management function overrides
 	CreateSessionFunc    func(ctx context.Context, input CreateSessionInput) (*SessionInfo, error)
 	DeleteSessionFunc    func(ctx context.Context, sessionName string) error
+	UnpairSessionFunc    func(ctx context.Context, sessionName string) error
 	GetSessionStatusFunc func(ctx context.Context, sessionName string) (*SessionInfo, error)
 	GetQRCodeFunc        func(ctx context.Context, sessionName string) (*QRCodeData, error)
 	RestartSessionFunc   func(ctx context.Context, sessionName string) error
@@ -119,6 +120,7 @@ func (f *FakeAdapter) Reset() {
 	// Clear function overrides
 	f.CreateSessionFunc = nil
 	f.DeleteSessionFunc = nil
+	f.UnpairSessionFunc = nil
 	f.GetSessionStatusFunc = nil
 	f.GetQRCodeFunc = nil
 	f.RestartSessionFunc = nil
@@ -291,6 +293,27 @@ func (f *FakeAdapter) DeleteSession(ctx context.Context, sessionName string) err
 
 	if f.DeleteSessionFunc != nil {
 		return f.DeleteSessionFunc(ctx, sessionName)
+	}
+
+	f.mu.Lock()
+	delete(f.Sessions, sessionName)
+	delete(f.Groups, sessionName)
+	delete(f.QRCodes, sessionName)
+	f.mu.Unlock()
+
+	return nil
+}
+
+// UnpairSession implements SessionManager.UnpairSession.
+func (f *FakeAdapter) UnpairSession(ctx context.Context, sessionName string) error {
+	f.recordCall("UnpairSession", sessionName)
+
+	if f.SimulateError != nil {
+		return f.SimulateError
+	}
+
+	if f.UnpairSessionFunc != nil {
+		return f.UnpairSessionFunc(ctx, sessionName)
 	}
 
 	f.mu.Lock()

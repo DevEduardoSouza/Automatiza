@@ -757,6 +757,9 @@ func (m *mockWhatsAppProvider) CreateSession(ctx context.Context, input whatsapp
 	}
 	return &whatsapp.SessionInfo{Name: input.SessionName, Status: whatsapp.SessionStatusScanQR}, nil
 }
+func (m *mockWhatsAppProvider) UnpairSession(ctx context.Context, name string) error {
+	return m.DeleteSession(ctx, name)
+}
 func (m *mockWhatsAppProvider) DeleteSession(ctx context.Context, name string) error {
 	if m.DeleteSessionFunc != nil {
 		return m.DeleteSessionFunc(ctx, name)

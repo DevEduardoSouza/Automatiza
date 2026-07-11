@@ -239,6 +239,18 @@ func (h *InstancesHandler) DeleteDisconnectedInstances(
 			protectedCount++
 			continue
 		}
+		// Best-effort: drop the dead stub session in WAHA too, so abandoned
+		// QR scans don't pile up as sessions nobody owns. Safe without
+		// X-Confirm-Unpair precisely because it got here — instanceAliveOrPaired
+		// already established this chip is not paired, so the router won't (and
+		// shouldn't) block it. A failure here is not worth aborting on: an
+		// unpaired stub holds no number.
+		if h.waProvider != nil && inst.InstanceID != "" {
+			if err := h.waProvider.DeleteSession(ctx, inst.InstanceID); err != nil {
+				zap.L().Warn("DeleteDisconnectedInstances: could not drop dead session in WAHA",
+					zap.String("session", inst.InstanceID), zap.Error(err))
+			}
+		}
 		if err := h.instanceRepo.DeleteInstance(ctx, inst.ID); err == nil {
 			deletedCount++
 		}
@@ -311,6 +323,29 @@ func (h *InstancesHandler) DeleteInstance(
 	}
 	if instance == nil || instance.UserID != user.ID {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("instance not found"))
+	}
+
+	// Unpair in WAHA BEFORE dropping the row, and only drop the row once the
+	// session is confirmed gone. Deleting the row first (or ignoring a WAHA
+	// failure) strands the session: it keeps running, still linked to WhatsApp,
+	// while the app forgets the number exists — the chip then reads as
+	// "disconnected" in the UI though it never left WhatsApp, and no reconciler
+	// can recover it because reconciliation only walks rows that exist.
+	// A missing session is fine (nothing to unpair); any other WAHA error aborts
+	// so the user can retry rather than silently leaking a live session.
+	if h.waProvider != nil && instance.InstanceID != "" {
+		if err := h.waProvider.UnpairSession(ctx, instance.InstanceID); err != nil {
+			var providerErr *whatsapp.ProviderError
+			if !errors.As(err, &providerErr) || providerErr.Code != whatsapp.ErrCodeSessionNotFound {
+				zap.L().Error("DeleteInstance: refusing to delete row, WAHA unpair failed",
+					zap.String("userID", user.ID),
+					zap.Int("instanceID", instanceID),
+					zap.String("session", instance.InstanceID),
+					zap.Error(err))
+				return nil, connect.NewError(connect.CodeUnavailable,
+					fmt.Errorf("could not disconnect the number in WhatsApp; nothing was deleted, please try again: %w", err))
+			}
+		}
 	}
 
 	if err := h.instanceRepo.DeleteInstance(ctx, instanceID); err != nil {

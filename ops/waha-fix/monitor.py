@@ -22,6 +22,7 @@ WATCH_CONTAINERS = ["automatiza-waha", "automatiza-waha-2", "automatiza-waha-rou
 STATE = "/root/waha-fix/watchdog_state.json"
 ESTABLISHED = "/root/waha-fix/established.json"
 ZOMBIE_STATE = "/root/waha-fix/zombie_state.json"
+ORPHAN_STATE = "/root/waha-fix/orphan_state.json"
 PURGE_LOCK = "/root/waha-fix/purge.lock"
 LOG = "/var/log/waha-monitor.log"
 ESTABLISHED_MIN_CYCLES = 3
@@ -159,6 +160,54 @@ def router_block_alert():
         log(f"router block check fail: {e}")
 
 
+def orphan_alert(paired):
+    """Alert when a number that is ALIVE and paired in WAHA has no row in the app DB.
+
+    This is the silent failure mode behind "o número desconectou sozinho": the chip
+    never left WhatsApp — the app lost its instances row (a delete path removed the
+    record while the WAHA session kept running). The app then stops listing the
+    number and every automation silently drops it, while WAHA still reports WORKING.
+    Nothing in the stack notices: the backend reconciler only walks DB rows, so a
+    session with no row is invisible to it by construction.
+
+    Only NEW orphans alert. The pre-existing backlog is seeded as the baseline on
+    first run, so this stays quiet until something orphans a number for real.
+    """
+    try:
+        out = subprocess.run(
+            ["docker", "exec", "automatiza-postgres", "psql", "-U", "automatiza",
+             "-d", "automatiza", "-t", "-A", "-c", "SELECT instance_id FROM instances;"],
+            capture_output=True, text=True, timeout=30)
+        if out.returncode != 0:
+            log(f"orphan check: psql failed rc={out.returncode}")
+            return
+        db = {l.strip() for l in out.stdout.splitlines() if l.strip()}
+        if not db:
+            log("orphan check: empty DB read, skipping (fail-safe)")
+            return
+
+        orphans = {n: p for n, p in paired.items() if n not in db}
+        st = jload(ORPHAN_STATE, {})
+        known = set(st.get("known", []))
+        first_run = "known" not in st
+
+        new = sorted(set(orphans) - known)
+        jsave(ORPHAN_STATE, {"known": sorted(orphans), "ts": time.time()})
+        log(f"orphans: {len(orphans)} paired session(s) with no DB row (new this cycle: {len(new)})")
+
+        if new and not first_run and lib_alert:
+            lines = "\n  ".join(f"{orphans[n]}  ({n})" for n in new[:20])
+            lib_alert.send(
+                f"{len(new)} live number(s) lost their app record",
+                "These numbers are PAIRED and alive in WAHA but have no row in the "
+                "instances table — the app shows them as disconnected and every "
+                "automation silently stopped using them. They do NOT need re-pairing; "
+                "the DB row must be restored (see ops/waha-fix/README.md):\n  " + lines,
+                dedup_key="mon_orphan", min_interval=3600)
+    except Exception as e:
+        log(f"orphan check fail: {e}")
+
+
 def main():
     if not KEY:
         log("ERROR no api key"); return
@@ -171,6 +220,7 @@ def main():
     acted = 0
     all_names = []           # (name, base) for zombie scan
     per_instance = {}
+    paired_now = {}          # session name -> phone, for the orphan check
 
     for iname, base in INSTANCES.items():
         try:
@@ -186,6 +236,7 @@ def main():
             name = s.get("name"); status = s.get("status"); paired = bool(s.get("me"))
             if not paired:
                 continue
+            paired_now[name] = (s.get("me") or {}).get("id", "").split("@")[0]
             ent = est.get(name, {"count": 0, "last": 0})
             ent["count"] = min(ent.get("count", 0) + 1, 100000); ent["last"] = now
             est[name] = ent
@@ -268,6 +319,7 @@ def main():
 
     infra_alerts()
     router_block_alert()
+    orphan_alert(paired_now)
     log(f"cycle: instances={per_instance} restarts={acted} zombies={zrestarts} "
         f"established={sum(1 for v in est.values() if v.get('count',0)>=ESTABLISHED_MIN_CYCLES)} locked={len(locked)}")
 

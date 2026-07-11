@@ -467,6 +467,14 @@ var _ WhatsAppProvider = (*WahaAdapter)(nil)
 
 // doRequest performs an HTTP request to the WAHA API with optional retry on transient errors.
 func (a *WahaAdapter) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
+	return a.doRequestWithHeaders(ctx, method, path, body, nil)
+}
+
+// doRequestWithHeaders is doRequest with extra request headers. Used by
+// UnpairSession to carry the waha-router's X-Confirm-Unpair contract; every
+// other call goes through doRequest and therefore stays subject to the router's
+// refusal to unpair a paired number.
+func (a *WahaAdapter) doRequestWithHeaders(ctx context.Context, method, path string, body interface{}, extra map[string]string) ([]byte, error) {
 	// Marshal body once (if present) so retries reuse the same bytes
 	var jsonBody []byte
 	if body != nil {
@@ -514,6 +522,9 @@ func (a *WahaAdapter) doRequest(ctx context.Context, method, path string, body i
 
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Api-Key", a.apiKey)
+		for k, v := range extra {
+			req.Header.Set(k, v)
+		}
 
 		resp, err := a.httpClient.Do(req)
 		if err != nil {
@@ -708,6 +719,28 @@ func (a *WahaAdapter) DeleteSession(ctx context.Context, sessionName string) err
 	}
 
 	// Clear from cache
+	a.ClearStatusCache(sessionName)
+	a.ClearCircuitBreaker(sessionName)
+
+	return nil
+}
+
+// UnpairSession removes a session that the user deliberately asked to delete,
+// carrying the X-Confirm-Unpair header the waha-router requires before it will
+// let a *paired* number be unlinked.
+//
+// This is the only path allowed to unpair a live number. DeleteSession (used by
+// the automatic FAILED-session cleanup) deliberately omits the header, so the
+// router still refuses if that cron ever aims at a paired chip — the safety net
+// stays armed for machine-initiated deletes and only opens for human ones.
+func (a *WahaAdapter) UnpairSession(ctx context.Context, sessionName string) error {
+	_, err := a.doRequestWithHeaders(ctx, http.MethodDelete,
+		"/api/sessions/"+url.PathEscape(sessionName), nil,
+		map[string]string{"X-Confirm-Unpair": "true"})
+	if err != nil {
+		return fmt.Errorf("failed to unpair session: %w", err)
+	}
+
 	a.ClearStatusCache(sessionName)
 	a.ClearCircuitBreaker(sessionName)
 

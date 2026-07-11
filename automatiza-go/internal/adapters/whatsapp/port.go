@@ -83,6 +83,12 @@ type SessionManager interface {
 	// This operation is destructive and cannot be undone.
 	DeleteSession(ctx context.Context, sessionName string) error
 
+	// UnpairSession removes a session on explicit user request, unlinking the
+	// number from WhatsApp. Unlike DeleteSession it is authorized to unpair a
+	// live, paired chip, so it must only be called for a deliberate human
+	// "delete this chip" action — never from automatic cleanup.
+	UnpairSession(ctx context.Context, sessionName string) error
+
 	// GetSessionStatus retrieves the current status of a WhatsApp session.
 	// Returns session info including connection state and authenticated user details.
 	GetSessionStatus(ctx context.Context, sessionName string) (*SessionInfo, error)

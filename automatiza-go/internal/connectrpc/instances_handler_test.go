@@ -91,3 +91,73 @@ func TestDeleteDisconnectedInstances_FailsSafeOnWahaError(t *testing.T) {
 	assert.Equal(t, int32(0), resp.Msg.GetDeletedCount(), "must not delete when WAHA status is unverifiable")
 	repo.AssertNotCalled(t, "DeleteInstance", mock.Anything, 7)
 }
+
+// TestDeleteInstance_UnpairsSessionBeforeDeletingRow locks the orphan leak: a
+// deliberate single-chip delete must also unlink the number in WAHA. Deleting
+// only the DB row leaves the session running and still logged into WhatsApp,
+// with no record tying it to anyone — the app shows the number as disconnected
+// while it never actually left WhatsApp.
+func TestDeleteInstance_UnpairsSessionBeforeDeletingRow(t *testing.T) {
+	repo := new(mockInstanceRepo)
+	fake := whatsapp.NewFakeAdapter()
+	h := &InstancesHandler{instanceRepo: repo, waProvider: fake}
+
+	phone := "554898348964"
+	repo.On("GetInstanceByID", mock.Anything, 42).Return(
+		&models.Instance{ID: 42, UserID: "u1", InstanceID: "sess-live", Status: "connected", PhoneNumber: &phone}, nil)
+	repo.On("DeleteInstance", mock.Anything, 42).Return(nil)
+
+	ctx := contextWithUser("u1", "u1@example.com")
+	_, err := h.DeleteInstance(ctx, connect.NewRequest(&instancesv1.DeleteInstanceRequest{Id: "42"}))
+
+	require.NoError(t, err)
+	require.Equal(t, 1, fake.CallCount("UnpairSession"),
+		"an explicit delete must unpair the number in WAHA, not just drop the row")
+	assert.Equal(t, 0, fake.CallCount("DeleteSession"),
+		"must go through UnpairSession (carries X-Confirm-Unpair); a plain DeleteSession is blocked by the router for a paired chip")
+	repo.AssertCalled(t, "DeleteInstance", mock.Anything, 42)
+}
+
+// TestDeleteInstance_KeepsRowWhenUnpairFails is the anti-orphan guarantee: if
+// WAHA cannot be reached, we must NOT delete the row. Dropping it anyway is
+// exactly what strands a live, paired chip with no way back.
+func TestDeleteInstance_KeepsRowWhenUnpairFails(t *testing.T) {
+	repo := new(mockInstanceRepo)
+	fake := whatsapp.NewFakeAdapter()
+	h := &InstancesHandler{instanceRepo: repo, waProvider: fake}
+
+	phone := "554898348964"
+	repo.On("GetInstanceByID", mock.Anything, 42).Return(
+		&models.Instance{ID: 42, UserID: "u1", InstanceID: "sess-live", Status: "connected", PhoneNumber: &phone}, nil)
+	fake.UnpairSessionFunc = func(_ context.Context, _ string) error {
+		return whatsapp.NewProviderError(whatsapp.ErrCodeTimeout, "waha unreachable", nil)
+	}
+
+	ctx := contextWithUser("u1", "u1@example.com")
+	_, err := h.DeleteInstance(ctx, connect.NewRequest(&instancesv1.DeleteInstanceRequest{Id: "42"}))
+
+	require.Error(t, err, "a failed unpair must surface, not silently orphan the session")
+	assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
+	repo.AssertNotCalled(t, "DeleteInstance", mock.Anything, 42)
+}
+
+// TestDeleteInstance_DeletesRowWhenSessionAlreadyGone: nothing to unpair is not
+// an error — the row must still go, or the user can never clear a dead chip.
+func TestDeleteInstance_DeletesRowWhenSessionAlreadyGone(t *testing.T) {
+	repo := new(mockInstanceRepo)
+	fake := whatsapp.NewFakeAdapter()
+	h := &InstancesHandler{instanceRepo: repo, waProvider: fake}
+
+	repo.On("GetInstanceByID", mock.Anything, 9).Return(
+		&models.Instance{ID: 9, UserID: "u1", InstanceID: "sess-gone", Status: "disconnected"}, nil)
+	repo.On("DeleteInstance", mock.Anything, 9).Return(nil)
+	fake.UnpairSessionFunc = func(_ context.Context, _ string) error {
+		return whatsapp.NewProviderError(whatsapp.ErrCodeSessionNotFound, "session not found", nil)
+	}
+
+	ctx := contextWithUser("u1", "u1@example.com")
+	_, err := h.DeleteInstance(ctx, connect.NewRequest(&instancesv1.DeleteInstanceRequest{Id: "9"}))
+
+	require.NoError(t, err)
+	repo.AssertCalled(t, "DeleteInstance", mock.Anything, 9)
+}
