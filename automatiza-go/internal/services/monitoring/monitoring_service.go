@@ -753,7 +753,11 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// (GOWS) aceita o payload mas DROPA o campo mentions silenciosamente —
 		// ninguém é notificado. Quando há @todos, caímos para imagem+legenda ou
 		// texto (Priority 2/3), que honram mentionedJid.
-		if !monitoringSendAsImage && firstAffiliateURL != "" && !hasMentions {
+		// Também cai no card quando NÃO há imagem resolvida (curto-circuito de
+		// link próprio / enriquecimento rate-limitado): o WhatsApp busca a
+		// og:image do produto e a oferta nunca sai texto puro tendo link.
+		noResolvedImage := imageURL == "" && imageBase64 == ""
+		if (!monitoringSendAsImage || noResolvedImage) && firstAffiliateURL != "" && !hasMentions {
 			// Título do card: SÓ o título de preview que a origem trouxe. NÃO
 			// cair pra primeira linha do corpo — essa linha (um CTA/cabeçalho
 			// promocional) já está no texto, então usá-la como título do card
@@ -772,6 +776,20 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				Mimetype:    imageMimetype,
 			})
 			if err != nil {
+				// Timeout/cancelamento = entrega INCERTA: o WAHA pode ter mandado
+				// o card mesmo assim. Cair para imagem/texto aqui é reenviar a
+				// mesma promoção no grupo. Slot fica reivindicado (dedupe) e o
+				// item é dado como failed — duplicar é pior que perder 1 repasse.
+				if whatsapp.IsAmbiguousOutcome(err) {
+					s.logDispatch(ctx, automation, groupID, links[0], "failed",
+						"timeout no envio do card (entrega incerta) - sem reenvio para nao duplicar", canonicalKey, store)
+					s.logger.Warn("Link preview timed out — delivery uncertain, NOT falling back",
+						zap.String("groupID", groupID),
+						zap.Error(err))
+					stopTyping()
+					sendCancel()
+					continue
+				}
 				s.logger.Warn("Link preview failed, falling back",
 					zap.String("groupID", groupID),
 					zap.Error(err))
@@ -821,7 +839,19 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 					zap.String("groupID", groupID))
 				continue
 			}
-			// Release dedup slot so the product can be retried on the next cycle
+			// Timeout/cancelamento: a mensagem PODE ter sido entregue. Liberar o
+			// slot aqui deixa um repost do mesmo produto reenviar no grupo —
+			// era uma das fontes das promoções duplicadas. Slot mantido.
+			if whatsapp.IsAmbiguousOutcome(err) {
+				s.logDispatch(ctx, automation, groupID, links[0], "failed",
+					"timeout no envio (entrega incerta) - slot de dedup mantido", canonicalKey, store)
+				s.logger.Warn("Send timed out — delivery uncertain, keeping dedup slot",
+					zap.String("groupID", groupID),
+					zap.Error(err))
+				continue
+			}
+			// Falha DEFINITIVA (envio comprovadamente não aconteceu): libera o
+			// slot para o produto poder ser retentado no próximo ciclo.
 			s.releaseProductSlot(ctx, automation.UserID, groupID, canonicalKey)
 			s.logDispatch(ctx, automation, groupID, links[0], "failed", err.Error(), canonicalKey, store)
 			s.logger.Error("Failed to send message",
@@ -1157,12 +1187,19 @@ func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupI
 		return true
 	}
 
+	// Contexto PRÓPRIO: o ctx da task morre no meio de fan-outs longos e o
+	// SetNX passava a falhar com "context deadline exceeded" — o dedup caía
+	// no fallback de DB (janela de corrida) enquanto o envio seguia com o
+	// sendCtx independente. 145 falhas/h em produção = promoções duplicadas.
+	opCtx, opCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer opCancel()
+
 	cacheKey := fmt.Sprintf("prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
 	ttl := time.Duration(hours) * time.Hour
 
 	// Fast path: atomic Redis SetNX (check + set in one operation)
 	if s.cache != nil {
-		wasSet, err := s.cache.SetNX(ctx, cacheKey, "1", ttl)
+		wasSet, err := s.cache.SetNX(opCtx, cacheKey, "1", ttl)
 		if err == nil {
 			if !wasSet {
 				return false // Already claimed by another goroutine or previous send
@@ -1170,15 +1207,19 @@ func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupI
 			// We claimed the slot in Redis. Still check DB for stale records
 			// (Redis may have lost the key due to restart/eviction).
 		} else {
-			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Monitoring dedup SetNX failed", err, map[string]string{
-				"module": "monitoring", "operation": "product_dedup_setnx", "cache_policy": "fall-through-db",
+			// FAIL-CLOSED: sem o SetNX atômico não há proteção de concorrência
+			// nenhuma — mandar assim mesmo é apostar em duplicata. Perder um
+			// repasse é melhor que repetir promoção no grupo do cliente.
+			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Monitoring dedup SetNX failed — send suppressed (fail-closed)", err, map[string]string{
+				"module": "monitoring", "operation": "product_dedup_setnx", "cache_policy": "fail-closed",
 			})
+			return false
 		}
 	}
 
 	// Slow path: check database for historical dispatches
 	if s.dispatchLogRepo != nil {
-		log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, time.Duration(hours)*time.Hour)
+		log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(opCtx, userID, groupID, canonicalKey, time.Duration(hours)*time.Hour)
 		if err != nil {
 			s.logger.Warn("Monitoring dedup DB check failed",
 				zap.String("userID", userID),
@@ -1188,20 +1229,11 @@ func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupI
 		} else if log != nil {
 			// DB has a recent dispatch — this is a duplicate. Ensure Redis is populated.
 			if s.cache != nil {
-				if cacheErr := s.cache.Set(ctx, cacheKey, "1", ttl); cacheErr != nil {
+				if cacheErr := s.cache.Set(opCtx, cacheKey, "1", ttl); cacheErr != nil {
 					s.logger.Debug("Monitoring dedup cache backfill failed", zap.Error(cacheErr))
 				}
 			}
 			return false
-		}
-	}
-
-	// Ensure Redis has the claim (in case SetNX failed due to error above)
-	if s.cache != nil {
-		if cacheErr := s.cache.Set(ctx, cacheKey, "1", ttl); cacheErr != nil {
-			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to ensure product dedup cache key", cacheErr, map[string]string{
-				"module": "monitoring", "operation": "product_dedup_ensure", "cache_policy": "fail-open",
-			})
 		}
 	}
 
@@ -1215,8 +1247,13 @@ func (s *monitoringService) releaseProductSlot(ctx context.Context, userID, grou
 		return
 	}
 
+	// Contexto próprio: mesmo racional do claim — o release precisa funcionar
+	// mesmo com o ctx da task já estourado, senão o slot vaza até o TTL.
+	opCtx, opCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer opCancel()
+
 	cacheKey := fmt.Sprintf("prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
-	if err := s.cache.Delete(ctx, cacheKey); err != nil {
+	if err := s.cache.Delete(opCtx, cacheKey); err != nil {
 		s.logger.Warn("Failed to release dedup slot after send failure",
 			zap.String("userID", userID),
 			zap.String("groupID", groupID),

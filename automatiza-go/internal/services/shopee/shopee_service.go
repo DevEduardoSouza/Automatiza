@@ -772,6 +772,13 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 			ShopID:        shopID,
 		}
 		if s.cache != nil {
+			// Imagem de graça: se o produto já está no cache global (enriquecido
+			// por qualquer conta), aproveita — o envio sai com imagem sem gastar
+			// nenhuma chamada de API.
+			var cachedOffer models.ShopeeOffer
+			if err := s.cache.GetJSON(ctx, fmt.Sprintf("shopee_product:%d:%d", shopID, itemID), &cachedOffer); err == nil && cachedOffer.Image != "" {
+				own.ImageURL = cachedOffer.Image
+			}
 			_ = s.cache.SetJSON(ctx, cacheKey, *own, time.Hour)
 		}
 		s.logger.Info("Own-affiliate link detected, relaying as-is (no API call)",

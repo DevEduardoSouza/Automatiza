@@ -867,8 +867,12 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 						Caption:     perGroupMessage,
 						ImageURL:    imageURL,
 					})
-				case !sendAsImage && previewURL != "":
+				case previewURL != "" && (!sendAsImage || imageURL == ""):
 					// Preview nativo: card com título/preço/thumb em vez de anexo.
+					// Também é o caminho quando sendAsImage está LIGADO mas nenhuma
+					// imagem foi resolvida (link próprio em curto-circuito, 10030 no
+					// enriquecimento): o card mostra a imagem do produto via og: do
+					// WhatsApp — oferta nunca sai texto puro tendo link.
 					_, sendErr = s.waProvider.SendLinkCustomPreview(sendCtx, whatsapp.SendLinkPreviewInput{
 						SessionName: dispatchSession,
 						ChatID:      groupID,
@@ -889,6 +893,18 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				sendCancel()
 
 				if sendErr != nil {
+					// Timeout/cancelamento = entrega incerta: liberar o slot deixa
+					// um repost do mesmo produto reenviar no grupo. Slot mantido;
+					// só falha DEFINITIVA (envio comprovadamente não saiu) libera.
+					if whatsapp.IsAmbiguousOutcome(sendErr) {
+						s.logDispatch(ctx, auto, groupID, links[0], "failed",
+							"timeout no envio (entrega incerta) - slot de dedup mantido", canonicalKey, store)
+						s.logger.Warn("Offer send timed out — delivery uncertain, keeping dedup slot",
+							zap.String("groupID", groupID),
+							zap.String("session", dispatchSession),
+							zap.Error(sendErr))
+						continue
+					}
 					s.releaseProductSlot(ctx, auto.UserID, groupID, canonicalKey)
 					s.logDispatch(ctx, auto, groupID, links[0], "failed", sendErr.Error(), canonicalKey, store)
 					s.logger.Error("Failed to send offer",
@@ -1032,18 +1048,35 @@ func (s *offerGenerateService) claimProductSlot(ctx context.Context, userID, gro
 		return true
 	}
 
+	// Contexto PRÓPRIO (não o da task): em fan-outs longos o ctx da task
+	// expira e o SetNX falhava com "context deadline exceeded" — o claim
+	// caía no fallback de DB (janela de corrida) e a mesma promoção saía
+	// mais de uma vez no grupo. Dedup não pode morrer junto com a task.
+	opCtx, opCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer opCancel()
+
 	cacheKey := fmt.Sprintf("og_prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
 
 	if s.cache != nil {
-		wasSet, err := s.cache.SetNX(ctx, cacheKey, "1", window)
-		if err == nil && !wasSet {
+		wasSet, err := s.cache.SetNX(opCtx, cacheKey, "1", window)
+		if err != nil {
+			// FAIL-CLOSED: sem SetNX atômico não há proteção de concorrência —
+			// suprimir este envio é melhor que duplicar promoção no grupo.
+			s.logger.Warn("offer_generate dedup SetNX failed — send suppressed (fail-closed)",
+				zap.String("groupID", groupID),
+				zap.String("canonicalKey", canonicalKey),
+				zap.Error(err))
+			return false
+		}
+		if !wasSet {
 			return false
 		}
 	}
 
-	// Check DB for historical dispatches
+	// Check DB for historical dispatches (Redis pode ter perdido a chave em
+	// restart/eviction; o claim no Redis acima já protege a concorrência).
 	if s.dispatchLogRepo != nil {
-		log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(ctx, userID, groupID, canonicalKey, window)
+		log, err := s.dispatchLogRepo.GetRecentByCanonicalKey(opCtx, userID, groupID, canonicalKey, window)
 		if err == nil && log != nil {
 			return false
 		}
@@ -1056,8 +1089,12 @@ func (s *offerGenerateService) releaseProductSlot(ctx context.Context, userID, g
 	if s.cache == nil || canonicalKey == "" {
 		return
 	}
+	// Contexto próprio: o release precisa funcionar mesmo com o ctx da task
+	// já estourado, senão o slot vaza até o TTL.
+	opCtx, opCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer opCancel()
 	cacheKey := fmt.Sprintf("og_prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
-	_ = s.cache.Delete(ctx, cacheKey)
+	_ = s.cache.Delete(opCtx, cacheKey)
 }
 
 func (s *offerGenerateService) logDispatch(ctx context.Context, auto *models.Automation, groupID, productURL, status, errorMsg, canonicalKey, store string) {
@@ -1412,6 +1449,17 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 				sendCancel()
 
 				if sendErr != nil {
+					// Mesma regra do fan-out de oferta: timeout = entrega incerta,
+					// slot mantido para o relay não sair duplicado no grupo.
+					if whatsapp.IsAmbiguousOutcome(sendErr) {
+						s.logDispatch(ctx, auto, groupID, "", "failed",
+							"timeout no envio (entrega incerta) - slot de dedup mantido", canonicalKey, "")
+						s.logger.Warn("Relay send timed out — delivery uncertain, keeping dedup slot",
+							zap.String("groupID", groupID),
+							zap.String("session", dispatchSession),
+							zap.Error(sendErr))
+						continue
+					}
 					s.releaseProductSlot(ctx, auto.UserID, groupID, canonicalKey)
 					s.logDispatch(ctx, auto, groupID, "", "failed", sendErr.Error(), canonicalKey, "")
 					s.logger.Error("Failed to send relay message",
