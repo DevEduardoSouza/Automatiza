@@ -42,10 +42,23 @@ type WebhookRateLimiterConfig struct {
 }
 
 // DefaultWebhookRateLimitConfig returns default configuration.
-// 2000 requests per minute per IP — WAHA sends webhooks from a single IP in bursts.
+//
+// 20000 requests per minute per IP. The limiter keys on client IP, but every
+// WAHA container is ONE IP fronting its whole fleet of sessions — so the cap is
+// really "events per minute for ~500 chips", not per caller. At 2000 it was
+// far under the real load: waha-1 alone was pushing ~5600/min (message.any
+// echoes each outgoing send as a fromMe event, roughly doubling volume), so
+// about two thirds of ALL webhook events were answered with 429 and dropped
+// after WAHA exhausted its retries — silently breaking monitoring, relay and
+// offer-generate for the users on that instance.
+//
+// This is a backstop against a runaway flood, not an authentication boundary:
+// the endpoint already verifies an HMAC signature, so throttling by IP buys no
+// security here — it only discards legitimate traffic. Size it above the fleet's
+// real peak and revisit when the chip count grows.
 func DefaultWebhookRateLimitConfig() *WebhookRateLimiterConfig {
 	return &WebhookRateLimiterConfig{
-		MaxRequests: 2000,
+		MaxRequests: 20000,
 		WindowSize:  time.Minute,
 		UseRedis:    false,
 		KeyPrefix:   "webhook_rl",

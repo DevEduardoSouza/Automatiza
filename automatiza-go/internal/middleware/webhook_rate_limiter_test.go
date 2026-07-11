@@ -30,8 +30,11 @@ func TestDefaultWebhookRateLimitConfig(t *testing.T) {
 
 	cfg := DefaultWebhookRateLimitConfig()
 
-	if cfg.MaxRequests != 2000 {
-		t.Errorf("expected MaxRequests=2000, got %d", cfg.MaxRequests)
+	// 20000, not 2000: the limiter keys on IP and each WAHA container is one IP
+	// for its whole fleet, so this cap is really "events/min for ~500 chips".
+	// At 2000 the server was 429ing ~2/3 of all real webhook traffic.
+	if cfg.MaxRequests != 20000 {
+		t.Errorf("expected MaxRequests=20000, got %d", cfg.MaxRequests)
 	}
 	if cfg.WindowSize != time.Minute {
 		t.Errorf("expected WindowSize=1m, got %s", cfg.WindowSize)
@@ -65,8 +68,8 @@ func TestNewWebhookRateLimiter_NilConfigUsesDefaults(t *testing.T) {
 	if rl.config == nil {
 		t.Fatal("expected config to be non-nil when nil is passed")
 	}
-	if rl.config.MaxRequests != 2000 {
-		t.Errorf("expected default MaxRequests=2000, got %d", rl.config.MaxRequests)
+	if rl.config.MaxRequests != 20000 {
+		t.Errorf("expected default MaxRequests=20000, got %d", rl.config.MaxRequests)
 	}
 	if rl.config.WindowSize != time.Minute {
 		t.Errorf("expected default WindowSize=1m, got %s", rl.config.WindowSize)
@@ -594,10 +597,10 @@ func TestWebhookRateLimitMiddleware_NilConfig(t *testing.T) {
 		t.Errorf("expected 200 with nil config (defaults), got %d", w.Code)
 	}
 
-	// Should use default MaxRequests=2000
+	// Should use default MaxRequests=20000
 	limitHeader := w.Header().Get("X-RateLimit-Limit")
-	if limitHeader != "2000" {
-		t.Errorf("expected X-RateLimit-Limit=2000 (default), got %q", limitHeader)
+	if limitHeader != "20000" {
+		t.Errorf("expected X-RateLimit-Limit=20000 (default), got %q", limitHeader)
 	}
 }
 
