@@ -16,6 +16,18 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	// maxDeadLinksPerRun is how many unusable items a single run may walk past
+	// while still trying to deliver. Dead links (product gone from the affiliate
+	// catalogue, unparseable URL, no affiliate link) are common in long-lived
+	// lists, and without this budget one of them silently costs a whole cycle.
+	maxDeadLinksPerRun = 9
+
+	// maxListPoolSize bounds the candidate fetch so a list full of dead links
+	// can't turn one run into a long march of failing enrichment calls.
+	maxListPoolSize = 30
+)
+
 // processListMode processes LIST mode automations.
 // It fetches unconsumed items from the linked ML link list, processes each item
 // (generates affiliate links, builds messages), and sends them to configured groups.
@@ -124,8 +136,24 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		sendAsImage = *automation.ListSendAsImage
 	}
 
-	// Get next unconsumed items from the list
-	items, err := s.mlLinkListItemRepo.GetNextUnconsumed(ctx, listID, itemsPerRun)
+	// Candidate pool, deliberately larger than what we intend to deliver.
+	//
+	// itemsPerRun is a DELIVERY target, not a fetch size. Fetching exactly
+	// itemsPerRun meant a single dead link wasted the whole cycle: the item was
+	// dropped (no price/image → we refuse to send a broken offer) and the run
+	// ended with zero sends until the next interval. With a list where a good
+	// share of the Shopee links are no longer in the affiliate catalogue, that
+	// turned a 10-minute automation into roughly one delivery per hour.
+	//
+	// Pulling spare candidates lets the run walk past dead links and still
+	// deliver. The extra ones cost nothing when the first items are healthy —
+	// the loop stops as soon as it has delivered itemsPerRun items.
+	poolSize := itemsPerRun + maxDeadLinksPerRun
+	if poolSize > maxListPoolSize {
+		poolSize = maxListPoolSize
+	}
+
+	items, err := s.mlLinkListItemRepo.GetNextUnconsumed(ctx, listID, poolSize)
 	if err != nil {
 		s.logger.Error("Failed to get unconsumed items",
 			zap.String("listID", listID),
@@ -150,7 +178,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			s.logger.Info("List exhausted — auto-reset triggered (repeat_when_finished=true)",
 				zap.String("listID", listID),
 				zap.Int64("resetCount", resetCount))
-			items, err = s.mlLinkListItemRepo.GetNextUnconsumed(ctx, listID, itemsPerRun)
+			items, err = s.mlLinkListItemRepo.GetNextUnconsumed(ctx, listID, poolSize)
 			if err != nil {
 				s.logger.Error("Failed to refetch unconsumed items after auto-reset",
 					zap.String("listID", listID),
@@ -194,9 +222,13 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 
 	result := &models.RunAutomationResult{
 		Success:      true,
-		OffersFound:  len(items),
+		OffersFound:  0,
 		MessagesSent: 0,
 	}
+
+	// Items successfully turned into a dispatch. Drives the itemsPerRun stop
+	// condition; dead links walked past do not count.
+	delivered := 0
 
 	// Pre-fetch CTA entities. Política:
 	//   - automation.CTAIDs preenchido → override explícito, busca só esses
@@ -375,12 +407,20 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				zap.Bool("transient", transient),
 				zap.Error(shopeeEnrichErr))
 			s.logDispatch(ctx, automation, "system", originURL, "skipped", reason)
-			if !transient {
-				if err := s.mlLinkListItemRepo.MarkAsConsumed(ctx, []string{item.ID}, automation.ID, nil); err != nil {
-					s.logger.Error("Failed to mark skipped item as consumed",
-						zap.String("itemID", item.ID),
-						zap.Error(err))
-				}
+			if transient {
+				// Shopee is saturated or unreachable right now. Stop the run
+				// instead of walking to the next candidate: every one of them
+				// would hit the same rate limit, and each extra call pushes the
+				// window further out. The item stays unconsumed, so the next
+				// cycle picks it up once Shopee recovers.
+				break
+			}
+			// Permanently dead link — burn it and try the next candidate in THIS
+			// run, so one bad item doesn't cost the whole cycle.
+			if err := s.mlLinkListItemRepo.MarkAsConsumed(ctx, []string{item.ID}, automation.ID, nil); err != nil {
+				s.logger.Error("Failed to mark skipped item as consumed",
+					zap.String("itemID", item.ID),
+					zap.Error(err))
 			}
 			continue
 		}
@@ -619,8 +659,21 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 					zap.String("itemID", item.ID),
 					zap.Error(err))
 			}
+
+			// itemsPerRun counts items actually DELIVERED, not items looked at.
+			// The pool above is only a budget for walking past dead links, so
+			// stop as soon as the target is met — a healthy list still sends
+			// exactly itemsPerRun items per cycle, as configured.
+			delivered++
+			if delivered >= itemsPerRun {
+				break
+			}
 		}
 	}
+
+	// Report what actually became an offer, not how many candidates we pulled:
+	// the pool is an implementation detail and would otherwise inflate this.
+	result.OffersFound = delivered
 
 	if result.MessagesSent > 0 {
 		result.Message = fmt.Sprintf("Automacao executada: %d mensagem(s) enfileirada(s)", result.MessagesSent)
