@@ -2,6 +2,8 @@ package automation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math/rand/v2"
 	"strings"
@@ -577,6 +579,26 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		if automation.DelaySeconds != nil && *automation.DelaySeconds > 0 {
 			baseDelay = *automation.DelaySeconds
 		}
+		// Dedup por (grupo, produto): lista com o MESMO produto importado em
+		// itens repetidos mandava a mesma promoção 2-3x no mesmo grupo em
+		// ciclos consecutivos (com o pool, minutos de distância). Chave por
+		// produto Shopee quando conhecido (pega o mesmo produto até via
+		// shortlinks diferentes), senão hash da URL de origem. Janela:
+		// dedupe_hours EXPLÍCITO da automação quando setado; default 2h —
+		// curto de propósito para não brigar com repeat_when_finished
+		// (recycles completos levam horas).
+		listDedupHours := 2
+		if automation.DedupeHours != nil && *automation.DedupeHours > 0 {
+			listDedupHours = *automation.DedupeHours
+		}
+		itemCanonical := ""
+		if isShopee && shopeeProduct != nil && shopeeProduct.ItemID > 0 && shopeeProduct.ShopID > 0 {
+			itemCanonical = fmt.Sprintf("shopee:%d:%d", shopeeProduct.ShopID, shopeeProduct.ItemID)
+		} else {
+			sum := sha256.Sum256([]byte(strings.TrimSpace(originURL)))
+			itemCanonical = "listurl:" + hex.EncodeToString(sum[:8])
+		}
+		dedupSkips := 0
 		for _, groupID := range validGroups {
 			// Apply URL safety check
 			if s.urlSafetyService != nil {
@@ -616,6 +638,13 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			// down => not suppressed).
 			if rt.Reputation.IsSuppressed(ctx, senderSession, groupID) {
 				s.logDispatch(ctx, automation, groupID, originURL, "skipped", "reputacao (grupo problematico)")
+				continue
+			}
+
+			// Produto repetido: já foi enviado a ESTE grupo dentro da janela.
+			if s.isDuplicate(ctx, automation.UserID, groupID, itemCanonical, listDedupHours) {
+				dedupSkips++
+				s.logDispatch(ctx, automation, groupID, originURL, "skipped", "dedupe (produto repetido na lista)")
 				continue
 			}
 
@@ -678,6 +707,10 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			if s.backpressure != nil {
 				_ = s.backpressure.RecordEnqueue(ctx, automation.UserID)
 			}
+			// Reivindica o slot de dedup NO ENFILEIRAMENTO (não na entrega): o
+			// próximo ciclo roda em minutos e precisa ver o produto como já
+			// disparado para este grupo, mesmo com a fila ainda drenando.
+			s.markAsSent(ctx, automation.UserID, groupID, itemCanonical, listDedupHours)
 			groupIDsSent = append(groupIDsSent, groupID)
 			perChipSent[senderSession]++
 			// Advance this chip's jittered delay accumulator: base (delay_seconds)
@@ -688,6 +721,23 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 					pacingCfg.Step(baseDelay) +
 					rt.Pacing.MicroBreak(ctx, senderSession, pacingCfg))
 			result.MessagesSent++
+		}
+
+		// Item repetido de ponta a ponta: TODOS os grupos dedupam (o mesmo
+		// produto foi importado mais de uma vez na lista). Consome o item —
+		// deixá-lo pendente travaria a fila neste item a cada ciclo — e segue
+		// para o próximo candidato do pool AINDA neste ciclo.
+		if len(groupIDsSent) == 0 && dedupSkips > 0 {
+			s.logger.Info("List item fully deduped (duplicate product in list) — consuming",
+				zap.String("automationID", automation.ID),
+				zap.String("originURL", originURL),
+				zap.Int("dedupSkips", dedupSkips))
+			if err := s.mlLinkListItemRepo.MarkAsConsumed(ctx, []string{item.ID}, automation.ID, nil); err != nil {
+				s.logger.Error("Failed to consume fully-deduped item",
+					zap.String("itemID", item.ID),
+					zap.Error(err))
+			}
+			continue
 		}
 
 		// Mark item as consumed (only if we sent to at least one group)
