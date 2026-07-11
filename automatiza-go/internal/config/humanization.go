@@ -89,6 +89,11 @@ func loadHumanization() *Humanization {
 	pb.MicroBreakEveryMax = getEnvInt("PACING_MICROBREAK_EVERY_MAX", 15)
 	pb.MicroBreakCooldownMinMs = getEnvInt("PACING_MICROBREAK_COOLDOWN_MIN_MS", 30000)
 	pb.MicroBreakCooldownMaxMs = getEnvInt("PACING_MICROBREAK_COOLDOWN_MAX_MS", 90000)
+	// Teto do espalhamento de UM fan-out de espelho (monitoring/offer_generate):
+	// requisito de produto — a oferta espelhada precisa chegar em todos os
+	// grupos em menos de 1 minuto. 50s de orçamento de sleep deixa folga para
+	// o tempo real de envio (digitação + HTTP). 0 desliga o teto.
+	pb.FanoutBudget = envMs("PACING_FANOUT_BUDGET_MS", 50000)
 	h.pacingBase = pb
 
 	h.varyBase = text.VaryOptions{

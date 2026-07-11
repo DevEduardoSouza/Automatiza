@@ -32,6 +32,12 @@ type Config struct {
 	MicroBreakEveryMax      int
 	MicroBreakCooldownMinMs int
 	MicroBreakCooldownMaxMs int
+
+	// FanoutBudget caps the TOTAL sleep spread of one monitor-flow fan-out
+	// (monitoring/offer_generate): the mirror must reach every destination
+	// group well under a minute, so per-gap sleeps shrink as the deadline
+	// approaches (see BudgetedGap). Zero disables the cap.
+	FanoutBudget time.Duration
 }
 
 // DefaultConfig returns the built-in defaults (used standalone/in tests).
@@ -96,4 +102,37 @@ func (c Config) Shuffle(xs []string) {
 		return
 	}
 	mathrand.Shuffle(len(xs), func(i, j int) { xs[i], xs[j] = xs[j], xs[i] })
+}
+
+// FanoutDeadline returns the wall-clock instant by which a monitor-flow
+// fan-out must have finished sleeping. Zero budget → zero time (no cap).
+func (c Config) FanoutDeadline() time.Time {
+	if c.FanoutBudget <= 0 {
+		return time.Time{}
+	}
+	return time.Now().Add(c.FanoutBudget)
+}
+
+// BudgetedGap clamps one inter-message gap so the `remaining` sends of this
+// fan-out (current included) still fit before the deadline. Send time itself
+// (typing simulation, HTTP) eats budget naturally: the next call sees less
+// time left and shrinks further, down to zero. A user-configured
+// delay_seconds bigger than the budget is deliberately overridden here —
+// the product guarantee "mirror lands in under a minute" wins for these
+// flows; drip-feed pacing still applies to bulk dispatch types.
+func BudgetedGap(gap time.Duration, deadline time.Time, remaining int) time.Duration {
+	if deadline.IsZero() {
+		return gap
+	}
+	if remaining < 1 {
+		remaining = 1
+	}
+	maxGap := time.Until(deadline) / time.Duration(remaining)
+	if maxGap < 0 {
+		maxGap = 0
+	}
+	if gap > maxGap {
+		return maxGap
+	}
+	return gap
 }

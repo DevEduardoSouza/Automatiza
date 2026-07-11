@@ -16,6 +16,7 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/ctapicker"
 	"automatiza-go/internal/lib/humanize"
+	"automatiza-go/internal/lib/pacing"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/videostream"
 	"automatiza-go/internal/lib/wamentions"
@@ -767,6 +768,10 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 	if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
 		baseDelay = *auto.DelaySeconds
 	}
+	// Espelho tem prazo: a oferta precisa chegar em TODOS os grupos em <1min.
+	// Deadline compartilhado entre os goroutines; cada chip aplica o orçamento
+	// à sua fatia (fan-out paralelo → a fatia por chip é pequena).
+	fanoutDeadline := resolved.Pacing.FanoutDeadline()
 	var wg sync.WaitGroup
 	for dispatchSession, groupIDs := range chipGroups {
 		wg.Add(1)
@@ -774,7 +779,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			defer wg.Done()
 			// Shuffle this chip's destination order (anti-ban).
 			resolved.Pacing.Shuffle(groupIDs)
-			for _, groupID := range groupIDs {
+			for gi, groupID := range groupIDs {
 				// Anti-ban: skip groups with a bad reputation (fail-open).
 				if rt.Reputation.IsSuppressed(ctx, dispatchSession, groupID) {
 					s.logDispatch(ctx, auto, groupID, links[0], "skipped", "reputacao (grupo problematico)", canonicalKey, store)
@@ -794,8 +799,11 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				}
 
 				// Anti-ban pacing: jittered per-chip delay (honors delay_seconds)
-				// plus an occasional micro-break, keyed on the sending chip.
-				time.Sleep(resolved.Pacing.Step(baseDelay) + rt.Pacing.MicroBreak(ctx, dispatchSession, resolved.Pacing))
+				// plus an occasional micro-break, keyed on the sending chip —
+				// clamped so this chip's slice still fits the fan-out budget.
+				time.Sleep(pacing.BudgetedGap(
+					resolved.Pacing.Step(baseDelay)+rt.Pacing.MicroBreak(ctx, dispatchSession, resolved.Pacing),
+					fanoutDeadline, len(groupIDs)-gi))
 
 				// Anti-ban: per-recipient content variation (URLs never mutated).
 				// markOwnOutgoing MUST key on the VARIED body — that's the exact text
@@ -1345,6 +1353,9 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 	if auto.DelaySeconds != nil && *auto.DelaySeconds > 0 {
 		baseDelay = *auto.DelaySeconds
 	}
+	// Mesmo prazo do fan-out de oferta: relay de espelho em <1min em todos
+	// os grupos, com o orçamento aplicado à fatia de cada chip.
+	fanoutDeadline := resolved.Pacing.FanoutDeadline()
 	var wg sync.WaitGroup
 	for dispatchSession, groupIDs := range chipGroups {
 		wg.Add(1)
@@ -1352,7 +1363,7 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 			defer wg.Done()
 			// Shuffle this chip's destination order (anti-ban).
 			resolved.Pacing.Shuffle(groupIDs)
-			for _, groupID := range groupIDs {
+			for gi, groupID := range groupIDs {
 				// Anti-ban: skip groups with a bad reputation (fail-open).
 				if rt.Reputation.IsSuppressed(ctx, dispatchSession, groupID) {
 					s.logDispatch(ctx, auto, groupID, "", "skipped", "reputacao (grupo problematico)", canonicalKey, "")
@@ -1368,8 +1379,11 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 				}
 
 				// Anti-ban pacing: jittered per-chip delay (honors delay_seconds)
-				// plus an occasional micro-break, keyed on the sending chip.
-				time.Sleep(resolved.Pacing.Step(baseDelay) + rt.Pacing.MicroBreak(ctx, dispatchSession, resolved.Pacing))
+				// plus an occasional micro-break, keyed on the sending chip —
+				// clamped so this chip's slice still fits the fan-out budget.
+				time.Sleep(pacing.BudgetedGap(
+					resolved.Pacing.Step(baseDelay)+rt.Pacing.MicroBreak(ctx, dispatchSession, resolved.Pacing),
+					fanoutDeadline, len(groupIDs)-gi))
 
 				// Marca o body+mídia como nosso próprio outgoing pra que o
 				// webhook FromMe que retorna seja distinguido de um chip user

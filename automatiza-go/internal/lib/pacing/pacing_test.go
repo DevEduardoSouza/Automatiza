@@ -100,3 +100,59 @@ func TestReserveDailyDisabledCap(t *testing.T) {
 		t.Fatalf("disabled daily cap: ok=%v used=%d, want true/0", ok, used)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// BudgetedGap — teto de espalhamento do fan-out de espelho
+// ---------------------------------------------------------------------------
+
+func TestBudgetedGap(t *testing.T) {
+	t.Run("sem deadline (budget desligado) devolve o gap intacto", func(t *testing.T) {
+		got := BudgetedGap(37*time.Second, time.Time{}, 5)
+		if got != 37*time.Second {
+			t.Fatalf("expected 37s, got %v", got)
+		}
+	})
+
+	t.Run("gap maior que a fatia do orçamento é clampado", func(t *testing.T) {
+		deadline := time.Now().Add(10 * time.Second)
+		got := BudgetedGap(600*time.Second, deadline, 5)
+		if got > 2100*time.Millisecond {
+			t.Fatalf("expected <=~2s per gap (10s/5), got %v", got)
+		}
+	})
+
+	t.Run("gap que cabe passa sem alteração", func(t *testing.T) {
+		deadline := time.Now().Add(60 * time.Second)
+		got := BudgetedGap(1*time.Second, deadline, 5)
+		if got != 1*time.Second {
+			t.Fatalf("expected 1s untouched, got %v", got)
+		}
+	})
+
+	t.Run("deadline estourado zera o gap (nunca negativo)", func(t *testing.T) {
+		deadline := time.Now().Add(-5 * time.Second)
+		got := BudgetedGap(10*time.Second, deadline, 3)
+		if got != 0 {
+			t.Fatalf("expected 0 after deadline passed, got %v", got)
+		}
+	})
+
+	t.Run("remaining 0 não divide por zero", func(t *testing.T) {
+		deadline := time.Now().Add(10 * time.Second)
+		got := BudgetedGap(3*time.Second, deadline, 0)
+		if got != 3*time.Second {
+			t.Fatalf("expected 3s (fits 10s budget), got %v", got)
+		}
+	})
+}
+
+func TestFanoutDeadline(t *testing.T) {
+	if !(Config{}).FanoutDeadline().IsZero() {
+		t.Error("zero budget must yield zero deadline (cap disabled)")
+	}
+	c := Config{FanoutBudget: 50 * time.Second}
+	d := c.FanoutDeadline()
+	if d.IsZero() || time.Until(d) > 51*time.Second || time.Until(d) < 49*time.Second {
+		t.Errorf("expected deadline ~50s out, got %v", time.Until(d))
+	}
+}

@@ -17,6 +17,7 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/deadgroup"
 	"automatiza-go/internal/lib/humanize"
+	"automatiza-go/internal/lib/pacing"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/wamentions"
 	"automatiza-go/internal/models"
@@ -638,7 +639,11 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	if automation.DelaySeconds != nil && *automation.DelaySeconds > 0 {
 		baseDelay = *automation.DelaySeconds
 	}
-	for _, groupID := range destinationGroups {
+	// Espelho tem prazo: a oferta precisa chegar em TODOS os grupos em <1min
+	// (uma promoção espelhada perde valor em minutos). O gap configurado vale
+	// enquanto couber no orçamento; depois encolhe até zero.
+	fanoutDeadline := resolved.Pacing.FanoutDeadline()
+	for gi, groupID := range destinationGroups {
 		// Skip if same group
 		if groupID == msg.RemoteJID {
 			continue
@@ -692,8 +697,11 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 
 		// Anti-ban pacing: jittered inter-message delay (honors delay_seconds) plus
-		// an occasional micro-break, keyed on the sending chip.
-		time.Sleep(resolved.Pacing.Step(baseDelay) + rt.Pacing.MicroBreak(ctx, senderSession, resolved.Pacing))
+		// an occasional micro-break, keyed on the sending chip — clamped so the
+		// whole fan-out still lands inside the budget.
+		time.Sleep(pacing.BudgetedGap(
+			resolved.Pacing.Step(baseDelay)+rt.Pacing.MicroBreak(ctx, senderSession, resolved.Pacing),
+			fanoutDeadline, len(destinationGroups)-gi))
 
 		// Send message via WhatsAppProvider using the automation owner's session
 		// Priority 1: Link custom preview (source had WhatsApp link preview)
