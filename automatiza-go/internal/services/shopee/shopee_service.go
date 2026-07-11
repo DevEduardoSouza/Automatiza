@@ -742,10 +742,21 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 	var cached models.ShopeeAffiliateLink
 	if s.cache != nil {
 		if err := s.cache.GetJSON(ctx, cacheKey, &cached); err == nil {
-			s.logger.Info("AffiliateLink cache hit",
-				zap.Int64("itemID", itemID),
-				zap.Int64("shopID", shopID))
-			return &cached, nil
+			// NUNCA servir do cache um link com assinatura de tracking crua
+			// (/opaanlp/ + gads_t_sig): é a URL gigante ilegível que já vazou
+			// para grupos por uma entrada envenenada. Trata como miss e
+			// reconverte — o resultado novo (encurtado) sobrescreve a chave.
+			if strings.Contains(cached.AffiliateLink, "gads_t_sig=") ||
+				strings.Contains(cached.AffiliateLink, "/opaanlp/") {
+				s.logger.Warn("Poisoned affiliate-link cache entry ignored (raw tracking URL)",
+					zap.Int64("itemID", itemID),
+					zap.Int64("shopID", shopID))
+			} else {
+				s.logger.Info("AffiliateLink cache hit",
+					zap.Int64("itemID", itemID),
+					zap.Int64("shopID", shopID))
+				return &cached, nil
+			}
 		}
 	}
 
