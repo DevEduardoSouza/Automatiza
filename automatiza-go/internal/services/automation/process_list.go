@@ -28,6 +28,20 @@ const (
 	maxListPoolSize = 30
 )
 
+// firstURL cuts a raw list-item URL down to its first embedded URL. Returns
+// the input unchanged when it holds a single URL. Matches only full scheme
+// markers ("https://", "http://") past position 0, so a bare "http" inside a
+// query string doesn't trigger a cut.
+func firstURL(raw string) string {
+	cut := len(raw)
+	for _, marker := range []string{"https://", "http://"} {
+		if i := strings.Index(raw[1:], marker); i >= 0 && i+1 < cut {
+			cut = i + 1
+		}
+	}
+	return raw[:cut]
+}
+
 // processListMode processes LIST mode automations.
 // It fetches unconsumed items from the linked ML link list, processes each item
 // (generates affiliate links, builds messages), and sends them to configured groups.
@@ -268,6 +282,19 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			s.logger.Warn("Empty origin URL in list item, skipping",
 				zap.String("itemID", item.ID))
 			continue
+		}
+		// Users paste several share links into one item often enough that prod
+		// carries entries like "https://s.shopee.com.br/Ahttps://s.shopee...".
+		// Expanding that mangled string fails enrichment ("invalid shopee URL
+		// after expansion") and the item gets burned as a dead link. One item
+		// yields one offer, so anything past the first URL is unusable from
+		// here anyway — keep the first URL and deliver it instead of losing
+		// the item.
+		if trimmed := firstURL(originURL); trimmed != originURL {
+			s.logger.Warn("List item holds multiple concatenated URLs — using the first",
+				zap.String("itemID", item.ID),
+				zap.String("kept", trimmed))
+			originURL = trimmed
 		}
 
 		// Detect platform. Shopee is the only store the backend converts to

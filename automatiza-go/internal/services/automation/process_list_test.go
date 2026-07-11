@@ -71,7 +71,7 @@ func TestProcessListMode_Success(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 1).Return(unconsumedItems, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 10).Return(unconsumedItems, nil)
 	deps.settingsRepo.On("GetActiveDispatchTextByID", ctx, mock.AnythingOfType("string"), "user-1").Return(nil, nil).Maybe()
 	deps.mlService.On("GetProductPreview", ctx, "https://produto.mercadolivre.com.br/MLB-123456", "user-1").Return(productPreview, nil)
 	deps.mlService.On("CreateAffiliateLink", ctx, "https://produto.mercadolivre.com.br/MLB-123456", "user-1").Return(affiliateLink, nil)
@@ -118,7 +118,7 @@ func TestProcessListMode_NoItems(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 1).Return([]*models.MlLinkListItem{}, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 10).Return([]*models.MlLinkListItem{}, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
 	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
 
@@ -409,7 +409,7 @@ func TestProcessListMode_ItemsMarkedConsumed(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 1).Return(unconsumedItems, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 10).Return(unconsumedItems, nil)
 	deps.mlService.On("GetProductPreview", ctx, "https://produto.mercadolivre.com.br/MLB-111111", "user-1").Return(productPreview, nil)
 	deps.mlService.On("CreateAffiliateLink", ctx, "https://produto.mercadolivre.com.br/MLB-111111", "user-1").Return(affiliateLink, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
@@ -466,7 +466,7 @@ func TestProcessListMode_MultipleItemsPerRun(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 3).Return(unconsumedItems, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 12).Return(unconsumedItems, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
 
 	// Mock ML service calls for each item
@@ -532,7 +532,7 @@ func TestProcessListMode_InvalidMLURL(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 1).Return(unconsumedItems, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 10).Return(unconsumedItems, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
 	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
 
@@ -585,7 +585,7 @@ func TestProcessListMode_MLServiceError(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 1).Return(unconsumedItems, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 10).Return(unconsumedItems, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
 
 	// ML service returns error for preview
@@ -782,7 +782,7 @@ func setupShopeeDegradedListTest(t *testing.T) (automation.Service, *testService
 	deps.historyRepo.On("Create", mock.Anything, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", mock.Anything, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").Return(connected, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).Return(items, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).Return(items, nil)
 	deps.settingsRepo.On("GetActiveDispatchTextByID", mock.Anything, mock.AnythingOfType("string"), "user-1").Return(nil, nil).Maybe()
 	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()

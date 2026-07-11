@@ -1382,7 +1382,7 @@ func TestProcessListMode_EmptyOriginURL(t *testing.T) {
 
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "", ListID: listID},     // Empty URL → skipped
 			{ID: "item-2", OriginURL: "   ", ListID: listID},  // Whitespace → skipped
@@ -1409,7 +1409,7 @@ func TestProcessListMode_InvalidMLURL(t *testing.T) {
 
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://amazon.com/product", ListID: listID}, // Not ML URL
 		}, nil)
@@ -1497,7 +1497,7 @@ func TestProcessListMode_NoUnconsumedItems(t *testing.T) {
 
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{}, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
@@ -1526,7 +1526,7 @@ func TestProcessListMode_WithDispatchTemplate(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 	deps.settingsRepo.On("GetActiveDispatchTextByID", mock.Anything, "dt-1", "user-1").
 		Return(&models.DispatchText{ID: "dt-1", Body: "{{titulo}} - {{link}}"}, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123", ListID: listID},
 		}, nil)
@@ -1556,15 +1556,15 @@ func TestProcessListMode_CustomItemsPerRun(t *testing.T) {
 
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	// Expect GetNextUnconsumed to be called with limit=5
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 5).
+	// Expect GetNextUnconsumed to be called with the candidate pool (5+maxDeadLinksPerRun=14)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 14).
 		Return([]*models.MlLinkListItem{}, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
 	assert.Equal(t, 0, result.OffersFound)
-	deps.mlLinkListItemRepo.AssertCalled(t, "GetNextUnconsumed", mock.Anything, listID, 5)
+	deps.mlLinkListItemRepo.AssertCalled(t, "GetNextUnconsumed", mock.Anything, listID, 14)
 }
 
 func TestProcessListMode_ItemsPerRunCapped(t *testing.T) {
@@ -1584,14 +1584,14 @@ func TestProcessListMode_ItemsPerRunCapped(t *testing.T) {
 
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	// Expect GetNextUnconsumed to be called with limit=20 (capped)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 20).
+	// Expect GetNextUnconsumed with pool 29: itemsPerRun capped at 20, +maxDeadLinksPerRun
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 29).
 		Return([]*models.MlLinkListItem{}, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
-	deps.mlLinkListItemRepo.AssertCalled(t, "GetNextUnconsumed", mock.Anything, listID, 20)
+	deps.mlLinkListItemRepo.AssertCalled(t, "GetNextUnconsumed", mock.Anything, listID, 29)
 	_ = result
 }
 
@@ -1613,7 +1613,7 @@ func TestProcessListMode_ImageFromItemWhenNoPreview(t *testing.T) {
 
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
 			{
 				ID:              "item-1",
@@ -1691,7 +1691,7 @@ func TestProcessListMode_GetItemsError(t *testing.T) {
 
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return(nil, fmt.Errorf("db error"))
 
 	_, err := svc.processListMode(context.Background(), automation)
@@ -1873,7 +1873,7 @@ func TestProcessListMode_MarkConsumedError(t *testing.T) {
 
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123", ListID: listID},
 		}, nil)
@@ -1904,7 +1904,7 @@ func TestProcessListMode_IncludeImageFalse(t *testing.T) {
 
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123", ListID: listID, ProductImageURL: &imageURL},
 		}, nil)
@@ -1931,7 +1931,7 @@ func TestProcessListMode_MercadolibreURL(t *testing.T) {
 
 	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 1).
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://producto.mercadolibre.com.ar/MLA-456", ListID: listID},
 		}, nil)
@@ -2760,7 +2760,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		items := []*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
 		}
-		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 
 		preview := &models.MLProductPreview{
 			Title: "ML Product 1",
@@ -2808,7 +2808,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		items := []*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1", ProductTitle: &title, ProductPrice: &price, ProductImageURL: &imgURL},
 		}
-		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 
 		mlSvc.On("GetProductPreview", mock.Anything, mock.Anything, "user-1").Return(nil, errors.New("preview error"))
 		mlSvc.On("CreateAffiliateLink", mock.Anything, mock.Anything, "user-1").Return(nil, errors.New("link error"))
@@ -2843,7 +2843,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		items := []*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://www.shopee.com/product-1"}, // not ML URL
 		}
-		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
 		result, err := svc.processListMode(context.Background(), automation)
@@ -2872,7 +2872,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		items := []*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "   "}, // whitespace only
 		}
-		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 
 		result, err := svc.processListMode(context.Background(), automation)
 		require.NoError(t, err)
@@ -2902,7 +2902,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		items := []*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
 		}
-		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 		deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
@@ -2995,7 +2995,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 
 		deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 			Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).
+		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).
 			Return(nil, errors.New("db error"))
 
 		_, err := svc.processListMode(context.Background(), automation)
@@ -3028,7 +3028,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		items := []*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
 		}
-		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 		deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
@@ -3323,7 +3323,7 @@ func TestProcessListMode_URLSafetyBlock(t *testing.T) {
 	items := []*models.MlLinkListItem{
 		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
 	}
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
@@ -3367,7 +3367,7 @@ func TestProcessListMode_BackpressureBlock(t *testing.T) {
 	items := []*models.MlLinkListItem{
 		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
 	}
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
@@ -3404,7 +3404,7 @@ func TestProcessListMode_WithQueueClient(t *testing.T) {
 	items := []*models.MlLinkListItem{
 		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
 	}
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
@@ -3446,7 +3446,7 @@ func TestProcessListMode_SendAsImageTrue(t *testing.T) {
 	items := []*models.MlLinkListItem{
 		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-9999"},
 	}
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
@@ -3486,7 +3486,7 @@ func TestProcessListMode_SendAsImageFalse(t *testing.T) {
 	items := []*models.MlLinkListItem{
 		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-8888"},
 	}
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
@@ -3527,7 +3527,7 @@ func TestProcessListMode_WithBackpressureRecord(t *testing.T) {
 	items := []*models.MlLinkListItem{
 		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
 	}
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
@@ -3922,7 +3922,7 @@ func TestProcessListMode_EnqueueError(t *testing.T) {
 	items := []*models.MlLinkListItem{
 		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
 	}
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
@@ -4727,7 +4727,7 @@ func TestProcessListMode_URLSafetyEvaluateError(t *testing.T) {
 	items := []*models.MlLinkListItem{
 		{ID: "item-1", OriginURL: "https://blocked.example.com/product-1"},
 	}
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.mlLinkListItemRepo.On("MarkConsumed", mock.Anything, "item-1").Return(nil).Maybe()
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
@@ -4945,7 +4945,7 @@ func TestProcessListMode_URLSafetyEvaluateError_Mock(t *testing.T) {
 	items := []*models.MlLinkListItem{
 		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
 	}
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 1).Return(items, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
