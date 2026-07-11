@@ -516,6 +516,11 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		if affLink != nil && affLink.ImageURL != "" {
 			imageURL = affLink.ImageURL
 		}
+		// Conversão sem imagem (curto-circuito de link próprio): usa a imagem
+		// do produto já enriquecido — oferta nunca sai sem imagem tendo dado.
+		if imageURL == "" && product.Image != "" {
+			imageURL = product.Image
+		}
 
 		// Apply discount tag to price
 		offerPrice := product.Price

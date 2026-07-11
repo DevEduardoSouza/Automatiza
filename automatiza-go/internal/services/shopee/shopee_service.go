@@ -756,14 +756,16 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 	}
 	appID, secret := getShopeeCredentials(creds)
 
-	// Link que JÁ carrega o tracking do próprio afiliado (utm_source=an_<app_id>):
-	// o cliente importou um shortlink gerado pela própria conta — reconverter
-	// gasta uma chamada de API redundante que disputa a cota (10030) com o
-	// resto do fluxo dele. A comissão já é dele; repassa o link como veio,
-	// custo zero de quota. (Link de OUTRO afiliado não casa com o app_id e
-	// segue o fluxo normal de conversão, que troca o tracking pelo do dono.)
-	if trackedSource := "utm_source=an_" + appID; appID != "" &&
-		(strings.Contains(productURL, trackedSource) || strings.Contains(expandedURL, trackedSource)) {
+	// Link CURTO que JÁ carrega o tracking do próprio afiliado (a expansão
+	// mostra utm_source=an_<app_id>): o cliente importou um shortlink gerado
+	// pela própria conta — reconverter gasta a chamada de generateShortLink à
+	// toa, disputando a cota (10030) com o resto do fluxo dele. A comissão já
+	// é dele; repassa o shortlink como veio. Só vale para SHORTLINK: link
+	// longo próprio passa pelo fluxo normal para sair ENCURTADO (a URL de
+	// tracking gigante no grupo é ilegível). Link de OUTRO afiliado não casa
+	// com o app_id e segue a conversão, que troca o tracking pelo do dono.
+	if trackedSource := "utm_source=an_" + appID; appID != "" && isShopeeShortURL(productURL) &&
+		strings.Contains(expandedURL, trackedSource) {
 		own := &models.ShopeeAffiliateLink{
 			OriginalURL:   productURL,
 			AffiliateLink: productURL,
@@ -771,14 +773,22 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 			ItemID:        itemID,
 			ShopID:        shopID,
 		}
+		// Imagem: cache global primeiro (custo zero); sem cache, UMA chamada
+		// de GetProduct — que popula o cache global para todo mundo. Oferta e
+		// card nunca devem sair sem imagem (o preview do GOWS não busca
+		// og:image sozinho; imagem vazia = card pelado no grupo).
 		if s.cache != nil {
-			// Imagem de graça: se o produto já está no cache global (enriquecido
-			// por qualquer conta), aproveita — o envio sai com imagem sem gastar
-			// nenhuma chamada de API.
 			var cachedOffer models.ShopeeOffer
 			if err := s.cache.GetJSON(ctx, fmt.Sprintf("shopee_product:%d:%d", shopID, itemID), &cachedOffer); err == nil && cachedOffer.Image != "" {
 				own.ImageURL = cachedOffer.Image
 			}
+		}
+		if own.ImageURL == "" {
+			if offer, perr := s.GetProduct(ctx, itemID, shopID, userID); perr == nil && offer != nil && offer.Image != "" {
+				own.ImageURL = offer.Image
+			}
+		}
+		if s.cache != nil {
 			_ = s.cache.SetJSON(ctx, cacheKey, *own, time.Hour)
 		}
 		s.logger.Info("Own-affiliate link detected, relaying as-is (no API call)",

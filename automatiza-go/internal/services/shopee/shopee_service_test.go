@@ -1965,10 +1965,11 @@ func TestSearchOffers_RoutingByCategory(t *testing.T) {
 // Tests: GenerateAffiliateLink — curto-circuito de link do próprio afiliado
 // ---------------------------------------------------------------------------
 
-// Um link que já carrega utm_source=an_<app_id do usuário> foi gerado pela
-// própria conta: reconverter gasta cota (10030) à toa. O serviço deve
-// devolvê-lo como veio, SEM chamar a API. Link de outro afiliado segue o
-// fluxo normal (e aqui, sem servidor de API, falha — provando que tentou).
+// O curto-circuito de link próprio vale APENAS para SHORTLINK cuja expansão
+// mostra utm_source=an_<app_id do usuário>. Um link LONGO próprio precisa
+// passar pela conversão normal para sair ENCURTADO — devolver a URL de
+// tracking gigante deixou grupos ilegíveis em produção. Link de outro
+// afiliado segue o fluxo normal sempre (troca o tracking pelo do dono).
 func TestGenerateAffiliateLink_OwnLinkShortCircuit(t *testing.T) {
 	repo := &mockAffiliateRepo{
 		GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
@@ -1988,24 +1989,19 @@ func TestGenerateAffiliateLink_OwnLinkShortCircuit(t *testing.T) {
 
 	svc := newTestService(t, server.URL, repo, &mockSettingsRepo{})
 
-	t.Run("link próprio → repassa como veio, zero API", func(t *testing.T) {
-		ownURL := "https://shopee.com.br/opaanlp/457864097/41713766789?utm_source=an_18330220029&utm_medium=affiliates"
-		got, err := svc.GenerateAffiliateLink(context.Background(), ownURL, "user-1")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+	t.Run("link LONGO próprio → conversão normal (sai encurtado, não a URL gigante)", func(t *testing.T) {
+		ownLongURL := "https://shopee.com.br/opaanlp/457864097/41713766789?utm_source=an_18330220029&utm_medium=affiliates"
+		_, err := svc.GenerateAffiliateLink(context.Background(), ownLongURL, "user-1")
+		if err == nil {
+			t.Fatal("expected conversion attempt to fail against error-server, got nil")
 		}
-		if got.AffiliateLink != ownURL {
-			t.Errorf("expected own link relayed as-is, got %s", got.AffiliateLink)
-		}
-		if got.ItemID != 41713766789 || got.ShopID != 457864097 {
-			t.Errorf("expected parsed ids, got item=%d shop=%d", got.ItemID, got.ShopID)
-		}
-		if apiCalled {
-			t.Error("API must NOT be called for a link already tracked by the user's own app")
+		if !apiCalled {
+			t.Error("long own-tracked link must go through normal conversion to come out SHORT — relaying the giant tracking URL is unreadable in groups")
 		}
 	})
 
 	t.Run("link de OUTRO afiliado → segue conversão normal", func(t *testing.T) {
+		apiCalled = false
 		otherURL := "https://shopee.com.br/opaanlp/457864097/41713766789?utm_source=an_99999999999"
 		_, err := svc.GenerateAffiliateLink(context.Background(), otherURL, "user-1")
 		if err == nil {
