@@ -24,6 +24,7 @@ type WhatsAppHandler struct {
 	waProvider    whatsapp.WhatsAppProvider
 	instanceRepo  repository.InstanceRepository
 	syncJobRepo   repository.SyncJobRepository
+	profileRepo   repository.ProfileRepository
 	queueClient   *workers.QueueClient
 	webhookSecret string
 }
@@ -33,6 +34,7 @@ func NewWhatsAppHandler(
 	waProvider whatsapp.WhatsAppProvider,
 	instanceRepo repository.InstanceRepository,
 	syncJobRepo repository.SyncJobRepository,
+	profileRepo repository.ProfileRepository,
 	queueClient *workers.QueueClient,
 	webhookSecret string,
 ) *WhatsAppHandler {
@@ -40,9 +42,25 @@ func NewWhatsAppHandler(
 		waProvider:    waProvider,
 		instanceRepo:  instanceRepo,
 		syncJobRepo:   syncJobRepo,
+		profileRepo:   profileRepo,
 		queueClient:   queueClient,
 		webhookSecret: webhookSecret,
 	}
+}
+
+// maxInstancesFor resolves the caller's chip cap: the account's
+// profiles.max_instances upgrade if it has one, otherwise the default.
+// Fails open to the default on any lookup error — a profile read hiccup must
+// not block a user from adding a chip they are entitled to.
+func (h *WhatsAppHandler) maxInstancesFor(ctx context.Context, userID string) int {
+	if h.profileRepo == nil {
+		return quota.MaxInstancesPerUser
+	}
+	profile, err := h.profileRepo.GetProfile(ctx, userID)
+	if err != nil || profile == nil {
+		return quota.MaxInstancesPerUser
+	}
+	return quota.EffectiveMaxInstances(profile.MaxInstances)
 }
 
 // CreateInstance creates a new WhatsApp instance and returns QR code for pairing.
@@ -60,10 +78,11 @@ func (h *WhatsAppHandler) CreateInstance(
 	}
 
 	if h.instanceRepo != nil {
-		if err := quota.CheckCanCreateInstance(ctx, h.instanceRepo, user.ID); err != nil {
+		limit := h.maxInstancesFor(ctx, user.ID)
+		if err := quota.CheckCanCreateInstance(ctx, h.instanceRepo, user.ID, limit); err != nil {
 			if errors.Is(err, quota.ErrInstanceQuotaExceeded) {
 				return nil, connect.NewError(connect.CodeResourceExhausted,
-					fmt.Errorf("limite de %d instâncias atingido. Remova um chip antes de adicionar outro", quota.MaxInstancesPerUser))
+					fmt.Errorf("limite de %d instâncias atingido. Remova um chip antes de adicionar outro", limit))
 			}
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check instance quota: %w", err))
 		}

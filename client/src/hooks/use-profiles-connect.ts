@@ -54,6 +54,8 @@ export interface LocalUserLimits {
   group_limit: number;
   /** Current distinct destination groups used across active automations. */
   groups_used: number;
+  /** Max WhatsApp chips this account may connect — the same cap the server enforces. */
+  max_instances: number;
 }
 
 export interface UpdateProfileParams {
@@ -131,6 +133,7 @@ function fromProtoUserLimits(limits: UserLimits): LocalUserLimits {
     connected_instances_count: limits.connectedInstancesCount,
     group_limit: limits.groupLimit,
     groups_used: limits.groupsUsed,
+    max_instances: limits.maxInstances,
   };
 }
 

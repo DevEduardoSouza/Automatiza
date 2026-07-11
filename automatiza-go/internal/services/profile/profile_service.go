@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"automatiza-go/internal/lib/quota"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
 
@@ -105,6 +106,8 @@ func (s *ProfileService) GetUserLimits(ctx context.Context, userID string) (*Use
 		ConnectedInstancesCount: connectedCount,
 		GroupLimit:              GetGroupLimitForPlan(profile.Plan),
 		GroupsUsed:              int32(len(groupSet)),
+		//nolint:gosec // EffectiveMaxInstances returns a small positive cap
+		MaxInstances: int32(quota.EffectiveMaxInstances(profile.MaxInstances)),
 	}, nil
 }
 

@@ -47,6 +47,9 @@ type UserLimits struct {
 	// GroupsUsed is the current distinct destination-group count across the
 	// user's ACTIVE automations (mirrors the per-plan enforcement count).
 	GroupsUsed int32
+	// MaxInstances is the account's chip cap — the same number the server
+	// enforces on create, so the UI can stop keeping its own copy.
+	MaxInstances int32
 }
 
 // ProfilesPage contains a page of profiles for admin listing

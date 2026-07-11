@@ -1,5 +1,6 @@
 import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
+import { useProfilesConnect } from '@/hooks/use-profiles-connect';
 import { useToast } from '@/hooks/use-toast';
 import { Check, Loader2, Pencil, QrCode, RefreshCw, Trash2, Wifi, X } from 'lucide-react';
 import { useState } from 'react';
@@ -7,7 +8,14 @@ import { useTranslation } from 'react-i18next';
 import { AddChipModal } from './add-chip-modal';
 import { ReconnectChipModal } from './reconnect-chip-modal';
 
-const MAX_INSTANCES_PER_USER = 15;
+/**
+ * Fallback chip cap, used only until the server's limits land (or if the call
+ * fails). The real cap is per-account and comes from the server — an account can
+ * be granted more chips without touching this file. Keep it equal to the server
+ * default (quota.MaxInstancesPerUser) so the two never disagree again: the UI
+ * saying 15 while the server said 30 is what made "limite atingido" unreadable.
+ */
+const DEFAULT_MAX_INSTANCES = 15;
 
 const colors = {
   wine: '#8D2D53',
@@ -230,6 +238,11 @@ export function InstancesList() {
     isDeletingInstance,
     isUpdatingLabel,
   } = useInstancesConnect();
+  const { limits } = useProfilesConnect();
+
+  // Per-account cap, straight from the server (an account can be granted more
+  // chips server-side). Falls back to the default only while limits load.
+  const maxInstances = limits?.max_instances || DEFAULT_MAX_INSTANCES;
 
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [reconnectTarget, setReconnectTarget] = useState<LocalInstance | null>(null);
@@ -263,7 +276,7 @@ export function InstancesList() {
   }
 
   const busy = isDeletingInstance || isUpdatingLabel;
-  const canAddMore = visibleInstances.length < MAX_INSTANCES_PER_USER;
+  const canAddMore = visibleInstances.length < maxInstances;
 
   const handleRename = async (id: string, friendlyName: string) => {
     try {
@@ -310,7 +323,7 @@ export function InstancesList() {
           <p className="text-xs xs:text-sm tracking-tight" style={{ color: colors.wineTextMuted }}>
             {t('pages.whatsapp.instancesList.subtitle', {
               count: visibleInstances.length,
-              max: MAX_INSTANCES_PER_USER,
+              max: maxInstances,
               defaultValue: '{{count}} de {{max}} conectados',
             })}
           </p>
@@ -392,7 +405,7 @@ export function InstancesList() {
                     'Conecte mais um número escaneando o QR code com o WhatsApp.'
                   )
                 : t('pages.whatsapp.instancesList.atCapHint', {
-                    max: MAX_INSTANCES_PER_USER,
+                    max: maxInstances,
                     defaultValue: 'Você atingiu o limite de {{max}} números',
                   })}
             </div>
@@ -408,7 +421,7 @@ export function InstancesList() {
           title={
             !canAddMore
               ? t('pages.whatsapp.instancesList.atCapTooltip', {
-                  max: MAX_INSTANCES_PER_USER,
+                  max: maxInstances,
                   defaultValue: 'Limite de {{max}} números atingido',
                 })
               : undefined
@@ -424,7 +437,7 @@ export function InstancesList() {
               ? t('pages.whatsapp.instancesList.addAnotherCta', 'Conectar novo número')
               : t(
                   'pages.whatsapp.instancesList.atCapCta',
-                  `Limite de ${MAX_INSTANCES_PER_USER} atingido`
+                  `Limite de ${maxInstances} atingido`
                 )}
           </span>
         </button>
@@ -435,8 +448,8 @@ export function InstancesList() {
             style={{ color: colors.wineTextMuted }}
           >
             {t('pages.whatsapp.instancesList.addAnotherHint', {
-              remaining: MAX_INSTANCES_PER_USER - instances.length,
-              max: MAX_INSTANCES_PER_USER,
+              remaining: maxInstances - instances.length,
+              max: maxInstances,
               defaultValue: 'Você pode adicionar mais {{remaining}} (limite: {{max}})',
             })}
           </p>

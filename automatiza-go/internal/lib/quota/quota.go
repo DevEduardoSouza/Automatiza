@@ -10,11 +10,17 @@ import (
 )
 
 const (
-	// MaxInstancesPerUser caps how many WhatsApp chips a single user can connect.
-	// Raised 10→15 (#191) and 15→30 for high-volume operators who run many chips.
-	// Each chip is a WAHA session; the WAHA engine (GOWS) is multi-core and the
-	// box has ample headroom, so 30 is comfortably within capacity.
-	MaxInstancesPerUser = 30
+	// MaxInstancesPerUser is the chip cap every account gets by default.
+	//
+	// It is 15, not 30, because 15 is the number users have actually been living
+	// with: the UI has always stopped them there. The server said 30 while the
+	// client said 15, and that gap is what made a "limit reached" message
+	// impossible to reason about. One number now, shared by both.
+	//
+	// Raise it for a single account with profiles.max_instances (see
+	// EffectiveMaxInstances) rather than by moving this constant, which would
+	// hand every account more chips than the WAHA/proxy pool is sized for.
+	MaxInstancesPerUser = 15
 
 	// MaxGroupsPerInstance caps how many groups can be bound to one chip.
 	// Mirrors the operational guidance from competitor research and matches
@@ -39,18 +45,44 @@ type GroupCounter interface {
 	CountGroupsByInstance(ctx context.Context, userID string, instanceID int) (int, error)
 }
 
+// EffectiveMaxInstances resolves one account's chip cap from the optional
+// profiles.max_instances override.
+//
+// The override can only RAISE the cap, never lower it. That asymmetry is not
+// stylistic: the column was seeded years ago and never wired up, so it is full
+// of stale values — 542 accounts say 1 and 295 say 5, while several of those
+// same accounts legitimately run 9 to 20 chips today. Honouring it downward
+// would strand hundreds of users at a chip or two. Reading it as an upgrade-only
+// lever makes the stale data harmless and turns the column into what it is
+// actually useful for: lifting the cap for one account without touching anyone
+// else.
+//
+// A nil, zero, or below-default override means "no upgrade" → the default.
+func EffectiveMaxInstances(override *int) int {
+	if override != nil && *override > MaxInstancesPerUser {
+		return *override
+	}
+	return MaxInstancesPerUser
+}
+
 // CheckCanCreateInstance returns nil when the user can create another instance,
-// or ErrInstanceQuotaExceeded wrapped with the current count when the cap is reached.
-func CheckCanCreateInstance(ctx context.Context, repo InstanceCounter, userID string) error {
+// or ErrInstanceQuotaExceeded wrapped with the current count when the cap is
+// reached. limit is the account's effective cap (see EffectiveMaxInstances); a
+// non-positive limit falls back to the default so a miswired caller can never
+// lock a user out of creating chips entirely.
+func CheckCanCreateInstance(ctx context.Context, repo InstanceCounter, userID string, limit int) error {
 	if repo == nil {
 		return errors.New("quota: instance repository is nil")
+	}
+	if limit <= 0 {
+		limit = MaxInstancesPerUser
 	}
 	count, err := repo.CountUserInstances(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("quota: count user instances: %w", err)
 	}
-	if count >= MaxInstancesPerUser {
-		return fmt.Errorf("%w: %d/%d", ErrInstanceQuotaExceeded, count, MaxInstancesPerUser)
+	if count >= limit {
+		return fmt.Errorf("%w: %d/%d", ErrInstanceQuotaExceeded, count, limit)
 	}
 	return nil
 }

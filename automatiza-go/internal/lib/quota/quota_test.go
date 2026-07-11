@@ -43,7 +43,7 @@ func TestCheckCanCreateInstance(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &fakeInstanceCounter{count: tt.count}
-			err := quota.CheckCanCreateInstance(ctx, repo, "user-1")
+			err := quota.CheckCanCreateInstance(ctx, repo, "user-1", quota.MaxInstancesPerUser)
 			if tt.wantErr == nil {
 				if err != nil {
 					t.Fatalf("expected nil, got %v", err)
@@ -59,7 +59,7 @@ func TestCheckCanCreateInstance(t *testing.T) {
 
 func TestCheckCanCreateInstance_PropagatesRepoError(t *testing.T) {
 	repo := &fakeInstanceCounter{err: errors.New("db down")}
-	err := quota.CheckCanCreateInstance(context.Background(), repo, "user-1")
+	err := quota.CheckCanCreateInstance(context.Background(), repo, "user-1", quota.MaxInstancesPerUser)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -69,7 +69,7 @@ func TestCheckCanCreateInstance_PropagatesRepoError(t *testing.T) {
 }
 
 func TestCheckCanCreateInstance_NilRepo(t *testing.T) {
-	if err := quota.CheckCanCreateInstance(context.Background(), nil, "user-1"); err == nil {
+	if err := quota.CheckCanCreateInstance(context.Background(), nil, "user-1", quota.MaxInstancesPerUser); err == nil {
 		t.Fatal("expected error for nil repo")
 	}
 }
@@ -127,8 +127,13 @@ func TestCheckCanAddGroups_NilRepo(t *testing.T) {
 
 func TestQuotaConstants(t *testing.T) {
 	// Sanity guard: tests downstream rely on these specific values.
-	if quota.MaxInstancesPerUser != 30 {
-		t.Errorf("MaxInstancesPerUser = %d, want 30", quota.MaxInstancesPerUser)
+	// 15, not 30: the client has always stopped users at 15 while the server
+	// allowed 30, and that disagreement is what made "limite atingido"
+	// impossible to explain. The two now share one number, and a single account
+	// is lifted above it via profiles.max_instances — never by moving this.
+	// Keep in sync with DEFAULT_MAX_INSTANCES in client instances-list.tsx.
+	if quota.MaxInstancesPerUser != 15 {
+		t.Errorf("MaxInstancesPerUser = %d, want 15", quota.MaxInstancesPerUser)
 	}
 	if quota.MaxGroupsPerInstance != 20 {
 		t.Errorf("MaxGroupsPerInstance = %d, want 20", quota.MaxGroupsPerInstance)
@@ -162,5 +167,65 @@ func TestCheckAutomationGroupsPerInstance(t *testing.T) {
 				t.Fatalf("expected %v, got %v", tt.wantErr, err)
 			}
 		})
+	}
+}
+
+// TestEffectiveMaxInstances_OverrideOnlyRaises locks the property the whole
+// per-account upgrade rests on: profiles.max_instances may lift an account's
+// cap but must never lower it. The column is full of stale seed values (542
+// accounts say 1, 295 say 5) while several of those same accounts legitimately
+// run 9-20 chips today — honouring it downward would strand them.
+func TestEffectiveMaxInstances_OverrideOnlyRaises(t *testing.T) {
+	i := func(n int) *int { return &n }
+
+	cases := []struct {
+		name     string
+		override *int
+		want     int
+	}{
+		{"no override → default", nil, quota.MaxInstancesPerUser},
+		{"stale 1 must NOT downgrade", i(1), quota.MaxInstancesPerUser},
+		{"stale 5 must NOT downgrade", i(5), quota.MaxInstancesPerUser},
+		{"equal to default → default", i(quota.MaxInstancesPerUser), quota.MaxInstancesPerUser},
+		{"zero must NOT lock the account out", i(0), quota.MaxInstancesPerUser},
+		{"negative must NOT lock the account out", i(-3), quota.MaxInstancesPerUser},
+		{"genuine upgrade wins", i(30), 30},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := quota.EffectiveMaxInstances(tc.override); got != tc.want {
+				t.Fatalf("EffectiveMaxInstances(%v) = %d, want %d", tc.override, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestCheckCanCreateInstance_HonoursPerAccountLimit: an upgraded account keeps
+// creating chips past the point where a default account is cut off.
+func TestCheckCanCreateInstance_HonoursPerAccountLimit(t *testing.T) {
+	ctx := context.Background()
+	atDefault := &fakeInstanceCounter{count: quota.MaxInstancesPerUser}
+
+	// Default account sitting exactly at the cap → blocked.
+	err := quota.CheckCanCreateInstance(ctx, atDefault, "u1", quota.MaxInstancesPerUser)
+	if !errors.Is(err, quota.ErrInstanceQuotaExceeded) {
+		t.Fatalf("default account at cap: want ErrInstanceQuotaExceeded, got %v", err)
+	}
+
+	// Same usage, upgraded account → allowed.
+	if err := quota.CheckCanCreateInstance(ctx, atDefault, "u1", 30); err != nil {
+		t.Fatalf("upgraded account below its cap: want nil, got %v", err)
+	}
+
+	// Upgraded account that reached its own higher cap → blocked again.
+	atUpgraded := &fakeInstanceCounter{count: 30}
+	if err := quota.CheckCanCreateInstance(ctx, atUpgraded, "u1", 30); !errors.Is(err, quota.ErrInstanceQuotaExceeded) {
+		t.Fatalf("upgraded account at its cap: want ErrInstanceQuotaExceeded, got %v", err)
+	}
+
+	// A miswired caller passing 0 must fall back to the default, not lock out.
+	fresh := &fakeInstanceCounter{count: 0}
+	if err := quota.CheckCanCreateInstance(ctx, fresh, "u1", 0); err != nil {
+		t.Fatalf("limit=0 must fall back to default, got %v", err)
 	}
 }

@@ -44,10 +44,18 @@ func (h *WhatsAppHandler) CreateInstance(c *gin.Context) {
 	}
 
 	if h.deps.InstanceRepo != nil {
-		if err := quota.CheckCanCreateInstance(c.Request.Context(), h.deps.InstanceRepo, user.ID); err != nil {
+		// Same per-account cap the Connect handler applies (profiles.max_instances
+		// upgrade, else default). Fails open to the default on a profile read error.
+		limit := quota.MaxInstancesPerUser
+		if h.deps.ProfileRepo != nil {
+			if profile, perr := h.deps.ProfileRepo.GetProfile(c.Request.Context(), user.ID); perr == nil && profile != nil {
+				limit = quota.EffectiveMaxInstances(profile.MaxInstances)
+			}
+		}
+		if err := quota.CheckCanCreateInstance(c.Request.Context(), h.deps.InstanceRepo, user.ID, limit); err != nil {
 			if errors.Is(err, quota.ErrInstanceQuotaExceeded) {
 				middleware.RespondError(c, http.StatusUnprocessableEntity,
-					fmt.Sprintf("Limite de %d instâncias atingido. Remova um chip antes de adicionar outro.", quota.MaxInstancesPerUser))
+					fmt.Sprintf("Limite de %d instâncias atingido. Remova um chip antes de adicionar outro.", limit))
 				return
 			}
 			h.deps.Logger.Error("Failed to check instance quota",

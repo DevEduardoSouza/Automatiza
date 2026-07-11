@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"automatiza-go/internal/lib/quota"
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/lib/backpressure"
 	"automatiza-go/internal/lib/cache"
@@ -127,7 +128,10 @@ func TestWhatsAppHandler_CreateInstance_QuotaExceeded(t *testing.T) {
 
 	called := false
 	mocks.InstanceRepo.CountUserInstancesFunc = func(ctx context.Context, userID string) (int, error) {
-		return 10, nil // at the cap
+		// Derive "at the cap" from the constant instead of hardcoding it: this
+		// test used to assert a literal 10 and silently stopped testing anything
+		// the moment the cap moved (it returned 200, not 422, for a while).
+		return quota.MaxInstancesPerUser, nil
 	}
 	mocks.WhatsAppProvider.CreateSessionFunc = func(ctx context.Context, input whatsapp.CreateSessionInput) (*whatsapp.SessionInfo, error) {
 		called = true

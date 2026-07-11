@@ -13,6 +13,7 @@ type Profile struct {
 	BillingNextPaymentAt *time.Time `json:"billing_next_payment_at,omitempty" db:"billing_next_payment_at"`
 	PlanAccessUntil      *time.Time `json:"plan_access_until,omitempty" db:"plan_access_until"`
 	MaxAutomations       *int       `json:"max_automations,omitempty" db:"max_automations"`
+	MaxInstances         *int       `json:"max_instances,omitempty" db:"max_instances"`
 	CreatedAt            string     `json:"created_at" db:"created_at"`
 	UpdatedAt            string     `json:"updated_at" db:"updated_at"`
 }

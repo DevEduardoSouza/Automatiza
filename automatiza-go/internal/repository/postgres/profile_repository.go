@@ -75,7 +75,7 @@ func (r *profileRepository) EnsureUserProfile(ctx context.Context, userID, email
 
 func (r *profileRepository) GetProfile(ctx context.Context, userID string) (*models.Profile, error) {
 	query := `
-		SELECT id, email, phone_number, plan, max_automations, billing_status, password_hash,
+		SELECT id, email, phone_number, plan, max_automations, max_instances, billing_status, password_hash,
 		       billing_next_payment_at, plan_access_until, created_at, updated_at
 		FROM profiles
 		WHERE id = $1
@@ -83,12 +83,12 @@ func (r *profileRepository) GetProfile(ctx context.Context, userID string) (*mod
 
 	var p models.Profile
 	var phoneNumber, billingStatus, passwordHash *string
-	var maxAutomations *int
+	var maxAutomations, maxInstances *int
 	var billingNextPaymentAt, planAccessUntil *time.Time
 	var createdAt, updatedAt time.Time
 
 	err := r.db.QueryRow(ctx, query, userID).Scan(
-		&p.ID, &p.Email, &phoneNumber, &p.Plan, &maxAutomations, &billingStatus, &passwordHash,
+		&p.ID, &p.Email, &phoneNumber, &p.Plan, &maxAutomations, &maxInstances, &billingStatus, &passwordHash,
 		&billingNextPaymentAt, &planAccessUntil, &createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -102,6 +102,7 @@ func (r *profileRepository) GetProfile(ctx context.Context, userID string) (*mod
 	p.BillingStatus = billingStatus
 	p.PasswordHash = passwordHash
 	p.MaxAutomations = maxAutomations
+	p.MaxInstances = maxInstances
 	p.BillingNextPaymentAt = billingNextPaymentAt
 	p.PlanAccessUntil = planAccessUntil
 	p.CreatedAt = createdAt.Format(time.RFC3339)

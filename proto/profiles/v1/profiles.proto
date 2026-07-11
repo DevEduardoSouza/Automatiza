@@ -63,6 +63,10 @@ message UserLimits {
 
   // Current distinct destination groups used across active automations
   int32 groups_used = 5;
+
+  // Max WhatsApp chips this account may connect. Server-owned so the UI stops
+  // hardcoding its own number and drifting from what the server enforces.
+  int32 max_instances = 6;
 }
 
 // ============================================================

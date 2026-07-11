@@ -163,7 +163,10 @@ type UserLimits struct {
 	// Max distinct destination groups the plan allows (0 = unlimited)
 	GroupLimit int32 `protobuf:"varint,4,opt,name=group_limit,json=groupLimit,proto3" json:"group_limit,omitempty"`
 	// Current distinct destination groups used across active automations
-	GroupsUsed    int32 `protobuf:"varint,5,opt,name=groups_used,json=groupsUsed,proto3" json:"groups_used,omitempty"`
+	GroupsUsed int32 `protobuf:"varint,5,opt,name=groups_used,json=groupsUsed,proto3" json:"groups_used,omitempty"`
+	// Max WhatsApp chips this account may connect. Server-owned so the UI stops
+	// hardcoding its own number and drifting from what the server enforces.
+	MaxInstances  int32 `protobuf:"varint,6,opt,name=max_instances,json=maxInstances,proto3" json:"max_instances,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -229,6 +232,13 @@ func (x *UserLimits) GetGroupLimit() int32 {
 func (x *UserLimits) GetGroupsUsed() int32 {
 	if x != nil {
 		return x.GroupsUsed
+	}
+	return 0
+}
+
+func (x *UserLimits) GetMaxInstances() int32 {
+	if x != nil {
+		return x.MaxInstances
 	}
 	return 0
 }
@@ -1438,7 +1448,7 @@ const file_profiles_v1_profiles_proto_rawDesc = "" +
 	"\r_phone_numberB\x12\n" +
 	"\x10_max_automationsB\x1a\n" +
 	"\x18_billing_next_payment_atB\x14\n" +
-	"\x12_plan_access_until\"\xf9\x01\n" +
+	"\x12_plan_access_until\"\x9e\x02\n" +
 	"\n" +
 	"UserLimits\x12+\n" +
 	"\x11automations_count\x18\x01 \x01(\x05R\x10automationsCount\x12,\n" +
@@ -1447,7 +1457,8 @@ const file_profiles_v1_profiles_proto_rawDesc = "" +
 	"\vgroup_limit\x18\x04 \x01(\x05R\n" +
 	"groupLimit\x12\x1f\n" +
 	"\vgroups_used\x18\x05 \x01(\x05R\n" +
-	"groupsUsedB\x12\n" +
+	"groupsUsed\x12#\n" +
+	"\rmax_instances\x18\x06 \x01(\x05R\fmaxInstancesB\x12\n" +
 	"\x10_max_automations\"\x13\n" +
 	"\x11GetProfileRequest\"D\n" +
 	"\x12GetProfileResponse\x12.\n" +

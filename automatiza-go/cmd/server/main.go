@@ -837,7 +837,7 @@ func main() {
 	connectServer.RegisterService(automationsPath, automationsHTTPHandler)
 
 	// Register WhatsApp service handler (canonical service, requires auth)
-	whatsappHandler := connectrpc.NewWhatsAppHandler(wahaAdapter, instanceRepo, repos.SyncJob, queueClient, cfg.WebhookSecret)
+	whatsappHandler := connectrpc.NewWhatsAppHandler(wahaAdapter, instanceRepo, repos.SyncJob, profileRepo, queueClient, cfg.WebhookSecret)
 	whatsappPath, whatsappHTTPHandler := whatsappv1connect.NewWhatsAppServiceHandler(
 		whatsappHandler,
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
