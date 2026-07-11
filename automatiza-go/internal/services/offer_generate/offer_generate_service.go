@@ -772,6 +772,12 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 	// Deadline compartilhado entre os goroutines; cada chip aplica o orçamento
 	// à sua fatia (fan-out paralelo → a fatia por chip é pequena).
 	fanoutDeadline := resolved.Pacing.FanoutDeadline()
+	// Digitação capada no espelho: até 12s/grupo do preset, serial por chip,
+	// estourava sozinha o teto de 1 min com poucos chips conectados.
+	mirrorHumanize := resolved.Humanize
+	if mirrorHumanize.MaxTyping > 2500*time.Millisecond {
+		mirrorHumanize.MaxTyping = 2500 * time.Millisecond
+	}
 	var wg sync.WaitGroup
 	for dispatchSession, groupIDs := range chipGroups {
 		wg.Add(1)
@@ -838,7 +844,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 					ChatID:   groupID,
 					Text:     perGroupMessage,
 					HasMedia: imageURL != "",
-					Cfg:      resolved.Humanize,
+					Cfg:      mirrorHumanize,
 				})
 
 				usedPreviewCard := false
@@ -1419,6 +1425,12 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 	// Mesmo prazo do fan-out de oferta: relay de espelho em <1min em todos
 	// os grupos, com o orçamento aplicado à fatia de cada chip.
 	fanoutDeadline := resolved.Pacing.FanoutDeadline()
+	// Digitação capada no espelho: até 12s/grupo do preset, serial por chip,
+	// estourava sozinha o teto de 1 min com poucos chips conectados.
+	mirrorHumanize := resolved.Humanize
+	if mirrorHumanize.MaxTyping > 2500*time.Millisecond {
+		mirrorHumanize.MaxTyping = 2500 * time.Millisecond
+	}
 	var wg sync.WaitGroup
 	for dispatchSession, groupIDs := range chipGroups {
 		wg.Add(1)
@@ -1468,7 +1480,7 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 					ChatID:   groupID,
 					Text:     msg.Body,
 					HasMedia: msg.MediaURL != "",
-					Cfg:      resolved.Humanize,
+					Cfg:      mirrorHumanize,
 				})
 				sendErr := s.sendRelayMessage(sendCtx, dispatchSession, groupID, msg, videoStreamable)
 				stopTyping()

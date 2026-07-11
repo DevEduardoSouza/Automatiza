@@ -643,6 +643,12 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	// (uma promoção espelhada perde valor em minutos). O gap configurado vale
 	// enquanto couber no orçamento; depois encolhe até zero.
 	fanoutDeadline := resolved.Pacing.FanoutDeadline()
+	// Digitação capada no espelho: até 12s/grupo do preset, serial por chip,
+	// estourava sozinha o teto de 1 min com poucos chips conectados.
+	mirrorHumanize := resolved.Humanize
+	if mirrorHumanize.MaxTyping > 2500*time.Millisecond {
+		mirrorHumanize.MaxTyping = 2500 * time.Millisecond
+	}
 	for gi, groupID := range destinationGroups {
 		// Skip if same group
 		if groupID == msg.RemoteJID {
@@ -733,7 +739,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			ChatID:   groupID,
 			Text:     perGroupText,
 			HasMedia: imageURL != "" || imageBase64 != "",
-			Cfg:      resolved.Humanize,
+			Cfg:      mirrorHumanize,
 		})
 
 		// "Enviar como imagem" (MONITORING, default FALSE): ligado pula o
