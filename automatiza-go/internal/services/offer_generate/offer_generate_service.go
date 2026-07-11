@@ -841,6 +841,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 					Cfg:      resolved.Humanize,
 				})
 
+				usedPreviewCard := false
 				switch {
 				case hasMentions && imageURL != "":
 					// @todos precisa de menção e o card do WAHA a dropa: força
@@ -868,6 +869,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 						ImageURL:    imageURL,
 					})
 				case previewURL != "" && (!sendAsImage || imageURL == ""):
+					usedPreviewCard = true
 					// Preview nativo: card com título/preço/thumb em vez de anexo.
 					// Também é o caminho quando sendAsImage está LIGADO mas nenhuma
 					// imagem foi resolvida (link próprio em curto-circuito, 10030 no
@@ -888,6 +890,30 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 						ChatID:      groupID,
 						Text:        perGroupMessage,
 					})
+				}
+
+				// O endpoint de card do WAHA (GOWS) devolve 500 intermitente. Falha
+				// DEFINITIVA do card = o envio comprovadamente não saiu, então cair
+				// para imagem/texto é seguro (não duplica) e salva o repasse.
+				// Timeout NÃO cai aqui — entrega incerta, tratada abaixo.
+				if sendErr != nil && usedPreviewCard && !whatsapp.IsAmbiguousOutcome(sendErr) {
+					s.logger.Warn("Preview card failed definitively, falling back to image/text",
+						zap.String("groupID", groupID),
+						zap.Error(sendErr))
+					if imageURL != "" {
+						_, sendErr = s.waProvider.SendImage(sendCtx, whatsapp.SendImageInput{
+							SessionName: dispatchSession,
+							ChatID:      groupID,
+							Caption:     perGroupMessage,
+							ImageURL:    imageURL,
+						})
+					} else {
+						_, sendErr = s.waProvider.SendText(sendCtx, whatsapp.SendTextInput{
+							SessionName: dispatchSession,
+							ChatID:      groupID,
+							Text:        perGroupMessage,
+						})
+					}
 				}
 				stopTyping()
 				sendCancel()
