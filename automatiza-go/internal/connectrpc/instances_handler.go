@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"automatiza-go/internal/adapters/whatsapp"
 	instancesv1 "automatiza-go/internal/gen/instances/v1"
@@ -220,18 +221,71 @@ func (h *InstancesHandler) DeleteDisconnectedInstances(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get instances: %w", err))
 	}
 
-	var deletedCount int32
-	for _, inst := range instances {
-		if inst.Status == "disconnected" || inst.Status == "pending" {
-			if err := h.instanceRepo.DeleteInstance(ctx, inst.ID); err == nil {
-				deletedCount++
-			}
+	var deletedCount, protectedCount int32
+	for i := range instances {
+		inst := &instances[i]
+		if inst.Status != "disconnected" && inst.Status != "pending" {
+			continue
 		}
+		// Never bulk-delete a chip that is (or recently was) a real paired number.
+		// The DB status lags WAHA: a paired number that briefly went
+		// disconnected/FAILED and then reconnected still reads "disconnected" here
+		// until the reconciler catches up. Deleting it orphans a live, paired chip
+		// — its WAHA session survives (the router blocks unpair) but automations
+		// lose the record and silently stop using the number ("sent once then
+		// stopped"). Mirrors the paired-session protection in the FAILED-session
+		// cleanup.
+		if h.instanceAliveOrPaired(ctx, inst) {
+			protectedCount++
+			continue
+		}
+		if err := h.instanceRepo.DeleteInstance(ctx, inst.ID); err == nil {
+			deletedCount++
+		}
+	}
+
+	if protectedCount > 0 {
+		zap.L().Info("DeleteDisconnectedInstances: protected alive/paired chips from bulk delete",
+			zap.String("userID", user.ID),
+			zap.Int32("deleted", deletedCount),
+			zap.Int32("protected", protectedCount))
 	}
 
 	return connect.NewResponse(&instancesv1.DeleteDisconnectedInstancesResponse{
 		DeletedCount: deletedCount,
 	}), nil
+}
+
+// instanceAliveOrPaired reports whether a disconnected/pending instance must be
+// protected from bulk deletion because it is (or recently was) a real paired
+// chip rather than an abandoned QR-scan zombie. Two signals:
+//   - phone_number set → the number paired at least once (durable source of
+//     truth; a never-paired scan zombie leaves it empty).
+//   - live WAHA session connected or authenticated → alive right now even if the
+//     DB row lags behind the reconciler.
+//
+// Fail-safe on WAHA errors: only a definitive SESSION_NOT_FOUND clears a chip for
+// deletion. Any other error (timeout, circuit breaker, WAHA unreachable) protects
+// — we never delete a record we could not verify is dead.
+func (h *InstancesHandler) instanceAliveOrPaired(ctx context.Context, inst *models.Instance) bool {
+	if inst.PhoneNumber != nil && strings.TrimSpace(*inst.PhoneNumber) != "" {
+		return true
+	}
+	if h.waProvider == nil || inst.InstanceID == "" {
+		return false
+	}
+	info, err := h.waProvider.GetSessionStatus(ctx, inst.InstanceID)
+	if err != nil {
+		var providerErr *whatsapp.ProviderError
+		if errors.As(err, &providerErr) && providerErr.Code == whatsapp.ErrCodeSessionNotFound {
+			return false // genuinely gone in WAHA → safe to delete the stale row
+		}
+		return true // unknown/transient WAHA error → fail safe, protect
+	}
+	if info == nil {
+		return false
+	}
+	return info.Status == whatsapp.SessionStatusConnected || info.AuthenticatedUser != nil
 }
 
 // DeleteInstance deletes a specific instance.
