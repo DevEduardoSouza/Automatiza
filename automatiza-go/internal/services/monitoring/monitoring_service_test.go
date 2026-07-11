@@ -12,6 +12,7 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/shopee"
 
 	"go.uber.org/zap/zaptest"
 )
@@ -1432,7 +1433,19 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 	t.Run("stores=[shopee] + shopee link → forwards", func(t *testing.T) {
 		var sent bool
 		svc := newTestService(t, func(s *monitoringService) {
+			// Successful conversion: the default mock errors ("not implemented"),
+			// and a failed conversion now WITHHOLDS the relay (commission gate) —
+			// this test is about store filtering, not the gate.
+			s.shopeeService = &mockShopeeService{
+				GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+					return &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff-ok"}, nil
+				},
+			}
 			s.waProvider = &mockWAProvider{
+				SendLinkCustomPreviewFn: func(_ context.Context, _ whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+					sent = true
+					return &whatsapp.MessageResult{ID: "msg-1"}, nil
+				},
 				SendTextFn: func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
 					sent = true
 					return &whatsapp.MessageResult{ID: "msg-1"}, nil
@@ -1536,7 +1549,17 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 	t.Run("stores=[] (empty) defaults to shopee → forwards shopee", func(t *testing.T) {
 		var sent bool
 		svc := newTestService(t, func(s *monitoringService) {
+			// Successful conversion — see the first subtest for why.
+			s.shopeeService = &mockShopeeService{
+				GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+					return &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff-ok"}, nil
+				},
+			}
 			s.waProvider = &mockWAProvider{
+				SendLinkCustomPreviewFn: func(_ context.Context, _ whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+					sent = true
+					return &whatsapp.MessageResult{ID: "msg-1"}, nil
+				},
 				SendTextFn: func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
 					sent = true
 					return &whatsapp.MessageResult{ID: "msg-1"}, nil
@@ -1611,6 +1634,13 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 func TestProcessAutomation_UsesOwnerSession(t *testing.T) {
 	var usedSession string
 	svc := newTestService(t, func(s *monitoringService) {
+		// Successful conversion so the commission gate lets the relay through —
+		// this test is about which session sends, not about the gate.
+		s.shopeeService = &mockShopeeService{
+			GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+				return &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff-ok"}, nil
+			},
+		}
 		s.instanceRepo = &mockInstanceRepo{
 			GetUserInstancesFn: func(_ context.Context, userID string) ([]models.Instance, error) {
 				if userID != "owner-user" {
@@ -1620,6 +1650,10 @@ func TestProcessAutomation_UsesOwnerSession(t *testing.T) {
 			},
 		}
 		s.waProvider = &mockWAProvider{
+			SendLinkCustomPreviewFn: func(_ context.Context, input whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+				usedSession = input.SessionName
+				return &whatsapp.MessageResult{ID: "msg-1"}, nil
+			},
 			SendTextFn: func(_ context.Context, input whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
 				usedSession = input.SessionName
 				return &whatsapp.MessageResult{ID: "msg-1"}, nil
@@ -1691,4 +1725,84 @@ func TestProcessAutomation_NoConnectedInstance_Skips(t *testing.T) {
 	if sent {
 		t.Error("should NOT send when owner has no connected instance")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// processAutomation - commission gate
+// ---------------------------------------------------------------------------
+
+// TestProcessAutomation_CommissionGate locks the rule that protects the user's
+// commission: a source-group product link that FAILED affiliate conversion must
+// never be relayed as-is — the original link carries the commission of whoever
+// posted it in the monitored group, so the mirror would work for free without
+// anyone noticing. The single exception is a Shopee account with no Open API
+// access at all (10035): conversion is impossible forever, so withholding would
+// kill the mirror entirely — those keep the historical relay-as-is behavior.
+func TestProcessAutomation_CommissionGate(t *testing.T) {
+	delayZero := 0
+	msg := &models.IncomingMessage{
+		InstanceName: "inst1",
+		RemoteJID:    "source@g.us",
+		Body:         "https://shopee.com.br/product-i.123.456",
+	}
+	links := []string{"https://shopee.com.br/product-i.123.456"}
+	auto := func() *models.Automation {
+		return &models.Automation{
+			ID:           "auto-1",
+			UserID:       "user-1",
+			Name:         "test",
+			Stores:       []string{"shopee"},
+			SendGroups:   []string{"dest@g.us"},
+			Status:       "active",
+			DelaySeconds: &delayZero,
+		}
+	}
+
+	t.Run("conversion fails (rate limit etc) → relay withheld", func(t *testing.T) {
+		var sent bool
+		svc := newTestService(t, func(s *monitoringService) {
+			s.shopeeService = &mockShopeeService{
+				GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+					return nil, fmt.Errorf("shopee API error: error [10030]: Rate limit exceeded")
+				},
+			}
+			s.waProvider = &mockWAProvider{
+				SendTextFn: func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+					sent = true
+					return &whatsapp.MessageResult{ID: "msg-1"}, nil
+				},
+			}
+		})
+
+		if err := svc.processAutomation(context.Background(), auto(), msg, links); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sent {
+			t.Error("relay must be withheld when affiliate conversion fails — forwarding the original link leaks the commission to the source poster")
+		}
+	})
+
+	t.Run("no API access (10035) → still relays original", func(t *testing.T) {
+		var sent bool
+		svc := newTestService(t, func(s *monitoringService) {
+			s.shopeeService = &mockShopeeService{
+				GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+					return nil, shopee.ErrShopeeNoAPIAccess
+				},
+			}
+			s.waProvider = &mockWAProvider{
+				SendTextFn: func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+					sent = true
+					return &whatsapp.MessageResult{ID: "msg-1"}, nil
+				},
+			}
+		})
+
+		if err := svc.processAutomation(context.Background(), auto(), msg, links); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !sent {
+			t.Error("account with no API access can never convert — the mirror must keep relaying as-is")
+		}
+	})
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"regexp"
@@ -274,6 +275,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	var firstShopeeAff *models.ShopeeAffiliateLink
 	var firstShopeeOriginalLink, firstMLOriginalLink, firstMLAffiliateLink string
 
+	// A product link that failed affiliate conversion (for any reason other
+	// than a Shopee account with no API access at all). Forwarding it as-is
+	// would hand the commission to whoever posted it in the source group, so
+	// the dispatch is withheld below once the conversion loops finish.
+	var unconvertedLink string
+	var unconvertedErr error
+
 	for _, link := range shopeeLinks {
 		if s.shopeeService != nil {
 			aff, err := s.shopeeService.GenerateAffiliateLink(ctx, link, automation.UserID)
@@ -302,11 +310,24 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 					return nil
 				}
 
-				s.logger.Warn("Failed to generate Shopee affiliate link, keeping original",
-					zap.String("automationID", automation.ID),
-					zap.String("userID", automation.UserID),
-					zap.String("originalLink", link),
-					zap.Error(err))
+				if errors.Is(err, shopee.ErrShopeeNoAPIAccess) {
+					// Conta sem acesso à Open API (10035): converter é impossível
+					// para SEMPRE, então bloquear o repasse mataria o espelho por
+					// completo. Só nesse caso o link original passa adiante.
+					s.logger.Warn("Shopee account has no API access, relaying original link",
+						zap.String("automationID", automation.ID),
+						zap.String("userID", automation.UserID),
+						zap.String("originalLink", link))
+				} else {
+					// Qualquer outra falha (rate limit, timeout, produto fora do
+					// catálogo): reter o repasse. Enviar com o link ORIGINAL
+					// entrega a comissão ao afiliado de quem postou no grupo
+					// monitorado — o espelho trabalharia de graça sem ninguém
+					// perceber. O bloqueio acontece depois dos loops, para uma
+					// mensagem multi-link não sair meio-convertida.
+					unconvertedLink = link
+					unconvertedErr = err
+				}
 			} else if aff != nil && aff.AffiliateLink != "" {
 				affiliateLinks[link] = aff.AffiliateLink
 				if aff.ImageURL != "" && productImageURL == "" {
@@ -349,11 +370,15 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 					return nil
 				}
 
-				s.logger.Warn("Failed to generate ML affiliate link, keeping original",
+				// Mesma regra do ramo Shopee: link do grupo-fonte sem conversão
+				// carrega a comissão de OUTRO afiliado — retém o repasse.
+				s.logger.Warn("Failed to generate ML affiliate link, withholding relay",
 					zap.String("automationID", automation.ID),
 					zap.String("userID", automation.UserID),
 					zap.String("originalLink", link),
 					zap.Error(err))
+				unconvertedLink = link
+				unconvertedErr = err
 			} else if aff != nil && aff.AffiliateLink != "" {
 				affiliateLinks[link] = aff.AffiliateLink
 				if firstMLAffiliateLink == "" {
@@ -362,6 +387,23 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				}
 			}
 		}
+	}
+
+	// Commission gate: at least one product link failed conversion, so the
+	// message would go out carrying someone ELSE's affiliate link. Withhold it
+	// and record why. Rate-limit bursts self-heal (the next deal converts);
+	// dead products weren't worth relaying anyway. Deliberately NOT retried:
+	// the message-level dedup was already claimed, and a mirrored deal loses
+	// value in minutes — better to drop one deal than to leak commission.
+	if unconvertedErr != nil {
+		s.logDispatch(ctx, automation, "", unconvertedLink, "skipped",
+			fmt.Sprintf("link de afiliado indisponivel (%v) - repasse retido para nao perder comissao", unconvertedErr),
+			s.extractCanonicalKey(links), s.detectStore(links))
+		s.logger.Warn("Monitoring relay withheld — affiliate conversion failed",
+			zap.String("automationID", automation.ID),
+			zap.String("link", unconvertedLink),
+			zap.Error(unconvertedErr))
+		return nil
 	}
 
 	// 5. Build the outgoing body.
