@@ -249,6 +249,10 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		var preview *models.MLProductPreview
 		var shopeeProduct *models.ShopeeOffer
 		var shopeeImageURL string
+		// Last Shopee enrichment error (affiliate link or product fetch). Used
+		// below to decide whether a degraded item may be retried (transient
+		// failure) or must be consumed (permanent failure).
+		var shopeeEnrichErr error
 		affiliateURL := originURL
 
 		if isML {
@@ -305,6 +309,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				}
 			}
 			if err != nil {
+				shopeeEnrichErr = err
 				s.logger.Warn("Failed to create Shopee affiliate link after retry, using origin URL",
 					zap.String("originURL", originURL),
 					zap.Error(err))
@@ -317,6 +322,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				if link.ItemID > 0 && link.ShopID > 0 {
 					product, prodErr := s.shopeeService.GetProduct(ctx, link.ItemID, link.ShopID, automation.UserID)
 					if prodErr != nil {
+						shopeeEnrichErr = prodErr
 						s.logger.Warn("Failed to get Shopee product details for list item",
 							zap.String("originURL", originURL),
 							zap.Int64("itemID", link.ItemID),
@@ -346,15 +352,35 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		// tudo no próximo ciclo completo, o item é tentado de novo depois —
 		// nada se perde de vez, e nenhuma oferta quebrada sai no grupo.
 		if isShopee && shopeeProduct == nil {
+			// A TRANSIENT enrichment failure (Shopee rate limit 10030, timeout,
+			// network blip, 5xx) must NOT consume the item. Consuming advances
+			// GetNextUnconsumed past a link we never delivered, so a rate-limit
+			// window silently drains the whole list to zero sends — the exact
+			// failure mode where a "list" automation keeps running every cycle
+			// but delivers nothing, and the burned items only come back after a
+			// full repeat_when_finished reset. Leaving the item pending makes the
+			// next run retry it once the limit clears.
+			//
+			// A PERMANENT failure (product not found, missing/invalid credentials,
+			// no Open-API access) still consumes: retrying forever would stall the
+			// list on a dead item — the original reason this skip consumed at all.
+			transient := isTransientShopeeEnrichError(shopeeEnrichErr)
+			reason := "enriquecimento Shopee falhou (sem preco/imagem) - item pulado"
+			if transient {
+				reason = "Shopee indisponivel (rate limit/timeout) - item mantido para retry"
+			}
 			s.logger.Warn("Skipping degraded Shopee list item — no product after retry (avoiding priceless/imageless offer)",
 				zap.String("automationID", automation.ID),
-				zap.String("originURL", originURL))
-			s.logDispatch(ctx, automation, "system", originURL, "skipped",
-				"enriquecimento Shopee falhou (sem preco/imagem) - item pulado")
-			if err := s.mlLinkListItemRepo.MarkAsConsumed(ctx, []string{item.ID}, automation.ID, nil); err != nil {
-				s.logger.Error("Failed to mark skipped item as consumed",
-					zap.String("itemID", item.ID),
-					zap.Error(err))
+				zap.String("originURL", originURL),
+				zap.Bool("transient", transient),
+				zap.Error(shopeeEnrichErr))
+			s.logDispatch(ctx, automation, "system", originURL, "skipped", reason)
+			if !transient {
+				if err := s.mlLinkListItemRepo.MarkAsConsumed(ctx, []string{item.ID}, automation.ID, nil); err != nil {
+					s.logger.Error("Failed to mark skipped item as consumed",
+						zap.String("itemID", item.ID),
+						zap.Error(err))
+				}
 			}
 			continue
 		}
@@ -603,6 +629,70 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 	}
 
 	return result, nil
+}
+
+// isTransientShopeeEnrichError reports whether a Shopee enrichment failure is
+// temporary — worth retrying the same list item on the next run — rather than
+// permanent.
+//
+// Transient (retry, don't consume): rate limit (error 10030), request timeouts /
+// context deadline, network failures, and 5xx responses. These clear on their
+// own, so burning the item would lose a deliverable offer for no reason.
+//
+// Permanent (consume + skip, as before): product not found, missing/invalid
+// credentials, no Open-API access (10035), bad signature, unparseable URL.
+// Retrying these forever would stall the list on a dead item.
+//
+// Unknown/unclassified errors are treated as permanent: keeping an item that
+// fails for an unexplained reason pending would risk an endless no-progress
+// loop, which is worse than dropping one item.
+func isTransientShopeeEnrichError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+
+	// Permanent signals take precedence over transient ones.
+	permanent := []string{
+		"not found",
+		"credentials not configured",
+		"credentials incomplete",
+		"invalid signature",
+		"invalid value",
+		"could not extract product ids",
+		"no open api",
+		"open api platform access",
+		"10035",
+	}
+	for _, p := range permanent {
+		if strings.Contains(msg, p) {
+			return false
+		}
+	}
+
+	transient := []string{
+		"rate limit",
+		"10030",
+		"too many",     // "too many requests"
+		"error 429",    // HTTP 429: "shopee API error 429: ..."
+		"deadline exceeded",
+		"timeout",
+		"timed out",
+		"request failed",
+		"connection reset",
+		"connection refused",
+		"temporarily",
+		"try again",
+		"eof",
+		"shopee api error 5", // 5xx: "shopee API error 500/502/503: ..."
+	}
+	for _, t := range transient {
+		if strings.Contains(msg, t) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // buildListModeMessage builds the message for a LIST mode item

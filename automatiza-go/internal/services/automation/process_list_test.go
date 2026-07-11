@@ -749,15 +749,12 @@ func TestProcessListMode_EdgeCases(t *testing.T) {
 	}
 }
 
-// Regressão (incidente isaa_deoliveira@hotmail.com, 04/06 13:52): o
-// enriquecimento Shopee (ExpandURL/afiliado) dava timeout transitório e o
-// modo lista enviava a oferta degradada — texto cru, sem imagem e sem preço.
-// Fix: retry 1x; se ainda falhar, pula o envio (sem postar oferta quebrada)
-// e consome o item pra lista avançar (senão GetNextUnconsumed devolveria o
-// mesmo item todo ciclo e travaria a lista num item ruim).
-func TestProcessListMode_ShopeeEnrichTimeout_RetriesThenSkips(t *testing.T) {
+// setupShopeeDegradedListTest wires an automation with a single Shopee list item
+// whose enrichment fails, returning the service + deps so each test can plug in
+// the specific failure error. Shared by the transient and permanent cases below.
+func setupShopeeDegradedListTest(t *testing.T) (automation.Service, *testServiceDeps, string) {
+	t.Helper()
 	svc, deps := newTestService(t)
-	ctx := context.Background()
 
 	listType := "list"
 	listID := "list-123"
@@ -790,12 +787,24 @@ func TestProcessListMode_ShopeeEnrichTimeout_RetriesThenSkips(t *testing.T) {
 	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
 
-	// Enriquecimento Shopee falha (timeout) em TODAS as tentativas.
+	return svc, deps, shopeeURL
+}
+
+// Regressão dupla:
+//  1. (isaa_deoliveira@hotmail.com, 04/06 13:52) o enriquecimento Shopee degradado
+//     NÃO deve enviar a oferta quebrada (texto cru, sem imagem e sem preço).
+//  2. (conta "110 a 120", 10/07 ~21:52) uma falha TRANSIENTE do Shopee
+//     (rate limit 10030 / timeout / 5xx) NÃO deve consumir o item. Consumir
+//     avança GetNextUnconsumed sobre um link nunca entregue, drenando a lista
+//     inteira a zero envios durante a janela de rate-limit (a automação "roda
+//     sem entregar"). O item fica pendente e é re-tentado no próximo ciclo.
+func TestProcessListMode_ShopeeEnrichTransient_RetriesAndKeepsItem(t *testing.T) {
+	svc, deps, shopeeURL := setupShopeeDegradedListTest(t)
+	ctx := context.Background()
+
+	// Enriquecimento Shopee falha com erro TRANSIENTE em TODAS as tentativas.
 	deps.shopeeService.On("GenerateAffiliateLink", mock.Anything, shopeeURL, "user-1").
 		Return((*models.ShopeeAffiliateLink)(nil), errors.New("failed to expand short URL: context deadline exceeded"))
-
-	// Skip degradado consome o item pra lista avançar.
-	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-123", mock.Anything).Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -804,6 +813,28 @@ func TestProcessListMode_ShopeeEnrichTimeout_RetriesThenSkips(t *testing.T) {
 	assert.Equal(t, 0, result.MessagesSent, "oferta degradada (sem preco/imagem) nao deve ser enviada")
 	// Retry: GenerateAffiliateLink chamado 2x.
 	deps.shopeeService.AssertNumberOfCalls(t, "GenerateAffiliateLink", 2)
-	// Item consumido p/ a lista nao travar nele.
+	// NÃO consome em falha transiente — item preservado para retry no proximo ciclo.
+	deps.mlLinkListItemRepo.AssertNotCalled(t, "MarkAsConsumed", mock.Anything, []string{"item-1"}, mock.Anything, mock.Anything)
+}
+
+// Complemento: numa falha PERMANENTE (credencial ausente, produto inexistente) o
+// item AINDA é consumido, senão GetNextUnconsumed devolveria o mesmo link morto
+// todo ciclo e travaria a lista nele — a razão original do skip consumir.
+func TestProcessListMode_ShopeeEnrichPermanent_ConsumesItem(t *testing.T) {
+	svc, deps, shopeeURL := setupShopeeDegradedListTest(t)
+	ctx := context.Background()
+
+	// Erro PERMANENTE: retryar para sempre nunca resolveria.
+	deps.shopeeService.On("GenerateAffiliateLink", mock.Anything, shopeeURL, "user-1").
+		Return((*models.ShopeeAffiliateLink)(nil), errors.New("shopee credentials not configured"))
+	// Skip degradado consome o item pra lista avançar.
+	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-123", mock.Anything).Return(nil)
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 0, result.MessagesSent, "oferta degradada (sem preco/imagem) nao deve ser enviada")
+	// Item consumido p/ a lista nao travar num link morto.
 	deps.mlLinkListItemRepo.AssertCalled(t, "MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-123", mock.Anything)
 }
