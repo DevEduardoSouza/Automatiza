@@ -288,7 +288,8 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			if err != nil {
 				errStr := err.Error()
 				if strings.Contains(errStr, "Invalid Signature") ||
-					strings.Contains(errStr, "credentials incomplete") {
+					strings.Contains(errStr, "credentials incomplete") ||
+					strings.Contains(errStr, "credentials not configured") {
 					s.logger.Warn("Shopee credential error, pausing automation",
 						zap.String("automationID", automation.ID),
 						zap.String("userID", automation.UserID),
@@ -297,13 +298,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 					ck := s.extractCanonicalKey(links)
 					st := s.detectStore(links)
 					s.logDispatch(ctx, automation, "", link,
-						"failed", "Credenciais Shopee inválidas - reconfigure App ID e Senha",
+						"failed", "Credenciais Shopee ausentes ou inválidas - configure App ID e Senha",
 						ck, st)
 
 					now := time.Now().UTC().Format(time.RFC3339)
 					_ = s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
 						"status":        models.AutomationStatusPaused,
-						"last_error":    "Credenciais Shopee inválidas (Invalid Signature) - automação pausada automaticamente",
+						"last_error":    "Credenciais Shopee ausentes ou inválidas - automação pausada automaticamente",
 						"last_error_at": now,
 					})
 
@@ -348,6 +349,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				errStr := err.Error()
 				if strings.Contains(errStr, "Invalid Signature") ||
 					strings.Contains(errStr, "credentials incomplete") ||
+					strings.Contains(errStr, "credentials not configured") ||
 					strings.Contains(errStr, "invalid_token") {
 					s.logger.Warn("ML credential error, pausing automation",
 						zap.String("automationID", automation.ID),
@@ -357,13 +359,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 					ck := s.extractCanonicalKey(links)
 					st := s.detectStore(links)
 					s.logDispatch(ctx, automation, "", link,
-						"failed", "Credenciais Mercado Livre inválidas - reconfigure suas credenciais",
+						"failed", "Credenciais Mercado Livre ausentes ou inválidas - configure suas credenciais",
 						ck, st)
 
 					now := time.Now().UTC().Format(time.RFC3339)
 					_ = s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
 						"status":        models.AutomationStatusPaused,
-						"last_error":    "Credenciais ML inválidas - automação pausada automaticamente",
+						"last_error":    "Credenciais ML ausentes ou inválidas - automação pausada automaticamente",
 						"last_error_at": now,
 					})
 

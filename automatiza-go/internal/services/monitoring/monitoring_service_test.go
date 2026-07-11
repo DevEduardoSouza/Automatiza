@@ -1782,6 +1782,42 @@ func TestProcessAutomation_CommissionGate(t *testing.T) {
 		}
 	})
 
+	t.Run("credentials not configured → pauses automation, nothing sent", func(t *testing.T) {
+		var sent bool
+		var paused bool
+		svc := newTestService(t, func(s *monitoringService) {
+			s.shopeeService = &mockShopeeService{
+				GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+					return nil, fmt.Errorf("shopee credentials not configured")
+				},
+			}
+			s.automationRepo = &mockAutomationRepo{
+				UpdateAutomationFn: func(_ context.Context, automationID string, updates map[string]interface{}) error {
+					if automationID == "auto-1" && updates["status"] == models.AutomationStatusPaused {
+						paused = true
+					}
+					return nil
+				},
+			}
+			s.waProvider = &mockWAProvider{
+				SendTextFn: func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+					sent = true
+					return &whatsapp.MessageResult{ID: "msg-1"}, nil
+				},
+			}
+		})
+
+		if err := svc.processAutomation(context.Background(), auto(), msg, links); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sent {
+			t.Error("account without credentials can never convert — relay must not go out")
+		}
+		if !paused {
+			t.Error("automation must be paused with an actionable error instead of withholding every cycle silently")
+		}
+	})
+
 	t.Run("no API access (10035) → still relays original", func(t *testing.T) {
 		var sent bool
 		svc := newTestService(t, func(s *monitoringService) {
