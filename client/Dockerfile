@@ -3,15 +3,6 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Sentry build-time args (source map upload + DSN baked into bundle)
-ARG SENTRY_ORG
-ARG SENTRY_PROJECT
-ARG SENTRY_AUTH_TOKEN
-ARG SENTRY_RELEASE
-ARG VITE_SENTRY_DSN
-ARG VITE_SENTRY_ENVIRONMENT=production
-ARG VITE_SENTRY_RELEASE
-
 # Copy package files
 COPY package*.json ./
 
@@ -20,6 +11,18 @@ RUN npm ci
 
 # Copy source code
 COPY . .
+
+# Sentry build-time args (source map upload + DSN baked into bundle).
+# Declared AFTER npm ci: an in-scope ARG busts the cache of every following
+# RUN, and SENTRY_RELEASE changes on each deploy — declaring these earlier
+# forced a full npm ci on every build.
+ARG SENTRY_ORG
+ARG SENTRY_PROJECT
+ARG SENTRY_AUTH_TOKEN
+ARG SENTRY_RELEASE
+ARG VITE_SENTRY_DSN
+ARG VITE_SENTRY_ENVIRONMENT=production
+ARG VITE_SENTRY_RELEASE
 
 # Build the application (Vite inlines VITE_* env vars at build time)
 RUN npm run build

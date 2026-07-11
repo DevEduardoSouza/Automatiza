@@ -3,7 +3,15 @@ name: Deploy
 on:
   push:
     branches: [main]
+    # Docs-only pushes don't produce a different system — skip the whole deploy.
+    paths-ignore:
+      - "**.md"
   workflow_dispatch:
+    inputs:
+      full_restart:
+        description: "Full restart: down + up of the ENTIRE stack (recreates WAHA/postgres/redis — slow, reconnects all WhatsApp sessions). Leave off for normal rolling deploys."
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -12,9 +20,22 @@ env:
   NODE_VERSION: "20"
 
 jobs:
-  build-and-push:
-    name: Build & Push Images
+  # ---------------------------------------------------------------------------
+  # Both binaries are compiled ON THE RUNNER, where incremental caches persist
+  # across runs (Go build cache, node_modules). The Docker builds then only
+  # PACKAGE the artifacts: the Dockerfiles' `builder` stages are swapped out via
+  # BuildKit named contexts (--build-context builder=<dir>), so the Dockerfiles
+  # stay canonical for local builds and CI never compiles inside Docker.
+  # ---------------------------------------------------------------------------
+  build-backend:
+    name: Build & Push Backend
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # A newer push to the same ref cancels this build: never spend minutes
+    # building a commit that is already superseded.
+    concurrency:
+      group: deploy-build-backend-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       packages: write
@@ -22,35 +43,50 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: automatiza-go
 
       - name: Generate version
         id: version
-        run: echo "version=$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+        # Commit-derived (committer date + SHA), NOT wall clock: the build jobs
+        # and the deploy job agree on the tag without coordination, and a
+        # re-deploy of the same commit is idempotent and fully cache-hot.
+        run: echo "version=$(git log -1 --format=%cd --date=format:'%Y%m%d-%H%M%S')-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      # --- Proto generation (needed for frontend build) ---
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          cache-dependency-path: client/package-lock.json
+          go-version: ${{ env.GO_VERSION }}
+          # Built-in cache only refreshes when go.sum changes; the explicit
+          # caches below refresh every run for near-HEAD incremental compiles.
+          cache: false
 
-      - name: Install frontend dependencies
-        working-directory: client
-        run: npm ci
-
-      - name: Setup Buf
-        uses: bufbuild/buf-setup-action@v1
+      - name: Restore Go module cache
+        uses: actions/cache@v4
         with:
-          github_token: ${{ github.token }}
+          path: ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-go${{ env.GO_VERSION }}-${{ hashFiles('automatiza-go/go.sum') }}
 
-      - name: Generate Proto Stubs
-        working-directory: client
+      - name: Restore Go build cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/go-build
+          key: gocache-${{ runner.os }}-go${{ env.GO_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            gocache-${{ runner.os }}-go${{ env.GO_VERSION }}-
+
+      - name: Build backend binary
+        working-directory: automatiza-go
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        # Same flags as the Dockerfile builder stage; the binary lands outside
+        # the repo so the Docker context stays untouched.
         run: |
-          export PATH="$PWD/node_modules/.bin:$PATH"
-          buf generate
+          mkdir -p "$RUNNER_TEMP/go-ctx"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -ldflags="-w -s -X main.Version=${VERSION}" \
+            -o "$RUNNER_TEMP/go-ctx/server" ./cmd/server
 
-      # --- Docker builds ---
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -61,52 +97,240 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push backend
+      - name: Package & push backend image
         uses: docker/build-push-action@v6
         with:
           context: automatiza-go
+          # Replaces the Dockerfile's `builder` stage: COPY --from=builder
+          # resolves against this directory, so the Go toolchain stage is
+          # skipped entirely and only the runtime stage is built (cached).
+          build-contexts: |
+            builder=${{ runner.temp }}/go-ctx
           push: true
+          provenance: false
           tags: |
             ${{ env.IMAGE_PREFIX }}/backend:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_PREFIX }}/backend:latest
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
-      - name: Build & push frontend
+  build-frontend:
+    name: Build & Push Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: deploy-build-frontend-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # client/proto is a symlink to ../proto — both are required for
+          # buf generate to resolve.
+          sparse-checkout: |
+            client
+            proto
+
+      - name: Generate version
+        id: version
+        run: echo "version=$(git log -1 --format=%cd --date=format:'%Y%m%d-%H%M%S')-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Cache node_modules directly (not just ~/.npm): on a lockfile hit we skip
+      # `npm ci` entirely — and the same deps serve buf generate AND the Vite
+      # build below, so nothing is installed twice.
+      - name: Cache node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: client/node_modules
+          key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles('client/package-lock.json') }}
+
+      - name: Install frontend dependencies
+        if: steps.node-modules.outputs.cache-hit != 'true'
+        working-directory: client
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Generate Proto Stubs
+        working-directory: client
+        # buf comes from node_modules (@bufbuild/buf, pinned by the lockfile).
+        run: npx buf generate
+
+      - name: Build frontend (Vite + Sentry sourcemaps)
+        working-directory: client
+        # Same env the Dockerfile builder stage received as ARGs — Vite inlines
+        # VITE_* at build time and the Sentry plugin uploads sourcemaps.
+        env:
+          SENTRY_ORG: automatiza
+          SENTRY_PROJECT: automatiza-frontend
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_RELEASE: ${{ steps.version.outputs.version }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_SENTRY_ENVIRONMENT: production
+          VITE_SENTRY_RELEASE: ${{ steps.version.outputs.version }}
+        run: npm run build
+
+      - name: Stage dist for image packaging
+        # The Dockerfile does COPY --from=builder /app/dist — mirror that path
+        # inside the replacement context.
+        run: |
+          mkdir -p "$RUNNER_TEMP/fe-ctx/app"
+          cp -R client/dist "$RUNNER_TEMP/fe-ctx/app/dist"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package & push frontend image
         uses: docker/build-push-action@v6
         with:
           context: client
+          build-contexts: |
+            builder=${{ runner.temp }}/fe-ctx
           push: true
+          provenance: false
           tags: |
             ${{ env.IMAGE_PREFIX }}/frontend:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_PREFIX }}/frontend:latest
-          build-args: |
-            SENTRY_ORG=automatiza
-            SENTRY_PROJECT=automatiza-frontend
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_RELEASE=${{ steps.version.outputs.version }}
-            VITE_SENTRY_DSN=${{ secrets.VITE_SENTRY_DSN }}
-            VITE_SENTRY_ENVIRONMENT=production
-            VITE_SENTRY_RELEASE=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
-  deploy:
-    name: Deploy to VPS
+  # ---------------------------------------------------------------------------
+  # Everything on the VPS that does NOT depend on the new images runs in
+  # parallel with the builds: shipping compose + waha-router source, building
+  # the router image, registry logins and base-image pulls. Shares the
+  # deploy-production concurrency group so it never interleaves with an
+  # in-flight deploy of a previous run.
+  # ---------------------------------------------------------------------------
+  prep:
+    name: Prepare VPS
     runs-on: ubuntu-latest
-    needs: build-and-push
+    timeout-minutes: 10
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: docker
 
-      - name: Setup SSH key
+      - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          # ControlMaster: every ssh/scp below reuses ONE authenticated TCP
+          # connection instead of paying a full handshake per command.
+          cat >> ~/.ssh/config << 'EOF'
+          Host vps
+            HostName ${{ secrets.VPS_HOST }}
+            User ${{ secrets.VPS_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking accept-new
+            ControlMaster auto
+            ControlPath ~/.ssh/cm-%C
+            ControlPersist 10m
+            ServerAliveInterval 15
+            ConnectTimeout 10
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Copy compose file and waha-router source to VPS
+        run: |
+          # waha-router is built ON the VPS (compose `build: ./waha-router`), so its
+          # source must be present there. Ship the latest code (session sharding +
+          # QR-fix path resolver + anti-unpair guard) so the build below rebuilds it.
+          ssh vps 'mkdir -p /opt/automatiza/docker/waha-router'
+          scp docker/docker-compose.prod.yml vps:/opt/automatiza/docker/docker-compose.yml
+          scp docker/waha-router/main.go \
+            docker/waha-router/go.mod \
+            docker/waha-router/Dockerfile \
+            vps:/opt/automatiza/docker/waha-router/
+
+      - name: Login to Docker Hub on VPS
+        run: |
+          ssh vps "echo '${{ secrets.DOCKERHUB_TOKEN }}' | docker login -u devlikeapro --password-stdin 2>/dev/null" || {
+            echo "WARNING: Docker Hub login failed — clearing bad credentials to allow public image pulls"
+            ssh vps "docker logout 2>/dev/null" || true
+          }
+
+      - name: Build waha-router and pull base images
+        run: |
+          # Router build (CPU-bound, cached when source unchanged) overlaps the
+          # base-image pulls (network-bound). If the router build fails we abort
+          # the run HERE, while the old stack is still fully up.
+          ssh vps bash -s << 'SCRIPT'
+          set -e
+          cd /opt/automatiza/docker
+          docker compose build waha-router &
+          ROUTER_BUILD=$!
+          # Pinned tags that are almost always already present — best-effort.
+          docker compose pull -q postgres redis || echo "WARNING: postgres/redis pull failed (using cached images)"
+          docker compose pull -q waha waha-2 || echo "WARNING: WAHA pull failed (using cached image)"
+          wait "$ROUTER_BUILD"
+          echo "Router image ready."
+          SCRIPT
+
+  # ---------------------------------------------------------------------------
+  # With prep done in parallel, this job is only: .env + pull the two new
+  # images + migrate + rolling up + health check.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [prep, build-backend, build-frontend]
+    # Deploys are serialized: an in-flight deploy is never interrupted, and if
+    # several runs queue up only the newest pending one survives (GitHub cancels
+    # the intermediate ones). This also fixes the pre-existing race where two
+    # pushes could interleave compose commands on the VPS.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    env:
+      VERSION: ${{ needs.build-backend.outputs.version }}
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat >> ~/.ssh/config << 'EOF'
+          Host vps
+            HostName ${{ secrets.VPS_HOST }}
+            User ${{ secrets.VPS_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking accept-new
+            ControlMaster auto
+            ControlPath ~/.ssh/cm-%C
+            ControlPersist 10m
+            ServerAliveInterval 15
+            ConnectTimeout 10
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Login to GHCR on VPS
+        # Done here (not in prep): GITHUB_TOKEN is revoked when its job ends,
+        # so the login must come from THIS job to survive until the pulls.
+        run: |
+          ssh vps "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin 2>/dev/null"
 
       - name: Write .env on VPS
         run: |
@@ -163,8 +387,8 @@ jobs:
           # Image pins: o compose usa ${BACKEND_IMAGE:-...latest}. Sem estes pins no
           # .env, qualquer `docker compose up` MANUAL no box (fora do CI) derruba a
           # build pra :latest. O CI ja passa os tags inline; isto protege ops manuais.
-          BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${{ needs.build-and-push.outputs.version }}
-          FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${{ needs.build-and-push.outputs.version }}
+          BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${{ env.VERSION }}
+          FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${{ env.VERSION }}
           EOF
           # Remove leading whitespace from heredoc
           sed 's/^          //' /tmp/.env.deploy > /tmp/.env.clean
@@ -173,9 +397,8 @@ jobs:
           # and the per-session proxy pool, added out-of-band by the waha-fix ops
           # toolkit — they are intentionally not CI secrets). Overwriting .env wholesale
           # would strip them and break WAHA media storage, so we preserve them here.
-          scp -i ~/.ssh/deploy_key /tmp/.env.clean \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/automatiza/docker/.env.ci
-          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+          scp /tmp/.env.clean vps:/opt/automatiza/docker/.env.ci
+          ssh vps '
             cd /opt/automatiza/docker
             OPS=$(grep -E "^(WAHA_MEDIA_STORAGE|WAHA_S3_[A-Z_]+|WAHA_SESSION_PROXIES)=|^#\[proxy-disabled" .env 2>/dev/null || true)
             cp .env.ci .env
@@ -191,7 +414,7 @@ jobs:
       - name: Validate .env on VPS
         run: |
           echo "=== Validating .env on VPS ==="
-          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+          ssh vps '
             ENV_FILE="/opt/automatiza/docker/.env"
             MISSING=""
             for key in NODE_ENV PORT DB_USER DB_PASSWORD DB_NAME JWT_SECRET COOKIE_DOMAIN CORS_ORIGIN BACKEND_PUBLIC_URL SENTRY_DSN; do
@@ -211,88 +434,73 @@ jobs:
             awk -F= "{print \$1 \"=\" (length(\$2) > 0 ? \"[SET]\" : \"[EMPTY]\")}" "$ENV_FILE"
           '
 
-      - name: Copy docker-compose.yml to VPS
-        run: |
-          scp -i ~/.ssh/deploy_key \
-            docker/docker-compose.prod.yml \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/automatiza/docker/docker-compose.yml
-
-      - name: Copy waha-router source to VPS
-        run: |
-          # waha-router is built ON the VPS (compose `build: ./waha-router`), so its
-          # source must be present there. Ship the latest code (session sharding +
-          # QR-fix path resolver + anti-unpair guard) so `up -d --build` rebuilds it.
-          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            'mkdir -p /opt/automatiza/docker/waha-router'
-          scp -i ~/.ssh/deploy_key \
-            docker/waha-router/main.go \
-            docker/waha-router/go.mod \
-            docker/waha-router/Dockerfile \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/automatiza/docker/waha-router/
-
-      - name: Deploy containers
+      - name: Pull application images
         env:
-          VERSION: ${{ needs.build-and-push.outputs.version }}
+          BACKEND_IMAGE: ${{ env.IMAGE_PREFIX }}/backend:${{ env.VERSION }}
+          FRONTEND_IMAGE: ${{ env.IMAGE_PREFIX }}/frontend:${{ env.VERSION }}
         run: |
-          SSH_CMD="ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}"
+          ssh vps "cd /opt/automatiza/docker && BACKEND_IMAGE='$BACKEND_IMAGE' FRONTEND_IMAGE='$FRONTEND_IMAGE' docker compose pull -q server worker frontend"
 
-          # Step 1: Login to registries
-          $SSH_CMD "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin 2>/dev/null"
-          $SSH_CMD "echo '${{ secrets.DOCKERHUB_TOKEN }}' | docker login -u devlikeapro --password-stdin 2>/dev/null" || {
-            echo "WARNING: Docker Hub login failed — clearing bad credentials to allow public image pulls"
-            $SSH_CMD "docker logout 2>/dev/null" || true
-          }
-
-          # Step 2: Pull new images (with explicit image tags)
-          $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose pull server worker frontend postgres redis"
-          $SSH_CMD "cd /opt/automatiza/docker && docker compose pull waha waha-2" || echo "WARNING: WAHA pull failed (using cached image)"
-
-          # Step 3: Run migrations (allowed to fail without blocking deploy)
+      - name: Run migrations
+        env:
+          BACKEND_IMAGE: ${{ env.IMAGE_PREFIX }}/backend:${{ env.VERSION }}
+          FRONTEND_IMAGE: ${{ env.IMAGE_PREFIX }}/frontend:${{ env.VERSION }}
+        run: |
           echo "=== Running migrations ==="
-          $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose run --rm migrate" || echo "WARNING: Migrations returned non-zero exit code (may be OK if idempotent)"
+          ssh vps "cd /opt/automatiza/docker && BACKEND_IMAGE='$BACKEND_IMAGE' FRONTEND_IMAGE='$FRONTEND_IMAGE' docker compose run --rm migrate" || echo "WARNING: Migrations returned non-zero exit code (may be OK if idempotent)"
 
-          # Step 4: Stop ALL old containers and start fresh with new images
-          echo "=== Stopping old containers ==="
-          $SSH_CMD "cd /opt/automatiza/docker && docker compose down --timeout 30" || true
+      - name: Rolling deploy
+        env:
+          BACKEND_IMAGE: ${{ env.IMAGE_PREFIX }}/backend:${{ env.VERSION }}
+          FRONTEND_IMAGE: ${{ env.IMAGE_PREFIX }}/frontend:${{ env.VERSION }}
+          FULL_RESTART: ${{ inputs.full_restart }}
+        run: |
+          # ROLLING deploy: `up -d` only recreates containers whose image or
+          # config changed — server/worker/frontend (new tags) and waha-router
+          # (if its source changed). postgres/redis/waha/waha-2 keep running
+          # untouched: no WhatsApp reconnection storm (hundreds of sessions at
+          # 2s stagger each), no Postgres cold start, no downtime for the WAHA
+          # path. The old `compose down` + `up` full bounce is available via the
+          # workflow_dispatch input `full_restart` for maintenance.
+          # waha-2 and waha-router stay in the service list on purpose: if they
+          # are ever stopped/missing, `up -d` brings them back.
+          if [ "$FULL_RESTART" = "true" ]; then
+            echo "=== FULL RESTART requested: stopping entire stack (WAHA sessions will reconnect) ==="
+            ssh vps "cd /opt/automatiza/docker && docker compose down --timeout 30" || true
+          fi
 
-          echo "=== Starting services with new images ==="
-          # --build rebuilds waha-router from the source we just copied. waha-2 and
-          # waha-router MUST be in this list: server/worker point WAHA_API_URL at the
-          # router, and `compose down` above stops every service — omitting them would
-          # leave the router down and the whole WhatsApp path broken.
-          $SSH_CMD "cd /opt/automatiza/docker && BACKEND_IMAGE=${{ env.IMAGE_PREFIX }}/backend:${VERSION} FRONTEND_IMAGE=${{ env.IMAGE_PREFIX }}/frontend:${VERSION} docker compose up -d --build postgres redis waha waha-2 waha-router server worker frontend"
+          echo "=== Rolling out new images ==="
+          ssh vps "cd /opt/automatiza/docker && BACKEND_IMAGE='$BACKEND_IMAGE' FRONTEND_IMAGE='$FRONTEND_IMAGE' docker compose up -d --timeout 30 postgres redis waha waha-2 waha-router server worker frontend"
 
-          echo "=== Verifying containers ==="
-          sleep 5
-          $SSH_CMD "cd /opt/automatiza/docker && docker compose ps"
+          echo "=== Container status ==="
+          ssh vps "cd /opt/automatiza/docker && docker compose ps"
 
       - name: Health check via SSH
         run: |
-          echo "Waiting for services to stabilize..."
-          sleep 15
-          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
-            cd /opt/automatiza/docker
-            for i in 1 2 3 4 5; do
-              if curl -sf http://localhost:3000/api/v1/health; then
-                echo ""
-                echo "Backend is healthy!"
-                exit 0
-              fi
-              echo "Attempt $i/5 failed, retrying in 10s..."
-              sleep 10
-            done
-            echo "=== HEALTH CHECK FAILED - DEBUG INFO ==="
-            echo "--- Container status ---"
-            docker compose ps
-            echo "--- Server logs (last 50 lines) ---"
-            docker compose logs server --tail=50
-            echo "--- Worker logs (last 20 lines) ---"
-            docker compose logs worker --tail=20
-            exit 1
-          '
+          # Poll immediately at 2s intervals instead of a fixed sleep — exits as
+          # soon as the backend answers (typically a few seconds after up -d).
+          ssh vps bash -s << 'SCRIPT'
+          cd /opt/automatiza/docker
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:3000/api/v1/health; then
+              echo ""
+              echo "Backend is healthy! (after ~$(( (i - 1) * 2 ))s)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "=== HEALTH CHECK FAILED - DEBUG INFO ==="
+          echo "--- Container status ---"
+          docker compose ps
+          echo "--- Server logs (last 50 lines) ---"
+          docker compose logs server --tail=50
+          echo "--- Worker logs (last 20 lines) ---"
+          docker compose logs worker --tail=20
+          exit 1
+          SCRIPT
 
       - name: Notify on failure
         if: failure()
         run: |
-          echo "::error::Deploy failed for version ${{ needs.build-and-push.outputs.version }}"
+          echo "::error::Deploy failed for version ${{ env.VERSION }}"
           echo "Check VPS logs: ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'cd /opt/automatiza/docker && docker compose logs --tail=50'"

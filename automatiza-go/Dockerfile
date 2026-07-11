@@ -3,8 +3,6 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-ARG VERSION=dev
-
 # Install dependencies
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -14,6 +12,11 @@ RUN go mod download
 
 # Copy source
 COPY . .
+
+# Declared right before its only use: an in-scope ARG busts the cache of every
+# following RUN, and VERSION changes per deploy — declaring it at the top
+# forced apk add + go mod download to re-run on every single build.
+ARG VERSION=dev
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build \
@@ -30,23 +33,21 @@ WORKDIR /app
 # do fan-out para não transcodificar o mesmo vídeo por grupo no WAHA).
 RUN apk --no-cache add ca-certificates tzdata postgresql16-client curl bash ffmpeg
 
-# Create non-root user
+# Create non-root user (and own /app while it is still empty — file ownership
+# is handled per-COPY below, avoiding a `chown -R` layer that duplicated the
+# whole binary into an extra ~40MB layer shipped on every deploy)
 RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
+    adduser -u 1001 -S appuser -G appgroup && \
+    chown appuser:appgroup /app
 
-# Copy binary
-COPY --from=builder /server .
+# Copy migration scripts (change rarely — kept BEFORE the binary so a code-only
+# deploy invalidates nothing but the final binary layer)
+COPY --chown=appuser:appgroup --chmod=755 scripts/db/run-migrations.sh /app/db/run-migrations.sh
+COPY --chown=appuser:appgroup scripts/db/init.sql /app/db/init.sql
+COPY --chown=appuser:appgroup scripts/db/migrations/ /app/db/migrations/
 
-# Copy migration scripts
-COPY scripts/db/run-migrations.sh /app/db/run-migrations.sh
-COPY scripts/db/init.sql /app/db/init.sql
-COPY scripts/db/migrations/ /app/db/migrations/
-
-# Make migration script executable
-RUN chmod +x /app/db/run-migrations.sh
-
-# Set ownership
-RUN chown -R appuser:appgroup /app
+# Copy binary (changes every deploy — last layer, the only one pulled per deploy)
+COPY --from=builder --chown=appuser:appgroup /server .
 
 # Switch to non-root user
 USER appuser
