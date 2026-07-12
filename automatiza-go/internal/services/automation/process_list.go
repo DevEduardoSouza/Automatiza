@@ -427,6 +427,33 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		// tudo no próximo ciclo completo, o item é tentado de novo depois —
 		// nada se perde de vez, e nenhuma oferta quebrada sai no grupo.
 		if isShopee && shopeeProduct == nil {
+			// Erro de CREDENCIAL (secret errado/regenerado no painel, credencial
+			// ausente/incompleta): TODO item vai falhar identicamente até o
+			// usuário recadastrar — deixar o ciclo rodando queima a lista
+			// inteira, ~poolSize itens por vez (caso real 11/07: secret errado
+			// salvo às 21:58 queimou 90 itens em 2h). Pausa a automação com
+			// erro acionável, preserva o item e encerra o run — o MESMO
+			// contrato do monitoring e do offer_generate para credenciais.
+			if isShopeeCredentialEnrichError(shopeeEnrichErr) {
+				s.logger.Warn("Shopee credential error in LIST enrichment — pausing automation",
+					zap.String("automationID", automation.ID),
+					zap.String("originURL", originURL),
+					zap.Error(shopeeEnrichErr))
+				s.logDispatch(ctx, automation, "system", originURL, "failed",
+					"Credenciais Shopee ausentes ou invalidas - automacao pausada; recadastre App ID e Senha")
+				nowStr := time.Now().UTC().Format(time.RFC3339)
+				if upErr := s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
+					"status":        models.AutomationStatusPaused,
+					"last_error":    "Credenciais Shopee ausentes ou invalidas - automacao pausada automaticamente; recadastre App ID e Senha",
+					"last_error_at": nowStr,
+				}); upErr != nil {
+					s.logger.Error("Failed to pause automation on credential error",
+						zap.String("automationID", automation.ID),
+						zap.Error(upErr))
+				}
+				result.Message = "Automacao pausada: credenciais Shopee invalidas"
+				return result, nil
+			}
 			// A TRANSIENT enrichment failure (Shopee rate limit 10030, timeout,
 			// network blip, 5xx) must NOT consume the item. Consuming advances
 			// GetNextUnconsumed past a link we never delivered, so a rate-limit
@@ -790,6 +817,20 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 // Unknown/unclassified errors are treated as permanent: keeping an item that
 // fails for an unexplained reason pending would risk an endless no-progress
 // loop, which is worse than dropping one item.
+// isShopeeCredentialEnrichError identifica falhas de CREDENCIAL no
+// enriquecimento (secret errado → Invalid Signature, credencial ausente ou
+// incompleta). Diferente de link morto, esse erro repete em TODO item até o
+// usuário recadastrar — o chamador pausa a automação em vez de queimar itens.
+func isShopeeCredentialEnrichError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "invalid signature") ||
+		strings.Contains(msg, "credentials incomplete") ||
+		strings.Contains(msg, "credentials not configured")
+}
+
 func isTransientShopeeEnrichError(err error) bool {
 	if err == nil {
 		return false

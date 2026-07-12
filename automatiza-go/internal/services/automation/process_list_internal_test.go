@@ -2,6 +2,7 @@ package automation
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -44,5 +45,26 @@ func TestIsTransientShopeeEnrichError(t *testing.T) {
 				t.Fatalf("isTransientShopeeEnrichError(%v) = %v, want %v", tc.err, got, tc.want)
 			}
 		})
+	}
+}
+
+// Credencial quebrada tem que PAUSAR a automação, não queimar a lista —
+// este teste trava a classificação que decide isso.
+func TestIsShopeeCredentialEnrichError(t *testing.T) {
+	cases := []struct {
+		err  error
+		want bool
+	}{
+		{fmt.Errorf("shopee API error: error [10020]: Invalid Signature"), true},
+		{fmt.Errorf("shopee credentials incomplete - please configure App ID and Password"), true},
+		{fmt.Errorf("shopee credentials not configured"), true},
+		{fmt.Errorf("shopee API error: error [10030]: Rate limit exceeded"), false},
+		{fmt.Errorf("product not found"), false},
+		{nil, false},
+	}
+	for _, c := range cases {
+		if got := isShopeeCredentialEnrichError(c.err); got != c.want {
+			t.Errorf("isShopeeCredentialEnrichError(%v) = %v, want %v", c.err, got, c.want)
+		}
 	}
 }
