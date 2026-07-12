@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	affiliatesv1 "automatiza-go/internal/gen/affiliates/v1"
 	"automatiza-go/internal/models"
@@ -113,6 +114,27 @@ func (h *AffiliateCredentialsHandler) UpsertCredential(
 	data := &models.AffiliateCredentials{
 		Store:       store,
 		Credentials: credentialsMap,
+	}
+
+	// Campo secreto vazio ou MASCARADO preserva o valor salvo. O GET devolve
+	// secrets mascarados (nunca mais o valor real para o navegador), então o
+	// round-trip do formulário chega aqui com a máscara — e autofill do
+	// navegador/estado stale não consegue mais sobrescrever um secret válido
+	// com lixo (incidente 11/07 21:58: secret válido da Isa virou inválido
+	// sem ninguém tocar nas credenciais — o formulário persistiu um valor
+	// que não veio do usuário).
+	if existing, exErr := h.credentialsRepo.GetByUserAndStore(ctx, user.ID, store); exErr == nil && existing != nil {
+		for _, key := range secretCredentialKeys {
+			incoming, has := credentialsMap[key]
+			if !has {
+				continue
+			}
+			if isMaskedOrEmptySecret(incoming) {
+				if old := existing.GetCredential(key); old != "" {
+					credentialsMap[key] = old
+				}
+			}
+		}
 	}
 
 	// Shopee: valida App ID + Senha AO VIVO antes de salvar. Um secret errado
@@ -253,15 +275,55 @@ func (h *AffiliateCredentialsHandler) ListActiveStores(
 // Helper functions
 
 // credentialToProto converts a model credential to proto format.
+// secretCredentialKeys são os campos de credencial que NUNCA saem em claro
+// para o cliente e que, quando chegam vazios/mascarados num save, preservam
+// o valor armazenado.
+var secretCredentialKeys = []string{"password", "app_secret", "secret", "apiToken", "api_token"}
+
+// secretMask é o placeholder devolvido no lugar de secrets. O formulário
+// exibe os pontinhos; se voltarem intactos num save, o Upsert mantém o valor
+// salvo (ver isMaskedOrEmptySecret).
+const secretMask = "••••••••"
+
+// isMaskedOrEmptySecret reconhece valores que NÃO são um secret digitado pelo
+// usuário: vazio, o placeholder do GET, ou uma sequência de caracteres de
+// máscara (•, *, ●, ·).
+func isMaskedOrEmptySecret(v string) bool {
+	trimmed := strings.TrimSpace(v)
+	if trimmed == "" {
+		return true
+	}
+	for _, r := range trimmed {
+		switch r {
+		case '•', '*', '●', '·':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func credentialToProto(c *models.AffiliateCredentials) *affiliatesv1.AffiliateCredential {
 	if c == nil {
 		return nil
 	}
 
-	// Convert credentials map to JSON string
+	// Convert credentials map to JSON string — com secrets MASCARADOS. O
+	// valor real nunca mais viaja ao navegador: além de vazamento, era o
+	// vetor da corrupção silenciosa (autofill/estado stale re-salvando por
+	// cima do secret válido).
 	var credentialsJSON string
 	if c.Credentials != nil {
-		if data, err := json.Marshal(c.Credentials); err == nil {
+		masked := make(map[string]string, len(c.Credentials))
+		for k, v := range c.Credentials {
+			masked[k] = v
+		}
+		for _, key := range secretCredentialKeys {
+			if v, ok := masked[key]; ok && strings.TrimSpace(v) != "" {
+				masked[key] = secretMask
+			}
+		}
+		if data, err := json.Marshal(masked); err == nil {
 			credentialsJSON = string(data)
 		}
 	}

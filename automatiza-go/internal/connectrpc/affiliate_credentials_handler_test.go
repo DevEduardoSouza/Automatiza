@@ -3,6 +3,7 @@ package connectrpc
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	affiliatesv1 "automatiza-go/internal/gen/affiliates/v1"
@@ -75,6 +76,58 @@ func TestUpsertCredential_ShopeeValidation(t *testing.T) {
 		}
 		if repo.upserted == nil {
 			t.Fatal("valid credentials must be persisted")
+		}
+	})
+
+	// O GET devolve secrets mascarados; um save que traz a máscara de volta
+	// (ou vazio) tem que PRESERVAR o secret armazenado — nunca sobrescrever
+	// com a máscara (incidente 11/07: secret válido virou inválido sem
+	// ninguém digitar credencial).
+	t.Run("secret mascarado no save → preserva o armazenado", func(t *testing.T) {
+		repo := &stubCredentialsRepo{upserted: &models.AffiliateCredentials{
+			Store:       "shopee",
+			Credentials: map[string]string{"appId": "18330220029", "password": "secret-real-armazenado"},
+		}}
+		var validatedSecret string
+		h := &AffiliateCredentialsHandler{
+			credentialsRepo: repo,
+			validateShopee: func(_ context.Context, _, secret string) error {
+				validatedSecret = secret
+				return nil
+			},
+		}
+		req := connect.NewRequest(&affiliatesv1.UpsertCredentialRequest{
+			Store:       affiliatesv1.AffiliateStore_AFFILIATE_STORE_SHOPEE,
+			Credentials: `{"appId":"18330220029","password":"••••••••"}`,
+		})
+		if _, err := h.UpsertCredential(ctxWithUser, req); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := repo.upserted.Credentials["password"]; got != "secret-real-armazenado" {
+			t.Errorf("masked save must keep stored secret, persisted %q", got)
+		}
+		if validatedSecret != "secret-real-armazenado" {
+			t.Errorf("live validation must run on the MERGED real secret, got %q", validatedSecret)
+		}
+	})
+
+	// A resposta do GET/List nunca pode carregar o secret em claro.
+	t.Run("credentialToProto mascara o secret", func(t *testing.T) {
+		proto := credentialToProto(&models.AffiliateCredentials{
+			Store:       "shopee",
+			Credentials: map[string]string{"appId": "18330220029", "password": "secret-real"},
+		})
+		if proto == nil {
+			t.Fatal("nil proto")
+		}
+		if want := `"password":"` + secretMask + `"`; !strings.Contains(proto.Credentials, want) {
+			t.Errorf("expected masked password in %s", proto.Credentials)
+		}
+		if strings.Contains(proto.Credentials, "secret-real") {
+			t.Error("raw secret must NEVER leave the API")
+		}
+		if !strings.Contains(proto.Credentials, "18330220029") {
+			t.Error("appId must stay visible")
 		}
 	})
 }

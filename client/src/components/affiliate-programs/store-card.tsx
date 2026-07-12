@@ -173,6 +173,13 @@ export function StoreCard({
                     placeholder={field.placeholder}
                     value={credential?.credentials?.[field.key] || ''}
                     onChange={(e) => onFieldChange(field.key, e.target.value)}
+                    // autofill do navegador preenchia a senha SALVA DO SITE
+                    // neste campo e um "Salvar" persistia o valor errado por
+                    // cima do secret válido da loja (corrupção silenciosa de
+                    // credencial — incidente 11/07). new-password desativa.
+                    autoComplete={isPassword ? 'new-password' : 'off'}
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                     className={`${inputClasses}${isPassword ? ' pr-10' : ''}`}
                   />
                   {isPassword && (
