@@ -165,8 +165,11 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		}
 		_, sendErr = w.whatsappProvider.SendLinkCustomPreview(ctx, previewInput)
 
-		// Fallback: if link preview fails, try sending as image or text
-		if sendErr != nil {
+		// Fallback: if link preview fails DEFINITIVELY, try sending as text.
+		// Timeout/cancelamento fica de fora: o WAHA pode ter entregue o card
+		// mesmo assim, e reenviar por texto duplica a promoção no grupo (o
+		// mesmo bug corrigido no monitoring/offer_generate).
+		if sendErr != nil && !whatsapp.IsAmbiguousOutcome(sendErr) {
 			w.logger.Warn("Link preview send failed, falling back to text",
 				zap.String("automationID", data.AutomationID),
 				zap.String("previewURL", data.LinkPreview.URL),

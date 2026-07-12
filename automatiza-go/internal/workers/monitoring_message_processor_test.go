@@ -39,6 +39,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_GroupMessage(t *testing.T) {
 	mockSvc := new(mockMonitoringService)
 
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Test payload (group message with affiliate link)
 	payload := map[string]interface{}{
@@ -72,6 +73,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_SkipsNonGroupMessage(t *testi
 	mockSvc := new(mockMonitoringService)
 
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Test payload (private message, not a group)
 	payload := map[string]interface{}{
@@ -98,6 +100,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_SkipsOwnMessage(t *testing.T)
 	mockSvc := new(mockMonitoringService)
 
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Test payload (own message)
 	payload := map[string]interface{}{
@@ -131,6 +134,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FromMeRoutesToOfferGenerate(t
 	mockOG.On("ProcessIncomingMessage", mock.Anything, mock.Anything).Return(nil)
 
 	processor := workers.NewMonitoringMessageProcessor(mockMon, mockOG, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	payload := map[string]interface{}{
 		"id":        "msg-own-offer",
@@ -155,6 +159,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_SkipsEmptyMessage(t *testing.
 	mockSvc := new(mockMonitoringService)
 
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Test payload (empty message)
 	payload := map[string]interface{}{
@@ -182,6 +187,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedMessageFormat(t *testin
 	mockSvc := new(mockMonitoringService)
 
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Test payload with nested message object (WAHA format)
 	payload := map[string]interface{}{
@@ -218,6 +224,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MediaMessage(t *testing.T) {
 	mockSvc := new(mockMonitoringService)
 
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Test payload (image message with caption)
 	payload := map[string]interface{}{
@@ -255,6 +262,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MalformedPayload(t *testing.T
 	mockSvc := new(mockMonitoringService)
 
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Test payload missing required fields
 	payload := map[string]interface{}{
@@ -278,6 +286,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_ChatIDField(t *testing.T) {
 	mockSvc := new(mockMonitoringService)
 
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Some WAHA events use chatId instead of from/to
 	payload := map[string]interface{}{
@@ -307,6 +316,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_QuotedMessage(t *testing.T) {
 	mockSvc := new(mockMonitoringService)
 
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Test payload with quoted message
 	payload := map[string]interface{}{
@@ -344,6 +354,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedStringID(t *testing.T) 
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message with a simple string ID instead of object
 	payload := map[string]interface{}{
@@ -372,6 +383,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedFallbackToField(t *test
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message without "from", falls back to "to" for remoteJID
 	payload := map[string]interface{}{
@@ -399,6 +411,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedTimestampT(t *testing.T
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message using "t" instead of "timestamp"
 	payload := map[string]interface{}{
@@ -426,6 +439,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedMediaObject(t *testing.
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message with media object
 	payload := map[string]interface{}{
@@ -462,6 +476,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedNotifyName(t *testing.T
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message with notifyName setting PushName
 	payload := map[string]interface{}{
@@ -490,6 +505,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedMissingMessageID(t *tes
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message without any message ID
 	payload := map[string]interface{}{
@@ -512,6 +528,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedMissingRemoteJID(t *tes
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message with ID but no remote JID (no from, no to, no remote in ID object)
 	payload := map[string]interface{}{
@@ -536,6 +553,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatToField(t *testing.T) {
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload using "to" instead of "from" for remoteJID
 	payload := map[string]interface{}{
@@ -561,6 +579,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatAuthorField(t *testing.T)
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload using "author" instead of "participant" for SenderJID
 	payload := map[string]interface{}{
@@ -587,6 +606,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatNotifyName(t *testing.T) 
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload using "notifyName" for PushName
 	payload := map[string]interface{}{
@@ -613,6 +633,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatTextField(t *testing.T) {
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload using "text" instead of "body"
 	payload := map[string]interface{}{
@@ -638,6 +659,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatTimestampT(t *testing.T) 
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload using "t" instead of "timestamp"
 	payload := map[string]interface{}{
@@ -663,6 +685,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMediaObject(t *testing.T)
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with nested media object (no top-level mediaUrl)
 	payload := map[string]interface{}{
@@ -696,6 +719,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMediaObjectOverridesMedia
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with BOTH mediaUrl and media.url - media.url should take precedence
 	payload := map[string]interface{}{
@@ -734,6 +758,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_InfersMediaTypeFromMime(t *te
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	payload := map[string]interface{}{
 		"id":       "msg-mime-infer",
@@ -766,6 +791,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_InfersVideoFromMime(t *testin
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	payload := map[string]interface{}{
 		"id":       "msg-mime-video",
@@ -796,6 +822,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampIntType(t *testing.T
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with timestamp as int type
 	payload := map[string]interface{}{
@@ -821,6 +848,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampInt64Type(t *testing
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with timestamp as int64 type
 	payload := map[string]interface{}{
@@ -846,6 +874,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampUint64Type(t *testin
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with timestamp as uint64 type
 	payload := map[string]interface{}{
@@ -871,6 +900,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampUnsupportedType(t *t
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with timestamp as unsupported string type - should use default (now)
 	payload := map[string]interface{}{
@@ -901,6 +931,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NilMapBoolExtraction(t *testi
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload without fromMe key at all (tests nil/missing bool extraction)
 	payload := map[string]interface{}{
@@ -927,6 +958,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMissingID(t *testing.T) {
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload missing message ID entirely (extractStringFromPayload returns "", false)
 	payload := map[string]interface{}{
@@ -947,6 +979,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMissingRemoteJID(t *testi
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with ID but no from/to/chatId
 	payload := map[string]interface{}{
@@ -969,6 +1002,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_ServiceError(t *testing.T) {
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	payload := map[string]interface{}{
 		"id":        "msg-svc-err",
@@ -985,10 +1019,10 @@ func TestMonitoringMessageProcessor_ProcessMessage_ServiceError(t *testing.T) {
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
 
-	// Should return wrapped error to trigger retry
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "monitoring service error")
-	assert.Contains(t, err.Error(), "database connection failed")
+	// Novo contrato: erro de espelho é LOGADO, não retornado — o fan-out é
+	// assíncrono (não segura o slot do consumidor) e retry do asynq minutos
+	// depois viraria no-op de dedup numa oferta que já perdeu o timing.
+	assert.NoError(t, err)
 	mockSvc.AssertExpectations(t)
 }
 
@@ -998,6 +1032,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MediaTypeVideo(t *testing.T) 
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	payload := map[string]interface{}{
 		"id":        "msg-video",
@@ -1022,6 +1057,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MediaTypeAudio(t *testing.T) 
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	payload := map[string]interface{}{
 		"id":        "msg-audio",
@@ -1046,6 +1082,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MediaTypePtt(t *testing.T) {
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	payload := map[string]interface{}{
 		"id":        "msg-ptt",
@@ -1070,6 +1107,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MediaTypeDocument(t *testing.
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	payload := map[string]interface{}{
 		"id":        "msg-doc",
@@ -1096,6 +1134,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_QuotedMessageObjectID(t *test
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Quoted message with ID as object ({"_serialized": "..."}) instead of string
 	payload := map[string]interface{}{
@@ -1130,6 +1169,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_QuotedMessageAuthorField(t *t
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Quoted message using "author" instead of "participant"
 	payload := map[string]interface{}{
@@ -1164,6 +1204,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatParticipantField(t *testi
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload using "participant" (not "author") for SenderJID
 	payload := map[string]interface{}{
@@ -1190,6 +1231,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatIDAsObject(t *testing.T) 
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload where "id" is a map with "_serialized" instead of a string
 	payload := map[string]interface{}{
@@ -1217,6 +1259,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatPushNameField(t *testing.
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload using "pushName" (camelCase) instead of "notifyName"
 	payload := map[string]interface{}{
@@ -1243,6 +1286,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMimeTypeField(t *testing.
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with "mimeType" (camelCase) instead of "mimetype" (lowercase)
 	payload := map[string]interface{}{
@@ -1272,6 +1316,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMimetypeField(t *testing.
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with "mimetype" (lowercase) - already tested in MediaMessage
 	// but this test isolates the mimetype branch without media object
@@ -1305,6 +1350,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedVideoType(t *testing.T)
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message with type "video"
 	payload := map[string]interface{}{
@@ -1337,6 +1383,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedDocumentType(t *testing
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message with type "document"
 	payload := map[string]interface{}{
@@ -1369,6 +1416,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedPttType(t *testing.T) {
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message with type "ptt" (push-to-talk) maps to "audio"
 	payload := map[string]interface{}{
@@ -1400,6 +1448,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedFromFallback(t *testing
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message where ID object has NO "remote" field,
 	// so RemoteJID falls back to the "from" field on the message object
@@ -1432,6 +1481,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedFromMeOverride(t *testi
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message where fromMe is false in the ID object but true
 	// in the message object itself (fromMe override). Should skip as own message.
@@ -1459,6 +1509,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMediaUrlOnly(t *testing.T
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with "mediaUrl" but NO "media" object.
 	// MediaURL should come from the top-level mediaUrl field.
@@ -1490,6 +1541,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedQuotedMessage(t *testin
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Nested message format does not parse quotedMsg (parseMessageObject
 	// does not call parseQuotedMessage). This test verifies that the nested
@@ -1527,6 +1579,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampAsInt(t *testing.T) 
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Exercises the `case int` branch in extractInt64FromPayload.
 	payload := map[string]interface{}{
@@ -1551,6 +1604,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampAsInt64(t *testing.T
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Exercises the `case int64` branch in extractInt64FromPayload.
 	payload := map[string]interface{}{
@@ -1575,6 +1629,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampAsUint64(t *testing.
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Exercises the `case uint64` branch in extractInt64FromPayload.
 	payload := map[string]interface{}{
@@ -1599,6 +1654,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampAsString(t *testing.
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Exercises the `default` branch in extractInt64FromPayload.
 	// Both "timestamp" and "t" are strings → default case for both.
@@ -1627,6 +1683,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FromMeAsString(t *testing.T) 
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// "fromMe" as string triggers extractBoolFromPayload type assertion failure.
 	payload := map[string]interface{}{
@@ -1651,6 +1708,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_IDAsNumber(t *testing.T) {
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// "id" as number triggers extractStringFromPayload type assertion failure.
 	// Neither string nor map → MessageID stays empty → parsePayload returns error.
@@ -1677,6 +1735,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatToFallback(t *testing.T) 
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload missing "from", using "to" fallback for RemoteJID.
 	payload := map[string]interface{}{
@@ -1701,6 +1760,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatChatIDFallback(t *testing
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload missing "from" and "to", using "chatId" fallback.
 	payload := map[string]interface{}{
@@ -1725,6 +1785,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatTextFallback(t *testing.T
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload with "text" instead of "body" for message content.
 	payload := map[string]interface{}{
@@ -1749,6 +1810,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatTimestampTFallback(t *tes
 	logger := zap.NewNop()
 	mockSvc := new(mockMonitoringService)
 	processor := workers.NewMonitoringMessageProcessor(mockSvc, nil, logger)
+	processor.DisableAsyncFanoutForTests()
 
 	// Flat payload using "t" instead of "timestamp" for the timestamp field.
 	payload := map[string]interface{}{

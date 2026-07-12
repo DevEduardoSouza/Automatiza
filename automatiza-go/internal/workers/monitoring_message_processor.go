@@ -35,6 +35,20 @@ type MonitoringMessageProcessor struct {
 	monitoringService    monitoring.Service
 	offerGenerateService offer_generate.Service
 	logger               *zap.Logger
+
+	// fanoutSlots limita os fan-outs de espelho processados em goroutine.
+	// O fan-out leva dezenas de segundos (pacing + digitação) e não pode
+	// segurar o slot do consumidor asynq — ver ProcessMessage.
+	fanoutSlots chan struct{}
+
+	// syncForTests força processamento inline (sem goroutine) para os
+	// testes poderem assertar deterministicamente logo após ProcessMessage.
+	syncForTests bool
+}
+
+// DisableAsyncFanoutForTests força o processamento inline. Só para testes.
+func (p *MonitoringMessageProcessor) DisableAsyncFanoutForTests() {
+	p.syncForTests = true
 }
 
 // NewMonitoringMessageProcessor creates a new monitoring message processor.
@@ -52,6 +66,7 @@ func NewMonitoringMessageProcessor(
 		monitoringService:    monitoringService,
 		offerGenerateService: offerGenerateService,
 		logger:               logger.Named("monitoring-processor"),
+		fanoutSlots:          make(chan struct{}, 64),
 	}
 }
 
@@ -122,28 +137,61 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 	// can safely receive FromMe messages. A blanket early-return here used to
 	// drop them before offer_generate ever saw them — meaning users who fed
 	// offers by posting themselves got nothing relayed.
-	if !msg.FromMe {
-		// Process the message through the monitoring service
-		if err := p.monitoringService.ProcessIncomingMessage(ctx, msg); err != nil {
-			p.logger.Error("Failed to process message for monitoring",
-				zap.String("session", sessionName),
-				zap.String("messageID", msg.MessageID),
-				zap.Error(err))
-			// Return error to trigger retry
-			return fmt.Errorf("monitoring service error: %w", err)
+	process := func(procCtx context.Context) {
+		if !msg.FromMe {
+			if err := p.monitoringService.ProcessIncomingMessage(procCtx, msg); err != nil {
+				p.logger.Error("Failed to process message for monitoring",
+					zap.String("session", sessionName),
+					zap.String("messageID", msg.MessageID),
+					zap.Error(err))
+			}
+		}
+		// Also process through the offer generate service (filters internally by
+		// automation type, and handles FromMe via its own loop-guard)
+		if p.offerGenerateService != nil {
+			if err := p.offerGenerateService.ProcessIncomingMessage(procCtx, msg); err != nil {
+				p.logger.Error("Failed to process message for offer generation",
+					zap.String("session", sessionName),
+					zap.String("messageID", msg.MessageID),
+					zap.Error(err))
+			}
 		}
 	}
 
-	// Also process through the offer generate service (filters internally by
-	// automation type, and handles FromMe via its own loop-guard)
-	if p.offerGenerateService != nil {
-		if err := p.offerGenerateService.ProcessIncomingMessage(ctx, msg); err != nil {
-			p.logger.Error("Failed to process message for offer generation",
-				zap.String("session", sessionName),
-				zap.String("messageID", msg.MessageID),
-				zap.Error(err))
-			// Non-fatal: don't return error to avoid retrying monitoring
-		}
+	// O fan-out do espelho leva dezenas de segundos (pacing + digitação) e
+	// NÃO pode segurar o slot do consumidor asynq: sob rajada (jobs de lista
+	// drenando na mesma piscina), a fila de webhooks acumulava minutos e o
+	// espelho estourava o teto de 1min ponta a ponta. O consumidor agora só
+	// parseia e DELEGA: goroutine com semáforo (64) e ctx PRÓPRIO (o da task
+	// morre no retorno). Pool cheio → processa inline (backpressure real,
+	// mensagem nunca é descartada). Trade-off deliberado: sem retry do asynq
+	// para erro de espelho — oferta espelhada perde valor em minutos e o
+	// dedup/claim já torna retries quase sempre no-op.
+	if p.syncForTests {
+		process(ctx)
+		p.logger.Debug("Message processed successfully (sync test mode)",
+			zap.String("session", sessionName),
+			zap.String("messageID", msg.MessageID))
+		return nil
+	}
+
+	select {
+	case p.fanoutSlots <- struct{}{}:
+		go func() {
+			defer func() {
+				<-p.fanoutSlots
+				if r := recover(); r != nil {
+					p.logger.Error("Panic in async mirror fan-out",
+						zap.String("messageID", msg.MessageID),
+						zap.Any("panic", r))
+				}
+			}()
+			procCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			process(procCtx)
+		}()
+	default:
+		process(ctx)
 	}
 
 	p.logger.Debug("Message processed successfully",

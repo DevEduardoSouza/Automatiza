@@ -153,7 +153,10 @@ func (q *QueueClient) EnqueueMessage(ctx context.Context, data *MessageJobData, 
 
 	opts := []asynq.Option{
 		asynq.MaxRetry(3),
-		asynq.Queue("default"),
+		// Fila "messages" (peso 3), NÃO "default": jobs de envio em massa
+		// seguram worker por segundos (digitação simulada) e não podem
+		// disputar de igual com o processamento de webhooks (espelho ≤1min).
+		asynq.Queue("messages"),
 		// 120s (was 60s) so a SendImage that hits the 30s httpClient timeout
 		// still has budget for the adapter's single timeout-retry before the
 		// task deadline cuts it — otherwise the retry that recovers a "sem
