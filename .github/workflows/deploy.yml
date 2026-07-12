@@ -470,7 +470,15 @@ jobs:
           fi
 
           echo "=== Rolling out new images ==="
-          ssh vps "cd /opt/automatiza/docker && BACKEND_IMAGE='$BACKEND_IMAGE' FRONTEND_IMAGE='$FRONTEND_IMAGE' docker compose up -d --timeout 30 postgres redis waha waha-2 waha-router server worker frontend"
+          # Infra com ESTADO (postgres/redis/waha/waha-2): --no-recreate — sobe
+          # se estiver parada/ausente, mas NUNCA recria por diff de config ou
+          # imagem. O compose.yml é re-copiado a cada deploy e `compose pull`
+          # busca digests novos de waha, então um `up -d` normal recriava os
+          # WAHAs e derrubava ~550 sessões pareadas de uma vez (aconteceu em
+          # produção 11/07 20:47 UTC — clientes viram "números desconectando").
+          # Recriação deliberada da infra: use o input full_restart.
+          ssh vps "cd /opt/automatiza/docker && docker compose up -d --no-recreate --timeout 30 postgres redis waha waha-2"
+          ssh vps "cd /opt/automatiza/docker && BACKEND_IMAGE='$BACKEND_IMAGE' FRONTEND_IMAGE='$FRONTEND_IMAGE' docker compose up -d --timeout 30 waha-router server worker frontend"
 
           echo "=== Container status ==="
           ssh vps "cd /opt/automatiza/docker && docker compose ps"

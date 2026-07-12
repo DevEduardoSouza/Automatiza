@@ -8,6 +8,7 @@ import (
 	affiliatesv1 "automatiza-go/internal/gen/affiliates/v1"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/shopee"
 
 	"connectrpc.com/connect"
 )
@@ -15,12 +16,19 @@ import (
 // AffiliateCredentialsHandler implements the affiliatesv1connect.AffiliateCredentialsServiceHandler interface.
 type AffiliateCredentialsHandler struct {
 	credentialsRepo repository.AffiliateCredentialsRepository
+
+	// validateShopee testa App ID + Senha contra a API da Shopee antes de
+	// salvar (injetável para testes). Default: shopee.ValidateAffiliateCredentials.
+	validateShopee func(ctx context.Context, appID, appSecret string) error
 }
 
 // NewAffiliateCredentialsHandler creates a new affiliate credentials handler.
 func NewAffiliateCredentialsHandler(credentialsRepo repository.AffiliateCredentialsRepository) *AffiliateCredentialsHandler {
 	return &AffiliateCredentialsHandler{
 		credentialsRepo: credentialsRepo,
+		validateShopee: func(ctx context.Context, appID, appSecret string) error {
+			return shopee.ValidateAffiliateCredentials(ctx, "", appID, appSecret)
+		},
 	}
 }
 
@@ -105,6 +113,25 @@ func (h *AffiliateCredentialsHandler) UpsertCredential(
 	data := &models.AffiliateCredentials{
 		Store:       store,
 		Credentials: credentialsMap,
+	}
+
+	// Shopee: valida App ID + Senha AO VIVO antes de salvar. Um secret errado
+	// aceito aqui só aparece depois, como rajada de [10020] Invalid Signature
+	// queimando itens de lista e pausando automações (incidente 11/07 — a
+	// cliente salvou secret regenerado e 90 itens foram queimados em 2h).
+	// Fail-open para instabilidade da Shopee; só rejeita 10020 determinístico.
+	if store == "shopee" && h.validateShopee != nil {
+		appID, appSecret := data.GetCredential("appId"), data.GetCredential("password")
+		if appID == "" {
+			appID = data.GetCredential("app_id")
+		}
+		if appSecret == "" {
+			appSecret = data.GetCredential("app_secret")
+		}
+		if err := h.validateShopee(ctx, appID, appSecret); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+				"credenciais Shopee invalidas: a Senha nao confere com o painel de afiliados da Shopee. Copie o App ID e a Senha novamente (sem espacos) e tente de novo"))
+		}
 	}
 
 	// Handle auto_generate - default to true if not specified
