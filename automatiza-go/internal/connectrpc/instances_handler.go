@@ -325,6 +325,26 @@ func (h *InstancesHandler) DeleteInstance(
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("instance not found"))
 	}
 
+	// TRAVA ANTI-DESTRUIÇÃO: número CONECTADO (pareado e ativo agora) só sai
+	// com force=true. Remover despareia DE VERDADE (exige novo QR), e o
+	// padrão que derrubou frotas inteiras foi exatamente remoção em massa de
+	// chips saudáveis (12/07: frota 15/15 recém-escaneada, enviando ~300
+	// msg/min, deletada+recriada — 8 gerações em uma noite). Conectado aqui
+	// = status vivo: o webhook da WAHA atualiza o banco em milissegundos e,
+	// na dúvida, consultamos a WAHA ao vivo.
+	if !req.Msg.GetForce() {
+		liveConnected := instance.Status == "connected"
+		if !liveConnected && h.waProvider != nil && instance.InstanceID != "" {
+			if info, stErr := h.waProvider.GetSessionStatus(ctx, instance.InstanceID); stErr == nil && info != nil {
+				liveConnected = info.Status == whatsapp.SessionStatusConnected
+			}
+		}
+		if liveConnected {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+				"este numero esta CONECTADO e operando - remover vai desparear e exigir novo QR. Se tem certeza, confirme a remocao forcada"))
+		}
+	}
+
 	// Unpair in WAHA BEFORE dropping the row, and only drop the row once the
 	// session is confirmed gone. Deleting the row first (or ignoring a WAHA
 	// failure) strands the session: it keeps running, still linked to WhatsApp,

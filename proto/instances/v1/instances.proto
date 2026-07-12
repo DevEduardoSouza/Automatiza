@@ -127,6 +127,11 @@ message DeleteDisconnectedInstancesResponse {
 
 message DeleteInstanceRequest {
   string id = 1 [(buf.validate.field).string.min_len = 1];
+  // Um número CONECTADO e enviando só pode ser removido com force=true —
+  // remoção despareia de verdade (exige novo QR). Protege contra operações
+  // em massa destruírem uma frota pareada saudável (incidente 12/07: frota
+  // de 15 chips recém-escaneada foi deletada+recriada 8x em uma noite).
+  bool force = 2;
 }
 
 message DeleteInstanceResponse {}

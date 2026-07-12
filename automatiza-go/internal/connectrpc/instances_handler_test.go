@@ -108,7 +108,7 @@ func TestDeleteInstance_UnpairsSessionBeforeDeletingRow(t *testing.T) {
 	repo.On("DeleteInstance", mock.Anything, 42).Return(nil)
 
 	ctx := contextWithUser("u1", "u1@example.com")
-	_, err := h.DeleteInstance(ctx, connect.NewRequest(&instancesv1.DeleteInstanceRequest{Id: "42"}))
+	_, err := h.DeleteInstance(ctx, connect.NewRequest(&instancesv1.DeleteInstanceRequest{Id: "42", Force: true}))
 
 	require.NoError(t, err)
 	require.Equal(t, 1, fake.CallCount("UnpairSession"),
@@ -134,7 +134,7 @@ func TestDeleteInstance_KeepsRowWhenUnpairFails(t *testing.T) {
 	}
 
 	ctx := contextWithUser("u1", "u1@example.com")
-	_, err := h.DeleteInstance(ctx, connect.NewRequest(&instancesv1.DeleteInstanceRequest{Id: "42"}))
+	_, err := h.DeleteInstance(ctx, connect.NewRequest(&instancesv1.DeleteInstanceRequest{Id: "42", Force: true}))
 
 	require.Error(t, err, "a failed unpair must surface, not silently orphan the session")
 	assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
@@ -160,4 +160,28 @@ func TestDeleteInstance_DeletesRowWhenSessionAlreadyGone(t *testing.T) {
 
 	require.NoError(t, err)
 	repo.AssertCalled(t, "DeleteInstance", mock.Anything, 9)
+}
+
+
+// TestDeleteInstance_RefusesConnectedWithoutForce trava a proteção anti-
+// destruição: número CONECTADO e operando não pode ser removido sem
+// force=true. Foi exatamente uma remoção em massa de chips saudáveis que
+// destruiu a frota de 15 chips recém-escaneada (12/07, 8 gerações em uma
+// noite). Sem force: FailedPrecondition, sem unpair, linha intacta.
+func TestDeleteInstance_RefusesConnectedWithoutForce(t *testing.T) {
+	repo := new(mockInstanceRepo)
+	fake := whatsapp.NewFakeAdapter()
+	h := &InstancesHandler{instanceRepo: repo, waProvider: fake}
+
+	phone := "554898231627"
+	repo.On("GetInstanceByID", mock.Anything, 42).Return(
+		&models.Instance{ID: 42, UserID: "u1", InstanceID: "sess-live", Status: "connected", PhoneNumber: &phone}, nil)
+
+	ctx := contextWithUser("u1", "u1@example.com")
+	_, err := h.DeleteInstance(ctx, connect.NewRequest(&instancesv1.DeleteInstanceRequest{Id: "42"}))
+
+	require.Error(t, err, "connected chip without force must be refused")
+	assert.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	assert.Equal(t, 0, fake.CallCount("UnpairSession"), "must not unpair a protected chip")
+	repo.AssertNotCalled(t, "DeleteInstance", mock.Anything, 42)
 }

@@ -632,8 +632,13 @@ func (x *DeleteDisconnectedInstancesResponse) GetDeletedCount() int32 {
 }
 
 type DeleteInstanceRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Um número CONECTADO e enviando só pode ser removido com force=true —
+	// remoção despareia de verdade (exige novo QR). Protege contra operações
+	// em massa destruírem uma frota pareada saudável (incidente 12/07: frota
+	// de 15 chips recém-escaneada foi deletada+recriada 8x em uma noite).
+	Force         bool `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -673,6 +678,13 @@ func (x *DeleteInstanceRequest) GetId() string {
 		return x.Id
 	}
 	return ""
+}
+
+func (x *DeleteInstanceRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
 }
 
 type DeleteInstanceResponse struct {
@@ -1157,9 +1169,10 @@ const file_instances_v1_instances_proto_rawDesc = "" +
 	"\rdeleted_count\x18\x01 \x01(\x05R\fdeletedCount\"$\n" +
 	"\"DeleteDisconnectedInstancesRequest\"J\n" +
 	"#DeleteDisconnectedInstancesResponse\x12#\n" +
-	"\rdeleted_count\x18\x01 \x01(\x05R\fdeletedCount\"0\n" +
+	"\rdeleted_count\x18\x01 \x01(\x05R\fdeletedCount\"F\n" +
 	"\x15DeleteInstanceRequest\x12\x17\n" +
-	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\"\x18\n" +
+	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12\x14\n" +
+	"\x05force\x18\x02 \x01(\bR\x05force\"\x18\n" +
 	"\x16DeleteInstanceResponse\"J\n" +
 	"\x1aCheckInstanceStatusRequest\x12,\n" +
 	"\rinstance_name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\finstanceName\"e\n" +
