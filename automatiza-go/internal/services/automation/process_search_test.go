@@ -84,7 +84,8 @@ func TestProcessSearchMode_Success(t *testing.T) {
 	}, nil).Maybe()
 	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil, nil).Maybe()
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -131,7 +132,7 @@ func TestProcessSearchMode_NoOffers(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(emptyResult, nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -204,9 +205,10 @@ func TestProcessSearchMode_DedupeFilters(t *testing.T) {
 	// Price refetch before sending
 	deps.shopeeService.On("GetProduct", ctx, int64(12345), int64(67890), "user-1").Return(nil, errors.New("not found")).Maybe()
 	// Return existing log to simulate dedupe
-	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", "group1@g.us", mock.AnythingOfType("string"), 24).Return(existingLog, nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group1@g.us", mock.AnythingOfType("string"), 24*time.Hour).Return(existingLog, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -309,6 +311,7 @@ func TestProcessSearchMode_DroughtEscalatesToDeeperPage(t *testing.T) {
 		AffiliateLink: "https://s.shopee.com.br/fresh",
 	}, nil).Maybe()
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	// UpdateLastRunAt roda em contexto próprio (context.WithTimeout), então casa por Anything.
 	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
@@ -351,7 +354,7 @@ func TestProcessSearchMode_NoTargetGroups(t *testing.T) {
 	deps.automationRunRepo.On("ReleaseLock", ctx, "auto-123").Return(nil)
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -392,7 +395,7 @@ func TestProcessSearchMode_InstanceNotConnected(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(disconnectedInstances, nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -429,7 +432,7 @@ func TestProcessSearchMode_NoInstances(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{}, nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -471,7 +474,7 @@ func TestProcessSearchMode_ShopeeServiceError(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(nil, errors.New("shopee API error"))
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -521,7 +524,7 @@ func TestProcessSearchMode_DefaultsToShopee(t *testing.T) {
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	// Should still call shopee service
 	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(emptyResult, nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -592,7 +595,8 @@ func TestProcessSearchMode_WithPriceFilters(t *testing.T) {
 	}, nil).Maybe()
 	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil, nil).Maybe()
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -668,7 +672,8 @@ func TestProcessSearchMode_WithCustomDispatchText(t *testing.T) {
 	deps.settingsRepo.On("GetActiveDispatchTextByID", ctx, "dispatch-123", "user-1").Return(customTemplate, nil)
 	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil, nil).Maybe()
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -822,10 +827,11 @@ func TestProcessSearchMode_EdgeCases(t *testing.T) {
 						}, nil).Maybe()
 						deps.dispatchLogRepo.On("GetRecentByCanonicalKey", ctx, "user-1", mock.AnythingOfType("string"), mock.AnythingOfType("string"), mock.AnythingOfType("int")).Return(nil, nil).Maybe()
 						deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+						deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 					}
 				}
 			}
-			deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+			deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 			result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 

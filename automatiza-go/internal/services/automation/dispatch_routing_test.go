@@ -35,7 +35,7 @@ func TestResolveSenderForGroup_FlagOff_AlwaysUsesFallback(t *testing.T) {
 		"group-1@g.us": newConnectedInstance(2, "owner-chip"),
 	}
 
-	got := svc.resolveSenderForGroup(fallback, groupInstances, "group-1@g.us")
+	got := svc.resolveSenderForGroup(nil, nil, fallback, groupInstances, "group-1@g.us")
 	if got != "fallback-chip" {
 		t.Errorf("flag off: expected fallback-chip, got %q", got)
 	}
@@ -53,7 +53,7 @@ func TestResolveSenderForGroup_FlagOn_PrefersOwningChipWhenConnected(t *testing.
 		"group-1@g.us": newConnectedInstance(2, "owner-chip"),
 	}
 
-	got := svc.resolveSenderForGroup(fallback, groupInstances, "group-1@g.us")
+	got := svc.resolveSenderForGroup(nil, nil, fallback, groupInstances, "group-1@g.us")
 	if got != "owner-chip" {
 		t.Errorf("flag on, owner connected: expected owner-chip, got %q", got)
 	}
@@ -71,7 +71,7 @@ func TestResolveSenderForGroup_FlagOn_FallsBackWhenOwnerDisconnected(t *testing.
 		"group-1@g.us": newDisconnectedInstance(2, "owner-chip"),
 	}
 
-	got := svc.resolveSenderForGroup(fallback, groupInstances, "group-1@g.us")
+	got := svc.resolveSenderForGroup(nil, nil, fallback, groupInstances, "group-1@g.us")
 	if got != "fallback-chip" {
 		t.Errorf("flag on, owner disconnected: expected fallback, got %q", got)
 	}
@@ -86,7 +86,7 @@ func TestResolveSenderForGroup_FlagOn_FallsBackWhenGroupMissingFromMap(t *testin
 	svc := &automationService{}
 	fallback := newConnectedInstance(1, "fallback-chip")
 
-	got := svc.resolveSenderForGroup(fallback, map[string]*models.Instance{}, "missing@g.us")
+	got := svc.resolveSenderForGroup(nil, nil, fallback, map[string]*models.Instance{}, "missing@g.us")
 	if got != "fallback-chip" {
 		t.Errorf("flag on, group missing: expected fallback, got %q", got)
 	}
@@ -103,7 +103,7 @@ func TestResolveSenderForGroup_NilFallback_ReturnsEmptyWhenOwnerDisconnected(t *
 		"group-1@g.us": newDisconnectedInstance(2, "owner-chip"),
 	}
 
-	got := svc.resolveSenderForGroup(nil, groupInstances, "group-1@g.us")
+	got := svc.resolveSenderForGroup(nil, nil, nil, groupInstances, "group-1@g.us")
 	if got != "" {
 		t.Errorf("nil fallback + disconnected owner: expected empty, got %q", got)
 	}
@@ -118,8 +118,86 @@ func TestResolveSenderForGroup_NilGroupInstances_UsesFallback(t *testing.T) {
 	svc := &automationService{}
 	fallback := newConnectedInstance(1, "fallback-chip")
 
-	got := svc.resolveSenderForGroup(fallback, nil, "group-1@g.us")
+	got := svc.resolveSenderForGroup(nil, nil, fallback, nil, "group-1@g.us")
 	if got != "fallback-chip" {
 		t.Errorf("nil groupInstances: expected fallback, got %q", got)
+	}
+}
+
+// Cenário do incidente grupo #105 (12/07): grupo announce cujo chip dono
+// (groups.instance_id) foi removido do grupo; o usuário pinou o grupo no chip
+// admin via chip_overrides. O pin deve vencer o dono do grupo.
+func TestResolveSenderForGroup_ChipOverride_BeatsOwningChip(t *testing.T) {
+	defer config.ResetFeatureFlags()
+	t.Setenv("FEATURE_USE_MULTI_INSTANCE_DISPATCH", "true")
+	config.ResetFeatureFlags()
+	config.LoadFeatureFlags()
+
+	svc := &automationService{}
+	auto := &models.Automation{
+		InstanceIDs:   []string{"156016", "156049"},
+		ChipOverrides: map[string]string{"group-1@g.us": "156049"},
+	}
+	instances := []models.Instance{
+		*newConnectedInstance(156016, "owner-chip"),
+		*newConnectedInstance(156049, "admin-chip"),
+	}
+	fallback := &instances[0]
+	groupInstances := map[string]*models.Instance{
+		"group-1@g.us": &instances[0],
+	}
+
+	got := svc.resolveSenderForGroup(auto, instances, fallback, groupInstances, "group-1@g.us")
+	if got != "admin-chip" {
+		t.Errorf("pinned chip should win over owning chip: expected admin-chip, got %q", got)
+	}
+}
+
+func TestResolveSenderForGroup_ChipOverride_StaleDisconnectedFallsThrough(t *testing.T) {
+	defer config.ResetFeatureFlags()
+	t.Setenv("FEATURE_USE_MULTI_INSTANCE_DISPATCH", "true")
+	config.ResetFeatureFlags()
+	config.LoadFeatureFlags()
+
+	svc := &automationService{}
+	auto := &models.Automation{
+		InstanceIDs:   []string{"156016", "156049"},
+		ChipOverrides: map[string]string{"group-1@g.us": "156049"},
+	}
+	instances := []models.Instance{
+		*newConnectedInstance(156016, "owner-chip"),
+		*newDisconnectedInstance(156049, "admin-chip"),
+	}
+	fallback := &instances[0]
+	groupInstances := map[string]*models.Instance{
+		"group-1@g.us": &instances[0],
+	}
+
+	got := svc.resolveSenderForGroup(auto, instances, fallback, groupInstances, "group-1@g.us")
+	if got != "owner-chip" {
+		t.Errorf("stale pin (disconnected) should fall through to owning chip: expected owner-chip, got %q", got)
+	}
+}
+
+func TestResolveSenderForGroup_ChipOverride_NotEnabledOnAutomationFallsThrough(t *testing.T) {
+	defer config.ResetFeatureFlags()
+	t.Setenv("FEATURE_USE_MULTI_INSTANCE_DISPATCH", "true")
+	config.ResetFeatureFlags()
+	config.LoadFeatureFlags()
+
+	svc := &automationService{}
+	auto := &models.Automation{
+		InstanceIDs:   []string{"156016"},
+		ChipOverrides: map[string]string{"group-1@g.us": "156049"},
+	}
+	instances := []models.Instance{
+		*newConnectedInstance(156016, "owner-chip"),
+		*newConnectedInstance(156049, "admin-chip"),
+	}
+	fallback := &instances[0]
+
+	got := svc.resolveSenderForGroup(auto, instances, fallback, nil, "group-1@g.us")
+	if got != "owner-chip" {
+		t.Errorf("pin outside InstanceIDs should fall through: expected owner-chip, got %q", got)
 	}
 }

@@ -77,7 +77,8 @@ func TestProcessListMode_Success(t *testing.T) {
 	deps.mlService.On("CreateAffiliateLink", ctx, "https://produto.mercadolivre.com.br/MLB-123456", "user-1").Return(affiliateLink, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", ctx, []string{"item-1"}, "auto-123", mock.AnythingOfType("*string")).Return(nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -120,7 +121,8 @@ func TestProcessListMode_NoItems(t *testing.T) {
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 10).Return([]*models.MlLinkListItem{}, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -157,7 +159,8 @@ func TestProcessListMode_NoListID(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -194,7 +197,8 @@ func TestProcessListMode_EmptyListID(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -231,7 +235,8 @@ func TestProcessListMode_NoTargetGroups(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -268,7 +273,8 @@ func TestProcessListMode_InvalidGroupIDs(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -310,7 +316,8 @@ func TestProcessListMode_InstanceNotConnected(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(disconnectedInstances, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -348,7 +355,8 @@ func TestProcessListMode_NoInstancesFound(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(nil, errors.New("no instances"))
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -413,10 +421,11 @@ func TestProcessListMode_ItemsMarkedConsumed(t *testing.T) {
 	deps.mlService.On("GetProductPreview", ctx, "https://produto.mercadolivre.com.br/MLB-111111", "user-1").Return(productPreview, nil)
 	deps.mlService.On("CreateAffiliateLink", ctx, "https://produto.mercadolivre.com.br/MLB-111111", "user-1").Return(affiliateLink, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	// This is the key assertion: verify MarkAsConsumed is called with correct item IDs
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", ctx, []string{"item-1"}, "auto-123", mock.AnythingOfType("*string")).Return(nil).Once()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -468,6 +477,7 @@ func TestProcessListMode_MultipleItemsPerRun(t *testing.T) {
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 12).Return(unconsumedItems, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	// Mock ML service calls for each item
 	for _, item := range unconsumedItems {
@@ -481,7 +491,7 @@ func TestProcessListMode_MultipleItemsPerRun(t *testing.T) {
 		}, nil)
 		deps.mlLinkListItemRepo.On("MarkAsConsumed", ctx, []string{item.ID}, "auto-123", mock.AnythingOfType("*string")).Return(nil)
 	}
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -491,8 +501,10 @@ func TestProcessListMode_MultipleItemsPerRun(t *testing.T) {
 	assert.Equal(t, 3, result.OffersFound)
 }
 
-func TestProcessListMode_InvalidMLURL(t *testing.T) {
-	// Test with URL that is not a Mercado Livre URL
+func TestProcessListMode_NonMLURL_Passthrough(t *testing.T) {
+	// URL de loja não-convertida (Amazon etc.) é PASSTHROUGH: o usuário colou a
+	// própria URL afiliada e o sistema apenas despacha (ver comentário em
+	// process_list.go — só Shopee é convertida pelo backend).
 	svc, deps := newTestService(t)
 	ctx := context.Background()
 
@@ -533,16 +545,19 @@ func TestProcessListMode_InvalidMLURL(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 10).Return(unconsumedItems, nil)
+	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-123", mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	// Should skip invalid URLs but still succeed
+	// Passthrough: a URL do usuário é despachada como está e o item consumido.
 	assert.True(t, result.Success)
-	assert.Equal(t, 0, result.MessagesSent)
+	assert.Equal(t, 1, result.MessagesSent)
+	deps.mlLinkListItemRepo.AssertCalled(t, "MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-123", mock.Anything)
 }
 
 func TestProcessListMode_MLServiceError(t *testing.T) {
@@ -587,13 +602,14 @@ func TestProcessListMode_MLServiceError(t *testing.T) {
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, listID, 10).Return(unconsumedItems, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	// ML service returns error for preview
 	deps.mlService.On("GetProductPreview", ctx, "https://produto.mercadolivre.com.br/MLB-123456", "user-1").Return(nil, errors.New("ML API error"))
 	// Affiliate link still works but uses origin URL
 	deps.mlService.On("CreateAffiliateLink", ctx, "https://produto.mercadolivre.com.br/MLB-123456", "user-1").Return(nil, errors.New("affiliate error"))
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", ctx, []string{"item-1"}, "auto-123", mock.AnythingOfType("*string")).Return(nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -719,6 +735,7 @@ func TestProcessListMode_EdgeCases(t *testing.T) {
 			deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "h-1"}, nil)
 			deps.historyRepo.On("Update", ctx, "h-1", mock.Anything).Return(nil)
 			deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+			deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 			if tt.listID != nil && *tt.listID != "" && len(tt.groupIDs) > 0 {
 				// Only check groups if we have valid list ID
@@ -735,7 +752,7 @@ func TestProcessListMode_EdgeCases(t *testing.T) {
 					}, nil)
 				}
 			}
-			deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+			deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 			result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -786,6 +803,7 @@ func setupShopeeDegradedListTest(t *testing.T) (automation.Service, *testService
 	deps.settingsRepo.On("GetActiveDispatchTextByID", mock.Anything, mock.AnythingOfType("string"), "user-1").Return(nil, nil).Maybe()
 	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	return svc, deps, shopeeURL
 }
@@ -817,16 +835,16 @@ func TestProcessListMode_ShopeeEnrichTransient_RetriesAndKeepsItem(t *testing.T)
 	deps.mlLinkListItemRepo.AssertNotCalled(t, "MarkAsConsumed", mock.Anything, []string{"item-1"}, mock.Anything, mock.Anything)
 }
 
-// Complemento: numa falha PERMANENTE (credencial ausente, produto inexistente) o
-// item AINDA é consumido, senão GetNextUnconsumed devolveria o mesmo link morto
-// todo ciclo e travaria a lista nele — a razão original do skip consumir.
+// Complemento: numa falha PERMANENTE não-credencial (produto inexistente, URL
+// inválida) o item AINDA é consumido, senão GetNextUnconsumed devolveria o mesmo
+// link morto todo ciclo e travaria a lista nele — a razão original do skip consumir.
 func TestProcessListMode_ShopeeEnrichPermanent_ConsumesItem(t *testing.T) {
 	svc, deps, shopeeURL := setupShopeeDegradedListTest(t)
 	ctx := context.Background()
 
-	// Erro PERMANENTE: retryar para sempre nunca resolveria.
+	// Erro PERMANENTE não-credencial: retryar para sempre nunca resolveria.
 	deps.shopeeService.On("GenerateAffiliateLink", mock.Anything, shopeeURL, "user-1").
-		Return((*models.ShopeeAffiliateLink)(nil), errors.New("shopee credentials not configured"))
+		Return((*models.ShopeeAffiliateLink)(nil), errors.New("invalid shopee URL: no item id"))
 	// Skip degradado consome o item pra lista avançar.
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-123", mock.Anything).Return(nil)
 
@@ -837,4 +855,28 @@ func TestProcessListMode_ShopeeEnrichPermanent_ConsumesItem(t *testing.T) {
 	assert.Equal(t, 0, result.MessagesSent, "oferta degradada (sem preco/imagem) nao deve ser enviada")
 	// Item consumido p/ a lista nao travar num link morto.
 	deps.mlLinkListItemRepo.AssertCalled(t, "MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-123", mock.Anything)
+}
+
+// Regressão (isaa_deoliveira@hotmail.com, 11/07): erro de CREDENCIAL não pode
+// queimar itens da lista — a automação PAUSA (status paused + last_error) e o
+// item fica pendente para quando a credencial for recadastrada.
+func TestProcessListMode_ShopeeEnrichCredential_PausesWithoutConsuming(t *testing.T) {
+	svc, deps, shopeeURL := setupShopeeDegradedListTest(t)
+	ctx := context.Background()
+
+	deps.shopeeService.On("GenerateAffiliateLink", mock.Anything, shopeeURL, "user-1").
+		Return((*models.ShopeeAffiliateLink)(nil), errors.New("shopee credentials not configured"))
+	deps.automationRepo.On("UpdateAutomation", mock.Anything, "auto-123", mock.MatchedBy(func(u map[string]interface{}) bool {
+		return u["status"] == "paused"
+	})).Return(nil)
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 0, result.MessagesSent)
+	// Automação pausada com erro de credencial.
+	deps.automationRepo.AssertCalled(t, "UpdateAutomation", mock.Anything, "auto-123", mock.Anything)
+	// Item NÃO consumido — produto preservado para depois do recadastro.
+	deps.mlLinkListItemRepo.AssertNotCalled(t, "MarkAsConsumed", mock.Anything, []string{"item-1"}, mock.Anything, mock.Anything)
 }

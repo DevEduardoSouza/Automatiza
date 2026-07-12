@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"automatiza-go/internal/config"
 	bpLib "automatiza-go/internal/lib/backpressure"
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/urlsafety"
-	"automatiza-go/internal/config"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
@@ -734,7 +734,7 @@ func TestIsDuplicate(t *testing.T) {
 		svc, deps := newInternalTestService(t)
 		// cache is nil by default
 
-		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24).
+		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24*time.Hour).
 			Return(&models.DispatchLog{Status: "queued"}, nil)
 
 		result := svc.isDuplicate(context.Background(), "user-1", "group-1", "key-1", 24)
@@ -745,7 +745,7 @@ func TestIsDuplicate(t *testing.T) {
 		t.Parallel()
 		svc, deps := newInternalTestService(t)
 
-		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24).
+		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24*time.Hour).
 			Return(nil, nil)
 
 		result := svc.isDuplicate(context.Background(), "user-1", "group-1", "key-1", 24)
@@ -756,7 +756,7 @@ func TestIsDuplicate(t *testing.T) {
 		t.Parallel()
 		svc, deps := newInternalTestService(t)
 
-		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24).
+		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24*time.Hour).
 			Return(nil, errors.New("db error"))
 
 		result := svc.isDuplicate(context.Background(), "user-1", "group-1", "key-1", 24)
@@ -1384,10 +1384,11 @@ func TestProcessListMode_EmptyOriginURL(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
-			{ID: "item-1", OriginURL: "", ListID: listID},     // Empty URL → skipped
-			{ID: "item-2", OriginURL: "   ", ListID: listID},  // Whitespace → skipped
+			{ID: "item-1", OriginURL: "", ListID: listID},    // Empty URL → skipped
+			{ID: "item-2", OriginURL: "   ", ListID: listID}, // Whitespace → skipped
 		}, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
@@ -1413,11 +1414,15 @@ func TestProcessListMode_InvalidMLURL(t *testing.T) {
 		Return([]*models.MlLinkListItem{
 			{ID: "item-1", OriginURL: "https://amazon.com/product", ListID: listID}, // Not ML URL
 		}, nil)
+	// Loja não-convertida é passthrough: URL já afiliada do usuário é despachada
+	// como está e o item consumido (ver comentário em process_list.go).
+	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
-	assert.Equal(t, 0, result.MessagesSent)
+	assert.Equal(t, 1, result.MessagesSent)
 }
 
 func TestProcessListMode_NoMlLinkListID(t *testing.T) {
@@ -1500,6 +1505,7 @@ func TestProcessListMode_NoUnconsumedItems(t *testing.T) {
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{}, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
@@ -1532,6 +1538,7 @@ func TestProcessListMode_WithDispatchTemplate(t *testing.T) {
 		}, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.AnythingOfType("*string")).Return(nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
@@ -1560,6 +1567,7 @@ func TestProcessListMode_CustomItemsPerRun(t *testing.T) {
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 14).
 		Return([]*models.MlLinkListItem{}, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
@@ -1588,6 +1596,7 @@ func TestProcessListMode_ItemsPerRunCapped(t *testing.T) {
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 29).
 		Return([]*models.MlLinkListItem{}, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
@@ -1624,6 +1633,7 @@ func TestProcessListMode_ImageFromItemWhenNoPreview(t *testing.T) {
 		}, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	// mlService is nil in newInternalTestService, so preview will be nil
 	// The fallback to item.ProductImageURL should be used
@@ -1880,6 +1890,7 @@ func TestProcessListMode_MarkConsumedError(t *testing.T) {
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.AnythingOfType("*string")).
 		Return(errors.New("db error")) // Error is logged, not returned
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
@@ -1910,6 +1921,7 @@ func TestProcessListMode_IncludeImageFalse(t *testing.T) {
 		}, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
@@ -1937,6 +1949,7 @@ func TestProcessListMode_MercadolibreURL(t *testing.T) {
 		}, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
@@ -2205,7 +2218,7 @@ func TestIsDuplicate_CacheHit(t *testing.T) {
 		c, _ := newTestCache(t)
 		dlRepo := new(mockDispatchLogRepo)
 
-		dlRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24).
+		dlRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24*time.Hour).
 			Return(nil, nil)
 
 		svc := &automationService{
@@ -2216,7 +2229,7 @@ func TestIsDuplicate_CacheHit(t *testing.T) {
 
 		result := svc.isDuplicate(context.Background(), "user-1", "group-1", "key-1", 24)
 		assert.False(t, result)
-		dlRepo.AssertCalled(t, "GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24)
+		dlRepo.AssertCalled(t, "GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24*time.Hour)
 	})
 
 	t.Run("cache miss, DB hit backfills cache", func(t *testing.T) {
@@ -2225,7 +2238,7 @@ func TestIsDuplicate_CacheHit(t *testing.T) {
 		c, _ := newTestCache(t)
 		dlRepo := new(mockDispatchLogRepo)
 
-		dlRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24).
+		dlRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24*time.Hour).
 			Return(&models.DispatchLog{Status: "queued"}, nil)
 
 		svc := &automationService{
@@ -2252,7 +2265,7 @@ func TestIsDuplicate_CacheHit(t *testing.T) {
 		// Close miniredis to force cache error
 		mr.Close()
 
-		dlRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24).
+		dlRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24*time.Hour).
 			Return(nil, nil)
 
 		svc := &automationService{
@@ -2263,7 +2276,7 @@ func TestIsDuplicate_CacheHit(t *testing.T) {
 
 		result := svc.isDuplicate(context.Background(), "user-1", "group-1", "key-1", 24)
 		assert.False(t, result)
-		dlRepo.AssertCalled(t, "GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24)
+		dlRepo.AssertCalled(t, "GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24*time.Hour)
 	})
 }
 
@@ -2515,8 +2528,8 @@ func TestExecuteSearchAutomation(t *testing.T) {
 			UserID:   "user-1",
 			GroupIDs: []string{"group@g.us"},
 			Stores:   []string{"shopee"},
-			Texts:    nil,   // empty texts
-			Keyword:  nil,   // nil keyword → broad search
+			Texts:    nil, // empty texts
+			Keyword:  nil, // nil keyword → broad search
 		}
 
 		deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
@@ -2561,12 +2574,12 @@ func TestExecuteSearchAutomation(t *testing.T) {
 		dtID := "dt-1"
 		keyword := "test"
 		automation := &models.Automation{
-			ID:              "auto-1",
-			UserID:          "user-1",
-			GroupIDs:        []string{"group@g.us"},
-			Stores:          []string{"shopee"},
-			Keyword:         &keyword,
-			DispatchTextID:  &dtID,
+			ID:             "auto-1",
+			UserID:         "user-1",
+			GroupIDs:       []string{"group@g.us"},
+			Stores:         []string{"shopee"},
+			Keyword:        &keyword,
+			DispatchTextID: &dtID,
 		}
 
 		deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
@@ -2772,6 +2785,8 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 			Return(&models.MLAffiliateLink{AffiliateLink: "https://aff.ml/link1"}, nil)
 
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+		// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 		deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
 		result, err := svc.processListMode(context.Background(), automation)
@@ -2814,6 +2829,8 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		mlSvc.On("CreateAffiliateLink", mock.Anything, mock.Anything, "user-1").Return(nil, errors.New("link error"))
 
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+		// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 		deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
 		result, err := svc.processListMode(context.Background(), automation)
@@ -2845,6 +2862,8 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		}
 		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+		// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 		result, err := svc.processListMode(context.Background(), automation)
 		require.NoError(t, err)
@@ -2892,7 +2911,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 			ID:               "auto-1",
 			UserID:           "user-1",
 			GroupIDs:         []string{"group@g.us"},
-			MlLinkListID:    &listID,
+			MlLinkListID:     &listID,
 			ListIncludeImage: &includeImage,
 		}
 
@@ -2904,6 +2923,8 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		}
 		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+		// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 		deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
 		result, err := svc.processListMode(context.Background(), automation)
@@ -2921,13 +2942,15 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 			ID:              "auto-1",
 			UserID:          "user-1",
 			GroupIDs:        []string{"group@g.us"},
-			MlLinkListID:   &listID,
+			MlLinkListID:    &listID,
 			ListItemsPerRun: &itemsPerRun,
 		}
 
 		deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
 			Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+		// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 		// Expect clamped value of 20
 		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 20).Return([]*models.MlLinkListItem{}, nil)
@@ -2974,6 +2997,8 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		}
 
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+		// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 		result, err := svc.processListMode(context.Background(), automation)
 		require.NoError(t, err)
@@ -3016,7 +3041,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 			ID:             "auto-1",
 			UserID:         "user-1",
 			GroupIDs:       []string{"group@g.us"},
-			MlLinkListID:  &listID,
+			MlLinkListID:   &listID,
 			DispatchTextID: &dtID,
 		}
 
@@ -3030,6 +3055,8 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 		}
 		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+		// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 		deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
 		result, err := svc.processListMode(context.Background(), automation)
@@ -3406,6 +3433,8 @@ func TestProcessListMode_WithQueueClient(t *testing.T) {
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
 	result, err := svc.processListMode(context.Background(), automation)
@@ -3448,6 +3477,8 @@ func TestProcessListMode_SendAsImageTrue(t *testing.T) {
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
 	result, err := svc.processListMode(context.Background(), automation)
@@ -3488,6 +3519,8 @@ func TestProcessListMode_SendAsImageFalse(t *testing.T) {
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
 	result, err := svc.processListMode(context.Background(), automation)
@@ -3529,6 +3562,8 @@ func TestProcessListMode_WithBackpressureRecord(t *testing.T) {
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
 
 	result, err := svc.processListMode(context.Background(), automation)
@@ -3924,6 +3959,8 @@ func TestProcessListMode_EnqueueError(t *testing.T) {
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
@@ -4003,7 +4040,7 @@ func TestIsDuplicate_CacheBackfillError(t *testing.T) {
 	dlRepo := new(mockDispatchLogRepo)
 
 	// DB returns a duplicate
-	dlRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24).
+	dlRepo.On("GetRecentByCanonicalKey", mock.Anything, "user-1", "group-1", "key-1", 24*time.Hour).
 		Return(&models.DispatchLog{Status: "queued"}, nil)
 
 	// Close miniredis to force cache backfill error
@@ -4501,7 +4538,7 @@ func TestExecuteSearchAutomation_BackpressureCanEnqueueError(t *testing.T) {
 	// Use a real backpressure with closed Redis to force CanEnqueue error
 	bpCache, bpMr := newTestCache(t)
 	bp := bpLib.NewProducerBackpressure(bpLib.Config{
-		Enabled:        true,
+		Enabled:         true,
 		UserMaxEnqueued: 100,
 	}, bpCache, logger)
 	svc.backpressure = bp
@@ -4555,7 +4592,7 @@ func TestExecuteSearchAutomation_BackpressureRecordEnqueueError(t *testing.T) {
 	// Create backpressure with running miniredis for CanEnqueue, then close for RecordEnqueue
 	bpCache, bpMr := newTestCache(t)
 	bp := bpLib.NewProducerBackpressure(bpLib.Config{
-		Enabled:        true,
+		Enabled:         true,
 		UserMaxEnqueued: 100,
 	}, bpCache, logger)
 	svc.backpressure = bp
@@ -4730,6 +4767,7 @@ func TestProcessListMode_URLSafetyEvaluateError(t *testing.T) {
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.mlLinkListItemRepo.On("MarkConsumed", mock.Anything, "item-1").Return(nil).Maybe()
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
@@ -4948,6 +4986,8 @@ func TestProcessListMode_URLSafetyEvaluateError_Mock(t *testing.T) {
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Dedup de LIST (GetRecentByCanonicalKey) roda antes do enqueue; "nunca visto" mantem o fluxo original do teste.
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)

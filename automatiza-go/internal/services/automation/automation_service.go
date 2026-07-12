@@ -484,13 +484,31 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 }
 
 // resolveSenderForGroup returns the WAHA session name to use when dispatching
-// to waGroupID. When multi-instance dispatch is enabled and the group's owning
-// chip is connected, that chip's session is returned. Otherwise the caller's
-// fallback (typically the user's first connected instance) is used.
+// to waGroupID. Priority:
 //
-// When groupInstances is nil or the flag is off, this collapses to fallback —
-// i.e. legacy behaviour where every message goes through the same chip.
-func (s *automationService) resolveSenderForGroup(fallback *models.Instance, groupInstances map[string]*models.Instance, waGroupID string) string {
+//  1. automation.ChipOverrides[waGroupID] — pin explícito do usuário (mesma
+//     semântica do PickChipForGroup do offer_generate: só vale se o chip
+//     pinado está habilitado na automação, quando ela restringe chips, e
+//     conectado; pin obsoleto cai adiante em silêncio). Sem este passo o
+//     override só valia no offer_generate: grupo announce cujo chip dono
+//     (groups.instance_id) foi removido do grupo ficava em loop de 401,
+//     mesmo com o pin apontando para o chip admin correto.
+//  2. Multi-instance dispatch: chip dono do grupo, quando conectado.
+//  3. fallback (tipicamente o primeiro chip conectado do usuário).
+//
+// When groupInstances is nil or the flag is off, steps 2 collapses to
+// fallback — i.e. legacy behaviour where every message goes through the
+// same chip.
+func (s *automationService) resolveSenderForGroup(automation *models.Automation, instances []models.Instance, fallback *models.Instance, groupInstances map[string]*models.Instance, waGroupID string) string {
+	if automation != nil {
+		if pinned := automation.ChipOverrides[waGroupID]; pinned != "" && chipEnabledOnAutomation(automation, pinned) {
+			for i := range instances {
+				if strconv.Itoa(instances[i].ID) == pinned && instances[i].IsConnected() {
+					return instances[i].InstanceID
+				}
+			}
+		}
+	}
 	if config.GetFeatureFlags().UseMultiInstanceDispatch && groupInstances != nil {
 		if inst, ok := groupInstances[waGroupID]; ok && inst != nil && inst.IsConnected() {
 			return inst.InstanceID
@@ -500,6 +518,21 @@ func (s *automationService) resolveSenderForGroup(fallback *models.Instance, gro
 		return fallback.InstanceID
 	}
 	return ""
+}
+
+// chipEnabledOnAutomation reports whether chipID (instances.id as string) is
+// allowed to dispatch for this automation. An automation without an explicit
+// InstanceIDs restriction accepts any chip.
+func chipEnabledOnAutomation(automation *models.Automation, chipID string) bool {
+	if len(automation.InstanceIDs) == 0 {
+		return true
+	}
+	for _, id := range automation.InstanceIDs {
+		if id == chipID {
+			return true
+		}
+	}
+	return false
 }
 
 // fetchGroupInstancesIfEnabled returns the per-group instance map when the
@@ -978,7 +1011,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					imageURL = &offer.Image
 				}
 
-				senderSession := s.resolveSenderForGroup(connectedInstance, groupInstances, groupID)
+				senderSession := s.resolveSenderForGroup(automation, instances, connectedInstance, groupInstances, groupID)
 				if senderSession == "" {
 					s.logger.Warn("No connected chip for group, skipping dispatch",
 						zap.String("automationID", automation.ID),

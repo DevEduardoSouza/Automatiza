@@ -49,7 +49,8 @@ func TestProcessMonitorMode_Success(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -86,7 +87,8 @@ func TestProcessMonitorMode_NoMonitorGroups(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -123,7 +125,8 @@ func TestProcessMonitorMode_NoTargetGroups(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -159,7 +162,8 @@ func TestProcessMonitorMode_InvalidGroupID(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -195,7 +199,8 @@ func TestProcessMonitorMode_InvalidTargetGroupID(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -236,7 +241,8 @@ func TestProcessMonitorMode_InstanceNotConnected(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(disconnectedInstances, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -281,7 +287,8 @@ func TestProcessMonitorMode_WithTimeWindow(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -326,7 +333,8 @@ func TestProcessMonitorMode_WithDedupeHours(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -367,7 +375,8 @@ func TestProcessMonitorMode_DefaultStore(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -408,7 +417,8 @@ func TestProcessMonitorMode_MultipleStores(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -450,7 +460,8 @@ func TestProcessMonitorMode_MixedValidInvalidGroups(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -489,7 +500,8 @@ func TestProcessMonitorMode_NoInstances(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{}, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -531,7 +543,8 @@ func TestProcessMonitorMode_UseSendGroupsAsTarget(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 
@@ -678,6 +691,7 @@ func TestProcessMonitorMode_EdgeCases(t *testing.T) {
 			deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "h-1"}, nil)
 			deps.historyRepo.On("Update", ctx, "h-1", mock.Anything).Return(nil)
 			deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+			deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 			// Check if we should expect instance lookup
 			hasValidMonitorGroups := false
@@ -702,7 +716,7 @@ func TestProcessMonitorMode_EdgeCases(t *testing.T) {
 					{ID: 1, InstanceID: "instance-1", Status: tt.instanceStatus},
 				}, nil)
 			}
-			deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+			deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 
 			result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 

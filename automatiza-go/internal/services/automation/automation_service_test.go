@@ -1328,7 +1328,7 @@ func TestDiagnoseAutomation_ListTypeWithValidList(t *testing.T) {
 
 	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", 1).Return([]*models.MlLinkListItem{
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", mock.AnythingOfType("int")).Return([]*models.MlLinkListItem{
 		{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123"},
 	}, nil)
 
@@ -1372,7 +1372,7 @@ func TestDiagnoseAutomation_ListTypeWithEmptyList(t *testing.T) {
 
 	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", 1).Return([]*models.MlLinkListItem{}, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", mock.AnythingOfType("int")).Return([]*models.MlLinkListItem{}, nil)
 
 	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
 	require.NoError(t, err)
@@ -1412,7 +1412,7 @@ func TestDiagnoseAutomation_ListTypeWithListError(t *testing.T) {
 
 	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", 1).Return(nil, errors.New("db error"))
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", mock.AnythingOfType("int")).Return(nil, errors.New("db error"))
 
 	result, err := svc.DiagnoseAutomation(ctx, "auto-123", "user-1")
 	require.NoError(t, err)
@@ -1567,8 +1567,8 @@ func TestRunAutomation_DefaultType(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(&models.ShopeeSearchResult{Offers: []models.ShopeeOffer{}}, nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
-	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", mock.Anything, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 	require.NoError(t, err)
@@ -1605,8 +1605,8 @@ func TestRunAutomation_HistoryCreateError(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(nil, errors.New("db error"))
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(&models.ShopeeSearchResult{Offers: []models.ShopeeOffer{}}, nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
-	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", mock.Anything, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 	require.NoError(t, err)
@@ -1645,14 +1645,14 @@ func TestRunAutomation_WithIntervalUpdateNextRunAt(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(&models.ShopeeSearchResult{Offers: []models.ShopeeOffer{}}, nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
 	// The defer should call UpdateNextRunAt with the interval
-	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", mock.Anything, "auto-123", mock.AnythingOfType("time.Time")).Return(nil)
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
-	deps.automationRepo.AssertCalled(t, "UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time"))
+	deps.automationRepo.AssertCalled(t, "UpdateNextRunAt", mock.Anything, "auto-123", mock.AnythingOfType("time.Time"))
 }
 
 func TestRunAutomation_HistoryUpdateErrors(t *testing.T) {
@@ -1686,8 +1686,8 @@ func TestRunAutomation_HistoryUpdateErrors(t *testing.T) {
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(errors.New("update error"))
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
 	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(&models.ShopeeSearchResult{Offers: []models.ShopeeOffer{}}, nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
-	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", mock.Anything, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
 
 	// Should still succeed despite history update errors
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
@@ -1721,8 +1721,8 @@ func TestRunAutomation_MonitoringType(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
-	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", mock.Anything, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
@@ -1758,9 +1758,9 @@ func TestRunAutomation_ListType(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", 1).Return([]*models.MlLinkListItem{}, nil)
-	deps.automationRepo.On("UpdateLastRunAt", ctx, "auto-123").Return(nil)
-	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", ctx, "list-123", mock.AnythingOfType("int")).Return([]*models.MlLinkListItem{}, nil)
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
+	deps.automationRepo.On("UpdateNextRunAt", mock.Anything, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
@@ -1794,7 +1794,8 @@ func TestRunAutomation_ExecutionErrorUpdatesHistory(t *testing.T) {
 	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
 	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
 	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
-	deps.automationRepo.On("UpdateNextRunAt", ctx, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil).Maybe()
+	deps.automationRepo.On("UpdateNextRunAt", mock.Anything, "auto-123", mock.AnythingOfType("time.Time")).Return(nil).Maybe()
 
 	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
 	require.NoError(t, err) // RunAutomation wraps inner error into result

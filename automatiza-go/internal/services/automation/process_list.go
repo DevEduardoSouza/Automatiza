@@ -652,7 +652,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 
 			// Resolve the sending chip up-front so we can reputation-gate the group
 			// before creating a dispatch log.
-			senderSession := s.resolveSenderForGroup(connectedInstance, groupInstances, groupID)
+			senderSession := s.resolveSenderForGroup(automation, instances, connectedInstance, groupInstances, groupID)
 			if senderSession == "" {
 				s.logger.Warn("No connected chip for group, skipping LIST dispatch",
 					zap.String("automationID", automation.ID),
@@ -858,8 +858,8 @@ func isTransientShopeeEnrichError(err error) bool {
 	transient := []string{
 		"rate limit",
 		"10030",
-		"too many",     // "too many requests"
-		"error 429",    // HTTP 429: "shopee API error 429: ..."
+		"too many",  // "too many requests"
+		"error 429", // HTTP 429: "shopee API error 429: ..."
 		"deadline exceeded",
 		"timeout",
 		"timed out",
