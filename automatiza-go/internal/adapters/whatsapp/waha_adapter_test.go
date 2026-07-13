@@ -2183,3 +2183,29 @@ func TestWahaAdapter_CircuitBreaker_PerSession(t *testing.T) {
 		assert.Equal(t, "test-session", info.Name)
 	})
 }
+
+func TestMapper_SendLinkPreviewToWaha_HighQuality(t *testing.T) {
+	m := &Mapper{}
+	req := m.SendLinkPreviewToWaha(&SendLinkPreviewInput{
+		SessionName: "sess",
+		ChatID:      "123@g.us",
+		Text:        "confira https://example.com",
+		URL:         "https://example.com",
+		Title:       "Título",
+		Description: "Desc",
+		ImageURL:    "https://cdn.example.com/img.jpg",
+	})
+	require.NotNil(t, req)
+	// Sem HQ o GOWS manda a imagem só como thumbnail inline e o card chega
+	// MINIMIZADO nos grupos espelhados; HQ deve ir sempre true.
+	assert.True(t, req.LinkPreviewHighQuality)
+	require.NotNil(t, req.Preview)
+	assert.Equal(t, "https://example.com", req.Preview.URL)
+	require.NotNil(t, req.Preview.Image)
+	assert.Equal(t, "https://cdn.example.com/img.jpg", req.Preview.Image.URL)
+
+	// Serialização: o campo precisa existir no JSON com o nome que a WAHA espera.
+	b, err := json.Marshal(req)
+	require.NoError(t, err)
+	assert.Contains(t, string(b), `"linkPreviewHighQuality":true`)
+}

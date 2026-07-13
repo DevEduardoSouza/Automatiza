@@ -439,10 +439,15 @@ type wahaPollData struct {
 // wahaSendLinkPreviewRequest represents a WAHA link custom preview request.
 // Maps to POST /api/send/link-custom-preview request body.
 type wahaSendLinkPreviewRequest struct {
-	Session string                      `json:"session"`
-	ChatID  string                      `json:"chatId"`
-	Text    string                      `json:"text"`
-	Preview *wahaSendLinkPreviewPreview `json:"preview"`
+	Session string `json:"session"`
+	ChatID  string `json:"chatId"`
+	Text    string `json:"text"`
+	// LinkPreviewHighQuality faz o GOWS subir a imagem do preview em tamanho
+	// cheio (upload pro WhatsApp) em vez de mandar só o jpegThumbnail inline.
+	// Sem HQ o card chega MINIMIZADO nos grupos (thumbnail pequeno à
+	// esquerda); com HQ chega como no grupo-fonte (imagem grande no topo).
+	LinkPreviewHighQuality bool                        `json:"linkPreviewHighQuality"`
+	Preview                *wahaSendLinkPreviewPreview `json:"preview"`
 }
 
 // wahaSendLinkPreviewPreview represents the preview object inside a link preview request.

@@ -485,20 +485,14 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			zap.String("imageURL", imageURL))
 	}
 
-	// Layer 2: WAHA media download (only if no CDN image)
+	// Layer 2: WAHA media download (only if no CDN image).
+	// Ordem: mídia em TAMANHO CHEIO primeiro (media.url local → re-download dos
+	// servidores do WhatsApp) e só então o base64 inline. O inline costuma ser o
+	// jpegThumbnail do link preview (~100px) — usá-lo como imagem do card faz o
+	// WhatsApp renderizar o preview MINIMIZADO nos grupos espelhados, enquanto o
+	// grupo-fonte mostra o card grande. Thumbnail vira último recurso.
 	if imageURL == "" && msg.HasMedia && (msg.MediaType == "image" || strings.HasPrefix(msg.MimeType, "image/")) {
-		if msg.MediaBase64 != "" {
-			// Use inline base64 directly (link preview thumbnail)
-			imageBase64 = msg.MediaBase64
-			imageMimetype = msg.MimeType
-			if imageMimetype == "" {
-				imageMimetype = "image/jpeg"
-			}
-			s.logger.Info("Using inline base64 image (link preview)",
-				zap.String("automationID", automation.ID),
-				zap.Int("base64Len", len(imageBase64)),
-				zap.String("mimetype", imageMimetype))
-		} else if s.waProvider != nil {
+		if s.waProvider != nil {
 			// Try downloading via WAHA media URL (fast, uses local cache)
 			if msg.MediaURL != "" {
 				result, dlErr := s.waProvider.DownloadMediaByURL(ctx, msg.MediaURL)
@@ -533,11 +527,24 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 						zap.Int("dataLen", len(result.Data)),
 						zap.String("mimetype", imageMimetype))
 				} else if reErr != nil {
-					s.logger.Warn("All image download attempts failed, sending text only",
+					s.logger.Warn("Full-size image download attempts failed",
 						zap.String("automationID", automation.ID),
 						zap.Error(reErr))
 				}
 			}
+		}
+
+		// Last resort: inline base64 (link preview jpegThumbnail, low-res)
+		if imageBase64 == "" && msg.MediaBase64 != "" {
+			imageBase64 = msg.MediaBase64
+			imageMimetype = msg.MimeType
+			if imageMimetype == "" {
+				imageMimetype = "image/jpeg"
+			}
+			s.logger.Info("Using inline base64 image (link preview thumbnail fallback)",
+				zap.String("automationID", automation.ID),
+				zap.Int("base64Len", len(imageBase64)),
+				zap.String("mimetype", imageMimetype))
 		}
 	}
 

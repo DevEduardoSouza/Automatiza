@@ -417,6 +417,9 @@ func (m *Mapper) SendLinkPreviewToWaha(input *SendLinkPreviewInput) *wahaSendLin
 		Session: input.SessionName,
 		ChatID:  input.ChatID,
 		Text:    input.Text,
+		// Sempre HQ: todo consumidor (espelho, listas, ofertas) quer o card
+		// com imagem grande, igual ao render nativo do WhatsApp na origem.
+		LinkPreviewHighQuality: true,
 		Preview: &wahaSendLinkPreviewPreview{
 			URL:         input.URL,
 			Title:       input.Title,
