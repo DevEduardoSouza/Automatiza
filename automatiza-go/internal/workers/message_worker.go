@@ -10,7 +10,9 @@ import (
 
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
+	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/humanize"
+	"automatiza-go/internal/lib/selfsend"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/observability"
@@ -31,6 +33,7 @@ type MessageWorker struct {
 	urlSafetyService *urlsafety.Service
 	historyRepo      repository.ActionHistoryRepository
 	dispatchLogRepo  repository.DispatchLogRepository
+	cache            *cache.Cache
 	logger           *zap.Logger
 	deadGroups       *deadGroupCache
 }
@@ -44,6 +47,7 @@ func NewMessageWorker(
 	urlSafetyService *urlsafety.Service,
 	historyRepo repository.ActionHistoryRepository,
 	dispatchLogRepo repository.DispatchLogRepository,
+	cacheClient *cache.Cache,
 	logger *zap.Logger,
 ) *MessageWorker {
 	return &MessageWorker{
@@ -51,6 +55,7 @@ func NewMessageWorker(
 		urlSafetyService: urlSafetyService,
 		historyRepo:      historyRepo,
 		dispatchLogRepo:  dispatchLogRepo,
+		cache:            cacheClient,
 		logger:           logger,
 		deadGroups:       newDeadGroupCache(),
 	}
@@ -144,6 +149,11 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		Cfg:      resolved.Humanize,
 	})
 	defer stopTyping()
+
+	// Marca o texto FINAL (pós-Vary) como envio da plataforma ANTES do send:
+	// o webhook desse envio chega nos chips membros do grupo e, sem a marca,
+	// um grupo-fonte de espelhamento re-espelharia esse disparo automatizado.
+	selfsend.Mark(ctx, w.cache, data.GroupID, normalizedMessage)
 
 	// 3. Send Message via WhatsAppProvider
 	var sendErr error

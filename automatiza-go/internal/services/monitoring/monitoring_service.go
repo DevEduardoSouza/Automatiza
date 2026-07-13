@@ -18,6 +18,7 @@ import (
 	"automatiza-go/internal/lib/deadgroup"
 	"automatiza-go/internal/lib/humanize"
 	"automatiza-go/internal/lib/pacing"
+	"automatiza-go/internal/lib/selfsend"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/wamentions"
 	"automatiza-go/internal/models"
@@ -137,6 +138,19 @@ func (s *monitoringService) ProcessIncomingMessage(ctx context.Context, msg *mod
 	// 3. Extract links
 	links := s.extractLinks(msg.Body)
 	if len(links) == 0 {
+		return nil
+	}
+
+	// 3b. Disparo da PRÓPRIA plataforma chegando no grupo-fonte (lista/busca,
+	// relay de outro espelho, oferta gerada): não é post manual, então não
+	// espelha — re-espelhar encadearia tráfego automatizado (lista → espelho
+	// → espelho) no ritmo do disparador de origem. O guard FromMe acima só
+	// cobre o eco do MESMO chip; esta chave global (grupo + hash do corpo)
+	// cobre envios feitos por outros chips e outros usuários da plataforma.
+	if selfsend.IsPlatformSend(ctx, s.cache, msg.RemoteJID, msg.Body) {
+		s.logger.Info("Ignoring platform-originated message in monitor group",
+			zap.String("instance", msg.InstanceName),
+			zap.String("group", msg.RemoteJID))
 		return nil
 	}
 
@@ -734,6 +748,10 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// @todos scan above stays on the ORIGINAL processedText so variation can
 		// never hide the trigger token.
 		perGroupText := text.Vary(processedText, resolved.Vary, groupID)
+		// Marca o relay como envio da plataforma: se o grupo de destino for
+		// grupo-fonte de OUTRO espelhamento, o webhook não re-espelha (corta
+		// cadeias espelho → espelho).
+		selfsend.Mark(ctx, s.cache, groupID, perGroupText)
 		stopTyping := rt.Humanizer.BeforeSend(sendCtx, humanize.Plan{
 			Session:  senderSession,
 			ChatID:   groupID,

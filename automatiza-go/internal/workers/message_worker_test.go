@@ -244,6 +244,7 @@ func TestNewMessageWorker_SetsAllFields(t *testing.T) {
 		safetyService,
 		historyRepo,
 		dispatchRepo,
+		nil,
 		logger,
 	)
 
@@ -254,7 +255,7 @@ func TestNewMessageWorker_NilOptionalDeps(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
 
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	require.NotNil(t, w, "NewMessageWorker must accept nil optional dependencies")
 }
@@ -266,7 +267,7 @@ func TestNewMessageWorker_NilOptionalDeps(t *testing.T) {
 func TestProcessTask_TextMessage_Success(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	data := workers.MessageJobData{
 		InstanceName: "session-1",
@@ -298,7 +299,7 @@ func TestProcessTask_TextMessage_Success(t *testing.T) {
 func TestProcessTask_VoiceMessage_Success(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	audioData := "SGVsbG8gV29ybGQ="
 	mime := "audio/ogg; codecs=opus"
@@ -335,7 +336,7 @@ func TestProcessTask_VoiceMessage_Success(t *testing.T) {
 func TestProcessTask_VoiceMessage_DefaultMimetype(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	audioData := "base64audio"
 	data := workers.MessageJobData{
@@ -367,7 +368,7 @@ func TestProcessTask_VoiceMessage_DefaultMimetype(t *testing.T) {
 func TestProcessTask_ImageURL_Success(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	imgURL := "https://example.com/image.jpg"
 	data := workers.MessageJobData{
@@ -400,7 +401,7 @@ func TestProcessTask_ImageURL_Success(t *testing.T) {
 func TestProcessTask_ImageBase64_Success(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	imgB64 := "iVBORw0KGgoAAAANSUhEUg=="
 	data := workers.MessageJobData{
@@ -427,7 +428,7 @@ func TestProcessTask_ImageBase64_Success(t *testing.T) {
 func TestProcessTask_ImageBase64_DataURLStripping(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	imgB64 := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
 	data := workers.MessageJobData{
@@ -457,7 +458,7 @@ func TestProcessTask_ImageBase64_DataURLStripping(t *testing.T) {
 func TestProcessTask_ImageSendFails_FallbackToText(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	// Make SendImage fail, but SendText succeed
 	callCount := 0
@@ -504,7 +505,7 @@ func TestProcessTask_URLSafety_Block(t *testing.T) {
 		BlockedHosts: []string{"malware.example.com"},
 	}, nil, logger)
 
-	w := workers.NewMessageWorker(fakeAdapter, safetyService, nil, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, safetyService, nil, dispatchRepo, nil, logger)
 
 	dispatchLogID := 42
 	data := workers.MessageJobData{
@@ -540,7 +541,7 @@ func TestProcessTask_URLSafety_Redact(t *testing.T) {
 		BlockedHosts: []string{"malware.example.com"},
 	}, nil, logger)
 
-	w := workers.NewMessageWorker(fakeAdapter, safetyService, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, safetyService, nil, nil, nil, logger)
 
 	data := workers.MessageJobData{
 		InstanceName: "session-1",
@@ -577,7 +578,7 @@ func TestProcessTask_URLSafety_Error_ContinuesSending(t *testing.T) {
 		Mode: "off",
 	}, nil, logger)
 
-	w := workers.NewMessageWorker(fakeAdapter, safetyService, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, safetyService, nil, nil, nil, logger)
 
 	data := workers.MessageJobData{
 		InstanceName: "session-1",
@@ -604,7 +605,7 @@ func TestProcessTask_EmptyAfterNormalization(t *testing.T) {
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
 
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, nil, logger)
 
 	dispatchLogID := 99
 	// Invisible characters only — effectively empty after normalization
@@ -635,7 +636,7 @@ func TestProcessTask_EmptyAfterNormalization(t *testing.T) {
 func TestProcessTask_InvalidPayload(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	task := asynq.NewTask(workers.TypeSendMessage, []byte("not valid json{{{"))
 
@@ -657,7 +658,7 @@ func TestProcessTask_ProviderError_SessionNotFound(t *testing.T) {
 	setupFeatureFlag(t, true)
 	dispatchRepo := new(mockDispatchLogRepo)
 
-	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, dispatchRepo, nil, logger)
 
 	fakeAdapter.SimulateError = whatsapp.NewProviderError(
 		whatsapp.ErrCodeSessionNotFound, "session not found", nil,
@@ -692,7 +693,7 @@ func TestProcessTask_ProviderError_SessionNotFound(t *testing.T) {
 func TestProcessTask_ProviderError_SessionNotConnected(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	fakeAdapter.SimulateError = whatsapp.NewProviderError(
 		whatsapp.ErrCodeSessionNotConnected, "session not connected", nil,
@@ -714,7 +715,7 @@ func TestProcessTask_ProviderError_SessionNotConnected(t *testing.T) {
 func TestProcessTask_ProviderError_RateLimited(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	fakeAdapter.SimulateError = whatsapp.NewProviderError(
 		whatsapp.ErrCodeRateLimited, "rate limited", nil,
@@ -741,7 +742,7 @@ func TestProcessTask_ProviderError_Timeout(t *testing.T) {
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
 
-	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, dispatchRepo, nil, logger)
 
 	fakeAdapter.SimulateError = whatsapp.NewProviderError(
 		whatsapp.ErrCodeTimeout, "timeout waiting for response", nil,
@@ -781,7 +782,7 @@ func TestProcessTask_LegacyTimeoutError(t *testing.T) {
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
 
-	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, dispatchRepo, nil, logger)
 
 	// Use SendTextFunc (not SimulateError) to return a plain error
 	fakeAdapter.SendTextFunc = func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
@@ -822,7 +823,7 @@ func TestProcessTask_Legacy404Error(t *testing.T) {
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
 
-	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, dispatchRepo, nil, logger)
 
 	fakeAdapter.SendTextFunc = func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
 		return nil, errors.New("HTTP 404 not found")
@@ -857,7 +858,7 @@ func TestProcessTask_Legacy404Error(t *testing.T) {
 func TestProcessTask_LegacyConnectionClosed(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	fakeAdapter.SendTextFunc = func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
 		return nil, errors.New("connection closed by remote host")
@@ -892,7 +893,7 @@ func TestProcessTask_SuccessMetrics_Incremented(t *testing.T) {
 
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	data := workers.MessageJobData{
 		InstanceName: "session-1",
@@ -917,7 +918,7 @@ func TestProcessTask_SuccessMetrics_NilGlobalMetrics(t *testing.T) {
 
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	data := workers.MessageJobData{
 		InstanceName: "session-1",
@@ -940,7 +941,7 @@ func TestUpdateHistoryStatus_NilHistoryID(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	historyRepo := new(mockHistoryRepo)
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, nil, nil, logger)
 
 	// No HistoryID — repo should NOT be called
 	data := workers.MessageJobData{
@@ -961,7 +962,7 @@ func TestUpdateHistoryStatus_NilRepo(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
 	// Pass nil historyRepo
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	histID := "hist-1"
 	data := workers.MessageJobData{
@@ -982,7 +983,7 @@ func TestUpdateHistoryStatus_Success(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	historyRepo := new(mockHistoryRepo)
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, nil, nil, logger)
 
 	histID := "hist-ok"
 	data := workers.MessageJobData{
@@ -1009,7 +1010,7 @@ func TestUpdateHistoryStatus_Error(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	historyRepo := new(mockHistoryRepo)
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, nil, nil, logger)
 
 	histID := "hist-err"
 	data := workers.MessageJobData{
@@ -1040,7 +1041,7 @@ func TestUpdateDispatchLog_NilDispatchLogID(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, nil, logger)
 
 	// No DispatchLogID
 	data := workers.MessageJobData{
@@ -1060,7 +1061,7 @@ func TestUpdateDispatchLog_NilDispatchLogID(t *testing.T) {
 func TestUpdateDispatchLog_NilRepo(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	dlID := 55
 	data := workers.MessageJobData{
@@ -1083,7 +1084,7 @@ func TestUpdateDispatchLog_FeatureFlagDisabled(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, nil, logger)
 
 	dlID := 66
 	data := workers.MessageJobData{
@@ -1108,7 +1109,7 @@ func TestUpdateDispatchLog_Success(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, nil, logger)
 
 	dlID := 77
 	data := workers.MessageJobData{
@@ -1136,7 +1137,7 @@ func TestUpdateDispatchLog_Error(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, nil, logger)
 
 	dlID := 88
 	data := workers.MessageJobData{
@@ -1179,7 +1180,7 @@ func TestIsTimeoutError_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeAdapter := whatsapp.NewFakeAdapter()
 			logger := zap.NewNop()
-			w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+			w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 			if tt.errMsg != "" {
 				fakeAdapter.SendTextFunc = func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
@@ -1222,7 +1223,7 @@ func TestIs404Error_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeAdapter := whatsapp.NewFakeAdapter()
 			logger := zap.NewNop()
-			w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+			w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 			fakeAdapter.SendTextFunc = func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
 				return nil, errors.New(tt.errMsg)
@@ -1263,7 +1264,7 @@ func TestIsConnectionClosedError_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeAdapter := whatsapp.NewFakeAdapter()
 			logger := zap.NewNop()
-			w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+			w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 			fakeAdapter.SendTextFunc = func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
 				return nil, errors.New(tt.errMsg)
@@ -1295,7 +1296,7 @@ func TestIsConnectionClosedError_Table(t *testing.T) {
 func TestProcessTaskWrapper(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	handlerFunc := w.ProcessTaskWrapper()
 	require.NotNil(t, handlerFunc)
@@ -1335,7 +1336,7 @@ func TestSkipRetry_SentinelError(t *testing.T) {
 func TestProcessTask_VoiceMessage_NoFollowUpTextWhenEmpty(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	audioData := "base64audio"
 	data := workers.MessageJobData{
@@ -1373,7 +1374,7 @@ func TestProcessTask_VoiceMessage_NoFollowUpTextWhenEmpty(t *testing.T) {
 func TestProcessTask_VoiceMessage_VoiceSendFails(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	fakeAdapter.SendVoiceFunc = func(_ context.Context, _ whatsapp.SendVoiceInput) (*whatsapp.MessageResult, error) {
 		return nil, errors.New("voice send failed")
@@ -1406,7 +1407,7 @@ func TestProcessTask_AllFieldsPopulated(t *testing.T) {
 	historyRepo := new(mockHistoryRepo)
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, historyRepo, dispatchRepo, nil, logger)
 
 	histID := "hist-full"
 	dlID := 100
@@ -1442,7 +1443,7 @@ func TestProcessTask_GenericSendError_UpdatesDispatchLog(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, nil, logger)
 
 	fakeAdapter.SendTextFunc = func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
 		return nil, errors.New("some unknown error")
@@ -1471,7 +1472,7 @@ func TestProcessTask_GenericSendError_UpdatesDispatchLog(t *testing.T) {
 func TestProcessTask_ImageBase64_FallsBackWhenBothImageAndTextFail(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	// Note: base64 image path does NOT have fallback to text (only URL path does).
 	// If base64 image send fails, the error is propagated.
@@ -1504,7 +1505,7 @@ func TestProcessTask_ImageBase64_FallsBackWhenBothImageAndTextFail(t *testing.T)
 func TestMessageWorker_ImplementsAsynqHandler(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, nil, nil, logger)
 
 	// Verify MessageWorker implements asynq.Handler (ProcessTask method)
 	var handler asynq.Handler = w

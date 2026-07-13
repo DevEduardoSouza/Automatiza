@@ -657,7 +657,7 @@ func main() {
 		if redisClient != nil {
 			redisClientForWorker = redisClient.Client
 		}
-		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, offerGenerateService, logger)
+		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, offerGenerateService, cacheClient, logger)
 		return
 	}
 
@@ -1229,6 +1229,7 @@ func runWorker(
 	redisClientForSSE *redis.Client,
 	monitoringService monitoring.Service,
 	offerGenerateService offer_generate.Service,
+	cacheClient *cache.Cache,
 	logger *zap.Logger,
 ) {
 	logger.Info("Starting worker mode",
@@ -1243,6 +1244,7 @@ func runWorker(
 		urlSafetyService,
 		historyRepo,
 		dispatchLogRepo,
+		cacheClient,
 		config.NewModuleLogger(logger, "message_worker"),
 	)
 

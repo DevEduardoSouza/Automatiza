@@ -17,6 +17,7 @@ import (
 	"automatiza-go/internal/lib/ctapicker"
 	"automatiza-go/internal/lib/humanize"
 	"automatiza-go/internal/lib/pacing"
+	"automatiza-go/internal/lib/selfsend"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/videostream"
 	"automatiza-go/internal/lib/wamentions"
@@ -129,6 +130,18 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 				zap.String("group", msg.RemoteJID))
 			return nil
 		}
+	}
+
+	// Disparo da PRÓPRIA plataforma chegando no grupo-fonte (lista/busca,
+	// relay/oferta de outro espelho, inclusive de outro chip ou usuário):
+	// não é post manual, então não processa — re-espelhar encadearia
+	// tráfego automatizado no ritmo do disparador de origem. Antes da
+	// extração de links de propósito, para cobrir também o modo relay.
+	if selfsend.IsPlatformSend(ctx, s.cache, msg.RemoteJID, msg.Body) {
+		s.logger.Info("Offer generate: ignoring platform-originated message in monitor group",
+			zap.String("instance", msg.InstanceName),
+			zap.String("group", msg.RemoteJID))
+		return nil
 	}
 
 	// 2. Extract links from message body. info[...] and cta[...] must be
@@ -821,6 +834,9 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				// WhatsApp echoes back — or the FromMe loop-guard misses it.
 				perGroupMessage := text.Vary(renderedMessage, resolved.Vary, groupID)
 				s.markOwnOutgoing(ctx, dispatchSession, groupID, perGroupMessage)
+				// Marca global (grupo + hash): destino que também é grupo-fonte
+				// de outro espelhamento não re-espelha este envio automatizado.
+				selfsend.Mark(ctx, s.cache, groupID, perGroupMessage)
 
 				// Send via WhatsApp
 				sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -1475,6 +1491,9 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 				if ownKey != "" {
 					s.markOwnOutgoing(ctx, dispatchSession, groupID, ownKey)
 				}
+				// Marca global pelo corpo repassado (o webhook do destino traz o
+				// mesmo body): corta cadeia espelho → espelho no modo relay.
+				selfsend.Mark(ctx, s.cache, groupID, msg.Body)
 
 				sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
 				// Anti-ban: typing/online/seen choreography before the relay send.

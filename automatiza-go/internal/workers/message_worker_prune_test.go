@@ -22,7 +22,7 @@ func TestProcessTask_NotParticipating_SkipsNoRetryAndCaches(t *testing.T) {
 	fakeAdapter := whatsapp.NewFakeAdapter()
 	dispatchRepo := new(mockDispatchLogRepo)
 	logger := zap.NewNop()
-	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, logger)
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, dispatchRepo, nil, logger)
 
 	notPart := errors.New("failed to send image message: WAHA error 500: you're not participating in that group")
 	fakeAdapter.SendImageFunc = func(_ context.Context, _ whatsapp.SendImageInput) (*whatsapp.MessageResult, error) {
