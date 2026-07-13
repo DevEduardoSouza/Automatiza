@@ -628,3 +628,44 @@ func TestContentFingerprint(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractLinks_EmojiGluedToURL(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "emoji ‼️ colado (caso real de produção)",
+			in:   "corre https://s.shopee.com.br/qem5OVT0i‼️",
+			want: "https://s.shopee.com.br/qem5OVT0i",
+		},
+		{
+			name: "emoji 🔥 colado",
+			in:   "https://s.shopee.com.br/abc123🔥🔥",
+			want: "https://s.shopee.com.br/abc123",
+		},
+		{
+			name: "acento fora da URL não entra",
+			in:   "veja https://shopee.com.br/product/1/2é",
+			want: "https://shopee.com.br/product/1/2",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			links := ExtractLinks(tt.in)
+			if len(links) != 1 || links[0] != tt.want {
+				t.Errorf("ExtractLinks(%q) = %v, want [%s]", tt.in, links, tt.want)
+			}
+		})
+	}
+}
+
+func TestCutURLAtNonASCII(t *testing.T) {
+	if got := CutURLAtNonASCII("https://x.com/a‼️b"); got != "https://x.com/a" {
+		t.Errorf("got %q", got)
+	}
+	if got := CutURLAtNonASCII("https://x.com/ab"); got != "https://x.com/ab" {
+		t.Errorf("ascii-only must pass unchanged, got %q", got)
+	}
+}

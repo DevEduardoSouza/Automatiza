@@ -588,3 +588,49 @@ func TestCollapseWhitespace(t *testing.T) {
 		})
 	}
 }
+
+func TestSeparateURLEmojiGlue(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "emoji colado após URL ganha espaço",
+			in:   "aproveita https://s.shopee.com.br/abc123🔥 corre",
+			want: "aproveita https://s.shopee.com.br/abc123 🔥 corre",
+		},
+		{
+			name: "emoji duplo colado no fim da mensagem",
+			in:   "link: https://s.shopee.com.br/abc123👇👇",
+			want: "link: https://s.shopee.com.br/abc123 👇👇",
+		},
+		{
+			name: "URL seguida de espaço fica intacta",
+			in:   "https://s.shopee.com.br/abc123 🔥",
+			want: "https://s.shopee.com.br/abc123 🔥",
+		},
+		{
+			name: "formatação ASCII não é afetada",
+			in:   "*https://example.com*",
+			want: "*https://example.com*",
+		},
+		{
+			name: "múltiplas URLs com emojis colados",
+			in:   "https://a.com/x‼️ e https://b.com/y😍",
+			want: "https://a.com/x ‼️ e https://b.com/y 😍",
+		},
+		{
+			name: "texto sem URL passa direto",
+			in:   "sem link aqui 🔥",
+			want: "sem link aqui 🔥",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NormalizeOutgoingWhatsAppText(tt.in); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

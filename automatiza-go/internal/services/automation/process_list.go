@@ -285,6 +285,25 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				zap.String("itemID", item.ID))
 			continue
 		}
+		// Itens importados chegam com emoji colado na URL ("🔥https://s.shopee.
+		// com.br/xyz🔥"). URL válida é ASCII: sem o corte, a conversão falha e
+		// o fallback (affiliateURL = originURL) mandava o link COM emoji pro
+		// grupo — link que não abre no destinatário. Primeiro descarta lixo
+		// ANTES do esquema, depois corta no primeiro rune não-ASCII.
+		if idx := strings.Index(originURL, "http"); idx > 0 {
+			originURL = originURL[idx:]
+		}
+		if cut := text.CutURLAtNonASCII(originURL); cut != originURL {
+			s.logger.Warn("List item URL had non-ASCII glued to it — truncated",
+				zap.String("itemID", item.ID),
+				zap.String("kept", cut))
+			originURL = cut
+		}
+		if originURL == "" {
+			s.logger.Warn("List item URL empty after non-ASCII cut, skipping",
+				zap.String("itemID", item.ID))
+			continue
+		}
 		// Users paste several share links into one item often enough that prod
 		// carries entries like "https://s.shopee.com.br/Ahttps://s.shopee...".
 		// Expanding that mangled string fails enrichment ("invalid shopee URL

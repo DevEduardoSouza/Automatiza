@@ -1089,11 +1089,15 @@ var (
 	mlURLRegex = regexp.MustCompile(`(?i)(mercadolivre\.com\.br|mercadolibre\.com|ml\.com\.br|meli\.la|meli\.co)`)
 )
 
-func (s *monitoringService) extractLinks(text string) []string {
-	matches := httpURLRegex.FindAllString(text, -1)
+func (s *monitoringService) extractLinks(rawText string) []string {
+	matches := httpURLRegex.FindAllString(rawText, -1)
 	// Clean up trailing punctuation
 	result := make([]string, 0, len(matches))
 	for _, m := range matches {
+		// Emoji colado no link (ex.: "https://s.shopee.com.br/qem5OVT0i‼️")
+		// entrava na captura, a expansão falhava e o repasse era retido
+		// ("relay withheld"). URL válida é ASCII — corta no primeiro rune fora.
+		m = text.CutURLAtNonASCII(m)
 		m = strings.TrimRight(m, ".,;:!?)")
 		result = append(result, m)
 	}

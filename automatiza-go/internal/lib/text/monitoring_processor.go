@@ -217,6 +217,11 @@ func ExtractLinks(text string) []string {
 	seen := make(map[string]bool)
 	unique := make([]string, 0, len(matches))
 	for _, link := range matches {
+		// URLs de produto são ASCII puro; emoji colado no link (ex.:
+		// "https://s.shopee.com.br/qem5OVT0i‼️") entrava na captura, a
+		// expansão falhava e o repasse era retido. Corta no primeiro rune
+		// não-ASCII antes dos trims.
+		link = CutURLAtNonASCII(link)
 		// Strip trailing punctuation and WhatsApp formatting delimiters
 		// (`*`, `_`, `~`, backtick) so the captured URL does not leak the
 		// wrapper characters when a user writes something like
@@ -230,6 +235,19 @@ func ExtractLinks(text string) []string {
 	}
 
 	return unique
+}
+
+// CutURLAtNonASCII trunca uma URL capturada no primeiro rune não-ASCII.
+// URLs válidas (RFC 3986) são ASCII — qualquer coisa fora disso colada no
+// link (emoji, ‼️, variation selector) é texto vizinho que o regex de
+// captura engoliu, não parte da URL.
+func CutURLAtNonASCII(s string) string {
+	for i, r := range s {
+		if r > unicode.MaxASCII {
+			return s[:i]
+		}
+	}
+	return s
 }
 
 // trimUnbalancedTrailingParens strips trailing ")" characters that have no

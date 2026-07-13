@@ -3,6 +3,8 @@ package text
 import (
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 var (
@@ -14,7 +16,41 @@ var (
 
 	// Multiple spaces
 	multipleSpacesRegex = regexp.MustCompile(`[ \t]{2,}`)
+
+	// urlASCIIRunRegex casa a extensão ASCII-imprimível de uma URL — usada só
+	// para achar a FRONTEIRA onde um emoji ficou colado no fim do link.
+	urlASCIIRunRegex = regexp.MustCompile(`https?://[!-~]+`)
 )
+
+// separateURLEmojiGlue insere um espaço entre uma URL e um caractere
+// não-ASCII (emoji etc.) colado imediatamente após ela. Sem o espaço, alguns
+// clientes do WhatsApp incluem o emoji no trecho clicável e o link não abre
+// ("emojis nos links dando incompatibilidade"). Só mexe na fronteira
+// URL→não-ASCII; formatação ASCII (*_~) e texto normal ficam intactos.
+func separateURLEmojiGlue(s string) string {
+	locs := urlASCIIRunRegex.FindAllStringIndex(s, -1)
+	if len(locs) == 0 {
+		return s
+	}
+	var b strings.Builder
+	last := 0
+	for _, loc := range locs {
+		end := loc[1]
+		if end < len(s) {
+			r, _ := utf8.DecodeRuneInString(s[end:])
+			if r > unicode.MaxASCII {
+				b.WriteString(s[last:end])
+				b.WriteByte(' ')
+				last = end
+			}
+		}
+	}
+	if last == 0 {
+		return s
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
 
 // NormalizeOutgoingWhatsAppText normalizes text for WhatsApp sending
 func NormalizeOutgoingWhatsAppText(input string) string {
@@ -35,7 +71,10 @@ func NormalizeOutgoingWhatsAppText(input string) string {
 	}
 	result = strings.Join(lines, "\n")
 
-	// 5. Final trim
+	// 5. Separate emoji glued right after a URL (WhatsApp linkification)
+	result = separateURLEmojiGlue(result)
+
+	// 6. Final trim
 	result = strings.TrimSpace(result)
 
 	return result
