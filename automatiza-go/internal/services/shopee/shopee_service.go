@@ -598,6 +598,21 @@ func isShopeeShortURL(rawURL string) bool {
 		strings.Contains(lower, "shope.ee/")
 }
 
+// shouldRelayOwnShortLink decide se um shortlink importado pode ser repassado
+// como veio (curto-circuito sem chamada à API). Exige três coisas na URL
+// EXPANDIDA: o tracking do próprio afiliado (utm_source=an_<app_id>) E o Sub ID
+// padrão (shopeeSubIDDefault). Sem o sub_id, o relatório da Shopee registra a
+// venda como "sem SubID" — foi o que aconteceu quando o curto-circuito
+// repassava qualquer link próprio: shortlink gerado à mão no painel da Shopee
+// não carrega o AUTOMATISA. Esse link agora volta pra conversão normal, que
+// re-gera via generateShortLink aplicando o sub_id. Só o link que o PRÓPRIO
+// sistema gerou (tracking + sub_id presentes) pula a API.
+func shouldRelayOwnShortLink(productURL, expandedURL, appID string) bool {
+	return appID != "" && isShopeeShortURL(productURL) &&
+		strings.Contains(expandedURL, "utm_source=an_"+appID) &&
+		strings.Contains(expandedURL, shopeeSubIDDefault)
+}
+
 // isNonProductShopeeURL detects Shopee URLs that are not product pages
 // (e.g., coupon pages, campaign pages, voucher wallets, store profiles)
 // and must be regenerated through generateShortLink with the user's credentials
@@ -775,8 +790,7 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 	// longo próprio passa pelo fluxo normal para sair ENCURTADO (a URL de
 	// tracking gigante no grupo é ilegível). Link de OUTRO afiliado não casa
 	// com o app_id e segue a conversão, que troca o tracking pelo do dono.
-	if trackedSource := "utm_source=an_" + appID; appID != "" && isShopeeShortURL(productURL) &&
-		strings.Contains(expandedURL, trackedSource) {
+	if shouldRelayOwnShortLink(productURL, expandedURL, appID) {
 		own := &models.ShopeeAffiliateLink{
 			OriginalURL:   productURL,
 			AffiliateLink: productURL,

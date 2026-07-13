@@ -2012,3 +2012,53 @@ func TestGenerateAffiliateLink_OwnLinkShortCircuit(t *testing.T) {
 		}
 	})
 }
+
+func TestShouldRelayOwnShortLink(t *testing.T) {
+	const appID = "18330220029"
+	shortURL := "https://s.shopee.com.br/AbCdEf123"
+
+	tests := []struct {
+		name        string
+		productURL  string
+		expandedURL string
+		want        bool
+	}{
+		{
+			name:        "link próprio COM sub_id → repassa sem chamada à API",
+			productURL:  shortURL,
+			expandedURL: "https://shopee.com.br/product/457864097/41713766789?utm_source=an_" + appID + "&utm_medium=affiliates&utm_content=AUTOMATISA----",
+			want:        true,
+		},
+		{
+			name:        "link próprio SEM sub_id (gerado no painel da Shopee) → reconverte para aplicar o AUTOMATISA",
+			productURL:  shortURL,
+			expandedURL: "https://shopee.com.br/product/457864097/41713766789?utm_source=an_" + appID + "&utm_medium=affiliates&utm_content=----",
+			want:        false,
+		},
+		{
+			name:        "link de outro afiliado (mesmo com sub_id) → reconverte",
+			productURL:  shortURL,
+			expandedURL: "https://shopee.com.br/product/457864097/41713766789?utm_source=an_99999999999&utm_content=AUTOMATISA----",
+			want:        false,
+		},
+		{
+			name:        "link longo (não-shortlink) → nunca repassa",
+			productURL:  "https://shopee.com.br/opaanlp/457864097/41713766789?utm_source=an_" + appID + "&utm_content=AUTOMATISA----",
+			expandedURL: "https://shopee.com.br/opaanlp/457864097/41713766789?utm_source=an_" + appID + "&utm_content=AUTOMATISA----",
+			want:        false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldRelayOwnShortLink(tt.productURL, tt.expandedURL, appID); got != tt.want {
+				t.Errorf("shouldRelayOwnShortLink() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("appID vazio → nunca repassa", func(t *testing.T) {
+		if shouldRelayOwnShortLink(shortURL, "https://shopee.com.br/product/1/2?utm_source=an_&utm_content=AUTOMATISA----", "") {
+			t.Error("empty appID must not short-circuit")
+		}
+	})
+}
