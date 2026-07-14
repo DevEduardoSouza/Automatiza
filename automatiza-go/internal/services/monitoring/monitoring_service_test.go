@@ -1627,7 +1627,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 		}
 	})
 
-	// Regressão (silviadomkt, 14/07): link de loja sem conversão (Amazon/
+	// Regressão (silviadomkt, 14/07): link de loja sem afiliação (Amazon/
 	// Magalu/Shein/AliExpress) pegando carona num post Shopee era repassado
 	// no corpo com a comissão do canal de ORIGEM. Só ML era despido (#193).
 	t.Run("shopee link + amazon riding along → forwards with amazon stripped", func(t *testing.T) {
