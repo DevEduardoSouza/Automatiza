@@ -168,6 +168,18 @@ export function AddChipModal({ open, onClose }: AddChipModalProps) {
             const name = instanceNameRef.current;
             if (!name) return;
             try {
+              // Guarda de corrida: o usuário pode ter escaneado o QR no exato
+              // segundo em que o contador zera. Sem esta checagem, o recycle
+              // deletava uma sessão recém-PAREADA (o waha-router bloqueia e o
+              // número é salvo, mas o fluxo quebra e dispara alerta de unpair).
+              // Se já conectou, não recicla — o poll de status assume e leva a
+              // fase para "connected".
+              try {
+                const st = await checkStatusRef.current(name);
+                if (st.state === 'open') return;
+              } catch {
+                // Status indisponível — segue o recycle normal.
+              }
               await deleteInstanceRef.current(name);
               const data = await createInstanceRef.current();
               if (!data.success) return;
@@ -193,7 +205,19 @@ export function AddChipModal({ open, onClose }: AddChipModalProps) {
     const isUnfinished = phaseRef.current === 'creating' || phaseRef.current === 'awaiting_qr';
     if (name && isUnfinished) {
       try {
-        await deleteInstanceRef.current(name);
+        // Mesma guarda de corrida do recycle: se o scan acabou de conectar
+        // (fase ainda não atualizou), fechar o modal NÃO pode deletar o chip
+        // recém-pareado.
+        let connected = false;
+        try {
+          const st = await checkStatusRef.current(name);
+          connected = st.state === 'open';
+        } catch {
+          // Status indisponível — mantém o cleanup best-effort.
+        }
+        if (!connected) {
+          await deleteInstanceRef.current(name);
+        }
       } catch {
         // Best-effort cleanup; leave it to cleanupInvalidInstances if it fails.
       }

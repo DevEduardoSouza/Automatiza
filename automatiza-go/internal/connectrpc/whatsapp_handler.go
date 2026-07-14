@@ -192,7 +192,27 @@ func (h *WhatsAppHandler) DeleteInstance(
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("WhatsApp provider not configured"))
 	}
 
-	if err := h.waProvider.DeleteSession(ctx, req.Msg.GetInstanceName()); err != nil {
+	// Posse: a sessão só pode ser deletada pelo DONO da instância. Sem esta
+	// checagem, qualquer usuário autenticado deletava sessão alheia pelo nome
+	// (o guard do waha-router só protege as PAREADAS; stub de QR de outro
+	// cliente ficava exposto). Instância sem linha no banco também é negada —
+	// este RPC serve ao fluxo da UI, que sempre cria a linha antes.
+	instanceName := req.Msg.GetInstanceName()
+	if h.instanceRepo != nil {
+		inst, err := h.instanceRepo.GetInstanceByUserAndName(ctx, user.ID, instanceName)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to verify instance ownership: %w", err))
+		}
+		if inst == nil {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("instance not found for this user"))
+		}
+	}
+
+	// DeleteSession SEM X-Confirm-Unpair, de propósito: este chamador é o
+	// fluxo de reciclagem de QR da UI e NUNCA pode desparear um número que
+	// acabou de conectar (corrida do contador do modal — o waha-router bloqueia
+	// e o número é salvo). Despareamento deliberado é outro caminho (UnpairSession).
+	if err := h.waProvider.DeleteSession(ctx, instanceName); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to delete instance: %w", err))
 	}
 
