@@ -3,6 +3,7 @@ package automation_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -92,6 +93,80 @@ func TestProcessSearchMode_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.Success)
+}
+
+func TestProcessSearchMode_AffiliateLinkTransientFailure_WithholdsSend(t *testing.T) {
+	// Conversão de afiliado falhou com 10030 (transitório): a oferta NÃO pode
+	// sair com o offerLink cru da busca — ele não carrega o sub_id AUTOMATISA
+	// e a venda apareceria "sem SubID" no painel. Rodada adiada; próximo tick
+	// tenta de novo.
+	svc, deps := newTestService(t)
+	ctx := context.Background()
+
+	searchType := "search"
+	keyword := "smartphone"
+	automation := &models.Automation{
+		ID:           "auto-123",
+		UserID:       "user-1",
+		Name:         "Search Automation",
+		Status:       models.AutomationStatusActive,
+		Type:         &searchType,
+		Keyword:      &keyword,
+		GroupIDs:     []string{"group1@g.us"},
+		Stores:       []string{"shopee"},
+		IncludeImage: true,
+	}
+
+	connectedInstances := []models.Instance{
+		{ID: 1, InstanceID: "instance-1", UserID: "user-1", Status: "connected"},
+	}
+
+	shopeeOffers := &models.ShopeeSearchResult{
+		Offers: []models.ShopeeOffer{
+			{
+				ItemID:        12345,
+				ShopID:        67890,
+				Name:          "Smartphone XYZ",
+				Price:         999.90,
+				OriginalPrice: 1299.90,
+				Discount:      23,
+				Image:         "https://image.url/product.jpg",
+				AffiliateLink: "https://s.shopee.com.br/offer-sem-subid",
+				ProductURL:    "https://shopee.com.br/product/67890/12345",
+			},
+		},
+		Total:   1,
+		HasMore: false,
+	}
+
+	lockTime := time.Now().Add(10 * time.Minute)
+
+	deps.automationRepo.On("GetAutomationByIDAndUser", ctx, "auto-123", "user-1").Return(automation, nil)
+	deps.automationRunRepo.On("GetLock", ctx, "auto-123").Return(nil, nil)
+	deps.automationRunRepo.On("AcquireLock", ctx, "auto-123", mock.AnythingOfType("time.Duration")).Return(&lockTime, nil)
+	deps.automationRunRepo.On("ReleaseLock", ctx, "auto-123").Return(nil)
+	deps.historyRepo.On("Create", ctx, "user-1", "automation_run", mock.AnythingOfType("string"), mock.Anything).Return(&models.ActionHistory{ID: "history-1"}, nil)
+	deps.historyRepo.On("Update", ctx, "history-1", mock.Anything).Return(nil)
+	deps.instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstances, nil)
+	deps.shopeeService.On("SearchOffers", ctx, "user-1", mock.AnythingOfType("models.ShopeeSearchParams")).Return(shopeeOffers, nil)
+	deps.shopeeService.On("GetProduct", ctx, int64(12345), int64(67890), "user-1").Return(&models.ShopeeOffer{
+		ItemID:        12345,
+		ShopID:        67890,
+		Name:          "Smartphone XYZ",
+		Price:         979.90,
+		OriginalPrice: 1299.90,
+	}, nil).Maybe()
+	deps.shopeeService.On("GenerateAffiliateLink", ctx, "https://shopee.com.br/product/67890/12345", "user-1").
+		Return(nil, fmt.Errorf("generateShortLink failed (link sem sub_id nao e emitido): shopee API error: error code: 10030, rate limit exceeded"))
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	deps.dispatchLogRepo.On("Create", ctx, mock.AnythingOfType("*models.DispatchLog")).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.automationRepo.On("UpdateLastRunAt", mock.Anything, "auto-123").Return(nil)
+
+	result, err := svc.RunAutomation(ctx, "auto-123", "user-1")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 0, result.MessagesSent, "oferta sem sub_id nao pode ser enviada")
 }
 
 func TestProcessSearchMode_NoOffers(t *testing.T) {

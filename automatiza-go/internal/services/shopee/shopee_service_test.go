@@ -1166,6 +1166,94 @@ func TestGenerateAffiliateLink(t *testing.T) {
 		}
 	})
 
+	t.Run("generateShortLink failure returns error instead of offerLink sem sub_id", func(t *testing.T) {
+		// O offerLink do productOfferV2 não carrega o sub_id AUTOMATISA; se o
+		// generateShortLink falhar de vez, o link NÃO pode ser emitido — venda
+		// "sem SubID" no painel era o incidente que o fallback antigo causava.
+		shortLinkCalls := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := readBody(r)
+			w.Header().Set("Content-Type", "application/json")
+			if strings.Contains(body, "productOfferV2") {
+				resp := map[string]interface{}{
+					"productOfferV2": map[string]interface{}{
+						"nodes": []map[string]interface{}{
+							{"offerLink": "https://s.shopee.com.br/offer-sem-subid", "imageUrl": "img"},
+						},
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			} else if strings.Contains(body, "generateShortLink") {
+				shortLinkCalls++
+				fmt.Fprint(w, `{"errors":[{"message":"error code: 10030, rate limit exceeded"}]}`)
+			}
+		}))
+		defer server.Close()
+
+		repo := &mockAffiliateRepo{
+			GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
+				return validCreds(), nil
+			},
+		}
+		svc := newTestService(t, server.URL, repo, &mockSettingsRepo{})
+
+		_, err := svc.GenerateAffiliateLink(ctx, "https://shopee.com.br/product/123/456", "user1")
+		if err == nil {
+			t.Fatal("expected error when generateShortLink fails; link sem sub_id nao pode ser emitido")
+		}
+		if !strings.Contains(err.Error(), "sub_id") {
+			t.Errorf("error should mention sub_id policy, got: %v", err)
+		}
+		if shortLinkCalls != 2 {
+			t.Errorf("expected 1 retry (2 generateShortLink calls), got %d", shortLinkCalls)
+		}
+	})
+
+	t.Run("generateShortLink transient failure recovers on retry", func(t *testing.T) {
+		shortLinkCalls := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := readBody(r)
+			w.Header().Set("Content-Type", "application/json")
+			if strings.Contains(body, "productOfferV2") {
+				resp := map[string]interface{}{
+					"productOfferV2": map[string]interface{}{"nodes": []map[string]interface{}{}},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			} else if strings.Contains(body, "generateShortLink") {
+				shortLinkCalls++
+				if shortLinkCalls == 1 {
+					fmt.Fprint(w, `{"errors":[{"message":"error code: 10030, rate limit exceeded"}]}`)
+					return
+				}
+				resp := map[string]interface{}{
+					"generateShortLink": map[string]interface{}{
+						"shortLink": "https://s.shopee.com.br/retry-com-subid",
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			}
+		}))
+		defer server.Close()
+
+		repo := &mockAffiliateRepo{
+			GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
+				return validCreds(), nil
+			},
+		}
+		svc := newTestService(t, server.URL, repo, &mockSettingsRepo{})
+
+		result, err := svc.GenerateAffiliateLink(ctx, "https://shopee.com.br/product/123/456", "user1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.AffiliateLink != "https://s.shopee.com.br/retry-com-subid" {
+			t.Errorf("affiliateLink = %q, want retry result", result.AffiliateLink)
+		}
+		if shortLinkCalls != 2 {
+			t.Errorf("expected 2 generateShortLink calls, got %d", shortLinkCalls)
+		}
+	})
+
 	t.Run("invalid URL returns error", func(t *testing.T) {
 		repo := &mockAffiliateRepo{
 			GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
@@ -1348,7 +1436,8 @@ func TestGenerateAffiliateLink_ShortURL(t *testing.T) {
 		}))
 		defer expandServer.Close()
 
-		// GraphQL server for affiliate link generation (productOfferV2)
+		// GraphQL server: productOfferV2 dá a imagem; o LINK vem sempre do
+		// generateShortLink (é ele que aplica o sub_id AUTOMATISA).
 		graphqlServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, _ := readBody(r)
 			w.Header().Set("Content-Type", "application/json")
@@ -1357,10 +1446,17 @@ func TestGenerateAffiliateLink_ShortURL(t *testing.T) {
 					"productOfferV2": map[string]interface{}{
 						"nodes": []map[string]interface{}{
 							{
-								"offerLink": "https://s.shopee.com.br/affiliate-result",
+								"offerLink": "https://s.shopee.com.br/offer-sem-subid",
 								"imageUrl":  "https://cf.shopee.com.br/file/img.jpg",
 							},
 						},
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			} else if strings.Contains(body, "generateShortLink") {
+				resp := map[string]interface{}{
+					"generateShortLink": map[string]interface{}{
+						"shortLink": "https://s.shopee.com.br/affiliate-result",
 					},
 				}
 				fmt.Fprint(w, graphqlResponse(resp))

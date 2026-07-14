@@ -2634,8 +2634,10 @@ func TestExecuteSearchAutomation(t *testing.T) {
 			Return(&models.ShopeeSearchResult{Offers: offers}, nil)
 		shopee.On("GetProduct", mock.Anything, int64(123), int64(456), "user-1").
 			Return(nil, errors.New("refetch failed"))
+		// Conversão de afiliado precisa dar certo: oferta sem sub_id não é
+		// mais enviada (o fallback pro offerLink cru foi removido de vez).
 		shopee.On("GenerateAffiliateLink", mock.Anything, mock.Anything, "user-1").
-			Return(nil, errors.New("affiliate link failed"))
+			Return(&models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/com-subid"}, nil)
 
 		deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, nil)

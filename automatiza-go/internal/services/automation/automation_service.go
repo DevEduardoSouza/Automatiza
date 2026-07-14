@@ -922,15 +922,36 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				continue
 			}
 
-			// Generate proper affiliate link via generateShortLink mutation
+			// Generate proper affiliate link via generateShortLink mutation.
+			// O AffiliateLink que veio da BUSCA é o offerLink do productOfferV2,
+			// que NÃO carrega o sub_id (AUTOMATISA) — enviá-lo cru registra a
+			// venda como "sem SubID" no painel do afiliado. Conversão falhou:
+			// erro transitório (10030/timeout) encerra a rodada inteira (tentar
+			// a próxima oferta só aprofunda o rate limit; a automação roda de
+			// novo no próximo tick); erro permanente pula só esta oferta.
 			if s.shopeeService != nil && offer.ProductURL != "" {
 				affLink, affErr := s.shopeeService.GenerateAffiliateLink(ctx, offer.ProductURL, automation.UserID)
 				if affErr != nil {
-					s.logger.Warn("Failed to generate affiliate link, using API offerLink",
+					reason := fmt.Sprintf("link de afiliado indisponivel (%v) - oferta pulada para nao perder o subid", affErr)
+					transient := isTransientShopeeEnrichError(affErr)
+					if transient {
+						reason = "link de afiliado indisponivel (transitorio) - envio adiado para nao perder o subid"
+					}
+					s.logger.Warn("Failed to generate affiliate link, withholding offer (sem sub_id nao envia)",
 						zap.String("automationID", automation.ID),
 						zap.String("productURL", offer.ProductURL),
+						zap.Bool("transient", transient),
 						zap.Error(affErr))
-				} else if affLink != nil && affLink.AffiliateLink != "" {
+					for _, groupID := range targetGroups {
+						s.logDispatch(ctx, automation, groupID, offer.ProductURL, "skipped", reason, withCanonicalKey(canonicalKey, store))
+					}
+					skippedCount += len(targetGroups)
+					if transient {
+						break
+					}
+					continue
+				}
+				if affLink != nil && affLink.AffiliateLink != "" {
 					allOffers[i].AffiliateLink = affLink.AffiliateLink
 					offer = allOffers[i]
 					s.logger.Info("Affiliate link generated",

@@ -6,3 +6,5 @@ CLAUDE.md
 .sentryclirc
 .env.debug
 .mcp.json
+# dumps locais com dados pessoais (nunca commitar)
+participantes.txt

@@ -838,12 +838,11 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		return nil, fmt.Errorf("failed to marshal productOfferV2 payload: %w", marshalErr)
 	}
 
-	// productOfferV2 serve aqui só para obter a imagem (e o offerLink como
-	// ultimo recurso). O LINK de afiliado vem do generateShortLink abaixo,
-	// porque o offerLink do productOfferV2 NÃO carrega subIds custom — só o
-	// generateShortLink aplica o sub_id (confirmado na doc da Shopee). Sem isso
-	// o tracking por sub_id (AUTOMATISA) nunca chegava aos links de produto.
-	var offerLinkFallback string
+	// productOfferV2 serve aqui só para obter a imagem. O LINK de afiliado vem
+	// do generateShortLink abaixo, porque o offerLink do productOfferV2 NÃO
+	// carrega subIds custom — só o generateShortLink aplica o sub_id
+	// (confirmado na doc da Shopee). Sem isso o tracking por sub_id
+	// (AUTOMATISA) nunca chegava aos links de produto.
 	var imageURL string
 
 	data, err := s.shopeeGraphQL(ctx, appID, secret, string(payload))
@@ -859,7 +858,6 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		if unmarshalErr := json.Unmarshal(data, &offerResult); unmarshalErr == nil &&
 			len(offerResult.ProductOfferV2.Nodes) > 0 {
 			node := offerResult.ProductOfferV2.Nodes[0]
-			offerLinkFallback = node.OfferLink
 			imageURL = node.ImageURL
 		}
 	} else if errors.Is(err, ErrShopeeNoAPIAccess) {
@@ -874,7 +872,13 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 	}
 
 	// Gera o link SEMPRE via generateShortLink para que o sub_id (AUTOMATISA)
-	// seja aplicado em todo link de produto.
+	// seja aplicado em todo link de produto. Deliberadamente SEM fallback para
+	// o offerLink do productOfferV2: ele não carrega o sub_id, e venda "sem
+	// SubID" no painel do afiliado era exatamente o incidente que esse
+	// fallback causava. Melhor falhar — cada caller adia/retém e o próximo
+	// ciclo converte — do que enviar link sem tracking. Retry 1x: o rate
+	// limit da Shopee (10030) é janela rolante com brechas; uma pausa curta
+	// costuma achar uma (mesma sondagem que calibrou o retry do process_list).
 	var affiliateLink string
 	originURL := fmt.Sprintf("https://shopee.com.br/product/%d/%d", shopID, itemID)
 	// Sub ID fixo em shopeeSubIDDefault — não configurável pelo user.
@@ -883,30 +887,34 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 	if shortMarshalErr != nil {
 		return nil, fmt.Errorf("failed to marshal generateShortLink payload: %w", shortMarshalErr)
 	}
-	shortData, shortErr := s.shopeeGraphQL(ctx, appID, secret, string(shortPayload))
-	if shortErr != nil {
-		s.logger.Warn("generateShortLink failed, falling back to productOfferV2 offerLink (sem sub_id)",
-			zap.Int64("itemID", itemID),
-			zap.Error(shortErr))
-	} else {
+	for attempt := 0; ; attempt++ {
+		shortData, shortErr := s.shopeeGraphQL(ctx, appID, secret, string(shortPayload))
+		if shortErr != nil {
+			// Sem Open API (10035) e breaker aberto não melhoram em segundos —
+			// falha direto, sem gastar a segunda tentativa.
+			if attempt > 0 || errors.Is(shortErr, ErrShopeeNoAPIAccess) || errors.Is(shortErr, ErrShopeeUnavailable) {
+				return nil, fmt.Errorf("generateShortLink failed (link sem sub_id nao e emitido): %w", shortErr)
+			}
+			s.logger.Warn("generateShortLink failed, retrying once to preserve sub_id",
+				zap.Int64("itemID", itemID),
+				zap.Error(shortErr))
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(1500 * time.Millisecond):
+			}
+			continue
+		}
 		var shortResult struct {
 			GenerateShortLink struct {
 				ShortLink string `json:"shortLink"`
 			} `json:"generateShortLink"`
 		}
 		if unmarshalErr := json.Unmarshal(shortData, &shortResult); unmarshalErr != nil {
-			s.logger.Warn("failed to parse generateShortLink response, falling back to offerLink",
-				zap.Int64("itemID", itemID),
-				zap.Error(unmarshalErr))
-		} else {
-			affiliateLink = shortResult.GenerateShortLink.ShortLink
+			return nil, fmt.Errorf("failed to parse generateShortLink response: %w", unmarshalErr)
 		}
-	}
-
-	// Se o generateShortLink falhou, usa o offerLink do productOfferV2 como
-	// ultimo recurso (sem sub_id, mas melhor que não enviar a oferta).
-	if affiliateLink == "" {
-		affiliateLink = offerLinkFallback
+		affiliateLink = shortResult.GenerateShortLink.ShortLink
+		break
 	}
 
 	if affiliateLink == "" {
