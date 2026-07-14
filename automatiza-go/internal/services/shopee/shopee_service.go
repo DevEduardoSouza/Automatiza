@@ -678,6 +678,21 @@ func (s *shopeeService) generateNonProductAffiliateLink(ctx context.Context, ori
 	// senão o novo link curto credita a venda pra ele em vez do nosso usuário.
 	cleanURL := stripAffiliateAttribution(expandedURL)
 
+	// Cache por user+página (paridade com o caminho de produto): grupos-fonte
+	// postam a MESMA página de cupom o dia inteiro (medido 14/07: ~900
+	// generateShortLink/h só de /m/cupom-de-desconto e /m/super-ofertas) e
+	// cada chamada repetida disputa a cota 10030 do usuário à toa.
+	cacheKey := fmt.Sprintf("shopee_link_np:%s:%s", userID, cleanURL)
+	if s.cache != nil {
+		var cached models.ShopeeAffiliateLink
+		if err := s.cache.GetJSON(ctx, cacheKey, &cached); err == nil && cached.AffiliateLink != "" {
+			s.logger.Info("Non-product affiliate link cache hit",
+				zap.String("cleaned", cleanURL),
+				zap.String("userID", userID))
+			return &cached, nil
+		}
+	}
+
 	s.logger.Info("Generating affiliate link for non-product Shopee URL",
 		zap.String("original", originalURL),
 		zap.String("expanded", expandedURL),
@@ -718,11 +733,15 @@ func (s *shopeeService) generateNonProductAffiliateLink(ctx context.Context, ori
 		zap.String("original", originalURL),
 		zap.String("affiliateLink", affiliateLink))
 
-	return &models.ShopeeAffiliateLink{
+	result := &models.ShopeeAffiliateLink{
 		OriginalURL:   originalURL,
 		AffiliateLink: affiliateLink,
 		ShortLink:     affiliateLink,
-	}, nil
+	}
+	if s.cache != nil {
+		_ = s.cache.SetJSON(ctx, cacheKey, *result, time.Hour)
+	}
+	return result, nil
 }
 
 func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, userID string) (*models.ShopeeAffiliateLink, error) {
