@@ -347,3 +347,71 @@ func TestUpdateAutomationRequest_ToMap(t *testing.T) {
 		assert.Equal(t, []string{"a", "b"}, m["send_groups"])
 	})
 }
+
+func TestCoerceMonitoringStoresUpdate(t *testing.T) {
+	t.Parallel()
+
+	monitoring := AutomationTypeMonitoring
+	search := AutomationTypeSearch
+
+	tests := []struct {
+		name         string
+		existingType *string
+		updates      map[string]interface{}
+		wantStores   interface{}
+		wantPresent  bool
+	}{
+		{
+			name:         "monitoring automation changing stores is coerced to shopee",
+			existingType: &monitoring,
+			updates:      map[string]interface{}{"stores": []string{"mercadolivre", "shopee"}},
+			wantStores:   []string{"shopee"},
+			wantPresent:  true,
+		},
+		{
+			name:         "switching type into monitoring coerces stores even when not sent",
+			existingType: &search,
+			updates:      map[string]interface{}{"type": AutomationTypeMonitoring},
+			wantStores:   []string{"shopee"},
+			wantPresent:  true,
+		},
+		{
+			name:         "monitoring update not touching stores nor type is left alone",
+			existingType: &monitoring,
+			updates:      map[string]interface{}{"name": "novo nome"},
+			wantPresent:  false,
+		},
+		{
+			name:         "search automation keeps the stores it sent",
+			existingType: &search,
+			updates:      map[string]interface{}{"stores": []string{"mercadolivre"}},
+			wantStores:   []string{"mercadolivre"},
+			wantPresent:  true,
+		},
+		{
+			name:         "switching monitoring away to search keeps the stores it sent",
+			existingType: &monitoring,
+			updates:      map[string]interface{}{"type": AutomationTypeSearch, "stores": []string{"mercadolivre"}},
+			wantStores:   []string{"mercadolivre"},
+			wantPresent:  true,
+		},
+		{
+			name:         "nil existing type with stores only is not treated as monitoring",
+			existingType: nil,
+			updates:      map[string]interface{}{"stores": []string{"mercadolivre"}},
+			wantStores:   []string{"mercadolivre"},
+			wantPresent:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			CoerceMonitoringStoresUpdate(tt.existingType, tt.updates)
+			got, present := tt.updates["stores"]
+			assert.Equal(t, tt.wantPresent, present)
+			if tt.wantPresent {
+				assert.Equal(t, tt.wantStores, got)
+			}
+		})
+	}
+}
