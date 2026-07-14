@@ -669,3 +669,31 @@ func TestCutURLAtNonASCII(t *testing.T) {
 		t.Errorf("ascii-only must pass unchanged, got %q", got)
 	}
 }
+
+func TestIsOtherStoreLink(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want bool
+	}{
+		{"amazon.com.br", "https://www.amazon.com.br/dp/B0ABC123", true},
+		{"amzn.to short", "https://amzn.to/3xYzAbC", true},
+		{"magazineluiza", "https://www.magazineluiza.com.br/produto/p/123", true},
+		{"magazinevoce (divulgador)", "https://www.magazinevoce.com.br/loja/produto/p/1", true},
+		{"shein", "https://br.shein.com/item-p-123.html", true},
+		{"aliexpress", "https://pt.aliexpress.com/item/100500.html", true},
+		{"shopee NOT other store", "https://shopee.com.br/produto", false},
+		{"mercadolivre NOT other store", "https://meli.la/1PQkeS1", false},
+		{"instagram passes", "https://instagram.com/perfil", false},
+		{"site generico passa", "https://meusite.com.br/blog", false},
+		{"convite de grupo passa", "https://chat.whatsapp.com/ABC", false},
+		{"empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsOtherStoreLink(tt.url); got != tt.want {
+				t.Errorf("IsOtherStoreLink(%q) = %v, want %v", tt.url, got, tt.want)
+			}
+		})
+	}
+}

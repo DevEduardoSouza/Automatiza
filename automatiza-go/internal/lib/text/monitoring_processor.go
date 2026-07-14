@@ -312,6 +312,26 @@ func IsMLLink(url string) bool {
 		strings.Contains(lowerURL, "meli.la")
 }
 
+// IsOtherStoreLink detects product links of stores the platform has no
+// affiliate conversion for (Amazon, Magalu, Shein, AliExpress). Shopee and
+// Mercado Livre are NOT covered here — they have their own detectors and
+// per-automation store config. Relaying one of these links as-is forwards
+// the SOURCE channel's affiliate commission, so the relay paths strip or
+// drop them. Deliberately does not match generic non-store content
+// (Instagram, sites, convites) — that must keep passing (lesson from the
+// reverted PR #216 whitelist).
+func IsOtherStoreLink(url string) bool {
+	lowerURL := strings.ToLower(url)
+	return strings.Contains(lowerURL, "amazon.com") ||
+		strings.Contains(lowerURL, "amzn.to") ||
+		strings.Contains(lowerURL, "amzn.com") ||
+		strings.Contains(lowerURL, "magazineluiza.com.br") ||
+		strings.Contains(lowerURL, "magazinevoce.com.br") ||
+		strings.Contains(lowerURL, "magalu.com") ||
+		strings.Contains(lowerURL, "shein.com") ||
+		strings.Contains(lowerURL, "aliexpress.com")
+}
+
 // ReplaceLinksInText replaces links in text with new links
 func ReplaceLinksInText(text string, oldToNew map[string]string) string {
 	result := text
