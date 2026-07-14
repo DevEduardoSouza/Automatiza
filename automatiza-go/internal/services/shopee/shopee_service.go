@@ -625,7 +625,15 @@ func isNonProductShopeeURL(expandedURL string) bool {
 		strings.Contains(lower, "shopee.com.br/daily_discover") ||
 		strings.Contains(lower, "shopee.com.br/voucher") ||
 		strings.Contains(lower, "shopee.com.br/user/") ||
-		strings.Contains(lower, "shopee.com.br/oficial")
+		strings.Contains(lower, "shopee.com.br/oficial") ||
+		// Coleções curadas e páginas de campanha: shortlink de outro afiliado
+		// expande pra cá com o tracking DELE embutido — regenerar com a
+		// credencial do nosso usuário reatribui a comissão (14/07: 24 users
+		// com repasse retido nesses padrões). /cart fica de fora de
+		// propósito: o item do link "adicionar ao carrinho" não está na URL
+		// expandida, regenerar entregaria um carrinho vazio.
+		strings.Contains(lower, "shopee.com.br/collections/") ||
+		strings.Contains(lower, "shopee.com.br/shopeevip")
 }
 
 // stripAffiliateAttribution remove os parâmetros de atribuição de afiliado de
@@ -747,6 +755,12 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 			s.logger.Info("Short URL expanded for affiliate link",
 				zap.String("original", productURL),
 				zap.String("expanded", expanded))
+		} else if isNonProductShopeeURL(productURL) {
+			// Página não-produto postada como URL LONGA direta (cupom,
+			// coleção, campanha) — mesmo tratamento do caminho expandido;
+			// antes caía em "invalid shopee URL" e o espelho retinha o
+			// repasse à toa.
+			return s.generateNonProductAffiliateLink(ctx, productURL, productURL, userID)
 		} else {
 			return nil, fmt.Errorf("invalid shopee URL: %w", err)
 		}

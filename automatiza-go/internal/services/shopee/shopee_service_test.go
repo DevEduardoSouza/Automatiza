@@ -509,6 +509,11 @@ func TestIsNonProductShopeeURL(t *testing.T) {
 		{name: "search page", url: "https://shopee.com.br/search?q=fone", want: false},
 		{name: "case insensitive", url: "https://Shopee.com.br/M/Cupom", want: true},
 		{name: "case insensitive voucher wallet", url: "https://Shopee.com.br/User/Voucher-Wallet", want: true},
+		{name: "curated collection", url: "https://shopee.com.br/collections/21253338?mmp_pid=an_123", want: true},
+		{name: "shopeevip campaign", url: "https://shopee.com.br/shopeevip?smtt=0.1", want: true},
+		// /cart fica fora de propósito: link "adicionar ao carrinho" não
+		// carrega o item na URL expandida — regenerar seria carrinho vazio.
+		{name: "cart fallback stays out", url: "https://shopee.com.br/cart?mmp_pid=an_123", want: false},
 	}
 
 	for _, tt := range tests {
@@ -1251,6 +1256,52 @@ func TestGenerateAffiliateLink(t *testing.T) {
 		}
 		if shortLinkCalls != 2 {
 			t.Errorf("expected 2 generateShortLink calls, got %d", shortLinkCalls)
+		}
+	})
+
+	t.Run("direct long non-product URL converts via generateShortLink", func(t *testing.T) {
+		// Página de cupom postada como URL LONGA direta no grupo-fonte:
+		// antes caía em "invalid shopee URL" e o espelho retinha o repasse.
+		// Deve rotear pro generateNonProductAffiliateLink com sub_id.
+		var shortLinkBody string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := readBody(r)
+			w.Header().Set("Content-Type", "application/json")
+			if strings.Contains(body, "generateShortLink") {
+				shortLinkBody = body
+				resp := map[string]interface{}{
+					"generateShortLink": map[string]interface{}{
+						"shortLink": "https://s.shopee.com.br/cupom-com-subid",
+					},
+				}
+				fmt.Fprint(w, graphqlResponse(resp))
+			} else {
+				t.Errorf("unexpected API call: %s", body)
+			}
+		}))
+		defer server.Close()
+
+		repo := &mockAffiliateRepo{
+			GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
+				return validCreds(), nil
+			},
+		}
+		svc := newTestService(t, server.URL, repo, &mockSettingsRepo{})
+
+		result, err := svc.GenerateAffiliateLink(ctx, "https://shopee.com.br/m/cupom-de-desconto?mmp_pid=an_999&utm_source=an_999", "user1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.AffiliateLink != "https://s.shopee.com.br/cupom-com-subid" {
+			t.Errorf("affiliateLink = %q, want converted coupon link", result.AffiliateLink)
+		}
+		if !strings.Contains(shortLinkBody, "AUTOMATISA") {
+			t.Errorf("generateShortLink deve incluir o sub_id AUTOMATISA, body: %s", shortLinkBody)
+		}
+		// A atribuição do afiliado da FONTE tem que ser removida antes de
+		// regenerar, senão a comissão continua indo pra ele.
+		if strings.Contains(shortLinkBody, "an_999") {
+			t.Errorf("atribuicao da fonte nao foi removida do originUrl, body: %s", shortLinkBody)
 		}
 	})
 
