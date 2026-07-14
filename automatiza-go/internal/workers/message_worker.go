@@ -25,6 +25,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// staleMessageTTL é o atraso máximo tolerado além do horário agendado de um
+// envio. Passou disso, a mensagem é descartada (skipped) em vez de enviada:
+// promoção velha saindo de madrugada é o sintoma clássico de backlog pós-queda
+// e é percebida como spam/duplicata pelos grupos. 90min acomoda os maiores
+// delays legítimos de pacing/chip_overrides com folga.
+const staleMessageTTL = 90 * time.Minute
+
 // MessageWorker processes message sending tasks.
 // It uses the WhatsAppProvider interface (adapter pattern) for sending messages,
 // decoupling the worker from specific WhatsApp API implementations.
@@ -75,6 +82,25 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		zap.Bool("hasImage", data.ImageURL != nil && *data.ImageURL != ""),
 		zap.Bool("hasAudio", data.AudioBase64 != nil && *data.AudioBase64 != ""),
 		zap.Int("messageLen", len(data.Message)))
+
+	// 0a. Descarta mensagem VELHA: se o job só chegou a rodar muito depois do
+	// horário agendado (backlog pós-apagão, retries acumulados), enviar agora é
+	// pior que não enviar — a promoção sai fora de hora e, somada aos reenvios
+	// de jobs em voo de restarts, é percebida como duplicada no grupo. Tasks
+	// antigas (sem scheduledFor) passam direto.
+	if !data.ScheduledFor.IsZero() && time.Since(data.ScheduledFor) > staleMessageTTL {
+		w.logger.Warn("Discarding stale message job",
+			zap.String("automationID", data.AutomationID),
+			zap.String("groupId", data.GroupID),
+			zap.Time("scheduledFor", data.ScheduledFor),
+			zap.Duration("late", time.Since(data.ScheduledFor)))
+		w.updateHistoryStatus(ctx, data.HistoryID, "skipped")
+		w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
+			"status": "skipped",
+			"error":  fmt.Sprintf("descartada: atrasada %s alem do agendado (backlog)", time.Since(data.ScheduledFor).Round(time.Minute)),
+		})
+		return nil // Terminal: não reenviar promoção velha
+	}
 
 	// 0. Skip grupos onde a sessão sabidamente não participa mais.
 	// Quando o bot é removido de um grupo, o WAHA responde 500 "you're not

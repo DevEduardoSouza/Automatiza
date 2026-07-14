@@ -45,6 +45,12 @@ type MessageJobData struct {
 	// nil/empty => the global default ("high"). Consumed by the worker to scale
 	// the presence choreography and per-recipient content variation.
 	HumanizeMode *string `json:"humanizeMode,omitempty"`
+	// ScheduledFor é o instante em que o envio DEVERIA acontecer (enqueue +
+	// delay de pacing). O worker descarta a mensagem se pegá-la atrasada demais
+	// (staleMessageTTL): depois de um apagão/backlog, promoções enfileiradas
+	// horas antes saíam de madrugada, fora de hora e percebidas como duplicadas.
+	// Zero (tasks antigas) => sem checagem.
+	ScheduledFor time.Time `json:"scheduledFor,omitempty"`
 }
 
 // LinkPreviewData contains custom link preview metadata for WhatsApp messages.
@@ -136,11 +142,6 @@ func (q *QueueClient) EnqueueMessage(ctx context.Context, data *MessageJobData, 
 		}
 	}
 
-	payload, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
 	// Pacer por sessão: empurra o agendamento para suavizar rajadas à mesma
 	// sessão. Usa max() para não desfazer o espaçamento por grupo já calculado
 	// pelo chamador — só atrasa além disso quando a sessão está saturada.
@@ -149,6 +150,15 @@ func (q *QueueClient) EnqueueMessage(ctx context.Context, data *MessageJobData, 
 		if paceDelay := q.pacer.reserve(ctx, data.InstanceName); paceDelay > delay {
 			delay = paceDelay
 		}
+	}
+
+	// Marca o horário-alvo do envio DEPOIS do pacer (delay final). O worker usa
+	// isso pra descartar mensagem que ficou velha demais na fila.
+	data.ScheduledFor = time.Now().Add(delay)
+
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
 	}
 
 	opts := []asynq.Option{

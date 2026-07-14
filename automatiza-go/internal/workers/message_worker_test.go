@@ -1511,3 +1511,30 @@ func TestMessageWorker_ImplementsAsynqHandler(t *testing.T) {
 	var handler asynq.Handler = w
 	assert.NotNil(t, handler)
 }
+
+func TestProcessTask_DiscardsStaleMessage(t *testing.T) {
+	logRepo := &mockDispatchLogRepo{}
+	var captured map[string]interface{}
+	logRepo.On("Update", mock.Anything, 42, mock.MatchedBy(func(u map[string]interface{}) bool {
+		captured = u
+		return true
+	})).Return(nil)
+
+	fakeAdapter := whatsapp.NewFakeAdapter()
+	w := workers.NewMessageWorker(fakeAdapter, nil, nil, logRepo, nil, zap.NewNop())
+
+	id := 42
+	err := w.ProcessTask(context.Background(), newTask(t, workers.MessageJobData{
+		InstanceName:  "sess",
+		GroupID:       "g@g.us",
+		Message:       "promo velha",
+		DispatchLogID: &id,
+		ScheduledFor:  time.Now().Add(-2 * time.Hour),
+	}))
+	require.NoError(t, err, "stale discard must be terminal (nil error, no retry)")
+	require.NotNil(t, captured)
+	assert.Equal(t, "skipped", captured["status"])
+	assert.Contains(t, captured["error"], "descartada")
+	// Nada deve ter sido enviado
+	assert.Equal(t, 0, fakeAdapter.CallCount("SendText"), "stale message must not be sent")
+}
