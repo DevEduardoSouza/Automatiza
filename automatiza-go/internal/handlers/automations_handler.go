@@ -99,12 +99,17 @@ func (h *AutomationsHandler) Create(c *gin.Context) {
 		IntervalMinutes: req.IntervalMinutes,
 	}
 
-	// Monitoring channels tend to repost the same product many times per day;
-	// the historical 168h default caused clients to think the automation had
-	// stopped working. See .claude/rules/known-issues.md.
-	if automationType == models.AutomationTypeMonitoring && automation.DedupeHours == nil {
-		one := 1
-		automation.DedupeHours = &one
+	if automationType == models.AutomationTypeMonitoring {
+		// Monitoring channels tend to repost the same product many times per
+		// day; the historical 168h default caused clients to think the
+		// automation had stopped working. See .claude/rules/known-issues.md.
+		if automation.DedupeHours == nil {
+			one := 1
+			automation.DedupeHours = &one
+		}
+		// Monitor mode is Shopee-only: any other store makes the mirror relay
+		// the source channel's affiliate links.
+		automation.Stores = models.MonitoringStores()
 	}
 
 	result, err := h.deps.AutomationRepo.CreateAutomation(c.Request.Context(), user.ID, automation)
@@ -139,6 +144,9 @@ func (h *AutomationsHandler) Update(c *gin.Context) {
 		middleware.RespondError(c, http.StatusBadRequest, "Nenhuma alteração fornecida")
 		return
 	}
+
+	// Monitor mode is Shopee-only (see Create).
+	models.CoerceMonitoringStoresUpdate(existing.Type, updates)
 
 	err = h.deps.AutomationRepo.UpdateAutomation(c.Request.Context(), automationID, updates)
 	if err != nil {

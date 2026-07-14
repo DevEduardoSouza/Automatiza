@@ -751,3 +751,35 @@ func TestProtoToAutomationUpdate_NullableUUIDClearing(t *testing.T) {
 		assert.False(t, hasList)
 	})
 }
+
+// TestProtoToAutomationCreate_MonitorStoresShopeeOnly locks in that monitor
+// mode ignores whatever stores the client sends and always persists
+// ["shopee"]. A monitoring automation with "mercadolivre" in stores relayed
+// the source channel's meli.la affiliate links raw (commission going to the
+// source), since the owner had no ML credentials to convert them.
+func TestProtoToAutomationCreate_MonitorStoresShopeeOnly(t *testing.T) {
+	t.Run("monitor mode coerces stores to shopee", func(t *testing.T) {
+		automation := protoToAutomationCreate(&automationsv1.CreateAutomationRequest{
+			Mode: automationsv1.AutomationMode_AUTOMATION_MODE_MONITOR,
+			Stores: []automationsv1.Store{
+				automationsv1.Store_STORE_MERCADO_LIVRE,
+				automationsv1.Store_STORE_SHOPEE,
+				automationsv1.Store_STORE_AMAZON,
+			},
+		})
+
+		assert.Equal(t, []string{"shopee"}, automation.Stores)
+	})
+
+	t.Run("other modes keep the stores sent by the client", func(t *testing.T) {
+		automation := protoToAutomationCreate(&automationsv1.CreateAutomationRequest{
+			Mode: automationsv1.AutomationMode_AUTOMATION_MODE_SEARCH,
+			Stores: []automationsv1.Store{
+				automationsv1.Store_STORE_MERCADO_LIVRE,
+				automationsv1.Store_STORE_SHOPEE,
+			},
+		})
+
+		assert.Equal(t, []string{"mercadolivre", "shopee"}, automation.Stores)
+	})
+}

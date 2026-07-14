@@ -339,6 +339,11 @@ func (h *AutomationsHandler) UpdateAutomation(
 
 	updates := protoToAutomationUpdate(req.Msg)
 
+	// Monitor mode is Shopee-only (see protoToAutomationCreate). Covers both
+	// changing the stores of a monitoring automation and switching an
+	// automation into monitoring while keeping its old stores.
+	models.CoerceMonitoringStoresUpdate(existing.Type, updates)
+
 	// Manual chip routing per group (050). Validate when the update
 	// touches chip_overrides. Effective InstanceIDs come from the new
 	// update value when present, otherwise fall back to the existing
@@ -1116,10 +1121,16 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.EndDate = msg.EndDate
 	}
 
-	// Convert stores
-	for _, store := range msg.GetStores() {
-		if s := protoStoreToModel(store); s != "" {
-			automation.Stores = append(automation.Stores, s)
+	// Convert stores. Monitor mode is Shopee-only: the UI locks the other
+	// checkboxes, but the rule must hold server-side too — an ML store that
+	// slips in makes the mirror relay the source channel's affiliate links.
+	if mode == models.AutomationTypeMonitoring {
+		automation.Stores = models.MonitoringStores()
+	} else {
+		for _, store := range msg.GetStores() {
+			if s := protoStoreToModel(store); s != "" {
+				automation.Stores = append(automation.Stores, s)
+			}
 		}
 	}
 

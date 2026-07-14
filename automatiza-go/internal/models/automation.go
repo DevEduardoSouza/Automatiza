@@ -163,6 +163,36 @@ type Substituicao struct {
 	Para string `json:"para"`
 }
 
+// MonitoringStores is the only store list allowed in monitor mode. The
+// mirror can only convert Shopee links; any other store here makes the relay
+// carry the SOURCE channel's affiliate commission (or, since the commission
+// gate, pause the automation for missing credentials).
+func MonitoringStores() []string {
+	return []string{"shopee"}
+}
+
+// CoerceMonitoringStoresUpdate enforces the Shopee-only rule for monitor mode
+// on an update map. It kicks in when the update touches "stores" or switches
+// "type" into monitoring; untouched automations are left alone (their stores
+// were coerced on their own create/update path).
+func CoerceMonitoringStoresUpdate(existingType *string, updates map[string]interface{}) {
+	effectiveType := ""
+	if existingType != nil {
+		effectiveType = *existingType
+	}
+	if t, ok := updates["type"].(string); ok {
+		effectiveType = t
+	}
+	if effectiveType != AutomationTypeMonitoring {
+		return
+	}
+	_, storesTouched := updates["stores"]
+	_, typeTouched := updates["type"]
+	if storesTouched || typeTouched {
+		updates["stores"] = MonitoringStores()
+	}
+}
+
 // IsActive returns true if the automation is active
 func (a *Automation) IsActive() bool {
 	return a.Status == AutomationStatusActive
