@@ -36,6 +36,14 @@ const (
 
 	// TypeWebhookDLQ is the task type for dead letter queue entries.
 	TypeWebhookDLQ = "whatsapp:webhook:dlq"
+
+	// staleWebhookMessageTTL: idade máxima (desde ReceivedAt no handler HTTP) de
+	// um evento de MENSAGEM para ainda disparar espelho/offer_generate. Substitui
+	// o antigo asynq.Deadline(5min) global do enqueue: uma oferta espelhada com
+	// >10min perde valor e as janelas de dedup (2/10min) já expiraram — processar
+	// tarde arrisca duplicata. Eventos de status/grupo NÃO passam por este gate
+	// (não perdem valor com o tempo).
+	staleWebhookMessageTTL = 10 * time.Minute
 )
 
 // =============================================================================
@@ -356,6 +364,26 @@ func (w *WebhookConsumerWorker) handleMessageEvent(ctx context.Context, data *We
 		return nil
 	}
 
+	// Gate de frescor (ver staleWebhookMessageTTL): mensagem que passou >10min na
+	// fila (backlog pós-incidente, worker parado) não dispara espelho — sai como
+	// processada, sem retry. ReceivedAt zero (task antiga) passa direto.
+	if data.ReceivedAt > 0 {
+		// O handler HTTP grava UnixMilli, mas produtores antigos/testes usam
+		// segundos — normaliza pela magnitude (millis ~1.7e12, segundos ~1.7e9)
+		// para nunca classificar um evento fresco como "de 1970".
+		receivedAt := time.UnixMilli(data.ReceivedAt)
+		if data.ReceivedAt < 1_000_000_000_000 {
+			receivedAt = time.Unix(data.ReceivedAt, 0)
+		}
+		if age := time.Since(receivedAt); age > staleWebhookMessageTTL {
+			w.logger.Warn("Discarding stale webhook message event",
+				zap.String("eventID", data.EventID),
+				zap.String("session", data.Session),
+				zap.Duration("age", age))
+			return nil
+		}
+	}
+
 	// Self-healing: receiving a message proves the session is WORKING.
 	// Update the DB if the instance status is stale (pending/disconnected).
 	w.ensureInstanceConnected(ctx, data.Session)
@@ -363,13 +391,38 @@ func (w *WebhookConsumerWorker) handleMessageEvent(ctx context.Context, data *We
 	return w.messageProcessor.ProcessMessage(ctx, data.Session, data.Payload)
 }
 
+// connectedSessionsTTL: validade de uma entrada do cache connectedSessions.
+// Sem expiração, um evento concorrente que envenenasse o cache (sessão marcada
+// connected e derrubada em seguida) exigia restart do worker para curar.
+const connectedSessionsTTL = 5 * time.Minute
+
+// markSessionConnected registra a sessão no cache com timestamp (ver
+// connectedSessionsTTL).
+func (w *WebhookConsumerWorker) markSessionConnected(sessionName string) {
+	w.connectedSessions.Store(sessionName, time.Now())
+}
+
+// isSessionCachedConnected informa se a sessão está no cache e dentro do TTL.
+// Entrada expirada é removida (miss).
+func (w *WebhookConsumerWorker) isSessionCachedConnected(sessionName string) bool {
+	v, ok := w.connectedSessions.Load(sessionName)
+	if !ok {
+		return false
+	}
+	if t, ok := v.(time.Time); ok && time.Since(t) <= connectedSessionsTTL {
+		return true
+	}
+	w.connectedSessions.Delete(sessionName)
+	return false
+}
+
 // ensureInstanceConnected checks if the instance for a session is marked as
 // connected in the database. If not, it updates the status. This self-heals
 // cases where session.status webhooks were lost or never enqueued.
 // Uses an in-memory cache to avoid DB lookups on every message.
 func (w *WebhookConsumerWorker) ensureInstanceConnected(ctx context.Context, sessionName string) {
-	// Fast path: already verified this session
-	if _, ok := w.connectedSessions.Load(sessionName); ok {
+	// Fast path: already verified this session recently
+	if w.isSessionCachedConnected(sessionName) {
 		return
 	}
 
@@ -384,11 +437,28 @@ func (w *WebhookConsumerWorker) ensureInstanceConnected(ctx context.Context, ses
 
 	if instance.Status == models.InstanceStatusConnected {
 		// Already connected, cache it
-		w.connectedSessions.Store(sessionName, true)
+		w.markSessionConnected(sessionName)
 		return
 	}
 
-	// Instance is not connected but we're receiving messages — fix it
+	// Instance is not connected but we're receiving messages — before promoting,
+	// confirm the LIVE status in WAHA (mesmo guard do caminho de rebaixamento):
+	// um message event atrasado na fila podia "ressuscitar" no banco uma sessão
+	// que acabou de cair (STOPPED processado antes), e o chip morto virava
+	// fallback de envio até o próximo webhook de status. Fail-open: erro na
+	// checagem mantém o self-heal antigo (o reconciliador corrige depois).
+	if w.sessionStatusChecker != nil {
+		if live, lerr := w.sessionStatusChecker.GetSessionStatus(ctx, sessionName); lerr == nil &&
+			live != nil && live.Status != whatsapp.SessionStatusConnected {
+			w.logger.Info("Skipping self-heal — WAHA reports session not connected",
+				zap.String("session", sessionName),
+				zap.Int("instanceID", instance.ID),
+				zap.String("liveStatus", string(live.Status)))
+			return
+		}
+	}
+
+	// Fix it
 	if err := w.instanceRepo.UpdateInstanceStatus(ctx, instance.ID, models.InstanceStatusConnected); err != nil {
 		w.logger.Warn("Failed to self-heal instance status",
 			zap.String("session", sessionName),
@@ -403,7 +473,7 @@ func (w *WebhookConsumerWorker) ensureInstanceConnected(ctx context.Context, ses
 		zap.Int("instanceID", instance.ID),
 		zap.String("oldStatus", instance.Status))
 
-	w.connectedSessions.Store(sessionName, true)
+	w.markSessionConnected(sessionName)
 }
 
 // handleSessionStatusEvent processes session status change events.
@@ -451,7 +521,7 @@ func (w *WebhookConsumerWorker) handleSessionStatusEvent(ctx context.Context, da
 						zap.String("session", data.Session),
 						zap.Int("instanceID", instance.ID),
 						zap.String("eventStatus", status))
-					w.connectedSessions.Store(data.Session, true)
+					w.markSessionConnected(data.Session)
 					return nil
 				}
 			}
@@ -477,7 +547,7 @@ func (w *WebhookConsumerWorker) handleSessionStatusEvent(ctx context.Context, da
 
 			// Update cache if connected
 			if dbStatus == models.InstanceStatusConnected {
-				w.connectedSessions.Store(data.Session, true)
+				w.markSessionConnected(data.Session)
 			}
 
 			// Harvest phone_number from the WAHA payload's me.id when the
@@ -799,6 +869,31 @@ func (w *WebhookConsumerWorker) ProcessTaskWrapper() asynq.HandlerFunc {
 	return func(ctx context.Context, task *asynq.Task) error {
 		return w.ProcessTask(ctx, task)
 	}
+}
+
+// ProcessDLQTask consome tasks whatsapp:webhook:dlq. Sem este handler
+// registrado, a fila dlq era um no-op: o asynq falhava com "handler not found"
+// e arquivava na hora, quebrando a promessa de retenção de 7d para replay.
+// O handler apenas loga o evento estruturadamente e retorna nil — a task
+// completa e fica visível na retenção do asynq para inspeção/replay manual
+// via Inspector.
+func (w *WebhookConsumerWorker) ProcessDLQTask(ctx context.Context, task *asynq.Task) error {
+	var dlqPayload struct {
+		OriginalEvent WebhookJobData `json:"original_event"`
+		Error         string         `json:"error"`
+		MovedAt       int64          `json:"moved_at"`
+	}
+	if err := json.Unmarshal(task.Payload(), &dlqPayload); err != nil {
+		w.logger.Error("Failed to unmarshal DLQ payload", zap.Error(err))
+		return nil
+	}
+	w.logger.Warn("Webhook event in DLQ (retained for manual replay)",
+		zap.String("eventID", dlqPayload.OriginalEvent.EventID),
+		zap.String("eventType", dlqPayload.OriginalEvent.Event),
+		zap.String("session", dlqPayload.OriginalEvent.Session),
+		zap.String("error", dlqPayload.Error),
+		zap.Int64("movedAt", dlqPayload.MovedAt))
+	return nil
 }
 
 // enqueueAutoGroupSync enqueues a background group sync job when a session connects.

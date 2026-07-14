@@ -226,6 +226,17 @@ func (c *Cache) Expire(ctx context.Context, key string, ttl time.Duration) error
 	return c.redis.Expire(ctx, c.fullKey(key), ttl).Err()
 }
 
+// ExpireNX sets expiration on a key only if it has none (Redis >= 7).
+// Útil para curar chaves de contador que ficaram órfãs de TTL (INCR e EXPIRE
+// não são atômicos entre si).
+func (c *Cache) ExpireNX(ctx context.Context, key string, ttl time.Duration) error {
+	if c.disabled || c.redis == nil {
+		return nil
+	}
+
+	return c.redis.ExpireNX(ctx, c.fullKey(key), ttl).Err()
+}
+
 // SetNX sets a value only if it doesn't exist (for locks)
 func (c *Cache) SetNX(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
 	if c.disabled || c.redis == nil {

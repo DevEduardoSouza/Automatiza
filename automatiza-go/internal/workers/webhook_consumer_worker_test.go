@@ -85,6 +85,11 @@ func (m *mockWebhookEventsRepo) Cleanup(ctx context.Context, olderThan time.Dura
 	return args.Get(0).(int64), args.Error(1)
 }
 
+func (m *mockWebhookEventsRepo) CleanupUnrecoverable(ctx context.Context, olderThan time.Duration) (int64, error) {
+	args := m.Called(ctx, olderThan)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 // mockInstanceRepo implements repository.InstanceRepository for testing.
 type mockInstanceRepo struct {
 	mock.Mock

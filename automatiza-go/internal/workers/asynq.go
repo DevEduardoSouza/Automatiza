@@ -7,6 +7,7 @@ import (
 	"fmt"
 	mathrand "math/rand/v2"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -82,10 +83,17 @@ type WebhookJobData struct {
 
 // QueueClient wraps asynq client for enqueueing jobs
 type QueueClient struct {
-	client *asynq.Client
-	logger *zap.Logger
-	pacer  *sessionPacer
-	rdb    *redis.Client // só quando o pacer está ligado (para Close)
+	client    *asynq.Client
+	inspector *asynq.Inspector
+	logger    *zap.Logger
+	pacer     *sessionPacer
+	rdb       *redis.Client // só quando o pacer está ligado (para Close)
+
+	// Cache da profundidade da fila webhooks (ver WebhooksBacklogExceeds):
+	// amostrada no máximo a cada 10s para não custar nada no caminho quente.
+	depthMu        sync.Mutex
+	depthSampledAt time.Time
+	depthValue     int
 }
 
 // NewQueueClient creates a new queue client.
@@ -97,8 +105,9 @@ func NewQueueClient(redisAddr string, logger *zap.Logger) *QueueClient {
 	client := asynq.NewClient(asynq.RedisClientOpt{Addr: redisAddr})
 
 	q := &QueueClient{
-		client: client,
-		logger: logger,
+		client:    client,
+		inspector: asynq.NewInspector(asynq.RedisClientOpt{Addr: redisAddr}),
+		logger:    logger,
 	}
 
 	// Per-session pacer spacing: SESSION_PACE_MS takes precedence; otherwise
@@ -125,12 +134,46 @@ func NewQueueClient(redisAddr string, logger *zap.Logger) *QueueClient {
 // Close closes the queue client
 func (q *QueueClient) Close() error {
 	err := q.client.Close()
+	if q.inspector != nil {
+		if ierr := q.inspector.Close(); ierr != nil && err == nil {
+			err = ierr
+		}
+	}
 	if q.rdb != nil {
 		if rerr := q.rdb.Close(); rerr != nil && err == nil {
 			err = rerr
 		}
 	}
 	return err
+}
+
+// WebhooksBacklogExceeds informa se pending+active da fila webhooks passou de
+// max. Guarda anti-OOM da ingestão: no incidente de Redis-OOM a fila webhooks
+// inchou sem limite (payload integral por task) até estourar o maxmemory e
+// derrubar TODAS as escritas. Derramar explícito num teto alto é perda contida
+// e visível; o OOM era apagão global e silencioso. Amostra a profundidade no
+// máximo a cada 10s (cache) e é fail-open: qualquer erro => false (não dropa
+// evento por falha de introspecção).
+func (q *QueueClient) WebhooksBacklogExceeds(max int) bool {
+	if q == nil || q.inspector == nil || max <= 0 {
+		return false
+	}
+
+	q.depthMu.Lock()
+	defer q.depthMu.Unlock()
+
+	if time.Since(q.depthSampledAt) > 10*time.Second {
+		info, err := q.inspector.GetQueueInfo("webhooks")
+		if err != nil {
+			q.depthSampledAt = time.Now()
+			q.depthValue = 0
+			return false
+		}
+		q.depthSampledAt = time.Now()
+		q.depthValue = info.Pending + info.Active
+	}
+
+	return q.depthValue > max
 }
 
 // EnqueueMessage enqueues a message sending job
@@ -236,12 +279,18 @@ func (q *QueueClient) EnqueueWebhook(ctx context.Context, data *WebhookJobData) 
 		return nil, err
 	}
 
+	// SEM asynq.Deadline: o deadline absoluto de 5min matava TODO o backlog em
+	// massa (worker parado num deploy travado, fila cheia pós-incidente) — as
+	// tasks acordavam com ctx já expirado, falhavam sem executar e o evento
+	// morria (session.status/group perdidos, webhook_events preso em 'received';
+	// ~195k eventos perdidos na madrugada de 14/07). O frescor de MENSAGEM de
+	// espelho é tratado no consumidor via ReceivedAt (staleWebhookMessageTTL);
+	// eventos de status/grupo não perdem valor com o tempo e sempre processam.
 	task := asynq.NewTask(TypeWAHAWebhook, payload,
 		asynq.MaxRetry(5),
 		asynq.Queue("webhooks"),
 		asynq.Timeout(120*time.Second),
 		asynq.TaskID("waha:"+data.EventID), // Use event ID for deduplication
-		asynq.Deadline(time.Now().Add(5*time.Minute)),
 	)
 
 	return q.client.EnqueueContext(ctx, task)
@@ -360,6 +409,13 @@ func NewQueueServer(redisAddr string, concurrency int, logger *zap.Logger) *Queu
 		asynq.RedisClientOpt{Addr: redisAddr},
 		asynq.Config{
 			Concurrency: concurrency,
+			// Default de 8s requeuava envios em voo a cada deploy: o task que já
+			// tinha POSTado ao WAHA (mensagem entregue) mas não retornado em 8s
+			// era re-executado pelo worker novo = promoção duplicada no grupo.
+			// 130s > Timeout(120s) da task: o envio termina (ou vira
+			// timeout-assumed-sent) ANTES do requeue. Exige stop_grace_period
+			// compatível no container do worker.
+			ShutdownTimeout: 130 * time.Second,
 			Queues: map[string]int{
 				"critical":       6,
 				"webhooks":       4,

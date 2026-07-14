@@ -59,7 +59,14 @@ services:
     container_name: automatiza-redis
     restart: unless-stopped
     logging: *default-logging
-    command: redis-server --appendonly yes --maxmemory 8192mb --maxmemory-policy volatile-lru
+    # noeviction (recomendação oficial do asynq): as estruturas de fila não têm
+    # TTL e são inevictáveis — sob pressão o volatile-lru evictava exatamente as
+    # chaves de dedup/selfsend/deadgroup (as únicas com TTL), fazendo o espelho
+    # duplicar e encadear silenciosamente ANTES do OOM aparecer. Com noeviction,
+    # memória cheia vira erro explícito de escrita (o código trata fail-open/
+    # fail-closed e a sentinela alarma redis%). Mudança exige recreate MANUAL do
+    # redis (CI usa --no-recreate); aplicar também em runtime via CONFIG SET.
+    command: redis-server --appendonly yes --maxmemory 8192mb --maxmemory-policy noeviction
     volumes:
       - redis_data:/data
     ports:
@@ -325,11 +332,18 @@ services:
     logging: *worker-logging
     command: ["./server", "--worker"]
     env_file: .env
+    # Shutdown gracioso: 130s (ShutdownTimeout do asynq, envio em voo termina em
+    # vez de ser requeuado = duplicata) + 90s (drain dos fan-outs de espelho) +
+    # folga. Sem isso o SIGKILL do Docker (default 10s) anulava os dois.
+    stop_grace_period: 4m
     environment:
       # Docker networking overrides (not in .env)
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_MAX_CONNS=10
+      # 10 conexões p/ 40 slots asynq + até 64 goroutines de fan-out do espelho
+      # esgotava o pool: logDispatch e o fallback de dedup em DB (ctx de 5s)
+      # estouravam sob pico — dispatch_logs perdidos e janela de duplicata.
+      - DB_MAX_CONNS=60
       - CACHE_REDIS_URI=redis://redis:6379/0
       - WAHA_API_URL=http://waha-router:3000
     depends_on:

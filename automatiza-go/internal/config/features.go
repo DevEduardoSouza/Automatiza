@@ -108,12 +108,11 @@ func LoadFeatureFlags() *FeatureFlags {
 }
 
 // GetFeatureFlags returns the current feature flags instance.
-// If LoadFeatureFlags has not been called, it will load them first.
+// Delega sempre ao LoadFeatureFlags: o sync.Once dá o happens-before correto —
+// a leitura direta de globalFeatureFlags sem sincronização era um data race
+// com o init lazy (a primeira chamada acontece já com 40 goroutines do worker).
 func GetFeatureFlags() *FeatureFlags {
-	if globalFeatureFlags == nil {
-		return LoadFeatureFlags()
-	}
-	return globalFeatureFlags
+	return LoadFeatureFlags()
 }
 
 // ShouldCreateDispatchLog returns true if Go should create dispatch logs.

@@ -146,7 +146,10 @@ func (rl *webhookRateLimiter) checkRedis(ip string) (bool, int, time.Duration) {
 
 	pipe := rl.config.RedisClient.Pipeline()
 	incrCmd := pipe.Incr(ctx, key)
-	pipe.Expire(ctx, key, rl.config.WindowSize)
+	// ExpireNX: seta o TTL só quando a chave ainda não tem um. O Expire
+	// incondicional renovava a janela a cada request — sob tráfego contínuo o
+	// contador nunca resetava e convergia para 429 permanente.
+	pipe.ExpireNX(ctx, key, rl.config.WindowSize)
 	ttlCmd := pipe.TTL(ctx, key)
 
 	_, err := pipe.Exec(ctx)
@@ -162,7 +165,9 @@ func (rl *webhookRateLimiter) checkRedis(ip string) (bool, int, time.Duration) {
 
 	count := int(incrCmd.Val())
 	ttl := ttlCmd.Val()
-	if ttl < 0 {
+	// <= 0: chave sem TTL (ou estado degenerado) => retryAfter cai na janela
+	// cheia. Um retryAfter de 0s numa rejeição seria sem sentido para o caller.
+	if ttl <= 0 {
 		ttl = rl.config.WindowSize
 	}
 

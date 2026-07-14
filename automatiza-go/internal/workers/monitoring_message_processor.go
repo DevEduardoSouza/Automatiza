@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"automatiza-go/internal/models"
@@ -41,9 +42,34 @@ type MonitoringMessageProcessor struct {
 	// segurar o slot do consumidor asynq — ver ProcessMessage.
 	fanoutSlots chan struct{}
 
+	// fanoutWG rastreia as goroutines de fan-out em voo para o Drain no
+	// shutdown: sem isso, cada deploy matava até 64 espelhos no meio do envio
+	// com o evento já 'processed' e o slot de dedup já reivindicado — os
+	// grupos restantes nunca recebiam a oferta.
+	fanoutWG sync.WaitGroup
+
 	// syncForTests força processamento inline (sem goroutine) para os
 	// testes poderem assertar deterministicamente logo após ProcessMessage.
 	syncForTests bool
+}
+
+// Drain espera os fan-outs em voo terminarem, até o timeout. Chamar após o
+// shutdown do servidor asynq (nenhum ProcessMessage novo chega) e antes do
+// processo sair. Retorna true se drenou tudo dentro do prazo.
+func (p *MonitoringMessageProcessor) Drain(timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		p.fanoutWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		p.logger.Warn("Drain timeout: mirror fan-outs still in flight at shutdown",
+			zap.Duration("timeout", timeout))
+		return false
+	}
 }
 
 // DisableAsyncFanoutForTests força o processamento inline. Só para testes.
@@ -177,9 +203,11 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 
 	select {
 	case p.fanoutSlots <- struct{}{}:
+		p.fanoutWG.Add(1)
 		go func() {
 			defer func() {
 				<-p.fanoutSlots
+				p.fanoutWG.Done()
 				if r := recover(); r != nil {
 					p.logger.Error("Panic in async mirror fan-out",
 						zap.String("messageID", msg.MessageID),

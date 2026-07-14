@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
 )
 
@@ -47,6 +49,15 @@ const traceIDHeader = "X-Trace-ID"
 // This prevents memory exhaustion attacks from oversized payloads.
 // 10MB is conservative for webhooks since media is sent via URL, not inline.
 const maxWebhookBodySize = 10 << 20 // 10MB
+
+// defaultWebhookQueueMaxBacklog: teto de pending+active da fila webhooks acima
+// do qual a ingestão derrama (evento marcado failed em vez de enfileirado).
+// Guarda anti-OOM: com o worker parado por horas, a fila crescia sem limite
+// (payload integral por task) até estourar o maxmemory do Redis e derrubar
+// TODAS as escritas. 150k tasks ≈ centenas de MB — perda contida e visível,
+// muito antes do apagão global. Override via WEBHOOK_QUEUE_MAX_BACKLOG
+// (0 desliga o gate).
+const defaultWebhookQueueMaxBacklog = 150_000
 
 // Task type for webhook processing in Asynq.
 const TaskTypeWAHAWebhook = "whatsapp:waha_webhook"
@@ -69,6 +80,7 @@ type WAHAWebhookHandler struct {
 	queueClient       *workers.QueueClient
 	logger            *zap.Logger
 	metrics           *metrics.WebhookMetrics
+	queueMaxBacklog   int
 }
 
 // NewWAHAWebhookHandler creates a new WAHA webhook handler.
@@ -97,12 +109,20 @@ func NewWAHAWebhookHandler(
 		}
 	}
 
+	maxBacklog := defaultWebhookQueueMaxBacklog
+	if v := os.Getenv("WEBHOOK_QUEUE_MAX_BACKLOG"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			maxBacklog = n
+		}
+	}
+
 	return &WAHAWebhookHandler{
 		hmacValidator:     validator,
 		webhookEventsRepo: webhookEventsRepo,
 		queueClient:       queueClient,
 		logger:            logger,
 		metrics:           webhookMetrics,
+		queueMaxBacklog:   maxBacklog,
 	}
 }
 
@@ -263,7 +283,13 @@ func (h *WAHAWebhookHandler) HandleWebhook(c *gin.Context) {
 			"webhook":  "idempotency_failure",
 			"event_id": eventID,
 		})
-		// Don't return - try to enqueue anyway, the worker will handle deduplication
+		// Don't return - try to enqueue anyway, the worker will handle deduplication.
+		// Em erro o repo devolve inserted=false; sem isto o fluxo cairia no branch
+		// de duplicata abaixo e descartaria o evento com o WAHA já ACKado — Postgres
+		// lento por 5s virava perda silenciosa de todos os webhooks da janela. O
+		// TaskID waha:<event_id> mantém a dedup na fila e o consumidor re-insere a
+		// linha ausente.
+		inserted = true
 	}
 
 	// Step 7: If duplicate, log and return
@@ -279,6 +305,21 @@ func (h *WAHAWebhookHandler) HandleWebhook(c *gin.Context) {
 		return
 	}
 
+	// Gate anti-OOM: fila webhooks acima do teto => derrama explícito (evento
+	// vira 'failed' com motivo claro) em vez de deixar o Redis caminhar para o
+	// OOM global. Fail-open dentro do WebhooksBacklogExceeds.
+	if h.queueClient.WebhooksBacklogExceeds(h.queueMaxBacklog) {
+		logger.Error("webhook queue backlog exceeded, shedding event",
+			zap.String("event_id", eventID),
+			zap.Int("maxBacklog", h.queueMaxBacklog))
+		observability.CaptureMessage(sentry.LevelError, "webhook queue overloaded — shedding events", map[string]string{
+			"module":  "waha-webhook",
+			"webhook": "queue_overloaded",
+		})
+		h.markEventFailed(dbCtx, eventID, "queue overloaded - event shed")
+		return
+	}
+
 	// Step 8: Enqueue task to Asynq
 	taskPayload := &workers.WebhookJobData{
 		EventID:    eventID,
@@ -290,11 +331,29 @@ func (h *WAHAWebhookHandler) HandleWebhook(c *gin.Context) {
 		TraceID:    traceID, // Propagate trace ID to worker
 	}
 
-	// Use background context for enqueue since we already ACKed
-	enqueueCtx, enqueueCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Use background context for enqueue since we already ACKed.
+	// Retry curto in-process: um blip de Redis (failover, restart, pico) não pode
+	// virar perda permanente — o payload só existe aqui (não é persistido no
+	// banco) e o WAHA já recebeu 200, então não há retry externo.
+	enqueueCtx, enqueueCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer enqueueCancel()
 
-	info, err := h.queueClient.EnqueueWebhook(enqueueCtx, taskPayload)
+	var info *asynq.TaskInfo
+	for attempt := 1; ; attempt++ {
+		info, err = h.queueClient.EnqueueWebhook(enqueueCtx, taskPayload)
+		if err == nil || workers.IsDuplicateTaskError(err) || attempt >= 3 {
+			break
+		}
+		logger.Warn("webhook enqueue failed, retrying",
+			zap.String("event_id", eventID),
+			zap.Int("attempt", attempt),
+			zap.Error(err),
+		)
+		select {
+		case <-time.After(time.Duration(attempt) * time.Second):
+		case <-enqueueCtx.Done():
+		}
+	}
 	if err != nil {
 		// Check if it's a duplicate task error (already enqueued)
 		if workers.IsDuplicateTaskError(err) {

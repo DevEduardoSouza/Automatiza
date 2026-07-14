@@ -164,10 +164,27 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 		zap.Int("links", len(links)),
 		zap.String("bodyPreview", truncateStr(msg.Body, 100)))
 
+	// Resolve o DONO do chip que entregou a mensagem ANTES do dedup — as chaves
+	// abaixo TÊM que ser escopadas por ele (mesmo fix do monitoring, #245): num
+	// grupo-fonte popular, o webhook chega pelo chip de TODO membro; keyar só
+	// por (grupo, hash/msgID) fazia o PRIMEIRO chip a processar (de QUALQUER
+	// usuário, inclusive um sem automação aqui) consumir o claim e ESFOMEAR os
+	// demais usuários que monitoram o mesmo grupo. Escopar por dono ainda
+	// colapsa os N chips do MESMO dono; fallback pro InstanceName nunca colide
+	// global.
+	ownerUserID := ""
+	dedupScope := msg.InstanceName
+	if inst, ierr := s.instanceRepo.GetInstanceByName(ctx, msg.InstanceName); ierr == nil && inst != nil {
+		ownerUserID = inst.UserID
+		if inst.UserID != "" {
+			dedupScope = inst.UserID
+		}
+	}
+
 	// 3. Content fingerprint dedup (2 min window).
 	//
-	// Keyed by (group, body-hash) — sem o instance — pra que mensagens
-	// vistas por múltiplos chips do mesmo grupo monitor disparem só 1
+	// Keyed by (dono, group, body-hash) — sem o instance — pra que mensagens
+	// vistas por múltiplos chips do MESMO dono no grupo monitor disparem só 1
 	// processamento. Se 4 chips do user estão no grupo de origem, WAHA
 	// fira 4 webhooks; o primeiro marca a key, os outros 3 batem aqui
 	// e fazem bailout antes da chamada à API da Shopee/ML — evita 4×
@@ -177,15 +194,15 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 	// segurança por (user, destinationGroup, canonicalKey), então
 	// mesmo que esse pré-dedup falhe (Redis offline), nunca há
 	// duplicação real no destino.
-	contentKey := s.buildContentKey(msg.RemoteJID, msg.Body)
+	contentKey := s.buildContentKey(dedupScope, msg.RemoteJID, msg.Body)
 	if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
 		s.logger.Debug("Offer generate: duplicate content, skipping")
 		return nil
 	}
 
 	// 4. Message ID dedup (10 min window). Mesma motivação do (3) —
-	// keyed por (group, msgID), não por instance.
-	msgKey := fmt.Sprintf("og_msg_dedup:%s:%s", msg.RemoteJID, msg.MessageID)
+	// keyed por (dono, group, msgID), não por instance.
+	msgKey := fmt.Sprintf("og_msg_dedup:%s:%s:%s", dedupScope, msg.RemoteJID, msg.MessageID)
 	if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
 		s.logger.Debug("Offer generate: duplicate message ID, skipping")
 		return nil
@@ -201,10 +218,7 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 	// whose chip is in the source group. A popular source group is delivered by
 	// EVERY member's session, so without this a user who LEFT the group keeps
 	// relaying it as long as anyone else's chip remains (cross-user leak).
-	ownerUserID := ""
-	if inst, ierr := s.instanceRepo.GetInstanceByName(ctx, msg.InstanceName); ierr == nil && inst != nil {
-		ownerUserID = inst.UserID
-	}
+	// (ownerUserID já resolvido acima, junto com o dedupScope.)
 
 	// Filter to active, owned-by-delivering-session automations.
 	var active []models.Automation
@@ -801,6 +815,16 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		wg.Add(1)
 		go func(dispatchSession string, groupIDs []string) {
 			defer wg.Done()
+			// recover: panic numa goroutine NÃO é capturado pelo middleware do
+			// asynq (que só cobre a goroutine do handler) — sem isto, um panic
+			// aqui derrubava o worker inteiro (40 slots, todas as filas).
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.Error("Panic in offer_generate chip fan-out",
+						zap.String("session", dispatchSession),
+						zap.Any("panic", r))
+				}
+			}()
 			// Shuffle this chip's destination order (anti-ban).
 			resolved.Pacing.Shuffle(groupIDs)
 			for gi, groupID := range groupIDs {
@@ -1004,9 +1028,9 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 // (user, destinationGroup, canonicalKey) as a stronger guarantee, so a
 // hash collision here at most slips through to the per-destination
 // claim, which still prevents real duplication.
-func (s *offerGenerateService) buildContentKey(group, body string) string {
+func (s *offerGenerateService) buildContentKey(scope, group, body string) string {
 	h := sha256.Sum256([]byte(body))
-	return fmt.Sprintf("og_content:%s:%s", group, hex.EncodeToString(h[:8]))
+	return fmt.Sprintf("og_content:%s:%s:%s", scope, group, hex.EncodeToString(h[:8]))
 }
 
 // isNonProductShopeeURL detecta links Shopee que NÃO são página de produto
@@ -1240,18 +1264,29 @@ func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.Inc
 		zap.String("mediaType", msg.MediaType),
 		zap.String("bodyPreview", truncateStr(msg.Body, 100)))
 
+	// Escopo por dono ANTES dos claims — mesmo racional do fluxo principal
+	// (chip de outro usuário sem automação não pode consumir o claim).
+	ownerUserID := ""
+	dedupScope := msg.InstanceName
+	if inst, ierr := s.instanceRepo.GetInstanceByName(ctx, msg.InstanceName); ierr == nil && inst != nil {
+		ownerUserID = inst.UserID
+		if inst.UserID != "" {
+			dedupScope = inst.UserID
+		}
+	}
+
 	// Content fingerprint dedup (2 min) — mesma chave do fluxo principal
 	// (buildContentKey hashea o Body). Pra mídia sem caption (Body=""),
 	// inclui a MediaURL no hash pra evitar que duas mídias sem legenda
 	// colidam na mesma janela.
-	contentKey := s.buildRelayContentKey(msg)
+	contentKey := s.buildRelayContentKey(dedupScope, msg)
 	if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
 		s.logger.Debug("Offer relay: duplicate content, skipping")
 		return nil
 	}
 
 	// Message ID dedup (10 min) — idêntico ao fluxo principal.
-	msgKey := fmt.Sprintf("og_relay_msg_dedup:%s:%s", msg.RemoteJID, msg.MessageID)
+	msgKey := fmt.Sprintf("og_relay_msg_dedup:%s:%s:%s", dedupScope, msg.RemoteJID, msg.MessageID)
 	if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
 		s.logger.Debug("Offer relay: duplicate message ID, skipping")
 		return nil
@@ -1262,12 +1297,7 @@ func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.Inc
 		return err
 	}
 
-	// Scope to the user whose session delivered this message (chip in the source
-	// group) — see the product-link path above; prevents the cross-user leak.
-	ownerUserID := ""
-	if inst, ierr := s.instanceRepo.GetInstanceByName(ctx, msg.InstanceName); ierr == nil && inst != nil {
-		ownerUserID = inst.UserID
-	}
+	// (ownerUserID já resolvido acima, junto com o dedupScope.)
 
 	var active []models.Automation
 	for _, a := range automations {
@@ -1457,6 +1487,16 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 		wg.Add(1)
 		go func(dispatchSession string, groupIDs []string) {
 			defer wg.Done()
+			// recover: panic numa goroutine NÃO é capturado pelo middleware do
+			// asynq (que só cobre a goroutine do handler) — sem isto, um panic
+			// aqui derrubava o worker inteiro (40 slots, todas as filas).
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.Error("Panic in offer_generate chip fan-out",
+						zap.String("session", dispatchSession),
+						zap.Any("panic", r))
+				}
+			}()
 			// Shuffle this chip's destination order (anti-ban).
 			resolved.Pacing.Shuffle(groupIDs)
 			for gi, groupID := range groupIDs {
@@ -1764,7 +1804,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 // MediaURL no hash. Em relay, mídias sem caption (Body="") são comuns —
 // se 3 fotos diferentes caem no grupo de origem sem texto, queremos
 // processar as 3 (não dedupar pela colisão de hash do body vazio).
-func (s *offerGenerateService) buildRelayContentKey(msg *models.IncomingMessage) string {
+func (s *offerGenerateService) buildRelayContentKey(scope string, msg *models.IncomingMessage) string {
 	h := sha256.Sum256([]byte(msg.Body + "\x00" + msg.MediaURL + "\x00" + msg.MimeType))
-	return fmt.Sprintf("og_relay_content:%s:%s", msg.RemoteJID, hex.EncodeToString(h[:8]))
+	return fmt.Sprintf("og_relay_content:%s:%s:%s", scope, msg.RemoteJID, hex.EncodeToString(h[:8]))
 }

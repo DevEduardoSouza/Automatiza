@@ -153,9 +153,15 @@ func (p *ProducerBackpressure) RecordEnqueue(ctx context.Context, userID string)
 			zap.Error(err))
 		return nil
 	}
+	// ExpireNX em TODO increment (não só no primeiro): se o EXPIRE do primeiro
+	// increment falhou/caiu (INCR e EXPIRE não são atômicos), a chave ficava sem
+	// TTL para sempre e o contador bloqueava os envios do usuário
+	// permanentemente. ExpireNX só seta quando não há TTL — cura chaves órfãs
+	// sem renovar a janela das saudáveis.
 	if count == 1 {
-		// Set expiration on first increment
 		_ = p.cache.Expire(ctx, key, time.Duration(p.windowMinutes)*time.Minute)
+	} else {
+		_ = p.cache.ExpireNX(ctx, key, time.Duration(p.windowMinutes)*time.Minute)
 	}
 
 	return nil

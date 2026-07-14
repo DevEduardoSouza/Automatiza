@@ -327,11 +327,14 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 						ck, st)
 
 					now := time.Now().UTC().Format(time.RFC3339)
-					_ = s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
+					if upErr := s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
 						"status":        models.AutomationStatusPaused,
 						"last_error":    "Credenciais Shopee ausentes ou inválidas - automação pausada automaticamente",
 						"last_error_at": now,
-					})
+					}); upErr != nil {
+						s.logger.Error("Failed to pause automation after Shopee credential error",
+							zap.String("automationID", automation.ID), zap.Error(upErr))
+					}
 
 					return nil
 				}
@@ -388,11 +391,14 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 						ck, st)
 
 					now := time.Now().UTC().Format(time.RFC3339)
-					_ = s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
+					if upErr := s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
 						"status":        models.AutomationStatusPaused,
 						"last_error":    "Credenciais ML ausentes ou inválidas - automação pausada automaticamente",
 						"last_error_at": now,
-					})
+					}); upErr != nil {
+						s.logger.Error("Failed to pause automation after ML credential error",
+							zap.String("automationID", automation.ID), zap.Error(upErr))
+					}
 
 					return nil
 				}
@@ -1231,6 +1237,13 @@ func (s *monitoringService) claimOnce(ctx context.Context, key string, ttl time.
 // Returns true if the slot was claimed (product not yet sent), false if duplicate.
 func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupID, canonicalKey string, hours int) bool {
 	if canonicalKey == "" {
+		return true
+	}
+	// hours <= 0 = dedup desligado (mesma guarda do process_list). Sem isto,
+	// dedupe_hours=0 vindo da API gerava SetNX com TTL 0 = chave prod_dedup
+	// PERMANENTE: o produto nunca mais era espelhado naquele grupo e a chave
+	// vazava para sempre no Redis.
+	if hours <= 0 {
 		return true
 	}
 

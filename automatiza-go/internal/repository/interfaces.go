@@ -39,11 +39,11 @@ type GrowthPoint struct {
 
 // ProfileStats holds aggregated profile statistics for the admin dashboard
 type ProfileStats struct {
-	TotalUsers   int
-	ActiveUsers  int
+	TotalUsers    int
+	ActiveUsers   int
 	InactiveUsers int
-	PlanStats    []PlanStat
-	GrowthData   []GrowthPoint
+	PlanStats     []PlanStat
+	GrowthData    []GrowthPoint
 }
 
 // InstanceRepository handles instance data operations
@@ -389,6 +389,7 @@ type WebhookEventsRepository interface {
 	GetPendingEvents(ctx context.Context, limit int) ([]models.WebhookEventRecord, error)
 	GetFailedEvents(ctx context.Context, limit int) ([]models.WebhookEventRecord, error)
 	Cleanup(ctx context.Context, olderThan time.Duration) (int64, error)
+	CleanupUnrecoverable(ctx context.Context, olderThan time.Duration) (int64, error)
 }
 
 // DashboardStats represents aggregated dashboard statistics

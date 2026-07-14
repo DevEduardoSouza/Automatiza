@@ -105,6 +105,10 @@ func (m *MockWebhookEventsRepository) Cleanup(ctx context.Context, olderThan tim
 	return 0, nil
 }
 
+func (m *MockWebhookEventsRepository) CleanupUnrecoverable(ctx context.Context, olderThan time.Duration) (int64, error) {
+	return 0, nil
+}
+
 // MockQueueClient wraps workers.QueueClient for testing.
 // Since QueueClient uses an internal asynq.Client, we create a mock that
 // intercepts the EnqueueWebhook method.

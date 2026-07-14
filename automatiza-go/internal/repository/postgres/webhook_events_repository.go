@@ -266,6 +266,52 @@ func (r *webhookEventsRepository) Cleanup(ctx context.Context, olderThan time.Du
 	return rowsDeleted, nil
 }
 
+// CleanupUnrecoverable apaga eventos em estados terminais que a retenção de
+// 'processed' nunca alcançava e que acumulavam para sempre (465k 'received' +
+// 58k 'processing' + 169k 'failed' medidos em produção em 14/07): o payload
+// desses eventos só existia no task do Redis e já se foi — a linha é uma
+// lápide sem utilidade após a janela. Apaga em lotes (ctid + LIMIT) para não
+// segurar lock/IO num DELETE gigante na tabela de ~9M linhas.
+func (r *webhookEventsRepository) CleanupUnrecoverable(ctx context.Context, olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan)
+	const batch = 50000
+	query := `
+		DELETE FROM webhook_events WHERE ctid IN (
+			SELECT ctid FROM webhook_events
+			WHERE status IN ($1, $2, $3, $4) AND received_at < $5
+			LIMIT $6
+		)`
+
+	var total int64
+	for i := 0; i < 40; i++ { // teto de 2M linhas por execução (roda diariamente)
+		result, err := r.db.pool.Exec(ctx, query,
+			models.WebhookEventRecordStatusReceived,
+			models.WebhookEventRecordStatusProcessing,
+			models.WebhookEventRecordStatusFailed,
+			models.WebhookEventRecordStatusDLQ,
+			cutoff, batch)
+		if err != nil {
+			r.logger.Error("Failed to cleanup unrecoverable webhook events",
+				zap.Duration("olderThan", olderThan),
+				zap.Error(err))
+			return total, fmt.Errorf("cleanup unrecoverable webhook events: %w", err)
+		}
+		n := result.RowsAffected()
+		total += n
+		if n < batch {
+			break
+		}
+	}
+
+	if total > 0 {
+		r.logger.Info("Cleaned up unrecoverable webhook events",
+			zap.Int64("rowsDeleted", total),
+			zap.Duration("olderThan", olderThan))
+	}
+
+	return total, nil
+}
+
 // scanWebhookEvents is a helper to scan rows into WebhookEvent structs
 func (r *webhookEventsRepository) scanWebhookEvents(rows interface {
 	Next() bool

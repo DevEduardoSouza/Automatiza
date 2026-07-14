@@ -355,6 +355,15 @@ func (s *cronService) registerDefaultTasks() {
 			{"failed", 30 * 24 * time.Hour},
 			{"info", 90 * 24 * time.Hour},
 			{"error", 90 * 24 * time.Hour},
+			// Status que ficavam FORA da política e inflavam a tabela (8.8M)
+			// para sempre. 'queued' legítimo vive minutos; 30d cobre com folga
+			// os presos pelo bug histórico do update com ctx morto. A
+			// reconciliação usa janela de 168h (7d) — 14d de 'reconciled' e
+			// 30d de 'pending' não afetam nenhum leitor.
+			{"queued", 30 * 24 * time.Hour},
+			{"pending", 30 * 24 * time.Hour},
+			{"blocked", 90 * 24 * time.Hour},
+			{"reconciled", 14 * 24 * time.Hour},
 		}
 		var totalDeleted int64
 		for _, p := range retentionPolicy {
@@ -386,6 +395,17 @@ func (s *cronService) registerDefaultTasks() {
 		if deleted > 0 {
 			s.logger.Info("Webhook events cleanup completed",
 				zap.Int64("deleted", deleted))
+		}
+		// Lápides irrecuperáveis (received/processing/failed/dlq): o payload só
+		// existia no Redis e já se foi — sem esta purga elas acumulavam para
+		// sempre (465k+58k+169k medidos em produção).
+		unrec, err := s.webhookEventsRepo.CleanupUnrecoverable(ctx, 7*24*time.Hour)
+		if err != nil {
+			return err
+		}
+		if unrec > 0 {
+			s.logger.Info("Unrecoverable webhook events cleanup completed",
+				zap.Int64("deleted", unrec))
 		}
 		return nil
 	})

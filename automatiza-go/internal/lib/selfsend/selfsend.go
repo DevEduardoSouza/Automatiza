@@ -19,8 +19,13 @@ import (
 
 // ttl cobre o atraso envio → webhook nos chips membros com folga (normalmente
 // segundos; minutos sob WAHA saturado), mas curto o bastante para não engolir
-// um humano repostando o mesmo texto bem mais tarde.
-const ttl = 5 * time.Minute
+// um humano repostando o mesmo texto bem mais tarde. Alinhado ao gate de
+// frescor do consumidor (staleWebhookMessageTTL=10min): webhook mais velho que
+// isso nem chega ao espelho, então a chave cobre TODA a janela em que um
+// disparo da plataforma ainda pode ser re-espelhado — 5min deixava um vão de
+// 5-10min sob saturação (cadeia espelho→espelho). Reposte humano de bytes
+// idênticos em <10min é improvável: o texto da plataforma é variado por grupo.
+const ttl = 10 * time.Minute
 
 func key(group, body string) string {
 	h := sha256.Sum256([]byte(body))

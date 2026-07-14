@@ -1294,13 +1294,16 @@ func runWorker(
 
 	// Create monitoring message processor for MONITOR mode automations
 	// This processes incoming WhatsApp messages and triggers monitoring automations
+	// (referência concreta mantida para o Drain dos fan-outs no shutdown)
+	var monitoringProcessor *workers.MonitoringMessageProcessor
 	var messageProcessor workers.MessageWebhookProcessor
 	if monitoringService != nil {
-		messageProcessor = workers.NewMonitoringMessageProcessor(
+		monitoringProcessor = workers.NewMonitoringMessageProcessor(
 			monitoringService,
 			offerGenerateService,
 			config.NewModuleLogger(logger, "monitoring-processor"),
 		)
+		messageProcessor = monitoringProcessor
 	}
 
 	// Create dispatch log processor for reconciliation
@@ -1431,6 +1434,9 @@ func runWorker(
 	queueServer.RegisterHandler(workers.TypeSendMessage, observability.SentryAsynqMiddleware("message", messageWorker.ProcessTaskWrapper()))
 	queueServer.RegisterHandler(workers.TypeSyncGroups, observability.SentryAsynqMiddleware("groups_sync", groupsSyncWorker.ProcessTaskWrapper()))
 	queueServer.RegisterHandler(workers.TypeWAHAWebhook, observability.SentryAsynqMiddleware("webhook_consumer", webhookConsumerWorker))
+	// DLQ: sem handler registrado, o asynq falhava com "handler not found" e a
+	// retenção de 7d para replay manual nunca acontecia.
+	queueServer.RegisterHandler(workers.TypeWebhookDLQ, observability.SentryAsynqMiddleware("webhook_dlq", asynq.HandlerFunc(webhookConsumerWorker.ProcessDLQTask)))
 
 	// Register message queue worker handlers for typed messages
 	// These handle messages enqueued via MessageQueueWorker.Enqueue* methods
@@ -1464,6 +1470,13 @@ func runWorker(
 
 	logger.Info("Shutting down worker...")
 	queueServer.Shutdown()
+	// Espera os fan-outs de espelho em voo (goroutines destacadas com ctx
+	// próprio de 3min): sem o drain, o deploy matava até 64 espelhos no meio do
+	// envio com dedup já reivindicado — grupos de destino ficavam sem a oferta.
+	if monitoringProcessor != nil {
+		logger.Info("Draining in-flight mirror fan-outs...")
+		monitoringProcessor.Drain(90 * time.Second)
+	}
 	logger.Info("Worker exited")
 }
 

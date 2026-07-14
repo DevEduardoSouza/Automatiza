@@ -242,7 +242,18 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 			select {
 			case <-time.After(1500 * time.Millisecond):
 			case <-ctx.Done():
-				return ctx.Err()
+				// O áudio JÁ foi entregue: retornar erro aqui faria o asynq
+				// re-executar a task inteira e o grupo receberia o áudio 2x.
+				// Perder o texto complementar é melhor que duplicar a mensagem.
+				w.logger.Warn("Context done after voice sent; skipping follow-up text (no retry)",
+					zap.String("automationID", data.AutomationID),
+					zap.String("groupId", data.GroupID))
+				w.updateHistoryStatus(ctx, data.HistoryID, "completed")
+				w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
+					"status": "sent",
+					"error":  "texto complementar do audio nao enviado (shutdown/timeout)",
+				})
+				return nil
 			}
 			textInput := whatsapp.SendTextInput{
 				SessionName: data.InstanceName,
@@ -269,8 +280,11 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		}
 		_, sendErr = w.whatsappProvider.SendImage(ctx, imageInput)
 
-		// Fallback: if image send fails, try sending text-only
-		if sendErr != nil {
+		// Fallback: if image send fails DEFINITIVELY, try sending text-only.
+		// Desfecho ambíguo (timeout/cancelamento) fica de fora — o WAHA pode ter
+		// entregue imagem+legenda mesmo assim, e reenviar por texto duplica a
+		// promoção no grupo (mesmo guard do ramo link-preview acima).
+		if sendErr != nil && !whatsapp.IsAmbiguousOutcome(sendErr) {
 			w.logger.Warn("Image send failed, falling back to text-only",
 				zap.String("automationID", data.AutomationID),
 				zap.String("imageURL", *data.ImageURL),
@@ -481,7 +495,11 @@ func (w *MessageWorker) updateHistoryStatus(ctx context.Context, historyID *stri
 		updates["completed_at"] = time.Now().UTC().Format(time.RFC3339)
 	}
 
-	if err := w.historyRepo.Update(ctx, *historyID, updates); err != nil {
+	// Mesmo racional do updateDispatchLog: o desfecho precisa ser registrado
+	// mesmo com o ctx da task já cancelado/estourado.
+	updCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := w.historyRepo.Update(updCtx, *historyID, updates); err != nil {
 		observability.LogAndCapture(w.logger, sentry.LevelError,
 			"Failed to update history status", err,
 			map[string]string{"module": "message-worker", "operation": "history-status-update"})
@@ -558,7 +576,14 @@ func (w *MessageWorker) updateDispatchLog(ctx context.Context, dispatchLogID *in
 		return
 	}
 
-	if err := w.dispatchLogRepo.Update(ctx, *dispatchLogID, updates); err != nil {
+	// WithoutCancel + timeout próprio: o update final chega aqui com o ctx da
+	// task frequentemente já estourado (envio consumiu os 120s) — era a causa
+	// dos dispatch_logs presos em 'queued' para sempre ("Failed to update
+	// dispatch log: context deadline exceeded"). O registro do desfecho DEVE
+	// completar mesmo com a task morta.
+	updCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := w.dispatchLogRepo.Update(updCtx, *dispatchLogID, updates); err != nil {
 		observability.LogAndCapture(w.logger, sentry.LevelError,
 			"Failed to update dispatch log", err,
 			map[string]string{"module": "message-worker", "operation": "dispatch-log-update"})

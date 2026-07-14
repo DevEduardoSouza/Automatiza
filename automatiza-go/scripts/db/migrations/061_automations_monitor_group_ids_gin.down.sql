@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_automations_monitor_group_ids_gin;
