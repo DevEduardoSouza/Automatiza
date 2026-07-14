@@ -228,6 +228,7 @@ func (m *mockWahaProvider) CreateSession(context.Context, whatsapp.CreateSession
 	return nil, nil
 }
 func (m *mockWahaProvider) DeleteSession(context.Context, string) error { return nil }
+func (m *mockWahaProvider) UnpairSession(context.Context, string) error { return nil }
 func (m *mockWahaProvider) GetQRCode(context.Context, string) (*whatsapp.QRCodeData, error) {
 	return nil, nil
 }
