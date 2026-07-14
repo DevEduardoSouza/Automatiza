@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1623,6 +1624,62 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 		}
 		if sent {
 			t.Error("stores=nil should default to [shopee] and skip ML links")
+		}
+	})
+
+	// Regressão (silviadomkt, 14/07): link de loja sem conversão (Amazon/
+	// Magalu/Shein/AliExpress) pegando carona num post Shopee era repassado
+	// no corpo com a comissão do canal de ORIGEM. Só ML era despido (#193).
+	t.Run("shopee link + amazon riding along → forwards with amazon stripped", func(t *testing.T) {
+		var previewText, plainText string
+		svc := newTestService(t, func(s *monitoringService) {
+			s.shopeeService = &mockShopeeService{
+				GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+					return &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff-ok"}, nil
+				},
+			}
+			s.waProvider = &mockWAProvider{
+				SendLinkCustomPreviewFn: func(_ context.Context, in whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+					previewText = in.Text
+					return &whatsapp.MessageResult{ID: "msg-1"}, nil
+				},
+				SendTextFn: func(_ context.Context, in whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+					plainText = in.Text
+					return &whatsapp.MessageResult{ID: "msg-1"}, nil
+				},
+			}
+		})
+
+		delayZero := 0
+		auto := &models.Automation{
+			ID:           "auto-1",
+			UserID:       "user-1",
+			Name:         "test",
+			Stores:       []string{"shopee"},
+			SendGroups:   []string{"dest@g.us"},
+			Status:       "active",
+			DelaySeconds: &delayZero,
+		}
+
+		body := "Oferta dupla!\nhttps://shopee.com.br/product-i.123.456\ne na Amazon: https://amzn.to/3xYzAbC"
+		err := svc.processAutomation(context.Background(), auto, &models.IncomingMessage{
+			InstanceName: "inst1",
+			RemoteJID:    "source@g.us",
+			Body:         body,
+		}, []string{"https://shopee.com.br/product-i.123.456", "https://amzn.to/3xYzAbC"})
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := previewText + plainText
+		if got == "" {
+			t.Fatal("expected the shopee message to be forwarded")
+		}
+		if strings.Contains(got, "amzn.to") {
+			t.Errorf("forwarded body must NOT carry the amazon link, got: %q", got)
+		}
+		if !strings.Contains(got, "https://s.shopee.com.br/aff-ok") {
+			t.Errorf("forwarded body must carry the shopee affiliate link, got: %q", got)
 		}
 	})
 }

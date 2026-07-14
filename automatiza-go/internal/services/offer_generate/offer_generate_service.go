@@ -256,15 +256,21 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		}
 	}
 
-	// 2. Categorize links by store
-	var shopeeLinks, mlLinks []string
+	// 2. Categorize links by store. otherStoreLinks are stores with no
+	// affiliate conversion (Amazon, Magalu, Shein, AliExpress) — relaying
+	// them forwards the source channel's commission, so they never enrich
+	// and block the raw relay below.
+	var shopeeLinks, mlLinks, otherStoreLinks []string
 	for _, link := range links {
 		if text.IsShopeeLink(link) {
 			shopeeLinks = append(shopeeLinks, link)
 		} else if text.IsMLLink(link) {
 			mlLinks = append(mlLinks, link)
+		} else if text.IsOtherStoreLink(link) {
+			otherStoreLinks = append(otherStoreLinks, link)
 		}
 	}
+	hadStoreLinks := len(shopeeLinks) > 0 || len(mlLinks) > 0 || len(otherStoreLinks) > 0
 
 	// 3. Filter by configured stores (fallback to user's active affiliate stores)
 	stores := auto.Stores
@@ -292,8 +298,22 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 	}
 
 	if len(shopeeLinks) == 0 && len(mlLinks) == 0 {
-		// A mensagem tem link, mas nenhum é de LOJA (Shopee/ML) — ex: convite
-		// de grupo, Instagram, site. Em vez de dropar, cai no relay: repassa a
+		// A mensagem TINHA link de loja, mas todos foram filtrados: loja fora
+		// do stores da automação (ex: ML desligado) ou loja sem conversão de
+		// afiliado (Amazon/Magalu/Shein/AliExpress). Repassar as-is aqui
+		// entregaria o link afiliado do canal de ORIGEM — dropa em vez de
+		// degradar pro relay. (Era exatamente por esse caminho que clientes
+		// "Shopee-only" repassavam produto de ML e Amazon.)
+		if hadStoreLinks {
+			s.logger.Info("Store links blocked by stores config — dropping message",
+				zap.String("automationID", auto.ID),
+				zap.Strings("stores", stores),
+				zap.Int("mlLinks", len(mlLinks)),
+				zap.Int("otherStoreLinks", len(otherStoreLinks)))
+			return nil
+		}
+		// A mensagem tem link, mas nenhum é de LOJA — ex: convite de grupo,
+		// Instagram, site. Em vez de dropar, cai no relay: repassa a
 		// original como veio pros destinos DESTA automação, igual ao caminho
 		// sem-link (ProcessIncomingMessage:139). Consistência do "gerar oferta
 		// repassa qualquer conteúdo": só link de loja é enriquecido, o resto é

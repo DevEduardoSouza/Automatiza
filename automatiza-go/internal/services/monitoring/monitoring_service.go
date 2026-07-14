@@ -266,10 +266,20 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	// strip them from the forwarded body below. The relay forwards msg.Body
 	// as-is (only swapping links we affiliated), so an ML link the source
 	// included would otherwise be repassed even with ML disabled.
-	var blockedMLLinks []string
+	var blockedStoreLinks []string
 	if !storeSet["mercadolivre"] {
-		blockedMLLinks = mlLinks
+		blockedStoreLinks = append(blockedStoreLinks, mlLinks...)
 		mlLinks = nil
+	}
+	// Stores without any affiliate conversion (Amazon, Magalu, Shein,
+	// AliExpress) are always blocked in monitor mode: a Shopee link keeps the
+	// relay alive and these ride along in the body carrying the SOURCE
+	// channel's commission. Pure posts of these stores never had a Shopee/ML
+	// link, so the store filter below already skips them.
+	for _, link := range links {
+		if text.IsOtherStoreLink(link) {
+			blockedStoreLinks = append(blockedStoreLinks, link)
+		}
 	}
 
 	if len(shopeeLinks) == 0 && len(mlLinks) == 0 {
@@ -452,12 +462,14 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			processedText = strings.ReplaceAll(processedText, orig, aff)
 		}
 
-		// 6b. Block ML relay: strip any ML links the source posted when this
-		// automation has mercadolivre disabled. Pure-ML messages were already
+		// 6b. Block non-enabled store relay: strip ML (when mercadolivre is
+		// disabled) and any non-convertible store link (Amazon/Magalu/Shein/
+		// AliExpress) the source posted. Pure store-only messages were already
 		// dropped by the store filter above; this covers mixed messages where a
-		// Shopee link keeps the relay alive but an ML link rode along in the body.
-		for _, mlLink := range blockedMLLinks {
-			processedText = strings.ReplaceAll(processedText, mlLink, "")
+		// Shopee link keeps the relay alive but another store's link rode along
+		// in the body.
+		for _, blocked := range blockedStoreLinks {
+			processedText = strings.ReplaceAll(processedText, blocked, "")
 		}
 	}
 
