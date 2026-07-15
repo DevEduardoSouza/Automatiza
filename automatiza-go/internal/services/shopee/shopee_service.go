@@ -58,6 +58,20 @@ type shopeeService struct {
 // clients), starving delivery for everyone.
 var ErrShopeeNoAPIAccess = errors.New("shopee: account has no Affiliate Open API Platform access (error 10035)")
 
+// ErrShopeeNoCredentials marca "o usuário não cadastrou credencial Shopee" —
+// um estado PERMANENTE até ele agir, distinto de "não consegui LER a credencial
+// agora" (timeout de Postgres, ctx cancelado no shutdown do worker). Os dois
+// colapsavam na mesma string, e quem repassa link cru quando a conversão é
+// impossível para sempre (offer_generate_service.go, caminho de cupom) acabava
+// repassando cru também num soluço de banco — vazando a comissão exatamente no
+// caso que o gate existe para impedir.
+//
+// A mensagem PRECISA conter "credentials not configured": monitoring_service.go
+// (isCredentialError) e process_list.go:850 casam por substring para pausar a
+// automação com erro acionável. Erro de leitura agora sai com outra mensagem, e
+// esses callers passam a tratá-lo como falha transitória — que é o correto.
+var ErrShopeeNoCredentials = errors.New("shopee credentials not configured")
+
 // noAPIAccessCooldown is how long Shopee calls are skipped for a user after a
 // 10035, so one client's missing API access stops hammering the worker.
 const noAPIAccessCooldown = 10 * time.Minute
@@ -314,7 +328,7 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 		return nil, fmt.Errorf("failed to get shopee credentials: %w", err)
 	}
 	if creds == nil {
-		return nil, fmt.Errorf("shopee credentials not configured")
+		return nil, ErrShopeeNoCredentials
 	}
 	appID, secret := getShopeeCredentials(creds)
 	if appID == "" || secret == "" {
@@ -667,10 +681,18 @@ func stripAffiliateAttribution(rawURL string) string {
 // generateNonProductAffiliateLink converts non-product Shopee URLs (coupons, campaigns)
 // into affiliate short links using the client's credentials via generateShortLink mutation.
 func (s *shopeeService) generateNonProductAffiliateLink(ctx context.Context, originalURL, expandedURL, userID string) (*models.ShopeeAffiliateLink, error) {
-	// Get affiliate credentials for this user
+	// Get affiliate credentials for this user.
+	//
+	// Falha de LEITURA e credencial AUSENTE são erros diferentes e precisam
+	// continuar diferentes: o caller do cupom repassa o link cru (sem comissão)
+	// quando a conversão é impossível para sempre, e um timeout de Postgres não
+	// é "para sempre" — colapsar os dois fazia um soluço de banco vazar comissão.
 	creds, err := s.affiliateRepo.GetByUserAndStore(ctx, userID, "shopee")
-	if err != nil || creds == nil {
-		return nil, fmt.Errorf("shopee credentials not configured")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load shopee credentials: %w", err)
+	}
+	if creds == nil {
+		return nil, ErrShopeeNoCredentials
 	}
 	appID, secret := getShopeeCredentials(creds)
 
@@ -808,10 +830,18 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		}
 	}
 
-	// Get affiliate credentials
+	// Get affiliate credentials.
+	//
+	// Falha de LEITURA sai com mensagem própria em vez de virar "credentials
+	// not configured": colapsados, um timeout de Postgres fazia
+	// process_list.go:850 PAUSAR a automação do usuário com um erro acionável
+	// falso ("recadastre App ID e Senha"). Agora só a ausência real casa lá.
 	creds, err := s.affiliateRepo.GetByUserAndStore(ctx, userID, "shopee")
-	if err != nil || creds == nil {
-		return nil, fmt.Errorf("shopee credentials not configured")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load shopee credentials: %w", err)
+	}
+	if creds == nil {
+		return nil, ErrShopeeNoCredentials
 	}
 	appID, secret := getShopeeCredentials(creds)
 
@@ -1005,10 +1035,18 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 		return nil, ErrShopeeNoAPIAccess
 	}
 
-	// Get affiliate credentials
+	// Get affiliate credentials.
+	//
+	// Falha de LEITURA sai com mensagem própria em vez de virar "credentials
+	// not configured": colapsados, um timeout de Postgres fazia
+	// process_list.go:850 PAUSAR a automação do usuário com um erro acionável
+	// falso ("recadastre App ID e Senha"). Agora só a ausência real casa lá.
 	creds, err := s.affiliateRepo.GetByUserAndStore(ctx, userID, "shopee")
-	if err != nil || creds == nil {
-		return nil, fmt.Errorf("shopee credentials not configured")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load shopee credentials: %w", err)
+	}
+	if creds == nil {
+		return nil, ErrShopeeNoCredentials
 	}
 	appID, secret := getShopeeCredentials(creds)
 

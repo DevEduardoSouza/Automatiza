@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/rand/v2"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -498,15 +500,16 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		// Link de cupom/campanha/voucher (ex. shopee.com.br/m/super-ofertas):
 		// não é página de produto, então não há o que enriquecer/gerar como
 		// oferta. A mensagem ainda é informativa (anúncio de cupom) e o cliente
-		// espera que chegue nos grupos destino — repassa como veio (relay) em
-		// vez de descartar silenciosamente. Gateamos pela URL *expandida* já
-		// conhecida como não-produto pra não relayar falhas transitórias de
-		// ExpandURL/parse de links de produto legítimos.
+		// espera que chegue nos grupos destino — repassa (relay) em vez de
+		// descartar silenciosamente, mas com os links reatribuídos ao dono da
+		// automação. Gateamos pela URL *expandida* já conhecida como não-produto
+		// pra não relayar falhas transitórias de ExpandURL/parse de links de
+		// produto legítimos.
 		if isNonProductShopeeURL(link) {
-			s.logger.Info("Shopee link is coupon/campaign (non-product), relaying original message",
+			s.logger.Info("Shopee link is coupon/campaign (non-product), converting links before relay",
 				zap.String("automationID", auto.ID),
 				zap.String("link", link))
-			return s.processAutomationRelay(ctx, auto, msg)
+			return s.relayWithConvertedShopeeLinks(ctx, auto, msg, shopeeLinks)
 		}
 
 		// Extract product IDs and get product details
@@ -1050,7 +1053,12 @@ func isNonProductShopeeURL(expandedURL string) bool {
 		strings.Contains(lower, "shopee.com.br/daily_discover") ||
 		strings.Contains(lower, "shopee.com.br/voucher") ||
 		strings.Contains(lower, "shopee.com.br/user/") ||
-		strings.Contains(lower, "shopee.com.br/oficial")
+		strings.Contains(lower, "shopee.com.br/oficial") ||
+		// Ressincronizado com a canônica (15/07): sem estes dois, coleção e
+		// shopeevip caíam no ExtractProductIDs, voltavam nil e a mensagem
+		// sumia sem log de descarte.
+		strings.Contains(lower, "shopee.com.br/collections/") ||
+		strings.Contains(lower, "shopee.com.br/shopeevip")
 }
 
 // buildSelfSendKey identifies an outgoing message hash we just sent so the
@@ -1326,6 +1334,82 @@ func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.Inc
 	}
 
 	return nil
+}
+
+// relayWithConvertedShopeeLinks repassa uma mensagem de cupom/campanha trocando
+// os links Shopee da FONTE pelos do dono da automação. Sem a troca, o link
+// repassado carrega o mmp_pid de quem postou no grupo monitorado e a Shopee
+// credita a comissão pra ELE — o cliente espalha a oferta nos grupos dele de
+// graça (medido 15/07: 22 cupons/dia × 164 grupos ≈ 3.6k envios numa conta só,
+// todos creditando um afiliado de fora da plataforma).
+//
+// Regra de falha espelha o monitoring (monitoring_service.go:342-359, :431-439),
+// que já resolveu esse mesmo problema no espelho: credencial inválida pausa;
+// 10035 (conta sem Open API — conversão impossível para sempre) repassa o
+// original, senão o cupom nunca mais sairia; qualquer outra falha (10030,
+// timeout) retém o repasse, porque enviar sem converter é trabalhar de graça.
+func (s *offerGenerateService) relayWithConvertedShopeeLinks(ctx context.Context, auto *models.Automation, msg *models.IncomingMessage, shopeeLinks []string) error {
+	canonicalKey := fmt.Sprintf("relay:%s", hashStr(msg.MessageID+":"+msg.RemoteJID))
+	body := msg.Body
+
+	// Substituir do link MAIS LONGO para o mais curto. ExtractLinks dedupa por
+	// string exata, então a mesma página pode entrar duas vezes — nua e com
+	// querystring ("/m/cupom" e "/m/cupom?mmp_pid=an_X"). Trocando a curta
+	// primeiro, o ReplaceAll casa DENTRO da longa e solda o mmp_pid da fonte no
+	// shortlink do dono ("s.shopee.com.br/AFF?mmp_pid=an_X"), enquanto a longa
+	// vira um no-op silencioso. Do maior para o menor, nenhum candidato é
+	// prefixo de um ainda não substituído. (Hoje todo link de cupom que chega é
+	// shortlink opaco sem query — 0/182 em 7 dias —, mas isso é propriedade da
+	// fonte, não uma garantia nossa.)
+	ordered := append([]string(nil), shopeeLinks...)
+	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
+
+	for _, orig := range ordered {
+		aff, err := s.shopeeService.GenerateAffiliateLink(ctx, orig, auto.UserID)
+		if err != nil {
+			if isCredentialError(err) {
+				s.pauseWithError(ctx, auto, "Credenciais Shopee inválidas - automação pausada")
+				return nil
+			}
+			// Impossível converter até o usuário agir (conta sem Open API =
+			// 10035, ou Shopee nunca configurada — 1 conta com offer_generate
+			// ativo em 15/07). Reter seria reter PARA SEMPRE e o grupo nunca
+			// mais veria um cupom, então o original passa: sem comissão, mas
+			// sem tirar a funcionalidade de quem já vivia assim.
+			//
+			// errors.Is, NUNCA substring do texto: "credentials not configured"
+			// também era o que saía de um timeout de Postgres, e aí um soluço de
+			// banco derrubava o gate e mandava o cupom cru pra todo mundo.
+			if errors.Is(err, shopee.ErrShopeeNoAPIAccess) ||
+				errors.Is(err, shopee.ErrShopeeNoCredentials) {
+				s.logger.Warn("Cannot convert coupon link (no Open API access or no credentials) — relaying as-is, commission goes to the source",
+					zap.String("automationID", auto.ID),
+					zap.String("userID", auto.UserID),
+					zap.String("link", orig),
+					zap.Error(err))
+				continue
+			}
+			s.logDispatch(ctx, auto, "", orig, "skipped",
+				fmt.Sprintf("link de afiliado indisponivel (%v) - repasse retido para nao perder comissao", err),
+				canonicalKey, "shopee")
+			s.logger.Warn("Coupon relay withheld — affiliate conversion failed",
+				zap.String("automationID", auto.ID),
+				zap.String("link", orig),
+				zap.Error(err))
+			return nil
+		}
+		if aff != nil && aff.AffiliateLink != "" {
+			body = strings.ReplaceAll(body, orig, aff.AffiliateLink)
+		}
+	}
+
+	// Cópia rasa: a MESMA msg é processada para automações de donos diferentes
+	// (ProcessIncomingMessage itera as automações que assistem o grupo-fonte),
+	// então o body convertido não pode vazar do dono A pro B por mutação
+	// compartilhada — cada um repassa com o próprio link.
+	relayMsg := *msg
+	relayMsg.Body = body
+	return s.processAutomationRelay(ctx, auto, &relayMsg)
 }
 
 // processAutomationRelay envia a mensagem original pra cada grupo destino
