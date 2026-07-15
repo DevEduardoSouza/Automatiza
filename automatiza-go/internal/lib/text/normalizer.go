@@ -22,12 +22,18 @@ var (
 	urlASCIIRunRegex = regexp.MustCompile(`https?://[!-~]+`)
 )
 
-// separateURLEmojiGlue insere um espaço entre uma URL e um caractere
+// SeparateURLEmojiGlue insere um espaço entre uma URL e um caractere
 // não-ASCII (emoji etc.) colado imediatamente após ela. Sem o espaço, alguns
 // clientes do WhatsApp incluem o emoji no trecho clicável e o link não abre
 // ("emojis nos links dando incompatibilidade"). Só mexe na fronteira
 // URL→não-ASCII; formatação ASCII (*_~) e texto normal ficam intactos.
-func separateURLEmojiGlue(s string) string {
+//
+// Exportada para o relay as-is (offer_generate.sendRelayMessage), que repassa
+// o corpo da fonte VERBATIM e por isso não pode usar o
+// NormalizeOutgoingWhatsAppText inteiro — colapsar linhas em branco e dar trim
+// por linha reescreveria a formatação do canal de origem. Aqui só a fronteira
+// URL→emoji é tocada, que é o que quebra o link.
+func SeparateURLEmojiGlue(s string) string {
 	locs := urlASCIIRunRegex.FindAllStringIndex(s, -1)
 	if len(locs) == 0 {
 		return s
@@ -72,7 +78,7 @@ func NormalizeOutgoingWhatsAppText(input string) string {
 	result = strings.Join(lines, "\n")
 
 	// 5. Separate emoji glued right after a URL (WhatsApp linkification)
-	result = separateURLEmojiGlue(result)
+	result = SeparateURLEmojiGlue(result)
 
 	// 6. Final trim
 	result = strings.TrimSpace(result)

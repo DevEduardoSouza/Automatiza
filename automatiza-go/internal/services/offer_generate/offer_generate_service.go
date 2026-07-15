@@ -1644,9 +1644,15 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		mentions = wamentions.Expand(ctx, s.waProvider, session, chatID, msg.Body)
 	}
 
+	// Emoji colado no fim da URL faz o WhatsApp engolir o emoji no trecho
+	// clicável e o link não abre. O relay repassa o corpo da fonte verbatim,
+	// então não passa pelo NormalizeOutgoingWhatsAppText (que reescreveria a
+	// formatação do canal); aplicamos só a separação da fronteira URL→emoji.
+	body := text.SeparateURLEmojiGlue(msg.Body)
+
 	// Sem mídia → texto puro
 	if !msg.HasMedia {
-		if strings.TrimSpace(msg.Body) == "" {
+		if strings.TrimSpace(body) == "" {
 			// Mensagem sem texto E sem mídia — provavelmente um evento
 			// sistema (reaction, edit, etc) que o WAHA encaminhou. Skipa.
 			return nil
@@ -1654,7 +1660,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		_, err := s.waProvider.SendText(ctx, whatsapp.SendTextInput{
 			SessionName: session,
 			ChatID:      chatID,
-			Text:        msg.Body,
+			Text:        body,
 			Mentions:    mentions,
 		})
 		return err
@@ -1686,7 +1692,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		input := whatsapp.SendImageInput{
 			SessionName: session,
 			ChatID:      chatID,
-			Caption:     msg.Body,
+			Caption:     body,
 			Mimetype:    mediaMime,
 			Mentions:    mentions,
 		}
@@ -1704,7 +1710,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		input := whatsapp.SendVideoInput{
 			SessionName: session,
 			ChatID:      chatID,
-			Caption:     msg.Body,
+			Caption:     body,
 			Mentions:    mentions,
 			// videoStreamable=true quando o relay já normalizou o vídeo
 			// (faststart) 1x antes do fan-out — evita o WAHA transcodificar
@@ -1745,7 +1751,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		input := whatsapp.SendDocumentInput{
 			SessionName: session,
 			ChatID:      chatID,
-			Caption:     msg.Body,
+			Caption:     body,
 			Mentions:    mentions,
 		}
 		if mediaB64 != "" {
@@ -1768,7 +1774,7 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 			input := whatsapp.SendImageInput{
 				SessionName: session,
 				ChatID:      chatID,
-				Caption:     msg.Body,
+				Caption:     body,
 				Mimetype:    mediaMime,
 				Mentions:    mentions,
 			}
@@ -1785,11 +1791,11 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		}
 		// Sticker/location/contact sem método dedicado: fallback pra texto se
 		// tiver Body, senão skipa com warning.
-		if strings.TrimSpace(msg.Body) != "" {
+		if strings.TrimSpace(body) != "" {
 			_, err := s.waProvider.SendText(ctx, whatsapp.SendTextInput{
 				SessionName: session,
 				ChatID:      chatID,
-				Text:        msg.Body,
+				Text:        body,
 				Mentions:    mentions,
 			})
 			return err
