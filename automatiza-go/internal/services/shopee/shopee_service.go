@@ -95,6 +95,19 @@ func isNoAPIAccessMessage(msg string) bool {
 		strings.Contains(msg, "do not have access to the Shopee Affiliate Open API")
 }
 
+// isInvalidURLMessage reconhece a Shopee recusando a própria URL que mandamos
+// (11001 "Params Error : invalid url"). É a API dizendo que aquela página não é
+// linkável — repetir amanhã dá o mesmo erro. Estrutural, não transitório: quem
+// retém repasse esperando melhora só engole a mensagem para sempre. Visto em
+// produção com shope.ee/error_page (link já morto na origem).
+//
+// Exige os DOIS termos: 11001 sozinho é "Params Error" genérico e pode vir de
+// outra causa que não seja a URL.
+func isInvalidURLMessage(msg string) bool {
+	lower := strings.ToLower(msg)
+	return strings.Contains(lower, "11001") && strings.Contains(lower, "invalid url")
+}
+
 func shopeeNoAPIAccessKey(userID string) string {
 	return "shopee:noapi:" + userID
 }
@@ -298,6 +311,16 @@ func (s *shopeeService) shopeeGraphQL(ctx context.Context, appID, secret, payloa
 				zap.String("external_service", "shopee"),
 				zap.String("error", errMsg))
 			return nil, fmt.Errorf("%w: %s", ErrShopeeNoAPIAccess, errMsg)
+		}
+
+		// A Shopee recusou a URL (11001): conteúdo da fonte, não bug nosso —
+		// devolve o sentinela pro caller repassar em vez de reter, e não
+		// polui o Sentry.
+		if isInvalidURLMessage(errMsg) {
+			s.logger.Warn("Shopee rejected the URL as invalid (nothing to convert, not sent to Sentry)",
+				zap.String("external_service", "shopee"),
+				zap.String("error", errMsg))
+			return nil, fmt.Errorf("%w: %s", ErrShopeeUnconvertibleURL, errMsg)
 		}
 
 		// "Invalid Signature" / "invalid value" are user-config issues (wrong credentials),

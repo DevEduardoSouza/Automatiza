@@ -1839,6 +1839,46 @@ func TestProcessAutomation_CommissionGate(t *testing.T) {
 		}
 	})
 
+	// Erro ESTRUTURAL não é falha do momento: reter só apaga a mensagem. Medido
+	// em 15/07 nos links reais que retinham o espelho — 7 de /cart em 24h (o
+	// item do "adicionar ao carrinho" não sobrevive à expansão) e 1 URL que a
+	// própria Shopee recusa (11001). Nada disso melhora amanhã, e a comissão
+	// desses links já ia pra fonte de qualquer jeito: repassar entrega a
+	// mensagem, reter não protege nada.
+	t.Run("nothing to convert (cart/invalid url) → relays instead of withholding", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			err  error
+		}{
+			{name: "carrinho", err: fmt.Errorf("%w: invalid shopee URL after expansion: could not extract product IDs from URL", shopee.ErrShopeeUnconvertibleURL)},
+			{name: "shopee recusa a url (11001)", err: fmt.Errorf("%w: shopee API error: error [11001]: Params Error : invalid url", shopee.ErrShopeeUnconvertibleURL)},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var sent bool
+				svc := newTestService(t, func(s *monitoringService) {
+					s.shopeeService = &mockShopeeService{
+						GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+							return nil, tc.err
+						},
+					}
+					s.waProvider = &mockWAProvider{
+						SendTextFn: func(_ context.Context, _ whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+							sent = true
+							return &whatsapp.MessageResult{ID: "msg-1"}, nil
+						},
+					}
+				})
+
+				if err := svc.processAutomation(context.Background(), auto(), msg, links); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if !sent {
+					t.Error("relay must go out when there is nothing to convert — withholding here just swallows the message and protects no commission")
+				}
+			})
+		}
+	})
+
 	t.Run("credentials not configured → pauses automation, nothing sent", func(t *testing.T) {
 		var sent bool
 		var paused bool

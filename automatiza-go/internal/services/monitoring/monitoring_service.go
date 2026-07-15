@@ -347,6 +347,18 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 						zap.String("automationID", automation.ID),
 						zap.String("userID", automation.UserID),
 						zap.String("originalLink", link))
+				} else if errors.Is(err, shopee.ErrShopeeUnconvertibleURL) {
+					// Não há o que converter (carrinho — o item não sobrevive à
+					// expansão; URL que a própria Shopee recusa). Reter aqui não
+					// protege comissão nenhuma: ela já ia pra fonte de qualquer
+					// jeito, e o único efeito é o espelho engolir a mensagem em
+					// silêncio. Medido em 15/07: 7 links de /cart em 24h retinham
+					// o repasse de clientes que nunca souberam por quê.
+					s.logger.Warn("Shopee link has nothing to convert (cart/invalid) — relaying original link",
+						zap.String("automationID", automation.ID),
+						zap.String("userID", automation.UserID),
+						zap.String("originalLink", link),
+						zap.Error(err))
 				} else {
 					// Qualquer outra falha (rate limit, timeout, produto fora do
 					// catálogo): reter o repasse. Enviar com o link ORIGINAL
