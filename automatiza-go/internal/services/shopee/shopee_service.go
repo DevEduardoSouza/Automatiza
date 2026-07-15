@@ -640,6 +640,52 @@ func shouldRelayOwnShortLink(productURL, expandedURL, appID string) bool {
 		strings.Contains(expandedURL, shopeeSubIDDefault)
 }
 
+// isShopeeHost reconhece os domínios Shopee, incluindo os encurtadores.
+// shope.ee é o domínio global — estava fora das listas de padrões, então link
+// nenhum nele era convertido.
+//
+// Compara o HOST, não substring da URL: "shopee.com.br" aparece no path de
+// qualquer URL que alguém queira forjar (http://evil.com/s.shopee.com.br/x), e
+// tratar isso como Shopee mandaria a URL de terceiro pro generateShortLink.
+func isShopeeHost(host string) bool {
+	h := strings.ToLower(host)
+	for _, d := range []string{"shopee.com.br", "shope.ee", "shp.ee"} {
+		if h == d || strings.HasSuffix(h, "."+d) {
+			return true
+		}
+	}
+	return false
+}
+
+// isConvertibleShopeeURL decide se uma URL Shopee SEM product ID ainda pode
+// virar link de afiliado do usuário via generateShortLink.
+//
+// Inverte a lógica antiga: em vez de uma allowlist de prefixos conhecidos
+// (isNonProductShopeeURL), que só reconhecia o que alguém já tinha catalogado,
+// aceita tudo do domínio e exclui o que comprovadamente não funciona. A
+// allowlist tinha buracos que custavam caro: shopee.com.br/<nome-da-loja> não
+// casava em nenhum prefixo (não tem um), então o espelho RETINHA o repasse
+// inteiro (15 msgs/24h em 12 usuários, medido 15/07) e o gerar-oferta
+// repassava o link cru — comissão pro afiliado da fonte. Todo formato novo que
+// a Shopee lançar cairia no mesmo buraco.
+//
+// Validado 15/07 contra a API real com a credencial de um usuário: perfil de
+// loja, /m/, /user/voucher-wallet, /collections/, /shopeevip, /search e /shop
+// TODOS retornam shortlink atribuído ao caller (utm_source=an_<app_id> +
+// sub_id). Não há motivo para catalogar prefixo.
+//
+// /cart continua fora: o item do link "adicionar ao carrinho" não sobrevive à
+// expansão, então o link regenerado entregaria um carrinho vazio — converter
+// ali dá um link válido e inútil, que é pior que não converter.
+func isConvertibleShopeeURL(expandedURL string) bool {
+	u, err := url.Parse(expandedURL)
+	if err != nil || !isShopeeHost(u.Hostname()) {
+		return false
+	}
+	path := strings.ToLower(u.Path)
+	return path != "/cart" && !strings.HasPrefix(path, "/cart/")
+}
+
 // isNonProductShopeeURL detects Shopee URLs that are not product pages
 // (e.g., coupon pages, campaign pages, voucher wallets, store profiles)
 // and must be regenerated through generateShortLink with the user's credentials
@@ -800,8 +846,9 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 			expandedURL = expanded
 			shopID, itemID, err = s.ExtractProductIDs(expanded)
 			if err != nil {
-				// Non-product pages (coupons, campaigns) — convert via generateShortLink
-				if isNonProductShopeeURL(expanded) {
+				// Sem product ID: cupom, campanha, perfil de loja, busca...
+				// tudo do domínio converte via generateShortLink (só /cart não).
+				if isConvertibleShopeeURL(expanded) {
 					return s.generateNonProductAffiliateLink(ctx, productURL, expanded, userID)
 				}
 				return nil, fmt.Errorf("%w: invalid shopee URL after expansion: %w", ErrShopeeUnconvertibleURL, err)
@@ -809,11 +856,11 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 			s.logger.Info("Short URL expanded for affiliate link",
 				zap.String("original", productURL),
 				zap.String("expanded", expanded))
-		} else if isNonProductShopeeURL(productURL) {
+		} else if isConvertibleShopeeURL(productURL) {
 			// Página não-produto postada como URL LONGA direta (cupom,
-			// coleção, campanha) — mesmo tratamento do caminho expandido;
-			// antes caía em "invalid shopee URL" e o espelho retinha o
-			// repasse à toa.
+			// coleção, campanha, perfil de loja) — mesmo tratamento do caminho
+			// expandido; antes caía em "invalid shopee URL" e o espelho retinha
+			// o repasse à toa.
 			return s.generateNonProductAffiliateLink(ctx, productURL, productURL, userID)
 		} else {
 			return nil, fmt.Errorf("%w: invalid shopee URL: %w", ErrShopeeUnconvertibleURL, err)

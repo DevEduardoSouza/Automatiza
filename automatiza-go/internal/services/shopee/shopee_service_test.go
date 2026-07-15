@@ -526,6 +526,58 @@ func TestIsNonProductShopeeURL(t *testing.T) {
 	}
 }
 
+// isConvertibleShopeeURL substitui a allowlist de prefixos na resolução do link
+// de afiliado: tudo do domínio converte, menos /cart. Os casos "want: true" que
+// a lista antiga NÃO cobria são o ponto — cada um custou entrega ou comissão em
+// produção. Todos validados contra a API real em 15/07 (retornam shortlink
+// atribuído ao caller com sub_id).
+func TestIsConvertibleShopeeURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want bool
+	}{
+		// O buraco que reteve o repasse de 12 usuários (15 msgs/24h) e fez o
+		// gerar-oferta repassar link cru: perfil de loja não tem prefixo.
+		{name: "perfil de loja (o buraco da allowlist)", url: "https://shopee.com.br/koksara.br?mmp_pid=an_123", want: true},
+		{name: "perfil de loja com hifen", url: "https://shopee.com.br/casa-bonita-oficial", want: true},
+		// shope.ee: domínio global, fora de TODAS as listas antigas.
+		{name: "shope.ee (dominio global)", url: "https://shope.ee/9AbCdEf", want: true},
+		{name: "shp.ee", url: "https://shp.ee/abc123", want: true},
+		// Padrões que a lista antiga já cobria continuam valendo.
+		{name: "cupom /m/", url: "https://shopee.com.br/m/cupom-de-desconto?mmp_pid=an_123", want: true},
+		{name: "voucher wallet", url: "https://shopee.com.br/user/voucher-wallet", want: true},
+		{name: "collections", url: "https://shopee.com.br/collections/21253338", want: true},
+		{name: "shopeevip", url: "https://shopee.com.br/shopeevip?smtt=0.1", want: true},
+		// Busca: a lista antiga dizia false e o link ia cru; converte.
+		{name: "busca", url: "https://shopee.com.br/search?keyword=fone", want: true},
+		{name: "case insensitive", url: "https://Shopee.com.br/Koksara.BR", want: true},
+		// /cart continua fora: o item não sobrevive à expansão e o link
+		// regenerado entregaria um carrinho vazio.
+		{name: "carrinho fica fora", url: "https://shopee.com.br/cart?mmp_pid=an_123", want: false},
+		{name: "carrinho case insensitive", url: "https://shopee.com.br/CART", want: false},
+		// Fora do domínio: não é problema nosso de conversão.
+		{name: "outra loja", url: "https://mercadolivre.com.br/produto", want: false},
+		{name: "amazon", url: "https://amzn.to/xyz", want: false},
+		{name: "string vazia", url: "", want: false},
+		// Compara HOST, não substring: "shopee.com.br" no path de um domínio
+		// alheio não faz dele Shopee — senão bastaria forjar a URL para
+		// empurrar link de terceiro pro generateShortLink.
+		{name: "dominio alheio com shopee no path", url: "https://evil.com/s.shopee.com.br/bad", want: false},
+		{name: "dominio alheio com shopee no subpath", url: "http://127.0.0.1:8080/shopee.com.br/x", want: false},
+		{name: "sufixo enganoso", url: "https://naoshopee.com.br/m/cupom", want: false},
+		{name: "subdominio legitimo", url: "https://br.shopee.com.br/m/cupom", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isConvertibleShopeeURL(tt.url); got != tt.want {
+				t.Errorf("isConvertibleShopeeURL(%q) = %v, want %v", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Tests: parseDiscount
 // ---------------------------------------------------------------------------
