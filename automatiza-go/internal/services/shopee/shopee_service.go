@@ -72,6 +72,19 @@ var ErrShopeeNoAPIAccess = errors.New("shopee: account has no Affiliate Open API
 // esses callers passam a tratá-lo como falha transitória — que é o correto.
 var ErrShopeeNoCredentials = errors.New("shopee credentials not configured")
 
+// ErrShopeeUnconvertibleURL marca uma URL do domínio Shopee que não é página de
+// produto (sem shopID/itemID) e também não casa nos padrões que o
+// generateShortLink cobre — na prática, perfil de loja no formato
+// shopee.com.br/<nome-da-loja>, que não tem prefixo pra reconhecer. É um estado
+// ESTRUTURAL: repetir a chamada amanhã dá o mesmo erro.
+//
+// Existe para o caller distinguir "não converteu AGORA" (10030, timeout: vale
+// reter e tentar depois) de "não há o que converter" (reter só perderia a
+// mensagem para sempre). Medido em 15/07: um aviso de cupom da isaa_deoliveira
+// trazia o cupom + o link da loja parceira; o segundo caía aqui e retinha o
+// relay inteiro — 164 grupos ficaram sem o cupom.
+var ErrShopeeUnconvertibleURL = errors.New("shopee: URL is not a product page and has no convertible pattern")
+
 // noAPIAccessCooldown is how long Shopee calls are skipped for a user after a
 // 10035, so one client's missing API access stops hammering the worker.
 const noAPIAccessCooldown = 10 * time.Minute
@@ -791,7 +804,7 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 				if isNonProductShopeeURL(expanded) {
 					return s.generateNonProductAffiliateLink(ctx, productURL, expanded, userID)
 				}
-				return nil, fmt.Errorf("invalid shopee URL after expansion: %w", err)
+				return nil, fmt.Errorf("%w: invalid shopee URL after expansion: %w", ErrShopeeUnconvertibleURL, err)
 			}
 			s.logger.Info("Short URL expanded for affiliate link",
 				zap.String("original", productURL),
@@ -803,7 +816,7 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 			// repasse à toa.
 			return s.generateNonProductAffiliateLink(ctx, productURL, productURL, userID)
 		} else {
-			return nil, fmt.Errorf("invalid shopee URL: %w", err)
+			return nil, fmt.Errorf("%w: invalid shopee URL: %w", ErrShopeeUnconvertibleURL, err)
 		}
 	}
 

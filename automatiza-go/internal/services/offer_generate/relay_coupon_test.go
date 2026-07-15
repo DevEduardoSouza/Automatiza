@@ -28,6 +28,9 @@ type couponFakeShopee struct {
 	// affByOrig mapeia link original -> link de afiliado, para os casos com
 	// mais de um link. Se ausente, cai em affLink.
 	affByOrig map[string]string
+	// errByOrig falha só links específicos (mensagem mista: cupom converte,
+	// página de loja não tem o que converter).
+	errByOrig map[string]error
 
 	gotUserIDs []string
 	gotOrigins []string
@@ -46,6 +49,11 @@ func (f *couponFakeShopee) ExtractProductIDs(_ string) (int64, int64, error) {
 func (f *couponFakeShopee) GenerateAffiliateLink(_ context.Context, productURL, userID string) (*models.ShopeeAffiliateLink, error) {
 	f.gotUserIDs = append(f.gotUserIDs, userID)
 	f.gotOrigins = append(f.gotOrigins, productURL)
+	if f.errByOrig != nil {
+		if e, ok := f.errByOrig[productURL]; ok {
+			return nil, e
+		}
+	}
 	if f.affErr != nil {
 		return nil, f.affErr
 	}
@@ -262,6 +270,49 @@ func TestProcessAutomation_ShopeeCouponLink_PrefixCollisionDoesNotWeldSourceTrac
 	}
 	if !strings.Contains(sent[0].Text, affF) {
 		t.Errorf("o link longo não foi convertido (ReplaceAll virou no-op).\n got: %q", sent[0].Text)
+	}
+}
+
+// Caso REAL de produção (isaa_deoliveira, 15/07, capturado 3min após o deploy):
+// o aviso de cupom trazia o cupom + o link da loja parceira
+// (s.shopee.com.br/9fJJCg9IHD -> shopee.com.br/koksara.br). Perfil de loja não
+// tem product ID nem prefixo reconhecível, então GenerateAffiliateLink devolve
+// ErrShopeeUnconvertibleURL — e a primeira versão do gate retinha a mensagem
+// INTEIRA, tirando o cupom de 164 grupos. Erro estrutural não pode reter: o
+// cupom converte, o link sem-conversão segue como veio, e a mensagem SAI.
+func TestProcessAutomation_ShopeeCouponLink_StorePageDoesNotWithholdWholeMessage(t *testing.T) {
+	const (
+		cupom     = "https://s.shopee.com.br/CUPOM"
+		lojaLink  = "https://s.shopee.com.br/9fJJCg9IHD"
+		affCupom  = "https://s.shopee.com.br/AFFcupom"
+		unconvErr = "could not extract product IDs from URL"
+	)
+	var sent []whatsapp.SendTextInput
+	sh := &couponFakeShopee{
+		expanded:  couponExpandedNP,
+		affByOrig: map[string]string{cupom: affCupom},
+		// só o link da loja falha, como no caso real
+		errByOrig: map[string]error{
+			lojaLink: fmt.Errorf("%w: invalid shopee URL after expansion: %s",
+				shopee.ErrShopeeUnconvertibleURL, unconvErr),
+		},
+	}
+	svc := newCouponSvc(sh, &sent)
+
+	msg := newCouponMsg()
+	msg.Body = "🎟 CUPOM: " + cupom + "\n🏪 Loja: " + lojaLink
+
+	if err := svc.processAutomation(context.Background(), newCouponAutomation(), msg, []string{cupom, lojaLink}); err != nil {
+		t.Fatalf("processAutomation retornou erro: %v", err)
+	}
+	if len(sent) != 1 {
+		t.Fatalf("esperado 1 envio, obtido %d — link sem conversão possível reteve a mensagem inteira e o cupom não chegou", len(sent))
+	}
+	if !strings.Contains(sent[0].Text, affCupom) {
+		t.Errorf("o cupom deveria ter sido convertido mesmo com o outro link falhando.\n got: %q", sent[0].Text)
+	}
+	if !strings.Contains(sent[0].Text, lojaLink) {
+		t.Errorf("o link sem conversão possível deveria seguir como veio.\n got: %q", sent[0].Text)
 	}
 }
 

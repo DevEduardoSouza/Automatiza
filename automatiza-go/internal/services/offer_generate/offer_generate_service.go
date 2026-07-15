@@ -1389,6 +1389,19 @@ func (s *offerGenerateService) relayWithConvertedShopeeLinks(ctx context.Context
 					zap.Error(err))
 				continue
 			}
+			// Sem o que converter (perfil de loja shopee.com.br/<loja>, carrinho):
+			// erro ESTRUTURAL, não falha do momento. Reter aqui não protege
+			// comissão nenhuma — só apaga a mensagem para sempre. Um aviso de
+			// cupom costuma trazer o cupom E o link da loja parceira; reter o
+			// conjunto por causa do segundo tirou o cupom de 164 grupos da
+			// isaa_deoliveira em 15/07. O cupom converte, este segue como veio.
+			if errors.Is(err, shopee.ErrShopeeUnconvertibleURL) {
+				s.logger.Warn("Shopee link has nothing to convert (store page/cart) — relaying it as-is, other links still converted",
+					zap.String("automationID", auto.ID),
+					zap.String("link", orig),
+					zap.Error(err))
+				continue
+			}
 			s.logDispatch(ctx, auto, "", orig, "skipped",
 				fmt.Sprintf("link de afiliado indisponivel (%v) - repasse retido para nao perder comissao", err),
 				canonicalKey, "shopee")
