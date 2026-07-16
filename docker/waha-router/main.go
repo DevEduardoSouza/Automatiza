@@ -1,13 +1,13 @@
 // waha-router — thin reverse proxy in front of one or more WAHA instances.
 //
 // Purpose:
-//   1) STRUCTURAL ANTI-DESTRUCTION: block DELETE /api/sessions/{s} and
-//      POST /api/sessions/{s}/logout for a PAIRED session (me != null) unless the
-//      caller sends header `X-Confirm-Unpair: true`. This stops the backend from
-//      irreversibly unpairing real numbers, even before the backend code is fixed.
-//   2) SHARDING: route each request to the WAHA instance that owns the session;
-//      merge GET /api/sessions across instances; send new-session creation to the
-//      least-loaded instance under the cap.
+//  1. STRUCTURAL ANTI-DESTRUCTION: block DELETE /api/sessions/{s} and
+//     POST /api/sessions/{s}/logout for a PAIRED session (me != null) unless the
+//     caller sends header `X-Confirm-Unpair: true`. This stops the backend from
+//     irreversibly unpairing real numbers, even before the backend code is fixed.
+//  2. SHARDING: route each request to the WAHA instance that owns the session;
+//     merge GET /api/sessions across instances; send new-session creation to the
+//     least-loaded instance under the cap.
 //
 // Transparent by default: anything not specially handled is proxied verbatim to
 // the owning upstream (or the primary), so the blast radius of a bug is minimal.
@@ -236,32 +236,99 @@ func loadUpstreams() {
 
 func primary() *Upstream { return upstreams[0] }
 
+// statusOf extracts a session's WAHA status ("WORKING", "FAILED", "STARTING",
+// "SCAN_QR_CODE", "STOPPED", ...).
+func statusOf(s map[string]interface{}) string {
+	st, _ := s["status"].(string)
+	return st
+}
+
+// fetchUptime returns the shard's uptime in ms via GET /api/server/status, or 0
+// on any error. Best-effort: the score never depends on it.
+func fetchUptime(up *Upstream) float64 {
+	req, _ := http.NewRequest("GET", up.URL.String()+"/api/server/status", nil)
+	req.Header.Set("X-Api-Key", apiKey)
+	resp, err := httpc.Do(req)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var m map[string]interface{}
+	if json.Unmarshal(body, &m) != nil {
+		return 0
+	}
+	if u, ok := m["uptime"].(float64); ok {
+		return u
+	}
+	return 0
+}
+
+// refresh polls every upstream for its session list, rebuilding the
+// session->owner and owner->count maps (unchanged semantics) AND a richer
+// per-shard health snapshot (latency, availability, session-state breakdown,
+// uptime, request rate) consumed by the scorer and /router/metrics.
 func refresh() {
 	owner := map[string]string{}
 	count := map[string]int{}
+	stats := map[string]ShardHealth{}
+	now := time.Now()
+	rates := requestRates(now)
+
 	for _, up := range upstreams {
+		h := ShardHealth{Name: up.Name, RequestRPS: rates[up.Name]}
+
 		req, _ := http.NewRequest("GET", up.URL.String()+"/api/sessions?all=true", nil)
 		req.Header.Set("X-Api-Key", apiKey)
+		start := time.Now()
 		resp, err := httpc.Do(req)
+		h.LatencyMs = float64(time.Since(start).Milliseconds())
 		if err != nil {
 			log.Printf("refresh %s failed: %v", up.Name, err)
+			h.Available = false
+			stats[up.Name] = h
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		var arr []map[string]interface{}
 		if json.Unmarshal(body, &arr) != nil {
+			h.Available = false
+			stats[up.Name] = h
 			continue
 		}
+		h.Available = true
+		h.Total = len(arr)
 		count[up.Name] = len(arr)
 		for _, s := range arr {
 			if n, ok := s["name"].(string); ok {
 				owner[n] = up.Name
 			}
+			switch strings.ToUpper(statusOf(s)) {
+			case "WORKING":
+				h.Connected++
+			case "FAILED":
+				h.Failed++
+			case "STARTING":
+				h.Starting++
+			case "SCAN_QR_CODE":
+				h.Reconnecting++
+			case "STOPPED":
+				h.Stopped++
+			}
 		}
+		h.UptimeMs = fetchUptime(up)
+		stats[up.Name] = h
 	}
+
+	// Publish the health snapshot every cycle so scoring/failover always see the
+	// latest availability, even during a total outage.
+	statsMu.Lock()
+	shardStats = stats
+	statsMu.Unlock()
+
 	if len(owner) == 0 && len(count) == 0 {
-		return // all upstreams unreachable: keep the previous map
+		return // all upstreams unreachable: keep the previous owner/count map
 	}
 	mu.Lock()
 	sessOwner, sessCount = owner, count
@@ -289,22 +356,29 @@ func ownerOf(name string) *Upstream {
 	return primary()
 }
 
+// pickForCreate chooses the healthiest shard for a NEW session using the
+// multi-factor health score (memory, CPU, connected sessions, errors, churn,
+// latency, activity, capacity). It NEVER moves existing sessions — it only
+// decides placement. Saturated/unavailable shards are skipped; if every shard
+// is saturated (capacity emergency) it still places on the least-loaded one so a
+// pairing is never refused, and logs it for alerting.
 func pickForCreate() *Upstream {
-	mu.RLock()
-	defer mu.RUnlock()
-	var best *Upstream
-	bestN := 1 << 30
-	for _, up := range upstreams {
-		c := sessCount[up.Name]
-		if c < capN && c < bestN {
-			bestN = c
-			best = up
-		}
-	}
+	best, emergency := selectBest(snapshot(time.Now()))
 	if best == nil {
+		log.Printf("CREATE-PICK no shard under cap/available -> primary %s", primary().Name)
 		return primary()
 	}
-	return best
+	if emergency {
+		log.Printf("CREATE-PICK CRIT all shards saturated; least-loaded=%s score=%.3f mem=%.0f util=%.0f%%",
+			best.Name, best.Score, best.MemPct, best.utilPct())
+	} else {
+		log.Printf("CREATE-PICK shard=%s score=%.3f connected=%d mem=%.0f util=%.0f%% rps=%.1f",
+			best.Name, best.Score, best.Connected, best.MemPct, best.utilPct(), best.RequestRPS)
+	}
+	if up := byName[best.Name]; up != nil {
+		return up
+	}
+	return primary()
 }
 
 // isPaired reports whether the session has a linked device (me != null).
@@ -377,6 +451,16 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 		return
 	}
+	// GET /router/metrics -> per-shard health snapshot (observability + alerting).
+	if path == "/router/metrics" && r.Method == "GET" {
+		handleMetrics(w, r)
+		return
+	}
+	// POST /router/shard-metrics -> ingest pushed mem/CPU from the sentinel.
+	if path == "/router/shard-metrics" && r.Method == "POST" {
+		handleIngest(w, r)
+		return
+	}
 
 	// GET /api/sessions (list) -> merge across instances
 	if (path == "/api/sessions" || path == "/api/sessions/") && r.Method == "GET" {
@@ -387,7 +471,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	// with a round-robin outbound proxy injected for the new pairing.
 	if path == "/api/sessions" && r.Method == "POST" {
 		injectProxy(r)
-		pickForCreate().Proxy.ServeHTTP(w, r)
+		serveVia(pickForCreate(), w, r)
 		return
 	}
 
@@ -423,15 +507,15 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`{"error":"blocked by waha-router: refusing to unpair a paired session without X-Confirm-Unpair:true","session":"` + sessName + `"}`))
 			return
 		}
-		up.Proxy.ServeHTTP(w, r)
+		serveVia(up, w, r)
 		return
 	}
 
 	// default: route to the session's owner, or primary
 	if sessName != "" {
-		ownerOf(sessName).Proxy.ServeHTTP(w, r)
+		serveVia(ownerOf(sessName), w, r)
 	} else {
-		primary().Proxy.ServeHTTP(w, r)
+		serveVia(primary(), w, r)
 	}
 }
 
@@ -444,15 +528,19 @@ func main() {
 	}
 	loadUpstreams()
 	loadProxies()
+	initHealth() // loads Config + wires health scoring (must follow loadUpstreams)
+	if cfg.PollTimeout > 0 {
+		httpc.Timeout = cfg.PollTimeout
+	}
 	refresh()
 	go func() {
 		for {
-			time.Sleep(30 * time.Second)
+			time.Sleep(cfg.RefreshInterval)
 			refresh()
 		}
 	}()
 	http.HandleFunc("/", handler)
-	log.Printf("waha-router on :3000 upstreams=%d cap=%d", len(upstreams), capN)
+	log.Printf("waha-router on :3000 upstreams=%d cap=%d refresh=%s", len(upstreams), capN, cfg.RefreshInterval)
 	srv := &http.Server{Addr: ":3000", ReadHeaderTimeout: 20 * time.Second}
 	log.Fatal(srv.ListenAndServe())
 }

@@ -255,7 +255,10 @@ jobs:
           # QR-fix path resolver + anti-unpair guard) so the build below rebuilds it.
           ssh vps 'mkdir -p /opt/automatiza/docker/waha-router'
           scp docker/docker-compose.prod.yml vps:/opt/automatiza/docker/docker-compose.yml
-          scp docker/waha-router/main.go \
+          # Ship ALL router .go sources (main.go + health.go + metrics.go + tests)
+          # plus go.mod/Dockerfile. The Dockerfile does `COPY *.go .` and builds the
+          # package, so every source file must be present on the VPS.
+          scp docker/waha-router/*.go \
             docker/waha-router/go.mod \
             docker/waha-router/Dockerfile \
             vps:/opt/automatiza/docker/waha-router/

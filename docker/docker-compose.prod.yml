@@ -244,6 +244,20 @@ services:
       WAHA_UPSTREAMS: "waha-1=http://waha:3000,waha-2=http://waha-2:3000"
       WAHA_API_KEY: ${WAHA_API_KEY}
       WAHA_CAP: "367"
+      # ---- Intelligent new-session routing (health-score based) ----------------
+      # New sessions go to the HEALTHIEST non-saturated shard by a multi-factor
+      # score (memory, CPU, connected sessions, errors, churn, latency, activity,
+      # capacity). Existing sessions are NEVER moved. Adding a shard = append to
+      # WAHA_UPSTREAMS + a container; nothing else. All knobs are optional (sane
+      # defaults in waha-router/health.go) and tunable here without code changes.
+      # Saturation: a shard at/above EITHER threshold stops taking NEW sessions.
+      ROUTER_SATURATION_MEM_PCT: "90"  # memory % => saturated (needs sentinel push)
+      ROUTER_SATURATION_UTIL_PCT: "95" # sessions/cap % => saturated
+      ROUTER_METRIC_TTL_SEC: "45"      # freshness window for pushed mem/CPU
+      # Optional score weights / normalization (defaults shown; see health.go):
+      # ROUTER_W_MEMORY=3 ROUTER_W_CPU=1.5 ROUTER_W_CAPACITY=2 ROUTER_W_ERRORS=1.5
+      # ROUTER_W_CHURN=1 ROUTER_W_LATENCY=1 ROUTER_W_ACTIVITY=1
+      # ROUTER_LATENCY_BUDGET_MS=2000 ROUTER_ACTIVITY_REF_RPS=20 ROUTER_REFRESH_SEC=30
       # Anti-ban (Layer 4A): route every NEW session pairing through a rotating
       # residential/ISP proxy so sessions never egress on the bare Hetzner
       # datacenter IP (which WhatsApp distrusts). Provide a comma-separated pool
