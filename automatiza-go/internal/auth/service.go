@@ -872,10 +872,21 @@ func (s *AuthService) incrementFailedAttempts(ctx context.Context, userID string
 		return err
 	}
 
-	newCount := creds.FailedAttempts + 1
-	updates := map[string]any{
-		"failed_attempts": newCount,
+	// SELF-HEAL: if a previous lock has already expired, start a fresh strike window
+	// instead of letting failed_attempts keep climbing and re-locking the account on
+	// the very next wrong attempt. Without this, one bad attempt after each expired
+	// 30-min window immediately re-locks for another 30 min (observed failed_attempts
+	// climbing to 13+), turning a transient typo into a de-facto permanent lockout that
+	// only a password reset clears. Also mitigates account-lockout-by-email DoS.
+	base := creds.FailedAttempts
+	updates := map[string]any{}
+	if creds.LockedUntil != nil && time.Now().After(*creds.LockedUntil) {
+		base = 0
+		updates["locked_until"] = nil
 	}
+
+	newCount := base + 1
+	updates["failed_attempts"] = newCount
 
 	// Lock account after 5 failures
 	if newCount >= 5 {
