@@ -3,13 +3,15 @@
 // bot repetidamente acumula pontuação; ao cruzar um limiar ele passa a ser
 // "suprimido" e o dispatcher deixa de enviar para ele até que se recupere.
 //
-// Todos os métodos são fail-open: qualquer erro de Redis (ou Redis ausente) é
-// logado em Warn e ignorado, então um problema de infraestrutura nunca bloqueia
-// um envio nem suprime um grupo por engano.
+// Penalize/Clear são fail-open: qualquer erro de Redis é logado em Warn e
+// ignorado. IsSuppressed é fail-open por default, mas com ANTIBAN_STRICT=on
+// (R3) passa a ser fail-CLOSED: um erro de Redis suprime o envio para não
+// disparar sem anti-ban quando o Redis está indisponível (ver campo `strict`).
 package reputation
 
 import (
 	"context"
+	"os"
 	"strconv"
 	"time"
 
@@ -35,6 +37,12 @@ type Store struct {
 	threshold int
 	ttl       time.Duration
 	logger    *zap.Logger
+	// strict (R3): quando true, um ERRO de Redis em IsSuppressed passa a
+	// SUPRIMIR o envio (fail-closed) em vez de liberar (fail-open). Protege
+	// contra ban quando o Redis está estressado e todo o anti-ban cairia junto,
+	// ao custo de PARAR envios durante um blip de Redis. Controlado por
+	// ANTIBAN_STRICT (default on); ANTIBAN_STRICT=false/0 volta ao fail-open.
+	strict bool
 }
 
 // NewStore devolve um store. Um rdb nil produz um store no-op nil-safe
@@ -51,7 +59,19 @@ func NewStore(rdb redis.Scripter, threshold int, ttl time.Duration, logger *zap.
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &Store{rdb: rdb, threshold: threshold, ttl: ttl, logger: logger}
+	return &Store{rdb: rdb, threshold: threshold, ttl: ttl, logger: logger, strict: antibanStrictFromEnv()}
+}
+
+// antibanStrictFromEnv lê ANTIBAN_STRICT. Default TRUE (fail-closed conforme a
+// decisão da Rodada 2); ANTIBAN_STRICT=false/0 desliga (volta ao fail-open) e
+// é o kill-switch de reversão sem mexer no código.
+func antibanStrictFromEnv() bool {
+	switch os.Getenv("ANTIBAN_STRICT") {
+	case "false", "0", "off", "no":
+		return false
+	default:
+		return true
+	}
 }
 
 // key monta a chave Redis do par (sessão, grupo).
@@ -89,7 +109,16 @@ func (s *Store) IsSuppressed(ctx context.Context, session, group string) bool {
 	// basta um GET simples via script para manter a mesma interface injetável.
 	res, err := getScript.Run(ctx, s.rdb, []string{key(session, group)}).Text()
 	if err != nil {
-		s.logger.Warn("reputation lookup failed, not suppressing",
+		// R3: só chega aqui em ERRO REAL de Redis — chave ausente devolve "0"
+		// pelo script (grupo saudável), nunca erro. Em modo strict, um Redis
+		// indisponível significa que TODO o anti-ban cairia junto, então
+		// SUPRIMIMOS o envio (fail-closed) em vez de disparar sem proteção.
+		if s.strict {
+			s.logger.Warn("reputation lookup failed — SUPPRESSING send (fail-closed, ANTIBAN_STRICT)",
+				zap.String("session", session), zap.String("group", group), zap.Error(err))
+			return true
+		}
+		s.logger.Warn("reputation lookup failed, not suppressing (fail-open)",
 			zap.String("session", session), zap.String("group", group), zap.Error(err))
 		return false
 	}

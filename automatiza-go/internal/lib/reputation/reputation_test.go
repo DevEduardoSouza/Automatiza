@@ -67,6 +67,38 @@ func TestWeightedPenalizeRemoval(t *testing.T) {
 	}
 }
 
+// R3: em modo strict, um ERRO de Redis suprime o envio (fail-closed).
+func TestIsSuppressedStrictFailClosedOnRedisError(t *testing.T) {
+	ctx := context.Background()
+	s, mr, _ := newTestStore(t, 5, time.Hour)
+	s.strict = true // fixa o strict (o default vem do env)
+	const session, group = "sess-x", "group-x"
+
+	// Redis saudável + grupo limpo: chave ausente devolve "0" -> não suprime.
+	if s.IsSuppressed(ctx, session, group) {
+		t.Fatalf("healthy Redis with a clean group must not be suppressed")
+	}
+
+	// Redis indisponível (miniredis fechado): a chamada erra.
+	mr.Close()
+	if !s.IsSuppressed(ctx, session, group) {
+		t.Fatalf("strict mode must SUPPRESS on a Redis error (fail-closed)")
+	}
+}
+
+// R3: com o kill-switch desligado (strict=false), mantém o fail-open histórico.
+func TestIsSuppressedFailOpenWhenNotStrict(t *testing.T) {
+	ctx := context.Background()
+	s, mr, _ := newTestStore(t, 5, time.Hour)
+	s.strict = false
+	const session, group = "sess-y", "group-y"
+
+	mr.Close() // Redis indisponível
+	if s.IsSuppressed(ctx, session, group) {
+		t.Fatalf("non-strict mode must NOT suppress on a Redis error (fail-open)")
+	}
+}
+
 func TestNilStoreIsNoOp(t *testing.T) {
 	ctx := context.Background()
 	var s *Store = NewStore(nil, 5, time.Hour, zap.NewNop())
@@ -104,6 +136,7 @@ func TestEmptyArgsAreNoOp(t *testing.T) {
 func TestFailOpenWhenRedisDown(t *testing.T) {
 	ctx := context.Background()
 	s, mr, _ := newTestStore(t, 1, time.Hour)
+	s.strict = false // fail-open agora é o caminho do kill-switch (ANTIBAN_STRICT=false)
 	const session, group = "sess-c", "group-3"
 
 	// Suprimido enquanto o Redis está vivo.
@@ -112,10 +145,10 @@ func TestFailOpenWhenRedisDown(t *testing.T) {
 		t.Fatalf("expected suppressed before Redis goes down")
 	}
 
-	// Redis cai: fail-open — não suprime e não entra em pânico.
+	// Redis cai + strict off: fail-open — não suprime e não entra em pânico.
 	mr.Close()
 	if s.IsSuppressed(ctx, session, group) {
-		t.Fatalf("with Redis down IsSuppressed must fail open to false")
+		t.Fatalf("with Redis down and strict off, IsSuppressed must fail open to false")
 	}
 	// Penalize/Clear com Redis morto também não podem entrar em pânico.
 	s.Penalize(ctx, session, group, 3)
