@@ -4,6 +4,7 @@ package connectrpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"automatiza-go/internal/adapters/whatsapp"
@@ -1603,6 +1604,142 @@ func TestGetGroupParticipants_ProviderError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+}
+
+// TestGetGroupParticipants_FallbackChip verifies that when the requested chip
+// can't resolve the group (GOWS "not found" → ErrCodeProviderError), the handler
+// falls back to another participating chip and succeeds.
+func TestGetGroupParticipants_FallbackChip(t *testing.T) {
+	handler, groupRepo, instanceRepo, waProvider := createTestHandler(t)
+
+	ctx := contextWithUser("user-123", "user@example.com")
+
+	instanceRepo.On("GetInstanceByUserAndName", ctx, "user-123", "chip-a").
+		Return(&models.Instance{ID: 1, InstanceID: "chip-a"}, nil)
+
+	// Group is owned/participated by instance id 2 (chip-b), not the requested
+	// chip-a, so chip-a's session can't resolve it.
+	groupRepo.On("GetGroupByWAGroupID", ctx, "user-123", "group@g.us").
+		Return(&models.Group{
+			ID: "g1", UserID: "user-123", WAGroupID: "group@g.us",
+			InstanceID: "2", ParticipatingInstanceIDs: []string{"2"},
+		}, nil)
+
+	instanceRepo.On("GetUserInstances", ctx, "user-123").
+		Return([]models.Instance{
+			{ID: 1, InstanceID: "chip-a", Status: "connected"},
+			{ID: 2, InstanceID: "chip-b", Status: "connected"},
+		}, nil)
+
+	waProvider.GetGroupParticipantsFunc = func(ctx context.Context, sessionName, groupID string) ([]whatsapp.ParticipantInfo, error) {
+		if sessionName == "chip-a" {
+			return nil, whatsapp.NewProviderError(whatsapp.ErrCodeProviderError, "WAHA error 500: 2 UNKNOWN: not found", nil)
+		}
+		return []whatsapp.ParticipantInfo{
+			{ID: "5511999990001@s.whatsapp.net", PhoneNumber: "5511999990001"},
+		}, nil
+	}
+
+	req := connect.NewRequest(&groupsv1.GetGroupParticipantsRequest{
+		InstanceName: "chip-a",
+		GroupId:      "group@g.us",
+	})
+
+	resp, err := handler.GetGroupParticipants(ctx, req)
+
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.GetParticipants(), 1)
+	assert.Equal(t, "5511999990001", resp.Msg.GetParticipants()[0].GetPhoneNumber())
+}
+
+// TestGetGroupParticipants_FallbackAllFail verifies that when every chip fails
+// with a provider error, the handler surfaces the error (mapped from
+// ErrCodeProviderError → Internal) rather than hanging or panicking.
+func TestGetGroupParticipants_FallbackAllFail(t *testing.T) {
+	handler, groupRepo, instanceRepo, waProvider := createTestHandler(t)
+
+	ctx := contextWithUser("user-123", "user@example.com")
+
+	instanceRepo.On("GetInstanceByUserAndName", ctx, "user-123", "chip-a").
+		Return(&models.Instance{ID: 1, InstanceID: "chip-a"}, nil)
+	groupRepo.On("GetGroupByWAGroupID", ctx, "user-123", "group@g.us").
+		Return(&models.Group{
+			ID: "g1", UserID: "user-123", WAGroupID: "group@g.us",
+			InstanceID: "2", ParticipatingInstanceIDs: []string{"2"},
+		}, nil)
+	instanceRepo.On("GetUserInstances", ctx, "user-123").
+		Return([]models.Instance{
+			{ID: 1, InstanceID: "chip-a", Status: "connected"},
+			{ID: 2, InstanceID: "chip-b", Status: "connected"},
+		}, nil)
+
+	waProvider.GetGroupParticipantsFunc = func(ctx context.Context, sessionName, groupID string) ([]whatsapp.ParticipantInfo, error) {
+		return nil, whatsapp.NewProviderError(whatsapp.ErrCodeProviderError, "not found", nil)
+	}
+
+	req := connect.NewRequest(&groupsv1.GetGroupParticipantsRequest{
+		InstanceName: "chip-a",
+		GroupId:      "group@g.us",
+	})
+
+	_, err := handler.GetGroupParticipants(ctx, req)
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+}
+
+// TestConnectCodeFromProviderError locks in the provider-error → Connect-code
+// mapping (item 2 of the hardening handoff).
+func TestConnectCodeFromProviderError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want connect.Code
+	}{
+		{"session not found", whatsapp.NewProviderError(whatsapp.ErrCodeSessionNotFound, "x", nil), connect.CodeNotFound},
+		{"group not found", whatsapp.NewProviderError(whatsapp.ErrCodeGroupNotFound, "x", nil), connect.CodeNotFound},
+		{"permission denied", whatsapp.NewProviderError(whatsapp.ErrCodePermissionDenied, "x", nil), connect.CodePermissionDenied},
+		{"invalid input", whatsapp.NewProviderError(whatsapp.ErrCodeInvalidInput, "x", nil), connect.CodeInvalidArgument},
+		{"rate limited", whatsapp.NewProviderError(whatsapp.ErrCodeRateLimited, "x", nil), connect.CodeResourceExhausted},
+		{"session not connected", whatsapp.NewProviderError(whatsapp.ErrCodeSessionNotConnected, "x", nil), connect.CodeUnavailable},
+		{"circuit breaker", whatsapp.NewProviderError(whatsapp.ErrCodeCircuitBreakerOpen, "x", nil), connect.CodeUnavailable},
+		{"network", whatsapp.NewProviderError(whatsapp.ErrCodeNetworkError, "x", nil), connect.CodeUnavailable},
+		{"timeout", whatsapp.NewProviderError(whatsapp.ErrCodeTimeout, "x", nil), connect.CodeDeadlineExceeded},
+		{"provider error", whatsapp.NewProviderError(whatsapp.ErrCodeProviderError, "x", nil), connect.CodeInternal},
+		{"plain error", errors.New("boom"), connect.CodeInternal},
+		{"wrapped provider error", fmt.Errorf("wrap: %w", whatsapp.NewProviderError(whatsapp.ErrCodePermissionDenied, "x", nil)), connect.CodePermissionDenied},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, connectCodeFromProviderError(tc.err))
+		})
+	}
+}
+
+// TestGetGroupInviteCode_ProviderErrorMapsCode verifies the item-2 mapping
+// end-to-end: a provider permission error surfaces as CodePermissionDenied,
+// not a blanket Internal.
+func TestGetGroupInviteCode_ProviderErrorMapsCode(t *testing.T) {
+	handler, _, instanceRepo, waProvider := createTestHandler(t)
+
+	ctx := contextWithUser("user-123", "user@example.com")
+
+	instanceRepo.On("GetInstanceByUserAndName", ctx, "user-123", "test-instance").
+		Return(&models.Instance{ID: 1, InstanceID: "test-instance"}, nil)
+
+	waProvider.GetGroupInviteCodeFunc = func(ctx context.Context, sessionName, groupID string) (string, error) {
+		return "", whatsapp.NewProviderError(whatsapp.ErrCodePermissionDenied, "not group admin", nil)
+	}
+
+	req := connect.NewRequest(&groupsv1.GetGroupInviteCodeRequest{
+		InstanceName: "test-instance",
+		GroupId:      "group@g.us",
+	})
+
+	_, err := handler.GetGroupInviteCode(ctx, req)
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 }
 
 // =============================================================================

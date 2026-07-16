@@ -2,8 +2,10 @@ package connectrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"strconv"
 
 	"automatiza-go/internal/adapters/whatsapp"
 	groupsv1 "automatiza-go/internal/gen/groups/v1"
@@ -601,6 +603,129 @@ func protoStatusToModel(status groupsv1.GroupStatus) string {
 	}
 }
 
+// maxParticipantChipFallbacks bounds how many extra chips GetGroupParticipants
+// will try when the requested chip can't resolve the group, so a user with many
+// chips can't turn one modal open into a WAHA request storm on the error path.
+const maxParticipantChipFallbacks = 3
+
+// connectCodeFromProviderError maps a WhatsApp provider error to the closest
+// Connect status code, so the client sees an accurate, actionable error instead
+// of a blanket Internal (500). Non-provider errors (repo/network wrapping that
+// never reached a ProviderError) stay Internal.
+func connectCodeFromProviderError(err error) connect.Code {
+	var pErr *whatsapp.ProviderError
+	if !errors.As(err, &pErr) {
+		return connect.CodeInternal
+	}
+	switch pErr.Code {
+	case whatsapp.ErrCodeSessionNotFound, whatsapp.ErrCodeGroupNotFound:
+		return connect.CodeNotFound
+	case whatsapp.ErrCodePermissionDenied:
+		return connect.CodePermissionDenied
+	case whatsapp.ErrCodeInvalidInput:
+		return connect.CodeInvalidArgument
+	case whatsapp.ErrCodeRateLimited:
+		return connect.CodeResourceExhausted
+	case whatsapp.ErrCodeSessionNotConnected,
+		whatsapp.ErrCodeCircuitBreakerOpen,
+		whatsapp.ErrCodeNetworkError:
+		return connect.CodeUnavailable
+	case whatsapp.ErrCodeTimeout:
+		return connect.CodeDeadlineExceeded
+	default:
+		// Includes ErrCodeProviderError: an opaque upstream failure the client
+		// can't act on, so Internal is the honest mapping.
+		return connect.CodeInternal
+	}
+}
+
+// waError wraps a WhatsApp-provider error as a Connect error whose code reflects
+// the underlying provider error code (see connectCodeFromProviderError).
+func waError(wrap string, err error) *connect.Error {
+	return connect.NewError(connectCodeFromProviderError(err), fmt.Errorf("%s: %w", wrap, err))
+}
+
+// wrongChipError reports whether a provider error suggests the queried session
+// simply isn't a member of the group (so another chip might succeed), rather
+// than a whole-WAHA problem (rate limit, network, circuit breaker, timeout)
+// where retrying on a different chip is pointless. The dominant real-world
+// case — GOWS answering GetGroupInfo with HTTP 500 "2 UNKNOWN: not found" —
+// surfaces as ErrCodeProviderError, so that code is included.
+func wrongChipError(err error) bool {
+	var pErr *whatsapp.ProviderError
+	if !errors.As(err, &pErr) {
+		return false
+	}
+	switch pErr.Code {
+	case whatsapp.ErrCodeProviderError,
+		whatsapp.ErrCodeSessionNotFound,
+		whatsapp.ErrCodeGroupNotFound,
+		whatsapp.ErrCodeSessionNotConnected:
+		return true
+	default:
+		return false
+	}
+}
+
+// fallbackChipsForGroup returns up to maxParticipantChipFallbacks session names
+// of chips (other than `exclude`) that participate in waGroupID, connected chips
+// first. Best-effort: returns nil if the group or the user's instances can't be
+// loaded, so the caller just surfaces the original error.
+func (h *GroupsHandler) fallbackChipsForGroup(ctx context.Context, userID, waGroupID, exclude string) []string {
+	group, err := h.groupRepo.GetGroupByWAGroupID(ctx, userID, waGroupID)
+	if err != nil || group == nil {
+		return nil
+	}
+
+	// Participating chip DB ids, owner first, deduped.
+	wantIDs := make([]string, 0, len(group.ParticipatingInstanceIDs)+1)
+	seen := make(map[string]struct{})
+	addID := func(id string) {
+		if id == "" {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		wantIDs = append(wantIDs, id)
+	}
+	addID(group.InstanceID)
+	for _, id := range group.ParticipatingInstanceIDs {
+		addID(id)
+	}
+	if len(wantIDs) == 0 {
+		return nil
+	}
+
+	instances, err := h.instanceRepo.GetUserInstances(ctx, userID)
+	if err != nil {
+		return nil
+	}
+	byID := make(map[string]models.Instance, len(instances))
+	for _, inst := range instances {
+		byID[strconv.Itoa(inst.ID)] = inst
+	}
+
+	var connected, others []string
+	for _, id := range wantIDs {
+		inst, ok := byID[id]
+		if !ok || inst.InstanceID == "" || inst.InstanceID == exclude {
+			continue
+		}
+		if inst.Status == models.InstanceStatusConnected {
+			connected = append(connected, inst.InstanceID)
+		} else {
+			others = append(others, inst.InstanceID)
+		}
+	}
+	sessions := append(connected, others...)
+	if len(sessions) > maxParticipantChipFallbacks {
+		sessions = sessions[:maxParticipantChipFallbacks]
+	}
+	return sessions
+}
+
 // GetGroupInviteCode retrieves the invite code for a group.
 func (h *GroupsHandler) GetGroupInviteCode(
 	ctx context.Context,
@@ -630,7 +755,7 @@ func (h *GroupsHandler) GetGroupInviteCode(
 
 	inviteCode, err := h.waProvider.GetGroupInviteCode(ctx, instanceName, groupID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get invite code: %w", err))
+		return nil, waError("failed to get invite code", err)
 	}
 
 	inviteURL := fmt.Sprintf("https://chat.whatsapp.com/%s", inviteCode)
@@ -758,7 +883,7 @@ func (h *GroupsHandler) SendGroupMessage(
 		Mentions:    req.Msg.GetMentions(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to send message: %w", err))
+		return nil, waError("failed to send message", err)
 	}
 
 	messageID := ""
@@ -820,7 +945,7 @@ func (h *GroupsHandler) SendGroupAudio(
 	})
 	if err != nil {
 		log.Printf("[DEBUG SendGroupAudio] ERROR: %v", err)
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to send audio: %w", err))
+		return nil, waError("failed to send audio", err)
 	}
 
 	messageID := ""
@@ -875,7 +1000,7 @@ func (h *GroupsHandler) SendGroupImage(
 		ImageURL:    req.Msg.GetImage(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to send image: %w", err))
+		return nil, waError("failed to send image", err)
 	}
 
 	messageID := ""
@@ -929,7 +1054,7 @@ func (h *GroupsHandler) SendGroupPoll(
 		SelectableCount: selectableCount,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to send poll: %w", err))
+		return nil, waError("failed to send poll", err)
 	}
 
 	messageID := ""
@@ -977,7 +1102,7 @@ func (h *GroupsHandler) UpdateGroupSubject(
 		Subject:     req.Msg.GetSubject(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update group subject: %w", err))
+		return nil, waError("failed to update group subject", err)
 	}
 
 	h.recordHistory(ctx, user.ID, models.ActionTypeChangeName,
@@ -1022,7 +1147,7 @@ func (h *GroupsHandler) UpdateGroupDescription(
 		Description: req.Msg.GetDescription(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update group description: %w", err))
+		return nil, waError("failed to update group description", err)
 	}
 
 	h.recordHistory(ctx, user.ID, models.ActionTypeChangeDescription,
@@ -1075,7 +1200,7 @@ func (h *GroupsHandler) UpdateGroupPicture(
 		ImageBase64: imageData,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update group picture: %w", err))
+		return nil, waError("failed to update group picture", err)
 	}
 
 	h.recordHistory(ctx, user.ID, models.ActionTypeChangePhoto,
@@ -1119,7 +1244,7 @@ func (h *GroupsHandler) UpdateGroupSettings(
 		Announce:    req.Msg.GetMessagesAdminOnly(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update group settings: %w", err))
+		return nil, waError("failed to update group settings", err)
 	}
 
 	if req.Msg.GetMessagesAdminOnly() {
@@ -1165,8 +1290,30 @@ func (h *GroupsHandler) GetGroupParticipants(
 	}
 
 	participants, err := h.waProvider.GetGroupParticipants(ctx, instanceName, groupID)
+	if err != nil && wrongChipError(err) {
+		// The requested chip can't resolve the group — GOWS answers
+		// GetGroupInfo with HTTP 500 "not found" for any session that isn't a
+		// member. Fall back to the group's other participating chips so a
+		// stale/disconnected owner chip doesn't surface as a hard 500 in the
+		// members modal. The frontend already picks the right chip in the
+		// common case (use-groups-members.ts); this is defense in depth.
+		for _, session := range h.fallbackChipsForGroup(ctx, user.ID, groupID, instanceName) {
+			p, ferr := h.waProvider.GetGroupParticipants(ctx, session, groupID)
+			if ferr == nil {
+				if h.logger != nil {
+					h.logger.Info("group participants resolved via fallback chip",
+						zap.String("group_id", groupID),
+						zap.String("requested_session", instanceName),
+						zap.String("used_session", session))
+				}
+				participants, err = p, nil
+				break
+			}
+			err = ferr
+		}
+	}
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get group participants: %w", err))
+		return nil, waError("failed to get group participants", err)
 	}
 
 	protoParticipants := make([]*groupsv1.GroupParticipant, len(participants))
@@ -1221,7 +1368,7 @@ func (h *GroupsHandler) AddGroupMember(
 		PhoneNumbers: req.Msg.GetPhoneNumbers(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to add group members: %w", err))
+		return nil, waError("failed to add group members", err)
 	}
 
 	h.publishEvent(user.ID, "group.member.changed", groupID)
@@ -1273,7 +1420,7 @@ func (h *GroupsHandler) RemoveGroupMember(
 		PhoneNumbers: req.Msg.GetPhoneNumbers(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to remove group members: %w", err))
+		return nil, waError("failed to remove group members", err)
 	}
 
 	h.publishEvent(user.ID, "group.member.changed", groupID)
@@ -1323,7 +1470,7 @@ func (h *GroupsHandler) LeaveGroup(
 		GroupID:     groupID,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to leave group: %w", err))
+		return nil, waError("failed to leave group", err)
 	}
 
 	// Remove group from database after leaving
@@ -1382,7 +1529,7 @@ func (h *GroupsHandler) PromoteMember(
 		PhoneNumber: req.Msg.GetPhoneNumber(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to promote member: %w", err))
+		return nil, waError("failed to promote member", err)
 	}
 
 	h.recordHistory(ctx, user.ID, models.ActionTypePromoteMember,
@@ -1430,7 +1577,7 @@ func (h *GroupsHandler) DemoteMember(
 		PhoneNumber: req.Msg.GetPhoneNumber(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to demote member: %w", err))
+		return nil, waError("failed to demote member", err)
 	}
 
 	h.recordHistory(ctx, user.ID, models.ActionTypeDemoteMember,

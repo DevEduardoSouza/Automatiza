@@ -1093,7 +1093,11 @@
         "memberDemoted": "Admin removido",
         "noParticipants": "Nenhum participante encontrado",
         "searchParticipants": "Buscar participantes...",
-        "manage": "Membros"
+        "manage": "Membros",
+        "exportCsv": "Exportar CSV",
+        "exportSuccess": "{{count}} número(s) exportado(s)",
+        "exportEmpty": "Nenhum número para exportar",
+        "exportError": "Falha ao exportar a lista"
       },
       "success": {
         "updated": "Grupo atualizado",

@@ -23,7 +23,16 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { GroupParticipant } from '@/hooks/use-groups-connect';
 import * as Sentry from '@sentry/react';
-import { ChevronDown, ChevronUp, Loader2, LogOut, Search, Trash2, UserPlus } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Loader2,
+  LogOut,
+  Search,
+  Trash2,
+  UserPlus,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -102,6 +111,7 @@ interface GroupMembersDialogProps {
   onLeaveGroup: () => Promise<void>;
   onPromoteMember: (participantId: string) => Promise<void>;
   onDemoteMember: (participantId: string) => Promise<void>;
+  onExportMembers: () => void;
   isAddingMember: boolean;
   isRemovingMember: boolean;
   isLeavingGroup: boolean;
@@ -125,6 +135,7 @@ export function GroupMembersDialog({
   onLeaveGroup,
   onPromoteMember,
   onDemoteMember,
+  onExportMembers,
   isAddingMember,
   isRemovingMember,
   isLeavingGroup,
@@ -281,10 +292,23 @@ export function GroupMembersDialog({
             />
           </div>
 
-          {/* Participant count */}
-          <p className="text-sm text-muted-foreground">
-            {t('pages.groups.members.participantCount', { count: participants.length })}
-          </p>
+          {/* Participant count + export */}
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              {t('pages.groups.members.participantCount', { count: participants.length })}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full text-[#8D2D53] shrink-0"
+              onClick={onExportMembers}
+              disabled={loading || participants.length === 0}
+              title={t('pages.groups.members.exportCsv')}
+            >
+              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+              {t('pages.groups.members.exportCsv')}
+            </Button>
+          </div>
 
           {/* Participants list */}
           <ScrollArea className="flex-1 min-h-0 max-h-[40vh] sm:max-h-[45vh] md:max-h-[50vh]">

@@ -121,6 +121,22 @@ function getParticipatingInstances(
     .filter((inst): inst is LocalInstance => inst !== undefined);
 }
 
+/**
+ * Picks the chip whose WAHA session should answer member operations for this
+ * group. WAHA's GOWS engine only knows a group on the sessions that actually
+ * belong to it, so we must NOT reuse the globally-latest chip (that returned
+ * "not found"/500 for every group owned by another chip). Prefers a connected
+ * participating chip, then any participating chip; returns undefined when the
+ * group has no known chip, letting the members hook fall back to its default.
+ */
+function pickChipForGroup(
+  group: Group,
+  instanceById: Map<string, LocalInstance>
+): LocalInstance | undefined {
+  const participating = getParticipatingInstances(group, instanceById);
+  return participating.find((inst) => inst.status === 'connected') ?? participating[0];
+}
+
 interface GroupListTableProps {
   groups: Group[];
   filteredGroups: Group[];
@@ -130,7 +146,11 @@ interface GroupListTableProps {
   onToggleAll: () => void;
   onToggleFavorite: (groupId: string, currentFavorite: boolean) => void;
   onEditInviteCode: (group: Group) => void;
-  onManageMembers: (group: { wa_group_id: string; name: string }) => void;
+  onManageMembers: (group: {
+    wa_group_id: string;
+    name: string;
+    instance_name?: string;
+  }) => void;
   // Multi-chip participation: when more than one chip exists, each row
   // gets one ChipBadge per chip in the group's participation set, so the
   // user can tell which numbers reach the group (especially useful when
@@ -340,9 +360,7 @@ export function GroupListTable({
         key: 'name',
         header: <SortableHeader columnKey="name" label={t('pages.groups.list.columns.name')} />,
         render: (group: Group) => {
-          const participants = showChipBadges
-            ? getParticipatingInstances(group, instanceById)
-            : [];
+          const participants = showChipBadges ? getParticipatingInstances(group, instanceById) : [];
           return (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium">{group.name}</span>
@@ -413,6 +431,7 @@ export function GroupListTable({
               onManageMembers({
                 wa_group_id: group.wa_group_id,
                 name: group.name,
+                instance_name: pickChipForGroup(group, instanceById)?.instance_id,
               })
             }
           >
@@ -537,107 +556,108 @@ export function GroupListTable({
               ? getParticipatingInstances(group, instanceById)
               : [];
             return (
-            <div
-              key={group.id}
-              className="rounded-xl xs:rounded-2xl border p-3 xs:p-4 sm:p-5"
-              style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
-            >
-              <div className="space-y-3 xs:space-y-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2 flex-1">
-                    <Checkbox
-                      checked={selectedGroups.includes(group.id)}
-                      onCheckedChange={() => onToggleGroup(group.id)}
-                      className="mt-1 h-5 w-5"
-                      aria-label={t('pages.groups.list.selectGroup', {
-                        name: group.name,
-                      })}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => onToggleFavorite(group.id, group.is_favorite)}
-                          aria-label={
-                            group.is_favorite
-                              ? t('common.removeFromFavorites')
-                              : t('common.addToFavorites')
-                          }
-                        >
-                          <Star
-                            className={cn(
-                              'h-4 w-4',
+              <div
+                key={group.id}
+                className="rounded-xl xs:rounded-2xl border p-3 xs:p-4 sm:p-5"
+                style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
+              >
+                <div className="space-y-3 xs:space-y-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 flex-1">
+                      <Checkbox
+                        checked={selectedGroups.includes(group.id)}
+                        onCheckedChange={() => onToggleGroup(group.id)}
+                        className="mt-1 h-5 w-5"
+                        aria-label={t('pages.groups.list.selectGroup', {
+                          name: group.name,
+                        })}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => onToggleFavorite(group.id, group.is_favorite)}
+                            aria-label={
                               group.is_favorite
-                                ? 'fill-yellow-400 text-yellow-400'
-                                : 'text-muted-foreground'
-                            )}
-                            aria-hidden="true"
-                          />
-                        </Button>
-                        <h3 className="font-semibold text-sm xs:text-base break-words">
-                          {group.name}
-                        </h3>
-                        {participants.map((inst) => (
-                          <ChipBadge key={inst.id} instance={inst} />
-                        ))}
-                      </div>
-                      <div
-                        className="flex flex-wrap gap-2 text-xs"
-                        style={{ color: colors.wineTextMuted }}
-                      >
-                        <span>
-                          {group.members_count}/{group.member_limit}
-                        </span>
-                        {getStatusBadge(group.status)}
+                                ? t('common.removeFromFavorites')
+                                : t('common.addToFavorites')
+                            }
+                          >
+                            <Star
+                              className={cn(
+                                'h-4 w-4',
+                                group.is_favorite
+                                  ? 'fill-yellow-400 text-yellow-400'
+                                  : 'text-muted-foreground'
+                              )}
+                              aria-hidden="true"
+                            />
+                          </Button>
+                          <h3 className="font-semibold text-sm xs:text-base break-words">
+                            {group.name}
+                          </h3>
+                          {participants.map((inst) => (
+                            <ChipBadge key={inst.id} instance={inst} />
+                          ))}
+                        </div>
+                        <div
+                          className="flex flex-wrap gap-2 text-xs"
+                          style={{ color: colors.wineTextMuted }}
+                        >
+                          <span>
+                            {group.members_count}/{group.member_limit}
+                          </span>
+                          {getStatusBadge(group.status)}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div
-                  className="pt-2 xs:pt-3 flex flex-col xs:flex-row gap-2"
-                  style={{ borderTopColor: colors.wineBorder, borderTopWidth: '1px' }}
-                >
-                  {group.invite_code ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onEditInviteCode(group)}
-                      className="w-full xs:w-auto flex-1 min-w-0 text-xs rounded-full text-[#8D2D53]"
-                    >
-                      <Check className="mr-2 h-3 w-3 text-green-600" aria-hidden="true" />
-                      {t('pages.groups.inviteCode.configured')}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full xs:w-auto flex-1 min-w-0 text-xs rounded-full text-orange-600 border-orange-300"
-                      onClick={() => onEditInviteCode(group)}
-                    >
-                      <AlertCircle className="mr-2 h-3 w-3" aria-hidden="true" />
-                      {t('pages.groups.inviteCode.configure')}
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full xs:w-auto flex-1 min-w-0 text-xs rounded-full text-[#8D2D53]"
-                    onClick={() =>
-                      onManageMembers({
-                        wa_group_id: group.wa_group_id,
-                        name: group.name,
-                      })
-                    }
+                  <div
+                    className="pt-2 xs:pt-3 flex flex-col xs:flex-row gap-2"
+                    style={{ borderTopColor: colors.wineBorder, borderTopWidth: '1px' }}
                   >
-                    <Users className="mr-2 h-3 w-3" aria-hidden="true" />
-                    {t('pages.groups.members.manage')}
-                  </Button>
+                    {group.invite_code ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onEditInviteCode(group)}
+                        className="w-full xs:w-auto flex-1 min-w-0 text-xs rounded-full text-[#8D2D53]"
+                      >
+                        <Check className="mr-2 h-3 w-3 text-green-600" aria-hidden="true" />
+                        {t('pages.groups.inviteCode.configured')}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full xs:w-auto flex-1 min-w-0 text-xs rounded-full text-orange-600 border-orange-300"
+                        onClick={() => onEditInviteCode(group)}
+                      >
+                        <AlertCircle className="mr-2 h-3 w-3" aria-hidden="true" />
+                        {t('pages.groups.inviteCode.configure')}
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full xs:w-auto flex-1 min-w-0 text-xs rounded-full text-[#8D2D53]"
+                      onClick={() =>
+                        onManageMembers({
+                          wa_group_id: group.wa_group_id,
+                          name: group.name,
+                          instance_name: pickChipForGroup(group, instanceById)?.instance_id,
+                        })
+                      }
+                    >
+                      <Users className="mr-2 h-3 w-3" aria-hidden="true" />
+                      {t('pages.groups.members.manage')}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
             );
           })
         )}

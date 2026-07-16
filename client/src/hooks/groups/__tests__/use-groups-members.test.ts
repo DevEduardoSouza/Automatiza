@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useGroupsMembers } from '../use-groups-members';
+import { buildMembersCsv, slugifyGroupName, useGroupsMembers } from '../use-groups-members';
 
 // ============================================================
 // Mock Modules
@@ -1423,5 +1423,220 @@ describe('useGroupsMembers', () => {
       });
       expect(result.current.isRemovingMember).toBe(false);
     });
+  });
+
+  // ============================================================
+  // 11. Chip routing (the 500 "not found" fix)
+  // ============================================================
+
+  describe('chip routing', () => {
+    it('should query participants with the group instance_name when provided', async () => {
+      const { result } = renderHook(() => useGroupsMembers());
+
+      await act(async () => {
+        result.current.openMembersDialog({ ...mockGroup, instance_name: 'chip-owner' });
+      });
+
+      expect(mockGetGroupParticipants).toHaveBeenCalledWith({
+        instance_name: 'chip-owner',
+        group_id: '120363123456789@g.us',
+      });
+    });
+
+    it('should fall back to latestInstance when instance_name is omitted', async () => {
+      const { result } = renderHook(() => useGroupsMembers());
+
+      await act(async () => {
+        result.current.openMembersDialog(mockGroup);
+      });
+
+      expect(mockGetGroupParticipants).toHaveBeenCalledWith({
+        instance_name: 'test-instance',
+        group_id: '120363123456789@g.us',
+      });
+    });
+
+    it('should route add/remove/promote/demote/leave through the group chip', async () => {
+      const { result } = renderHook(() => useGroupsMembers());
+
+      await act(async () => {
+        result.current.openMembersDialog({ ...mockGroup, instance_name: 'chip-owner' });
+      });
+
+      await waitFor(() => {
+        expect(result.current.participants).toHaveLength(3);
+      });
+
+      act(() => {
+        result.current.setPhoneNumberInput('5511888880001');
+      });
+      await act(async () => {
+        await result.current.handleAddMember();
+      });
+      await act(async () => {
+        await result.current.handleRemoveMember('5511999990001@s.whatsapp.net');
+      });
+      await act(async () => {
+        await result.current.handlePromoteMember('5511999990002@s.whatsapp.net');
+      });
+      await act(async () => {
+        await result.current.handleDemoteMember('5511999990002@s.whatsapp.net');
+      });
+      await act(async () => {
+        await result.current.handleLeaveGroup();
+      });
+
+      for (const spy of [
+        mockAddGroupMember,
+        mockRemoveGroupMember,
+        mockPromoteMember,
+        mockDemoteMember,
+        mockLeaveGroup,
+      ]) {
+        expect(spy).toHaveBeenCalledWith(expect.objectContaining({ instance_name: 'chip-owner' }));
+      }
+    });
+  });
+
+  // ============================================================
+  // 12. handleExportMembers (CSV export)
+  // ============================================================
+
+  describe('handleExportMembers', () => {
+    let downloadName: string;
+    let downloadHref: string;
+    let clickSpy: ReturnType<typeof vi.spyOn>;
+    const createObjectURL = vi.fn(() => 'blob:mock-url');
+    const revokeObjectURL = vi.fn();
+
+    beforeEach(() => {
+      downloadName = '';
+      downloadHref = '';
+      createObjectURL.mockClear();
+      revokeObjectURL.mockClear();
+      Object.defineProperty(URL, 'createObjectURL', {
+        value: createObjectURL,
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(URL, 'revokeObjectURL', {
+        value: revokeObjectURL,
+        writable: true,
+        configurable: true,
+      });
+      // jsdom would navigate on click; capture instead of clicking for real.
+      clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+        this: HTMLAnchorElement
+      ) {
+        downloadName = this.download;
+        downloadHref = this.href;
+      });
+    });
+
+    afterEach(() => {
+      clickSpy.mockRestore();
+    });
+
+    it('should trigger a download named after the group and toast success', async () => {
+      const { result } = renderHook(() => useGroupsMembers());
+
+      await act(async () => {
+        result.current.openMembersDialog(mockGroup);
+      });
+      await waitFor(() => {
+        expect(result.current.participants).toHaveLength(3);
+      });
+
+      act(() => {
+        result.current.handleExportMembers();
+      });
+
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      expect(downloadName).toBe('membros-test-group.csv');
+      expect(downloadHref).toContain('blob:mock-url');
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+      expect(mockToast).toHaveBeenCalledWith({
+        title: expect.stringContaining('pages.groups.members.exportSuccess'),
+      });
+    });
+
+    it('should not download and should toast when there are no participants', () => {
+      const { result } = renderHook(() => useGroupsMembers());
+
+      act(() => {
+        result.current.handleExportMembers();
+      });
+
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(mockToast).toHaveBeenCalledWith({
+        variant: 'destructive',
+        title: 'pages.groups.members.exportEmpty',
+      });
+    });
+  });
+});
+
+// ============================================================
+// buildMembersCsv / slugifyGroupName (pure helpers)
+// ============================================================
+
+describe('buildMembersCsv', () => {
+  it('emits a UTF-8 BOM, a telefone header and one number per line (LF)', () => {
+    const csv = buildMembersCsv([
+      {
+        id: '5511999990001@s.whatsapp.net',
+        is_admin: false,
+        is_super_admin: false,
+        phone_number: '5511999990001',
+      },
+      {
+        id: '5511999990002@s.whatsapp.net',
+        is_admin: false,
+        is_super_admin: false,
+        phone_number: '5511999990002',
+      },
+    ]);
+    expect(csv).toBe('\uFEFFtelefone\n5511999990001\n5511999990002\n');
+    // Byte-for-byte parity with modelo-lista-numeros.csv: BOM first.
+    expect(csv.charCodeAt(0)).toBe(0xfeff);
+  });
+
+  it('strips non-digits, dedupes, and falls back to the id when phone is empty', () => {
+    const csv = buildMembersCsv([
+      {
+        id: '5511999990001@s.whatsapp.net',
+        is_admin: false,
+        is_super_admin: false,
+        phone_number: '+55 (11) 99999-0001',
+      },
+      {
+        id: '5511999990001@s.whatsapp.net',
+        is_admin: false,
+        is_super_admin: false,
+        phone_number: '5511999990001',
+      },
+      {
+        id: '5522888880002@s.whatsapp.net',
+        is_admin: false,
+        is_super_admin: false,
+        phone_number: '',
+      },
+    ]);
+    expect(csv).toBe('\uFEFFtelefone\n5511999990001\n5522888880002\n');
+  });
+
+  it('produces just the header (plus trailing newline) for an empty list', () => {
+    expect(buildMembersCsv([])).toBe('\uFEFFtelefone\n');
+  });
+});
+
+describe('slugifyGroupName', () => {
+  it('lowercases and replaces emoji/spaces/symbols with single hyphens', () => {
+    expect(slugifyGroupName('#01 NOSSO GRUPINHO 💖')).toBe('01-nosso-grupinho');
+  });
+
+  it('falls back to "grupo" when nothing usable remains', () => {
+    expect(slugifyGroupName('💖💖💖')).toBe('grupo');
+    expect(slugifyGroupName('')).toBe('grupo');
   });
 });

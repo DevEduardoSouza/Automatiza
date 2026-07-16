@@ -209,7 +209,10 @@ export default function Groups() {
                 className="p-3 rounded-full mx-auto w-fit"
                 style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
               >
-                <WifiOff className="h-8 w-8 xs:h-10 xs:w-10" style={{ color: 'rgb(220, 50, 50)' }} />
+                <WifiOff
+                  className="h-8 w-8 xs:h-10 xs:w-10"
+                  style={{ color: 'rgb(220, 50, 50)' }}
+                />
               </div>
               <h3 className="text-base xs:text-lg font-semibold" style={{ color: '#18181b' }}>
                 {t('pages.groups.errors.loadFailed')}
@@ -424,41 +427,38 @@ export default function Groups() {
                   onChange={setSelectedChipId}
                   instances={instances}
                   allowAll
-                  placeholder={t(
-                    'pages.groups.chipFilter.placeholder',
-                    'Filtrar por número'
-                  )}
+                  placeholder={t('pages.groups.chipFilter.placeholder', 'Filtrar por número')}
                 />
               )}
             </div>
 
             {/* Groups Table */}
             <ErrorBoundary>
-            <GroupListTable
-              groups={groups}
-              filteredGroups={displayedGroups}
-              selectedGroups={selectedGroups}
-              searchQuery={searchQuery}
-              onToggleGroup={toggleGroup}
-              onToggleAll={toggleAll}
-              onToggleFavorite={toggleFavorite}
-              onEditInviteCode={(group) => {
-                setSelectedGroupForInvite(group);
-                setInviteCodeInput(group.invite_code || '');
-                setEditInviteCodeDialogOpen(true);
-              }}
-              onManageMembers={members.openMembersDialog}
-              instances={instances}
-              // Pagination props
-              usePagination={usePagination}
-              currentPage={currentPage}
-              pageSize={pageSize}
-              totalCount={totalCount}
-              totalPages={totalPages}
-              hasMore={hasMore}
-              onPageChange={setCurrentPage}
-              onPageSizeChange={setPageSize}
-            />
+              <GroupListTable
+                groups={groups}
+                filteredGroups={displayedGroups}
+                selectedGroups={selectedGroups}
+                searchQuery={searchQuery}
+                onToggleGroup={toggleGroup}
+                onToggleAll={toggleAll}
+                onToggleFavorite={toggleFavorite}
+                onEditInviteCode={(group) => {
+                  setSelectedGroupForInvite(group);
+                  setInviteCodeInput(group.invite_code || '');
+                  setEditInviteCodeDialogOpen(true);
+                }}
+                onManageMembers={members.openMembersDialog}
+                instances={instances}
+                // Pagination props
+                usePagination={usePagination}
+                currentPage={currentPage}
+                pageSize={pageSize}
+                totalCount={totalCount}
+                totalPages={totalPages}
+                hasMore={hasMore}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+              />
             </ErrorBoundary>
 
             {/* Invite Code Dialog */}
@@ -490,6 +490,7 @@ export default function Groups() {
               onLeaveGroup={members.handleLeaveGroup}
               onPromoteMember={members.handlePromoteMember}
               onDemoteMember={members.handleDemoteMember}
+              onExportMembers={members.handleExportMembers}
               isAddingMember={members.isAddingMember}
               isRemovingMember={members.isRemovingMember}
               isLeavingGroup={members.isLeavingGroup}
