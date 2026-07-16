@@ -13,10 +13,34 @@ import (
 	"automatiza-go/internal/lib/ctapicker"
 	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/workers"
 
+	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap"
 )
+
+// consumeListItem marca o item como consumido com contexto DESACOPLADO e um
+// pequeno retry. O consumo é o registro de progresso da lista: falhar em
+// silêncio (ctx do run já estourado, blip do banco) fazia GetNextUnconsumed
+// devolver o MESMO item no próximo tick e reenviá-lo quando a janela de dedup
+// não cobria (dedupe_hours < intervalo, ou chaves do Redis perdidas).
+func (s *automationService) consumeListItem(ctx context.Context, itemID, automationID string, groupID *string) {
+	base := context.WithoutCancel(ctx)
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		opCtx, cancel := context.WithTimeout(base, 5*time.Second)
+		err = s.mlLinkListItemRepo.MarkAsConsumed(opCtx, []string{itemID}, automationID, groupID)
+		cancel()
+		if err == nil {
+			return
+		}
+		time.Sleep(time.Duration(attempt+1) * 300 * time.Millisecond)
+	}
+	observability.LogAndCapture(s.logger, sentry.LevelError,
+		"Failed to mark list item as consumed after retries (risco de reenvio no proximo ciclo)", err,
+		map[string]string{"module": "automation", "operation": "consume_list_item", "item_id": itemID})
+}
 
 const (
 	// maxDeadLinksPerRun is how many unusable items a single run may walk past
@@ -506,11 +530,7 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			}
 			// Permanently dead link — burn it and try the next candidate in THIS
 			// run, so one bad item doesn't cost the whole cycle.
-			if err := s.mlLinkListItemRepo.MarkAsConsumed(ctx, []string{item.ID}, automation.ID, nil); err != nil {
-				s.logger.Error("Failed to mark skipped item as consumed",
-					zap.String("itemID", item.ID),
-					zap.Error(err))
-			}
+			s.consumeListItem(ctx, item.ID, automation.ID, nil)
 			continue
 		}
 
@@ -644,6 +664,13 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			sum := sha256.Sum256([]byte(strings.TrimSpace(originURL)))
 			itemCanonical = "listurl:" + hex.EncodeToString(sum[:8])
 		}
+		// Store do item (para o dispatch log e o fallback de dedup em banco).
+		itemStore := "other"
+		if isShopee {
+			itemStore = "shopee"
+		} else if isML {
+			itemStore = "ml"
+		}
 		dedupSkips := 0
 		for _, groupID := range validGroups {
 			// Apply URL safety check
@@ -711,7 +738,16 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 						ProductURL:     &originURL,
 						Status:         models.DispatchLogStatusQueued,
 						Type:           automation.Type,
-						CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+						// CanonicalKey persiste o dedup no BANCO: sem ele o slow
+						// path (GetRecentByCanonicalKey) nunca casava para o LIST
+						// e um restart do Redis zerava toda a proteção contra
+						// produto repetido. Store distingue shopee/ml nas queries.
+						CanonicalKey: &itemCanonical,
+						Store:        &itemStore,
+						// ListItemID liga o log ao item para o reconciliador
+						// devolver itens "consumidos mas nunca entregues".
+						ListItemID: &item.ID,
+						CreatedAt:  time.Now().UTC().Format(time.RFC3339),
 					}
 					created, dlErr := s.dispatchLogRepo.Create(ctx, dl)
 					if dlErr == nil && created != nil {
@@ -778,24 +814,19 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				zap.String("automationID", automation.ID),
 				zap.String("originURL", originURL),
 				zap.Int("dedupSkips", dedupSkips))
-			if err := s.mlLinkListItemRepo.MarkAsConsumed(ctx, []string{item.ID}, automation.ID, nil); err != nil {
-				s.logger.Error("Failed to consume fully-deduped item",
-					zap.String("itemID", item.ID),
-					zap.Error(err))
-			}
+			s.consumeListItem(ctx, item.ID, automation.ID, nil)
 			continue
 		}
 
-		// Mark item as consumed (only if we sent to at least one group)
+		// Mark item as consumed (only if we sent to at least one group).
+		// O consumo aqui é OTIMISTA (no enfileiramento): se TODOS os envios do
+		// item falharem terminalmente no worker, o reconciliador
+		// (ReconcileListDeliveries, cron de 10min) detecta pelo dispatch_logs
+		// (0 sent, ≥1 failed, 0 queued) e devolve o item para retry.
 		if len(groupIDsSent) > 0 {
 			// Use the first group ID for tracking (the item is consumed for all groups)
 			firstGroupID := groupIDsSent[0]
-			err := s.mlLinkListItemRepo.MarkAsConsumed(ctx, []string{item.ID}, automation.ID, &firstGroupID)
-			if err != nil {
-				s.logger.Error("Failed to mark item as consumed",
-					zap.String("itemID", item.ID),
-					zap.Error(err))
-			}
+			s.consumeListItem(ctx, item.ID, automation.ID, &firstGroupID)
 
 			// itemsPerRun counts items actually DELIVERED, not items looked at.
 			// The pool above is only a budget for walking past dead links, so

@@ -1054,10 +1054,10 @@ func TestProcessScheduledJobs_Success(t *testing.T) {
 	}
 
 	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", ctx, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstance, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"group1@g.us"}).Return(resolvedGroups, nil)
-	jobRepo.On("UpdateStatus", ctx, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
+	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
 
 	result, err := svc.ProcessScheduledJobs(ctx)
 
@@ -1094,9 +1094,9 @@ func TestProcessScheduledJobs_NoConnectedInstance(t *testing.T) {
 	}
 
 	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", ctx, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return(disconnectedInstances, nil)
-	jobRepo.On("UpdateStatus", ctx, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
+	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
 
 	result, err := svc.ProcessScheduledJobs(ctx)
 
@@ -1262,4 +1262,9 @@ func TestCreateJob_AllActionTypes(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Stub do reaper de jobs presos em 'running' (método novo do JobRepository).
+func (m *MockJobRepository) FailStaleRunning(ctx context.Context, olderThan time.Duration) (int64, error) {
+	return 0, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/workers"
@@ -12,6 +13,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 )
+
+// testMsgTS: timestamp FRESCO compartilhado pelos fixtures — o gate de
+// frescor pós-lock do processor descarta mensagens com ts >10min (por
+// design), então fixtures com epoch fixo antigo nunca processariam.
+var testMsgTS = time.Now().Unix()
 
 // mockMonitoringService is a mock implementation of monitoring.Service
 type mockMonitoringService struct {
@@ -47,7 +53,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_GroupMessage(t *testing.T) {
 		"from":      "120363xxxxx@g.us",
 		"body":      "Check out this deal: https://shopee.com.br/product/123",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	// Expect monitoring service to be called
@@ -81,7 +87,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_SkipsNonGroupMessage(t *testi
 		"from":      "5511999999999@c.us", // Private chat, not @g.us
 		"body":      "Hello",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	// Monitoring service should NOT be called for non-group messages
@@ -107,8 +113,8 @@ func TestMonitoringMessageProcessor_ProcessMessage_SkipsOwnMessage(t *testing.T)
 		"id":        "msg123",
 		"from":      "120363xxxxx@g.us",
 		"body":      "My message",
-		"fromMe":    true, // Own message
-		"timestamp": float64(1706700000),
+		"fromMe":    true,               // Own message
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	// Monitoring service should NOT be called for own messages
@@ -140,8 +146,8 @@ func TestMonitoringMessageProcessor_ProcessMessage_FromMeRoutesToOfferGenerate(t
 		"id":        "msg-own-offer",
 		"from":      "120363xxxxx@g.us",
 		"body":      "https://shopee.com.br/product/123/456",
-		"fromMe":    true, // chip owner manually posting into a monitor group
-		"timestamp": float64(1706700000),
+		"fromMe":    true,               // chip owner manually posting into a monitor group
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -167,7 +173,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_SkipsEmptyMessage(t *testing.
 		"from":      "120363xxxxx@g.us",
 		"body":      "",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"hasMedia":  false,
 	}
 
@@ -198,7 +204,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedMessageFormat(t *testin
 				"remote":      "120363xxxxx@g.us",
 			},
 			"body":      "ML deal: https://mercadolivre.com.br/item/123",
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		},
 	}
 
@@ -232,7 +238,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MediaMessage(t *testing.T) {
 		"from":      "120363xxxxx@g.us",
 		"body":      "Check this product! https://shopee.com.br/p/1",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"hasMedia":  true,
 		"type":      "image",
 		"mediaUrl":  "https://waha.local/media/123",
@@ -294,7 +300,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_ChatIDField(t *testing.T) {
 		"chatId":    "120363xxxxx@g.us",
 		"body":      "Deal link: https://shopee.com.br/x",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	// Expect monitoring service to be called
@@ -324,7 +330,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_QuotedMessage(t *testing.T) {
 		"from":      "120363xxxxx@g.us",
 		"body":      "Replying to this deal",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"quotedMsg": map[string]interface{}{
 			"id":          "quoted_msg_456",
 			"body":        "Original message with link",
@@ -363,7 +369,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedStringID(t *testing.T) 
 			"from":      "120363xxxxx@g.us",
 			"body":      "Deal link: https://shopee.com.br/x",
 			"fromMe":    false,
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		},
 	}
 
@@ -392,7 +398,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedFallbackToField(t *test
 			"to":        "120363yyyyy@g.us",
 			"body":      "Fallback to field",
 			"fromMe":    false,
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		},
 	}
 
@@ -420,13 +426,13 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedTimestampT(t *testing.T
 			"from":   "120363xxxxx@g.us",
 			"body":   "Timestamp via t field",
 			"fromMe": false,
-			"t":      float64(1706712345),
+			"t":      float64(testMsgTS),
 		},
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
 		return msg.MessageID == "msg-t-ts" &&
-			msg.Timestamp == int64(1706712345)
+			msg.Timestamp == int64(testMsgTS)
 	})).Return(nil)
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -454,7 +460,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedMediaObject(t *testing.
 				"url":      "https://waha.local/media/nested-456",
 				"mimetype": "image/png",
 			},
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		},
 	}
 
@@ -485,7 +491,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedNotifyName(t *testing.T
 			"from":       "120363xxxxx@g.us",
 			"body":       "Message with notifyName",
 			"fromMe":     false,
-			"timestamp":  float64(1706700000),
+			"timestamp":  float64(testMsgTS),
 			"notifyName": "Bruno V",
 		},
 	}
@@ -513,7 +519,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedMissingMessageID(t *tes
 			"from":      "120363xxxxx@g.us",
 			"body":      "No ID here",
 			"fromMe":    false,
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		},
 	}
 
@@ -536,7 +542,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedMissingRemoteJID(t *tes
 			"id":        "msg-no-jid",
 			"body":      "Missing JID",
 			"fromMe":    false,
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		},
 	}
 
@@ -561,7 +567,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatToField(t *testing.T) {
 		"to":        "120363zzzzz@g.us",
 		"body":      "Using to field",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
@@ -587,7 +593,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatAuthorField(t *testing.T)
 		"from":      "120363xxxxx@g.us",
 		"body":      "Using author field",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"author":    "5511777777777@c.us",
 	}
 
@@ -614,7 +620,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatNotifyName(t *testing.T) 
 		"from":       "120363xxxxx@g.us",
 		"body":       "Using notifyName field",
 		"fromMe":     false,
-		"timestamp":  float64(1706700000),
+		"timestamp":  float64(testMsgTS),
 		"notifyName": "John Doe",
 	}
 
@@ -641,7 +647,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatTextField(t *testing.T) {
 		"from":      "120363xxxxx@g.us",
 		"text":      "Message via text field https://shopee.com.br/p/9",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
@@ -667,12 +673,12 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatTimestampT(t *testing.T) 
 		"from":   "120363xxxxx@g.us",
 		"body":   "Message with t timestamp",
 		"fromMe": false,
-		"t":      float64(1706799999),
+		"t":      float64(testMsgTS),
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
 		return msg.MessageID == "msg-flat-t" &&
-			msg.Timestamp == int64(1706799999)
+			msg.Timestamp == int64(testMsgTS)
 	})).Return(nil)
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -693,7 +699,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMediaObject(t *testing.T)
 		"from":      "120363xxxxx@g.us",
 		"body":      "Image with media object",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"hasMedia":  true,
 		"type":      "image",
 		"media": map[string]interface{}{
@@ -727,7 +733,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMediaObjectOverridesMedia
 		"from":      "120363xxxxx@g.us",
 		"body":      "Precedence test",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"hasMedia":  true,
 		"type":      "image",
 		"mediaUrl":  "https://waha.local/media/old-deprecated",
@@ -830,12 +836,12 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampIntType(t *testing.T
 		"from":      "120363xxxxx@g.us",
 		"body":      "Int timestamp",
 		"fromMe":    false,
-		"timestamp": int(1706700042),
+		"timestamp": int(testMsgTS),
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
 		return msg.MessageID == "msg-int-ts" &&
-			msg.Timestamp == int64(1706700042)
+			msg.Timestamp == int64(testMsgTS)
 	})).Return(nil)
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -856,12 +862,12 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampInt64Type(t *testing
 		"from":      "120363xxxxx@g.us",
 		"body":      "Int64 timestamp",
 		"fromMe":    false,
-		"timestamp": int64(1706700064),
+		"timestamp": int64(testMsgTS),
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
 		return msg.MessageID == "msg-int64-ts" &&
-			msg.Timestamp == int64(1706700064)
+			msg.Timestamp == int64(testMsgTS)
 	})).Return(nil)
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -882,12 +888,12 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampUint64Type(t *testin
 		"from":      "120363xxxxx@g.us",
 		"body":      "Uint64 timestamp",
 		"fromMe":    false,
-		"timestamp": uint64(1706700064),
+		"timestamp": uint64(testMsgTS),
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
 		return msg.MessageID == "msg-uint64-ts" &&
-			msg.Timestamp == int64(1706700064)
+			msg.Timestamp == int64(testMsgTS)
 	})).Return(nil)
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -938,7 +944,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NilMapBoolExtraction(t *testi
 		"id":        "msg-no-fromme",
 		"from":      "120363xxxxx@g.us",
 		"body":      "No fromMe field",
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
@@ -965,7 +971,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMissingID(t *testing.T) {
 		"from":      "120363xxxxx@g.us",
 		"body":      "Missing ID",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	// Should return nil (non-retryable parse error), service not called
@@ -986,7 +992,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMissingRemoteJID(t *testi
 		"id":        "msg-no-jid",
 		"body":      "Missing JID",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	// Should return nil (non-retryable parse error), service not called
@@ -1009,7 +1015,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_ServiceError(t *testing.T) {
 		"from":      "120363xxxxx@g.us",
 		"body":      "This will fail in service",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	// Service returns an error
@@ -1039,7 +1045,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MediaTypeVideo(t *testing.T) 
 		"from":      "120363xxxxx@g.us",
 		"body":      "Video message",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"type":      "video",
 	}
 
@@ -1064,7 +1070,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MediaTypeAudio(t *testing.T) 
 		"from":      "120363xxxxx@g.us",
 		"body":      "",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"type":      "audio",
 	}
 
@@ -1089,7 +1095,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MediaTypePtt(t *testing.T) {
 		"from":      "120363xxxxx@g.us",
 		"body":      "",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"type":      "ptt",
 	}
 
@@ -1114,7 +1120,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_MediaTypeDocument(t *testing.
 		"from":      "120363xxxxx@g.us",
 		"body":      "",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"type":      "document",
 	}
 
@@ -1142,7 +1148,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_QuotedMessageObjectID(t *test
 		"from":      "120363xxxxx@g.us",
 		"body":      "Replying to a message",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"quotedMsg": map[string]interface{}{
 			"id": map[string]interface{}{
 				"_serialized": "true_120363xxxxx@g.us_quoted789",
@@ -1177,7 +1183,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_QuotedMessageAuthorField(t *t
 		"from":      "120363xxxxx@g.us",
 		"body":      "Replying with author field",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"quotedMsg": map[string]interface{}{
 			"id":     "quoted-author-123",
 			"body":   "Original from author",
@@ -1212,7 +1218,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatParticipantField(t *testi
 		"from":        "120363xxxxx@g.us",
 		"body":        "Participant field test",
 		"fromMe":      false,
-		"timestamp":   float64(1706700000),
+		"timestamp":   float64(testMsgTS),
 		"participant": "5511999888777@c.us",
 	}
 
@@ -1241,7 +1247,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatIDAsObject(t *testing.T) 
 		"from":      "120363xxxxx@g.us",
 		"body":      "ID as object test",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
@@ -1267,7 +1273,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatPushNameField(t *testing.
 		"from":      "120363xxxxx@g.us",
 		"body":      "PushName field test",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"pushName":  "Maria Silva",
 	}
 
@@ -1294,7 +1300,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMimeTypeField(t *testing.
 		"from":      "120363xxxxx@g.us",
 		"body":      "MimeType camelCase test",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"hasMedia":  true,
 		"type":      "image",
 		"mimeType":  "image/png",
@@ -1325,7 +1331,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMimetypeField(t *testing.
 		"from":      "120363xxxxx@g.us",
 		"body":      "Mimetype lowercase test",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"hasMedia":  true,
 		"type":      "document",
 		"mimetype":  "application/pdf",
@@ -1361,7 +1367,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedVideoType(t *testing.T)
 				"remote":      "120363xxxxx@g.us",
 			},
 			"body":      "Video in nested format",
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 			"hasMedia":  true,
 			"type":      "video",
 		},
@@ -1394,7 +1400,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedDocumentType(t *testing
 				"remote":      "120363xxxxx@g.us",
 			},
 			"body":      "Document in nested format",
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 			"hasMedia":  true,
 			"type":      "document",
 		},
@@ -1427,7 +1433,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedPttType(t *testing.T) {
 				"remote":      "120363xxxxx@g.us",
 			},
 			"body":      "",
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 			"type":      "ptt",
 		},
 	}
@@ -1461,7 +1467,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedFromFallback(t *testing
 			},
 			"from":      "120363aaaaa@g.us",
 			"body":      "From fallback in nested format",
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		},
 	}
 
@@ -1493,8 +1499,8 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedFromMeOverride(t *testi
 				"remote":      "120363xxxxx@g.us",
 			},
 			"body":      "Own message via override",
-			"fromMe":    true, // Override: message-level fromMe takes precedence
-			"timestamp": float64(1706700000),
+			"fromMe":    true,               // Override: message-level fromMe takes precedence
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		},
 	}
 
@@ -1518,7 +1524,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatMediaUrlOnly(t *testing.T
 		"from":      "120363xxxxx@g.us",
 		"body":      "Media URL without media object",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		"hasMedia":  true,
 		"type":      "image",
 		"mediaUrl":  "https://waha.local/media/standalone-url",
@@ -1556,7 +1562,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_NestedQuotedMessage(t *testin
 				"remote":      "120363xxxxx@g.us",
 			},
 			"body":      "Replying in nested format",
-			"timestamp": float64(1706700000),
+			"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 		},
 	}
 
@@ -1587,11 +1593,11 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampAsInt(t *testing.T) 
 		"from":      "120363xxxxx@g.us",
 		"body":      "Timestamp as int",
 		"fromMe":    false,
-		"timestamp": int(1706700000),
+		"timestamp": int(testMsgTS),
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
-		return msg.MessageID == "msg-ts-int" && msg.Timestamp == int64(1706700000)
+		return msg.MessageID == "msg-ts-int" && msg.Timestamp == int64(testMsgTS)
 	})).Return(nil)
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -1612,11 +1618,11 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampAsInt64(t *testing.T
 		"from":      "120363xxxxx@g.us",
 		"body":      "Timestamp as int64",
 		"fromMe":    false,
-		"timestamp": int64(1706700000),
+		"timestamp": int64(testMsgTS),
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
-		return msg.MessageID == "msg-ts-int64" && msg.Timestamp == int64(1706700000)
+		return msg.MessageID == "msg-ts-int64" && msg.Timestamp == int64(testMsgTS)
 	})).Return(nil)
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -1637,11 +1643,11 @@ func TestMonitoringMessageProcessor_ProcessMessage_TimestampAsUint64(t *testing.
 		"from":      "120363xxxxx@g.us",
 		"body":      "Timestamp as uint64",
 		"fromMe":    false,
-		"timestamp": uint64(1706700000),
+		"timestamp": uint64(testMsgTS),
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
-		return msg.MessageID == "msg-ts-uint64" && msg.Timestamp == int64(1706700000)
+		return msg.MessageID == "msg-ts-uint64" && msg.Timestamp == int64(testMsgTS)
 	})).Return(nil)
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -1691,7 +1697,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FromMeAsString(t *testing.T) 
 		"from":      "120363xxxxx@g.us",
 		"body":      "fromMe as string",
 		"fromMe":    "true",
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
@@ -1718,7 +1724,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_IDAsNumber(t *testing.T) {
 		"from":      "120363xxxxx@g.us",
 		"body":      "ID as number",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -1743,7 +1749,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatToFallback(t *testing.T) 
 		"to":        "120363bbbbb@g.us",
 		"body":      "To fallback test",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
@@ -1768,7 +1774,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatChatIDFallback(t *testing
 		"chatId":    "120363ccccc@g.us",
 		"body":      "ChatId fallback test",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
@@ -1793,7 +1799,7 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatTextFallback(t *testing.T
 		"from":      "120363xxxxx@g.us",
 		"text":      "Text field fallback",
 		"fromMe":    false,
-		"timestamp": float64(1706700000),
+		"timestamp": float64(testMsgTS), // fresco: o gate pós-lock descarta ts >10min, por design
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
@@ -1818,11 +1824,11 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatTimestampTFallback(t *tes
 		"from":   "120363xxxxx@g.us",
 		"body":   "Timestamp t fallback",
 		"fromMe": false,
-		"t":      float64(1706700000),
+		"t":      float64(testMsgTS),
 	}
 
 	mockSvc.On("ProcessIncomingMessage", mock.Anything, mock.MatchedBy(func(msg *models.IncomingMessage) bool {
-		return msg.MessageID == "msg-t-fallback" && msg.Timestamp == int64(1706700000)
+		return msg.MessageID == "msg-t-fallback" && msg.Timestamp == int64(testMsgTS)
 	})).Return(nil)
 
 	err := processor.ProcessMessage(context.Background(), "session1", payload)
@@ -1831,3 +1837,10 @@ func TestMonitoringMessageProcessor_ProcessMessage_FlatTimestampTFallback(t *tes
 	mockSvc.AssertExpectations(t)
 }
 
+// Stubs do replay de reconciliação (Service interfaces).
+func (m *mockMonitoringService) ProcessReconciledMessage(ctx context.Context, msg *models.IncomingMessage) error {
+	return nil
+}
+func (m *mockOfferGenerateService) ProcessReconciledMessage(ctx context.Context, msg *models.IncomingMessage) error {
+	return nil
+}

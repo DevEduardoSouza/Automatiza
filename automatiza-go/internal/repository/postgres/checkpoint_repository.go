@@ -182,10 +182,15 @@ func (r *checkpointRepository) MarkFailed(ctx context.Context, sessionName, chat
 }
 
 // UpdateCheckpoint updates the last processed message timestamp and ID.
+// MONOTÔNICO: nunca recua o watermark — o caminho vivo (AdvanceCheckpoint) e o
+// backfill (este método) correm em paralelo, e um batch atrasado do backfill
+// não pode sobrescrever um timestamp mais novo já registrado pelo caminho vivo.
 func (r *checkpointRepository) UpdateCheckpoint(ctx context.Context, sessionName, chatID string, lastTimestamp int64, lastMessageID string) error {
 	query := `
 		UPDATE reconciliation_checkpoints
-		SET last_message_timestamp = $3, last_message_id = $4, last_run_at = $5
+		SET last_message_id = CASE WHEN $3 > last_message_timestamp THEN $4 ELSE last_message_id END,
+		    last_message_timestamp = GREATEST(last_message_timestamp, $3),
+		    last_run_at = $5
 		WHERE session_name = $1 AND chat_id = $2
 	`
 
@@ -201,6 +206,64 @@ func (r *checkpointRepository) UpdateCheckpoint(ctx context.Context, sessionName
 		zap.String("messageID", lastMessageID))
 
 	return nil
+}
+
+// AdvanceCheckpoint faz o upsert MONOTÔNICO do watermark a partir do caminho
+// VIVO (fan-out do espelho concluído): cria o checkpoint na primeira mensagem
+// do chat e só avança timestamps — nunca recua. É este método que dá vida à
+// reconciliação: sem checkpoints criados pelo fluxo real, o watchdog de
+// silêncio e o backfill de startup não tinham o que reconciliar (a tabela
+// ficou 0 linhas desde sempre) e a "recuperação de gaps" era um no-op.
+func (r *checkpointRepository) AdvanceCheckpoint(ctx context.Context, sessionName, chatID string, lastTimestamp int64, lastMessageID string) error {
+	query := `
+		INSERT INTO reconciliation_checkpoints
+			(session_name, chat_id, last_message_timestamp, last_message_id, status, last_run_at)
+		VALUES ($1, $2, $3, $4, 'idle', $5)
+		ON CONFLICT (session_name, chat_id) DO UPDATE SET
+			last_message_id = CASE
+				WHEN EXCLUDED.last_message_timestamp > reconciliation_checkpoints.last_message_timestamp
+				THEN EXCLUDED.last_message_id
+				ELSE reconciliation_checkpoints.last_message_id END,
+			last_message_timestamp = GREATEST(reconciliation_checkpoints.last_message_timestamp, EXCLUDED.last_message_timestamp),
+			last_run_at = EXCLUDED.last_run_at
+	`
+
+	_, err := r.db.pool.Exec(ctx, query, sessionName, chatID, lastTimestamp, lastMessageID, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("failed to advance checkpoint: %w", err)
+	}
+	return nil
+}
+
+// ResetStuckCheckpoints devolve para 'idle' checkpoints presos em
+// 'running'/'failed' há mais de olderThan. Sem isso, um crash no meio de um
+// ReconcileChat deixava o checkpoint em 'running' e o MarkRunning recusava
+// TODA reconciliação futura daquele chat — o safety-net morria em silêncio.
+func (r *checkpointRepository) ResetStuckCheckpoints(ctx context.Context, olderThan time.Duration) (int64, error) {
+	query := `
+		UPDATE reconciliation_checkpoints
+		SET status = 'idle'
+		WHERE status IN ('running', 'failed') AND last_run_at < $1
+	`
+
+	result, err := r.db.pool.Exec(ctx, query, time.Now().UTC().Add(-olderThan))
+	if err != nil {
+		return 0, fmt.Errorf("failed to reset stuck checkpoints: %w", err)
+	}
+	return result.RowsAffected(), nil
+}
+
+// DeleteInactiveCheckpoints remove checkpoints sem atividade há mais de
+// olderThan (grupo morreu, sessão despareada). Higiene: mantém a tabela e o
+// custo do reconcileSession proporcionais aos chats realmente ativos.
+func (r *checkpointRepository) DeleteInactiveCheckpoints(ctx context.Context, olderThan time.Duration) (int64, error) {
+	query := `DELETE FROM reconciliation_checkpoints WHERE last_run_at < $1`
+
+	result, err := r.db.pool.Exec(ctx, query, time.Now().UTC().Add(-olderThan))
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete inactive checkpoints: %w", err)
+	}
+	return result.RowsAffected(), nil
 }
 
 // GetActiveSessionsChats retrieves all session/chat pairs that have checkpoints.

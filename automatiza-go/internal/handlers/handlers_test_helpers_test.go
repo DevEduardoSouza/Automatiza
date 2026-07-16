@@ -1224,3 +1224,16 @@ func mustParseBody(w *httptest.ResponseRecorder) map[string]interface{} {
 func parseJSON(data []byte, v interface{}) error {
 	return json.Unmarshal(data, v)
 }
+
+// Stubs dos métodos novos do DispatchLogRepository (reconciliador de lista).
+func (m *mockDispatchLogRepo) MarkStaleQueuedListLogs(ctx context.Context, staleAfter, window time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *mockDispatchLogRepo) GetListResurrectCandidates(ctx context.Context, window time.Duration) ([]repository.ListResurrectCandidate, error) {
+	return nil, nil
+}
+
+// Stub do replay de reconciliação do monitoring.Service.
+func (m *mockMonitoringService) ProcessReconciledMessage(ctx context.Context, msg *models.IncomingMessage) error {
+	return nil
+}

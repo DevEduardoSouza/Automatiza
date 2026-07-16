@@ -159,20 +159,30 @@ func (w *MessageQueueWorker) ProcessTask(ctx context.Context, task *asynq.Task) 
 		sendErr = fmt.Errorf("unknown message type: %s", msgTask.Type)
 	}
 
-	// Update action_history status
+	// Update action_history status.
+	// Desfechos terminais usam ctx DESACOPLADO: com Timeout(30s) da task, o
+	// ctx cru chega morto aqui após um envio lento e a action ficava presa em
+	// 'running' para sempre (mesmo bug do dispatch_log 'queued' eterno).
 	if sendErr != nil {
+		// Desfecho AMBÍGUO (timeout/reset/EOF/502): o WAHA pode ter entregue.
+		// Marcar failed + retry re-enviaria — assume-sent, mesmo contrato do
+		// message_worker.
+		if whatsapp.IsAmbiguousOutcome(sendErr) {
+			w.logger.Warn("Ambiguous send outcome — assuming sent (no retry)",
+				zap.String("type", msgTask.Type),
+				zap.String("groupID", msgTask.GroupID),
+				zap.Error(sendErr))
+			w.updateActionStatus(ctx, msgTask.ActionID, models.ActionStatusCompleted,
+				"desfecho incerto (timeout/conexao) - assumido como enviado")
+			return nil
+		}
+
 		w.logger.Error("Message send failed",
 			zap.String("type", msgTask.Type),
 			zap.String("groupID", msgTask.GroupID),
 			zap.Error(sendErr))
 
-		if msgTask.ActionID != "" && w.actionHistoryRepo != nil {
-			if err := w.actionHistoryRepo.UpdateStatus(ctx, msgTask.ActionID, models.ActionStatusFailed, sendErr.Error()); err != nil {
-				w.logger.Warn("Failed to update action status to failed",
-					zap.String("actionID", msgTask.ActionID),
-					zap.Error(err))
-			}
-		}
+		w.updateActionStatus(ctx, msgTask.ActionID, models.ActionStatusFailed, sendErr.Error())
 
 		// Check if error is retryable
 		if !w.isRetryableError(sendErr) {
@@ -189,13 +199,7 @@ func (w *MessageQueueWorker) ProcessTask(ctx context.Context, task *asynq.Task) 
 		zap.String("groupID", msgTask.GroupID),
 		zap.String("actionID", msgTask.ActionID))
 
-	if msgTask.ActionID != "" && w.actionHistoryRepo != nil {
-		if err := w.actionHistoryRepo.UpdateStatus(ctx, msgTask.ActionID, models.ActionStatusCompleted, ""); err != nil {
-			w.logger.Warn("Failed to update action status to completed",
-				zap.String("actionID", msgTask.ActionID),
-				zap.Error(err))
-		}
-	}
+	w.updateActionStatus(ctx, msgTask.ActionID, models.ActionStatusCompleted, "")
 
 	return nil
 }
@@ -369,6 +373,14 @@ func (w *MessageQueueWorker) isRetryableError(err error) bool {
 		}
 	}
 
+	// Desfecho ambíguo (timeout/reset/EOF/502 pós-POST): NUNCA retryable —
+	// re-executar pode duplicar a mensagem. (O chamador já trata ambíguo como
+	// assumed-sent antes de chegar aqui; isto é defesa em profundidade,
+	// alinhada ao IsAmbiguousOutcome/send_outcome.go.)
+	if whatsapp.IsAmbiguousOutcome(err) {
+		return false
+	}
+
 	// Legacy error detection
 	errStr := strings.ToLower(err.Error())
 
@@ -380,21 +392,31 @@ func (w *MessageQueueWorker) isRetryableError(err error) bool {
 		return false
 	}
 
-	// Timeout: assume sent, don't retry
-	if strings.Contains(errStr, "timeout") ||
-		strings.Contains(errStr, "context deadline exceeded") {
-		return false
-	}
-
-	// Retryable errors
-	if strings.Contains(errStr, "connection") ||
-		strings.Contains(errStr, "eof") ||
+	// Retryable errors (refused = TCP nem conectou; comprovadamente não enviado)
+	if strings.Contains(errStr, "connection refused") ||
 		strings.Contains(errStr, "rate limit") {
 		return true
 	}
 
 	// Default: retry
 	return true
+}
+
+// updateActionStatus grava o status da action com contexto DESACOPLADO — o
+// desfecho precisa persistir mesmo com o ctx da task já estourado (envio
+// consumiu o Timeout de 30s), senão a action fica presa em 'running'.
+func (w *MessageQueueWorker) updateActionStatus(ctx context.Context, actionID, status, note string) {
+	if actionID == "" || w.actionHistoryRepo == nil {
+		return
+	}
+	updCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := w.actionHistoryRepo.UpdateStatus(updCtx, actionID, status, note); err != nil {
+		w.logger.Warn("Failed to update action status",
+			zap.String("actionID", actionID),
+			zap.String("status", status),
+			zap.Error(err))
+	}
 }
 
 // EnqueueWithBackpressure enqueues a message task with backpressure based on queue depth.

@@ -541,9 +541,25 @@ func (m *Mapper) MessageFromWaha(w *wahaMessage) Message {
 		return Message{}
 	}
 
+	// ChatID: o schema WAMessage do WAHA NÃO tem campo "chatId"
+	// (waha-plus-openapi.json, components.schemas.WAMessage) — o chat vem em
+	// "from" ("ID for the Chat that this message was sent to, except if the
+	// message was sent by the current user") ou, para fromMe, em "to" ("the
+	// Chat to which the message is being sent"). Mapear só w.ChatID deixava o
+	// campo SEMPRE vazio no GetMessages — todo o backfill de reconciliação
+	// descartava as mensagens em silêncio (checagem @g.us falhava).
+	chatID := w.ChatID
+	if chatID == "" {
+		if w.FromMe {
+			chatID = w.To
+		} else {
+			chatID = w.From
+		}
+	}
+
 	msg := Message{
 		ID:        w.ID,
-		ChatID:    w.ChatID,
+		ChatID:    chatID,
 		FromMe:    w.FromMe,
 		Body:      w.Body,
 		HasMedia:  w.HasMedia,

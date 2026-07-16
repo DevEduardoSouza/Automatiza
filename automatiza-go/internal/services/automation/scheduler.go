@@ -329,28 +329,40 @@ func (s *Scheduler) isDueForExecution(automation *models.Automation, now time.Ti
 		return true
 	}
 
-	// Check if next run time has passed.
 	// Anti-ban: add a DETERMINISTIC per-automation offset (0..SchedulerJitterSec)
 	// so automations don't all fire on the exact same minute boundary. Stable per
 	// ID (no tick-to-tick flapping) and bounded well under the interval, so the
-	// due comparison and the next_run_at guard below remain correct.
+	// due comparison and the next_run_at gate below remain correct.
 	jitter := time.Duration(0)
 	if jitterSec := config.GetHumanization().SchedulerJitterSec; jitterSec > 0 {
 		jitter = time.Duration(fnv32(automation.ID)%uint32(jitterSec+1)) * time.Second
 	}
+
+	// next_run_at é o gate AUTORITATIVO quando presente: RunAutomation o grava a
+	// cada término (fim+intervalo no caminho feliz, fim+abortRetryBackoff=5min
+	// quando o run foi morto por timeout). Antes ele só conseguia ATRASAR — o
+	// gate de intervalo abaixo rodava primeiro e bloqueava até last_run+interval,
+	// tornando o retry de 5min pós-abort código morto: um run abortado (que não
+	// entregou nada) pulava o ciclo INTEIRO em silêncio. Honrar next_run_at nos
+	// dois sentidos recupera a entrega em minutos sem virar loop apertado (o
+	// próprio abortRetryBackoff limita a cadência, e cada run reescreve o campo).
+	//
+	// SANITY: só é autoritativo se for POSTERIOR ao last_run_at. Se a escrita
+	// do defer falhar (DB sob carga), next_run_at fica obsoleto (< last_run_at)
+	// — confiar nele tornaria a automação due a CADA tick (1/min = spam + risco
+	// de ban) enquanto a escrita falhasse. Marca d'água obsoleta cai no gate
+	// clássico por intervalo abaixo.
+	if automation.NextRunAt != nil && *automation.NextRunAt != "" {
+		if nextScheduled, err := time.Parse(time.RFC3339, *automation.NextRunAt); err == nil && nextScheduled.After(lastRunAt) {
+			return !now.Before(nextScheduled.Add(jitter))
+		}
+	}
+
+	// Fallback (next_run_at ausente/ilegível): gate clássico por intervalo
+	// desde last_run_at.
 	nextRunAt := lastRunAt.Add(time.Duration(intervalMinutes)*time.Minute + jitter)
 	if !now.After(nextRunAt) && !now.Equal(nextRunAt) {
 		return false
-	}
-
-	// Defense in depth: also respect next_run_at if set.
-	// If next_run_at is in the future, the automation is not due yet
-	// (even if last_run_at suggests it is).
-	if automation.NextRunAt != nil && *automation.NextRunAt != "" {
-		nextScheduled, err := time.Parse(time.RFC3339, *automation.NextRunAt)
-		if err == nil && now.Before(nextScheduled) {
-			return false
-		}
 	}
 
 	return true

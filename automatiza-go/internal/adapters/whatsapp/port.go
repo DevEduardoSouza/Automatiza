@@ -705,6 +705,11 @@ type GetMessagesInput struct {
 	// DownloadMedia indicates whether to include media download URLs.
 	DownloadMedia bool
 
+	// SortAsc, when true, requests oldest-first ordering (sortBy=timestamp,
+	// sortOrder=asc). Reconciliation uses it so offset paging walks forward
+	// in time deterministically.
+	SortAsc bool
+
 	// Filter contains optional filtering criteria.
 	Filter *MessageFilter
 }

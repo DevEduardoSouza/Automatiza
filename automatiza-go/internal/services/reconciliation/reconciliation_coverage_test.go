@@ -855,7 +855,7 @@ func TestDoReconcile_EdgeCases(t *testing.T) {
 		svc, deps := newTestService(t)
 		sessionName := "test-session"
 		chatID := "cancel-before-loop@g.us"
-		baseTime := time.Now().Add(-1 * time.Hour)
+		baseTime := time.Now().Add(-5 * time.Minute) // dentro da MaxBackfillWindow (10min): fora dela o doReconcile pula a mensagem, por design
 
 		checkpoint := &reconciliation.Checkpoint{
 			SessionName: sessionName,
@@ -896,7 +896,7 @@ func TestDoReconcile_EdgeCases(t *testing.T) {
 		svc, deps := newTestService(t)
 		sessionName := "test-session"
 		chatID := "cancel-mid-loop@g.us"
-		baseTime := time.Now().Add(-1 * time.Hour)
+		baseTime := time.Now().Add(-5 * time.Minute) // dentro da MaxBackfillWindow (10min): fora dela o doReconcile pula a mensagem, por design
 
 		checkpoint := &reconciliation.Checkpoint{
 			SessionName: sessionName,
@@ -978,7 +978,7 @@ func TestDoReconcile_EdgeCases(t *testing.T) {
 
 		sessionName := "test-session"
 		chatID := "timestamp-track@g.us"
-		baseTime := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+		baseTime := time.Now().Add(-5 * time.Minute).UTC() // dentro da MaxBackfillWindow (10min)
 
 		checkpoint := &reconciliation.Checkpoint{
 			SessionName: sessionName,
@@ -1164,7 +1164,7 @@ func TestTryRestartSession_BackoffEdgeCases(t *testing.T) {
 		t.Parallel()
 		// Use a large RestartBackoff with many attempts to trigger the 30-min cap
 		config := fastWatchdogConfig()
-		config.RestartBackoff = 20 * time.Minute  // 20min * 2^1 = 40min > 30min cap
+		config.RestartBackoff = 20 * time.Minute // 20min * 2^1 = 40min > 30min cap
 		config.MaxRestartAttempts = 5
 		svc, deps := newWatchdogTestService(t, config)
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)

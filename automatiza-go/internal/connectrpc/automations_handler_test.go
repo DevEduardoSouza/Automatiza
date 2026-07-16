@@ -783,3 +783,11 @@ func TestProtoToAutomationCreate_MonitorStoresShopeeOnly(t *testing.T) {
 		assert.Equal(t, []string{"mercadolivre", "shopee"}, automation.Stores)
 	})
 }
+
+// Stubs dos métodos novos do DispatchLogRepository (reconciliador de lista).
+func (m *mockDispatchLogRepoForHandler) MarkStaleQueuedListLogs(ctx context.Context, staleAfter, window time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *mockDispatchLogRepoForHandler) GetListResurrectCandidates(ctx context.Context, window time.Duration) ([]repository.ListResurrectCandidate, error) {
+	return nil, nil
+}

@@ -5010,3 +5010,14 @@ func TestProcessListMode_URLSafetyEvaluateError_Mock(t *testing.T) {
 // Smart CTA filter tests movidos para internal/lib/ctapicker/ctapicker_test.go
 // quando a função foi extraída pra ser compartilhada entre automation e
 // offer_generate.
+
+// Stubs dos métodos novos (reconciliador de lista).
+func (m *mockDispatchLogRepo) MarkStaleQueuedListLogs(ctx context.Context, staleAfter, window time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *mockDispatchLogRepo) GetListResurrectCandidates(ctx context.Context, window time.Duration) ([]repository.ListResurrectCandidate, error) {
+	return nil, nil
+}
+func (m *mockMlLinkListItemRepo) ResetConsumedByIDs(ctx context.Context, itemIDs []string) (int64, error) {
+	return 0, nil
+}

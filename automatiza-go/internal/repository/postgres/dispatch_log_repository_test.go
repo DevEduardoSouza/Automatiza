@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS dispatch_logs (
     coupon_applied BOOLEAN,
     coupon_skip_reason TEXT,
     copy_index SMALLINT,
+    list_item_id UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

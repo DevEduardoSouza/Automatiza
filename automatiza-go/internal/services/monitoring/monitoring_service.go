@@ -34,6 +34,13 @@ import (
 // Service defines the monitoring service interface
 type Service interface {
 	ProcessIncomingMessage(ctx context.Context, msg *models.IncomingMessage) error
+	// ProcessReconciledMessage processa uma mensagem RECUPERADA pelo backfill
+	// (webhook perdido / fan-out morto por crash). Pula os claims de nível
+	// mensagem (content 2min / msgID 10min) — que a passagem original pode
+	// ter reivindicado antes de morrer — e confia no claim fail-closed POR
+	// DESTINO (claimProductSlot): destinos já atendidos dedupam, só os
+	// perdidos recebem. O chamador garante frescor ≤ MaxBackfillWindow.
+	ProcessReconciledMessage(ctx context.Context, msg *models.IncomingMessage) error
 }
 
 // monitorDispatchTextEnabled desativa temporariamente o texto de disparo no
@@ -125,6 +132,17 @@ func (s *monitoringService) markDeadGroup(ctx context.Context, session, groupID 
 }
 
 func (s *monitoringService) ProcessIncomingMessage(ctx context.Context, msg *models.IncomingMessage) error {
+	return s.processIncoming(ctx, msg, false)
+}
+
+// ProcessReconciledMessage — ver contrato na interface. fromReconcile=true
+// pula apenas os claims de nível mensagem; todo o resto (selfsend, janela,
+// claim por destino, dead-group, reputação) é idêntico ao caminho vivo.
+func (s *monitoringService) ProcessReconciledMessage(ctx context.Context, msg *models.IncomingMessage) error {
+	return s.processIncoming(ctx, msg, true)
+}
+
+func (s *monitoringService) processIncoming(ctx context.Context, msg *models.IncomingMessage, fromReconcile bool) error {
 	// 1. Validate message is from group
 	if !strings.HasSuffix(msg.RemoteJID, "@g.us") {
 		return nil
@@ -175,24 +193,30 @@ func (s *monitoringService) ProcessIncomingMessage(ctx context.Context, msg *mod
 		dedupScope = inst.UserID
 	}
 
-	// 4. Content fingerprint dedup (2 min window). Keyed por (dono, grupo,
-	// body-hash): colapsa os N chips do MESMO dono, mantém donos distintos
-	// independentes.
-	contentKey := s.buildContentKey(dedupScope, msg.RemoteJID, msg.Body)
-	if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
-		s.logger.Debug("Duplicate content detected, skipping")
-		return nil
-	}
-
-	// 5. Message ID dedup (10 min window). Mesma chave por (dono, grupo, msgID).
-	// O key.id do WhatsApp é idêntico nos N webhooks do mesmo grupo, então
-	// dentro de um dono colapsa os chips. Se o MessageID vier vazio, pula (o
-	// dedup de conteúdo acima já cobre).
-	if msg.MessageID != "" {
-		msgKey := fmt.Sprintf("msg_dedup:%s:%s:%s", dedupScope, msg.RemoteJID, msg.MessageID)
-		if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
-			s.logger.Debug("Duplicate message ID detected, skipping")
+	// 4/5. Claims de nível MENSAGEM — pulados no replay do backfill: a
+	// passagem original pode tê-los reivindicado e morrido no meio do
+	// fan-out; bloquear aqui impediria a recuperação. A idempotência real do
+	// replay é o claim fail-closed POR DESTINO (claimProductSlot) lá embaixo.
+	if !fromReconcile {
+		// 4. Content fingerprint dedup (2 min window). Keyed por (dono, grupo,
+		// body-hash): colapsa os N chips do MESMO dono, mantém donos distintos
+		// independentes.
+		contentKey := s.buildContentKey(dedupScope, msg.RemoteJID, msg.Body)
+		if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
+			s.logger.Debug("Duplicate content detected, skipping")
 			return nil
+		}
+
+		// 5. Message ID dedup (10 min window). Mesma chave por (dono, grupo, msgID).
+		// O key.id do WhatsApp é idêntico nos N webhooks do mesmo grupo, então
+		// dentro de um dono colapsa os chips. Se o MessageID vier vazio, pula (o
+		// dedup de conteúdo acima já cobre).
+		if msg.MessageID != "" {
+			msgKey := fmt.Sprintf("msg_dedup:%s:%s:%s", dedupScope, msg.RemoteJID, msg.MessageID)
+			if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
+				s.logger.Debug("Duplicate message ID detected, skipping")
+				return nil
+			}
 		}
 	}
 
@@ -213,7 +237,7 @@ func (s *monitoringService) ProcessIncomingMessage(ctx context.Context, msg *mod
 
 	// 7. Process each automation
 	for i := range automations {
-		if err := s.processAutomation(ctx, &automations[i], msg, links); err != nil {
+		if err := s.processAutomation(ctx, &automations[i], msg, links, fromReconcile); err != nil {
 			s.logger.Warn("Failed to process monitoring automation",
 				zap.String("automationID", automations[i].ID),
 				zap.Error(err))
@@ -223,7 +247,7 @@ func (s *monitoringService) ProcessIncomingMessage(ctx context.Context, msg *mod
 	return nil
 }
 
-func (s *monitoringService) processAutomation(ctx context.Context, automation *models.Automation, msg *models.IncomingMessage, links []string) error {
+func (s *monitoringService) processAutomation(ctx context.Context, automation *models.Automation, msg *models.IncomingMessage, links []string, fromReconcile bool) error {
 	// 1. Check time window
 	if automation.StartTime != nil && automation.EndTime != nil {
 		tw := &models.TimeWindow{
@@ -676,6 +700,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 
 	// 12. Get deduplication settings
 	dedupeHours := automation.GetDedupeHours()
+	// REPLAY do backfill: o claim por destino é a ÚNICA idempotência (os
+	// claims de nível mensagem são pulados). dedupe_hours<=0 desligaria o
+	// claimProductSlot (retorna true) → duplicata garantida no replay.
+	// Clampa a uma janela mínima que cobre a MaxBackfillWindow (10min).
+	if fromReconcile && dedupeHours <= 0 {
+		dedupeHours = 1
+	}
 	canonicalKey := s.extractCanonicalKey(links)
 	store := s.detectStore(links)
 
@@ -743,7 +774,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 
 		// Atomic dedup claim: SetNX + DB fallback (prevents race conditions)
-		if !s.claimProductSlot(ctx, automation.UserID, groupID, canonicalKey, dedupeHours) {
+		if !s.claimProductSlot(ctx, automation.UserID, groupID, canonicalKey, dedupeHours, fromReconcile) {
 			s.logger.Info("Product already sent (dedup), skipping",
 				zap.String("automationID", automation.ID),
 				zap.String("toGroup", groupID),
@@ -1247,7 +1278,11 @@ func (s *monitoringService) claimOnce(ctx context.Context, key string, ttl time.
 
 // claimProductSlot atomically checks and claims a dedup slot using Redis SetNX + DB fallback.
 // Returns true if the slot was claimed (product not yet sent), false if duplicate.
-func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupID, canonicalKey string, hours int) bool {
+// failClosed (replay do backfill): quando NEM o Redis NEM o DB conseguem
+// verificar o claim, o caminho vivo segue fail-open (suprimir tudo num
+// brownout de Redis seria blackout de espelho); o REPLAY, porém, não tem os
+// claims de nível mensagem como rede — na dúvida, não reenvia.
+func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupID, canonicalKey string, hours int, failClosed bool) bool {
 	if canonicalKey == "" {
 		return true
 	}
@@ -1269,6 +1304,10 @@ func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupI
 	cacheKey := fmt.Sprintf("prod_dedup:%s:%s:%s", userID, groupID, canonicalKey)
 	ttl := time.Duration(hours) * time.Hour
 
+	// redisClaimed: o SetNX confirmou o claim nesta chamada (usado pelo
+	// caminho fail-closed abaixo para saber se ALGUMA camada verificou).
+	redisClaimed := false
+
 	// Fast path: atomic Redis SetNX (check + set in one operation)
 	if s.cache != nil {
 		wasSet, err := s.cache.SetNX(opCtx, cacheKey, "1", ttl)
@@ -1276,6 +1315,7 @@ func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupI
 			if !wasSet {
 				return false // Already claimed by another goroutine or previous send
 			}
+			redisClaimed = true
 			// We claimed the slot in Redis. Still check DB for stale records
 			// (Redis may have lost the key due to restart/eviction).
 		} else {
@@ -1304,6 +1344,16 @@ func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupI
 				zap.String("groupID", groupID),
 				zap.String("canonicalKey", canonicalKey),
 				zap.Error(err))
+			// Dupla falha (SetNX indisponível E DB sem resposta): nenhuma
+			// camada confirmou o claim. No replay (failClosed) suprime o
+			// envio — reenviar um destino possivelmente já atendido é pior
+			// que perder o backfill deste destino.
+			if failClosed && !redisClaimed {
+				s.logger.Warn("Monitoring dedup unverifiable — suppressing send (fail-closed replay)",
+					zap.String("groupID", groupID),
+					zap.String("canonicalKey", canonicalKey))
+				return false
+			}
 		} else if log != nil {
 			// DB has a recent dispatch — this is a duplicate. Ensure Redis is populated.
 			if s.cache != nil {

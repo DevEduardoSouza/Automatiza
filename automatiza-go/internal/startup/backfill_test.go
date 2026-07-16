@@ -1477,3 +1477,14 @@ func TestRunWithReconciliationService_FullFlow(t *testing.T) {
 		t.Errorf("expected 0 errors, got %d", len(result.Errors))
 	}
 }
+
+// Stubs dos métodos novos do CheckpointRepository (watermark vivo + higiene).
+func (m *mockCheckpointRepo) AdvanceCheckpoint(ctx context.Context, sessionName, chatID string, lastTimestamp int64, lastMessageID string) error {
+	return nil
+}
+func (m *mockCheckpointRepo) ResetStuckCheckpoints(ctx context.Context, olderThan time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *mockCheckpointRepo) DeleteInactiveCheckpoints(ctx context.Context, olderThan time.Duration) (int64, error) {
+	return 0, nil
+}

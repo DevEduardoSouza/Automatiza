@@ -1,21 +1,24 @@
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // IncomingMessage represents a WhatsApp message received via webhook
 type IncomingMessage struct {
-	InstanceName string         `json:"instanceName"`
-	MessageID    string         `json:"messageId"`
-	RemoteJID    string         `json:"remoteJid"`
-	FromMe       bool           `json:"fromMe"`
-	SenderJID    string         `json:"senderJid,omitempty"`
-	PushName     string         `json:"pushName,omitempty"`
-	Body         string         `json:"body"`
-	Timestamp    int64          `json:"timestamp"` // Unix timestamp
-	HasMedia     bool           `json:"hasMedia"`
-	MediaType    string         `json:"mediaType,omitempty"`
-	MediaURL     string         `json:"mediaUrl,omitempty"`
-	MediaBase64  string         `json:"mediaBase64,omitempty"`
+	InstanceName           string         `json:"instanceName"`
+	MessageID              string         `json:"messageId"`
+	RemoteJID              string         `json:"remoteJid"`
+	FromMe                 bool           `json:"fromMe"`
+	SenderJID              string         `json:"senderJid,omitempty"`
+	PushName               string         `json:"pushName,omitempty"`
+	Body                   string         `json:"body"`
+	Timestamp              int64          `json:"timestamp"` // Unix timestamp
+	HasMedia               bool           `json:"hasMedia"`
+	MediaType              string         `json:"mediaType,omitempty"`
+	MediaURL               string         `json:"mediaUrl,omitempty"`
+	MediaBase64            string         `json:"mediaBase64,omitempty"`
 	MimeType               string         `json:"mimeType,omitempty"`
 	LinkPreviewTitle       string         `json:"linkPreviewTitle,omitempty"`
 	LinkPreviewDescription string         `json:"linkPreviewDescription,omitempty"`
@@ -136,12 +139,17 @@ func (tw *TimeWindow) IsWithinWindow(now time.Time) bool {
 	}
 	now = now.In(loc)
 
-	// Check day
+	// Check day — comparação case-insensitive: o front grava "mon"/"tue"
+	// (minúsculo, ver comentário do campo Days), Weekday().String() devolve
+	// "Monday". Sem o fold, NENHUM dia casava e a automação parava em
+	// silêncio o dia inteiro assim que o filtro de dias fosse usado.
 	if len(tw.Days) > 0 {
-		dayName := now.Weekday().String()[:3]
+		day3 := strings.ToLower(now.Weekday().String()[:3])
+		dayFull := strings.ToLower(now.Weekday().String())
 		dayFound := false
 		for _, d := range tw.Days {
-			if d == dayName || d == now.Weekday().String() {
+			dn := strings.ToLower(strings.TrimSpace(d))
+			if dn == day3 || dn == dayFull {
 				dayFound = true
 				break
 			}

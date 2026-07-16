@@ -622,17 +622,37 @@ func (a *WahaAdapter) doRequestWithHeaders(ctx context.Context, method, path str
 		resp.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
+			// R2: para message-sends, a falha ao LER a resposta é ambígua — o
+			// POST chegou ao WAHA (recebemos status/headers) e a mensagem pode
+			// ter sido entregue. Re-POSTar aqui duplicava a promoção no grupo.
+			if nonIdempotent {
+				return nil, NewProviderError(ErrCodeTimeout, "ambiguous send outcome: response read failed after POST", readErr)
+			}
 			if a.retryEnabled && attempt < maxAttempts-1 {
 				continue
 			}
 			return nil, NewProviderError(ErrCodeNetworkError, "failed to read response", readErr)
 		}
 
+		// R2: 502/504 vêm do GATEWAY (waha-router/proxy) — o request pode ter
+		// sido encaminhado e processado pelo WAHA antes de a resposta se perder.
+		// Para message-sends isso é desfecho AMBÍGUO: nem retry (duplicaria) nem
+		// falha definitiva (o caller faria fallback de texto = duplicata).
+		// 429/503 seguem retryáveis mesmo para sends: são rejeições ANTES do
+		// processamento (rate limit / serviço indisponível), comprovadamente
+		// não-entregues. Vale independentemente de retryEnabled/attempt.
+		if nonIdempotent && (resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout) {
+			return nil, NewProviderError(ErrCodeTimeout,
+				fmt.Sprintf("ambiguous send outcome: HTTP %d from gateway", resp.StatusCode), nil)
+		}
+
 		// Retry on transient HTTP status codes (429, 502, 503, 504), and on
 		// HTTP 500 responses that wrap a transient upstream media-upload
 		// failure (e.g. "upload failed with status code 429"). These are the
 		// dominant cause of images being dropped to the text-only fallback
-		// under load.
+		// under load. (Para sends, 502/504 já retornaram acima como ambíguos;
+		// o 500-wrapped upload é resposta DEFINITIVA do WAHA — o envio não
+		// aconteceu — então o retry é seguro mesmo em endpoints de send.)
 		if a.retryEnabled && attempt < maxAttempts-1 {
 			if isRetryableStatusCode(resp.StatusCode) || isTransientWahaUploadError(resp.StatusCode, respBody) {
 				lastErr = fmt.Errorf("transient HTTP %d from WAHA", resp.StatusCode)
@@ -733,7 +753,13 @@ func (a *WahaAdapter) CreateSession(ctx context.Context, input CreateSessionInpu
 	if webhookURL != "" {
 		events := input.WebhookEvents
 		if len(events) == 0 {
-			events = []string{"message", "message.ack", "session.status"}
+			// MESMO conjunto do WHATSAPP_HOOK_EVENTS do compose de produção.
+			// A config por-sessão SOBRESCREVE a global do container: o default
+			// antigo ("message", sem fromMe) fazia toda sessão criada pelo app
+			// perder mensagens fromMe (gatilho do offer_generate quando o dono
+			// posta do próprio celular) e os eventos de grupo — em silêncio.
+			// "message.any" é o superset com fromMe (waha-plus-openapi.json).
+			events = []string{"message.any", "message.ack", "session.status", "group.join", "group.leave"}
 		}
 
 		wh := map[string]interface{}{
@@ -1693,20 +1719,31 @@ func (a *WahaAdapter) GetMessages(ctx context.Context, input GetMessagesInput) (
 	if input.Offset > 0 {
 		params.Set("offset", strconv.Itoa(input.Offset))
 	}
-	if input.DownloadMedia {
-		params.Set("downloadMedia", "true")
+	// downloadMedia SEMPRE explícito: o default da API é TRUE
+	// (waha-plus-openapi.json, param downloadMedia default:true) — omitir o
+	// param fazia todo backfill baixar mídia de cada mensagem sem querer.
+	params.Set("downloadMedia", strconv.FormatBool(input.DownloadMedia))
+
+	if input.SortAsc {
+		params.Set("sortBy", "timestamp")
+		params.Set("sortOrder", "asc")
 	}
 
-	// Apply filters
+	// Apply filters. Nomes conforme a OpenAPI do WAHA Plus
+	// (waha-plus-openapi.json, GET /api/{session}/chats/{chatId}/messages):
+	// filter.timestamp.gte / filter.timestamp.lte (Unix SECONDS, inclusive) e
+	// filter.fromMe. Os nomes antigos (fromTimestamp/toTimestamp/fromMe) NÃO
+	// existem na spec — o WAHA os ignorava em silêncio e o "filtro" de tempo
+	// da reconciliação era um no-op que paginava o histórico inteiro do chat.
 	if input.Filter != nil {
 		if input.Filter.FromMe != nil {
-			params.Set("fromMe", strconv.FormatBool(*input.Filter.FromMe))
+			params.Set("filter.fromMe", strconv.FormatBool(*input.Filter.FromMe))
 		}
 		if input.Filter.FromTimestamp != nil {
-			params.Set("fromTimestamp", strconv.FormatInt(input.Filter.FromTimestamp.Unix(), 10))
+			params.Set("filter.timestamp.gte", strconv.FormatInt(input.Filter.FromTimestamp.Unix(), 10))
 		}
 		if input.Filter.ToTimestamp != nil {
-			params.Set("toTimestamp", strconv.FormatInt(input.Filter.ToTimestamp.Unix(), 10))
+			params.Set("filter.timestamp.lte", strconv.FormatInt(input.Filter.ToTimestamp.Unix(), 10))
 		}
 	}
 

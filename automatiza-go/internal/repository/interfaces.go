@@ -278,6 +278,23 @@ type DispatchLogRepository interface {
 	CreateIfNotExists(ctx context.Context, log *models.DispatchLog, dedupWindowHours int) (*models.DispatchLog, bool, error)
 	// DeleteOldLogsByStatus deletes dispatch logs with a specific status older than the given duration.
 	DeleteOldLogsByStatus(ctx context.Context, status string, olderThan time.Duration) (int64, error)
+	// MarkStaleQueuedListLogs marca como 'error' dispatch de LIST preso em
+	// 'queued' há mais de staleAfter (task perdida: redis/worker morreu antes
+	// do desfecho), dentro da janela `window`. Alimenta o reconciliador.
+	MarkStaleQueuedListLogs(ctx context.Context, staleAfter, window time.Duration) (int64, error)
+	// GetListResurrectCandidates devolve os destinos FALHOS de itens de lista
+	// consumidos mas nunca entregues (0 sent, 0 queued, ≥1 failed/error na
+	// janela). O reconciliador usa para devolver o item e liberar os claims.
+	GetListResurrectCandidates(ctx context.Context, window time.Duration) ([]ListResurrectCandidate, error)
+}
+
+// ListResurrectCandidate é um destino falho de um item de lista consumido sem
+// nenhuma entrega confirmada — insumo do ReconcileListDeliveries.
+type ListResurrectCandidate struct {
+	ListItemID   string
+	UserID       string
+	GroupID      *string
+	CanonicalKey *string
 }
 
 // ScheduledJobRepository handles scheduled job data operations
@@ -544,6 +561,9 @@ type JobRepository interface {
 	ScheduleRetry(ctx context.Context, id string, nextRunAt time.Time) error
 	Delete(ctx context.Context, id, userID string) error
 	CountByStatus(ctx context.Context, userID string) (map[models.StandaloneJobStatus]int, error)
+	// FailStaleRunning marca 'running' órfãos (>olderThan) como failed —
+	// crash/timeout no meio do job não pode deixá-lo rodando para sempre.
+	FailStaleRunning(ctx context.Context, olderThan time.Duration) (int64, error)
 }
 
 // MLLinkListRepository handles ML link list data operations
@@ -580,6 +600,11 @@ type MlLinkListItemRepository interface {
 
 	// MarkAsConsumed marks items as consumed with the automation ID and optional group ID
 	MarkAsConsumed(ctx context.Context, itemIDs []string, automationID string, groupID *string) error
+
+	// ResetConsumedByIDs devolve itens específicos ao estado não-consumido
+	// (consumed_at=NULL). Usado pelo reconciliador quando um item foi
+	// consumido no enfileiramento mas NENHUM envio se confirmou.
+	ResetConsumedByIDs(ctx context.Context, itemIDs []string) (int64, error)
 
 	// CountRemaining returns the count of unconsumed items in a list
 	CountRemaining(ctx context.Context, listID string) (int, error)

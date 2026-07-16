@@ -441,6 +441,15 @@ func (s *standaloneJobsService) ProcessScheduledJobs(ctx context.Context) (*Proc
 		Errors: []string{},
 	}
 
+	// Reaper: jobs presos em 'running' (crash/deploy no meio, ou o ctx do
+	// cron — cap 5min — morto antes do desfecho) viram 'failed'. Sem isso o
+	// job sumia do pipeline para sempre com a UI mostrando "rodando".
+	if reaped, reapErr := s.jobRepo.FailStaleRunning(ctx, 30*time.Minute); reapErr != nil {
+		s.logger.Warn("Failed to reap stale running jobs", zap.Error(reapErr))
+	} else if reaped > 0 {
+		s.logger.Warn("Reaped stale running jobs (marked failed)", zap.Int64("count", reaped))
+	}
+
 	jobs, err := s.jobRepo.GetPendingDueJobs(ctx, 50)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pending jobs: %w", err)
@@ -478,22 +487,28 @@ func (s *standaloneJobsService) ProcessScheduledJobs(ctx context.Context) (*Proc
 		actionResults := s.executeJob(ctx, &job, sessionName)
 		success, failed, errorMsg := AggregateResults(actionResults)
 
+		// Desfecho terminal com contexto DESACOPLADO: o ctx do cron tem cap de
+		// 5min — num batch grande ele morre no meio e o UpdateStatus final
+		// falhava, deixando o job preso em 'running' para sempre (o pickup só
+		// olha 'pending'). O registro do desfecho DEVE completar mesmo assim.
+		termCtx, termCancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+
 		if failed > 0 && success == 0 {
 			// All groups failed - check if we can retry
 			if job.CanRetry() {
 				nextRun := time.Now().Add(job.NextRetryDelay())
-				if err := s.jobRepo.ScheduleRetry(ctx, job.ID, nextRun); err != nil {
+				if err := s.jobRepo.ScheduleRetry(termCtx, job.ID, nextRun); err != nil {
 					s.logger.Error("Failed to schedule retry, marking as failed",
 						zap.String("jobID", job.ID),
 						zap.Int("retryCount", job.RetryCount),
 						zap.Error(err))
-					if updateErr := s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusFailed, errorMsg); updateErr != nil {
+					if updateErr := s.jobRepo.UpdateStatus(termCtx, job.ID, models.StandaloneJobStatusFailed, errorMsg); updateErr != nil {
 						observability.LogAndCapture(s.logger, sentry.LevelError,
 							"Failed to update job status to failed (retry schedule failed)", updateErr,
 							map[string]string{"module": "jobs", "operation": "job-status-update"})
 					}
 					s.notifyJobStatus(job.UserID, job.ID, models.StandaloneJobStatusFailed, errorMsg)
-					s.completeActionHistory(ctx, job.UserID, historyID, success, failed, errorMsg)
+					s.completeActionHistory(termCtx, job.UserID, historyID, success, failed, errorMsg)
 					result.Failed++
 				} else {
 					s.logger.Info("Scheduled retry for job",
@@ -503,7 +518,7 @@ func (s *standaloneJobsService) ProcessScheduledJobs(ctx context.Context) (*Proc
 						zap.Time("nextRun", nextRun))
 					// Notify as pending again (scheduled for retry)
 					s.notifyJobStatus(job.UserID, job.ID, models.StandaloneJobStatusPending, nil)
-					s.completeActionHistory(ctx, job.UserID, historyID, success, failed, errorMsg)
+					s.completeActionHistory(termCtx, job.UserID, historyID, success, failed, errorMsg)
 					result.Skipped++
 				}
 				if errorMsg != nil {
@@ -511,13 +526,13 @@ func (s *standaloneJobsService) ProcessScheduledJobs(ctx context.Context) (*Proc
 				}
 			} else {
 				// Retries exhausted - mark as failed
-				if updateErr := s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusFailed, errorMsg); updateErr != nil {
+				if updateErr := s.jobRepo.UpdateStatus(termCtx, job.ID, models.StandaloneJobStatusFailed, errorMsg); updateErr != nil {
 					observability.LogAndCapture(s.logger, sentry.LevelError,
 						"Failed to update job status to failed (retries exhausted)", updateErr,
 						map[string]string{"module": "jobs", "operation": "job-status-update"})
 				}
 				s.notifyJobStatus(job.UserID, job.ID, models.StandaloneJobStatusFailed, errorMsg)
-				s.completeActionHistory(ctx, job.UserID, historyID, success, failed, errorMsg)
+				s.completeActionHistory(termCtx, job.UserID, historyID, success, failed, errorMsg)
 				result.Failed++
 				if errorMsg != nil {
 					result.Errors = append(result.Errors, fmt.Sprintf("Job %s (retries exhausted): %s", job.ID, *errorMsg))
@@ -525,15 +540,16 @@ func (s *standaloneJobsService) ProcessScheduledJobs(ctx context.Context) (*Proc
 			}
 		} else {
 			// At least partial success - mark as done
-			if updateErr := s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusDone, errorMsg); updateErr != nil {
+			if updateErr := s.jobRepo.UpdateStatus(termCtx, job.ID, models.StandaloneJobStatusDone, errorMsg); updateErr != nil {
 				observability.LogAndCapture(s.logger, sentry.LevelError,
 					"Failed to update job status to done", updateErr,
 					map[string]string{"module": "jobs", "operation": "job-status-update"})
 			}
 			s.notifyJobStatus(job.UserID, job.ID, models.StandaloneJobStatusDone, errorMsg)
-			s.completeActionHistory(ctx, job.UserID, historyID, success, failed, errorMsg)
+			s.completeActionHistory(termCtx, job.UserID, historyID, success, failed, errorMsg)
 			result.Processed++
 		}
+		termCancel()
 
 		s.logger.Info("Processed job",
 			zap.String("jobID", job.ID),

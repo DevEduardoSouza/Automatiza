@@ -1053,7 +1053,7 @@ func TestClaimProductSlot(t *testing.T) {
 		svc := newTestService(t, func(s *monitoringService) {
 			s.cache = nil
 		})
-		result := svc.claimProductSlot(context.Background(), "user1", "group1", "key1", 24)
+		result := svc.claimProductSlot(context.Background(), "user1", "group1", "key1", 24, false)
 		if !result {
 			t.Error("expected claim to succeed with nil cache")
 		}
@@ -1061,7 +1061,7 @@ func TestClaimProductSlot(t *testing.T) {
 
 	t.Run("empty canonicalKey allows claim", func(t *testing.T) {
 		svc := newTestService(t)
-		result := svc.claimProductSlot(context.Background(), "user1", "group1", "", 24)
+		result := svc.claimProductSlot(context.Background(), "user1", "group1", "", 24, false)
 		if !result {
 			t.Error("expected claim to succeed with empty canonical key")
 		}
@@ -1069,7 +1069,7 @@ func TestClaimProductSlot(t *testing.T) {
 
 	t.Run("disabled cache allows claim", func(t *testing.T) {
 		svc := newTestService(t) // uses disabledCache
-		result := svc.claimProductSlot(context.Background(), "user1", "group1", "key1", 24)
+		result := svc.claimProductSlot(context.Background(), "user1", "group1", "key1", 24, false)
 		if !result {
 			t.Error("expected claim to succeed with disabled cache")
 		}
@@ -1302,7 +1302,7 @@ func TestProcessAutomation_NoDestinationGroups(t *testing.T) {
 		InstanceName: "inst1",
 		RemoteJID:    "source@g.us",
 		Body:         "https://shopee.com.br/product",
-	}, []string{"https://shopee.com.br/product"})
+	}, []string{"https://shopee.com.br/product"}, false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1335,7 +1335,7 @@ func TestProcessAutomation_SameGroupSkipped(t *testing.T) {
 		InstanceName: "inst1",
 		RemoteJID:    "source@g.us",
 		Body:         "https://shopee.com.br/product",
-	}, []string{"https://shopee.com.br/product"})
+	}, []string{"https://shopee.com.br/product"}, false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1404,7 +1404,7 @@ func TestProcessAutomation_PreviewWithoutSourceTitle(t *testing.T) {
 		RemoteJID:    "source@g.us",
 		Body:         "Mascara Kerastase 200ml\nhttps://shopee.com.br/product-i.123.456",
 		// LinkPreviewTitle intentionally empty (source had no preview)
-	}, []string{"https://shopee.com.br/product-i.123.456"})
+	}, []string{"https://shopee.com.br/product-i.123.456"}, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1469,7 +1469,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         "https://shopee.com.br/product-i.123.456",
-		}, []string{"https://shopee.com.br/product-i.123.456"})
+		}, []string{"https://shopee.com.br/product-i.123.456"}, false)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1503,7 +1503,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         "https://www.mercadolivre.com.br/product/MLB123",
-		}, []string{"https://www.mercadolivre.com.br/product/MLB123"})
+		}, []string{"https://www.mercadolivre.com.br/product/MLB123"}, false)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1537,7 +1537,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         "https://amazon.com.br/product/123",
-		}, []string{"https://amazon.com.br/product/123"})
+		}, []string{"https://amazon.com.br/product/123"}, false)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1583,7 +1583,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         "https://shopee.com.br/product-i.123.456",
-		}, []string{"https://shopee.com.br/product-i.123.456"})
+		}, []string{"https://shopee.com.br/product-i.123.456"}, false)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1617,7 +1617,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         "https://www.mercadolivre.com.br/product/MLB123",
-		}, []string{"https://www.mercadolivre.com.br/product/MLB123"})
+		}, []string{"https://www.mercadolivre.com.br/product/MLB123"}, false)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1666,7 +1666,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         body,
-		}, []string{"https://shopee.com.br/product-i.123.456", "https://amzn.to/3xYzAbC"})
+		}, []string{"https://shopee.com.br/product-i.123.456", "https://amzn.to/3xYzAbC"}, false)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1733,7 +1733,7 @@ func TestProcessAutomation_UsesOwnerSession(t *testing.T) {
 		InstanceName: "other-user-session", // webhook from a different user's session
 		RemoteJID:    "source@g.us",
 		Body:         "https://shopee.com.br/product-i.123.456",
-	}, []string{"https://shopee.com.br/product-i.123.456"})
+	}, []string{"https://shopee.com.br/product-i.123.456"}, false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1774,7 +1774,7 @@ func TestProcessAutomation_NoConnectedInstance_Skips(t *testing.T) {
 		InstanceName: "inst1",
 		RemoteJID:    "source@g.us",
 		Body:         "https://shopee.com.br/product-i.123.456",
-	}, []string{"https://shopee.com.br/product-i.123.456"})
+	}, []string{"https://shopee.com.br/product-i.123.456"}, false)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1831,7 +1831,7 @@ func TestProcessAutomation_CommissionGate(t *testing.T) {
 			}
 		})
 
-		if err := svc.processAutomation(context.Background(), auto(), msg, links); err != nil {
+		if err := svc.processAutomation(context.Background(), auto(), msg, links, false); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if sent {
@@ -1869,7 +1869,7 @@ func TestProcessAutomation_CommissionGate(t *testing.T) {
 					}
 				})
 
-				if err := svc.processAutomation(context.Background(), auto(), msg, links); err != nil {
+				if err := svc.processAutomation(context.Background(), auto(), msg, links, false); err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
 				if !sent {
@@ -1904,7 +1904,7 @@ func TestProcessAutomation_CommissionGate(t *testing.T) {
 			}
 		})
 
-		if err := svc.processAutomation(context.Background(), auto(), msg, links); err != nil {
+		if err := svc.processAutomation(context.Background(), auto(), msg, links, false); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if sent {
@@ -1931,11 +1931,19 @@ func TestProcessAutomation_CommissionGate(t *testing.T) {
 			}
 		})
 
-		if err := svc.processAutomation(context.Background(), auto(), msg, links); err != nil {
+		if err := svc.processAutomation(context.Background(), auto(), msg, links, false); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !sent {
 			t.Error("account with no API access can never convert — the mirror must keep relaying as-is")
 		}
 	})
+}
+
+// Stubs dos métodos novos do DispatchLogRepository (reconciliador de lista).
+func (m *mockDispatchLogRepo) MarkStaleQueuedListLogs(ctx context.Context, staleAfter, window time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *mockDispatchLogRepo) GetListResurrectCandidates(ctx context.Context, window time.Duration) ([]repository.ListResurrectCandidate, error) {
+	return nil, nil
 }

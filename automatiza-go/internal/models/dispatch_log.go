@@ -26,6 +26,10 @@ type DispatchLog struct {
 	CouponApplied    *bool    `json:"coupon_applied,omitempty" db:"coupon_applied"`
 	CouponSkipReason *string  `json:"coupon_skip_reason,omitempty" db:"coupon_skip_reason"`
 	CopyIndex        *int     `json:"copy_index,omitempty" db:"copy_index"`
+	// ListItemID liga o dispatch ao ml_link_list_items que o originou (LIST
+	// mode). Permite ao reconciliador detectar "item consumido mas nunca
+	// entregue" (0 sent, ≥1 failed) e devolvê-lo para retry. NULL fora do LIST.
+	ListItemID *string `json:"list_item_id,omitempty" db:"list_item_id"`
 }
 
 // DispatchLogStatus constants

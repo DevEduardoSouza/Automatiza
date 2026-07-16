@@ -189,8 +189,8 @@ func TestProcessTask_TextMessage_Success(t *testing.T) {
 	task := createMessageTask(t, msgTask)
 
 	// Expect action history updates
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-789", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-789", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-789", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-789", models.ActionStatusCompleted, "").Return(nil)
 
 	// Execute
 	err := worker.ProcessTask(ctx, task)
@@ -232,8 +232,8 @@ func TestProcessTask_TextMessage_EmptyText(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-789", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-789", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-789", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-789", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	// Execute - empty text should fail
 	err := worker.ProcessTask(ctx, task)
@@ -265,15 +265,18 @@ func TestProcessTask_TextMessage_SendFails(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	// Configure fake adapter to return a retryable error
+	// Configure fake adapter to return a retryable error.
+	// "connection refused" (TCP nem conectou): comprovadamente NÃO enviado →
+	// failed + retry. ("connection reset" agora é desfecho AMBÍGUO e vira
+	// assumed-sent — ver IsAmbiguousOutcome.)
 	fakeAdapter.SimulateError = whatsapp.NewProviderError(
 		whatsapp.ErrCodeNetworkError,
-		"connection reset",
+		"connection refused",
 		nil,
 	)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-789", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-789", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-789", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-789", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	// Execute
 	err := worker.ProcessTask(ctx, task)
@@ -308,8 +311,8 @@ func TestProcessTask_AudioMessage_Success(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-audio", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-audio", models.ActionStatusCompleted, "").Return(nil)
 
 	// Execute
 	err := worker.ProcessTask(ctx, task)
@@ -348,8 +351,8 @@ func TestProcessTask_AudioMessage_DefaultMimetype(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-audio", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-audio", models.ActionStatusCompleted, "").Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -382,8 +385,8 @@ func TestProcessTask_AudioMessage_EmptyAudio(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-audio", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-audio", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -418,8 +421,8 @@ func TestProcessTask_ImageMessage_WithURL(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image", models.ActionStatusCompleted, "").Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -458,8 +461,8 @@ func TestProcessTask_ImageMessage_WithBase64(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image", models.ActionStatusCompleted, "").Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -494,8 +497,8 @@ func TestProcessTask_ImageMessage_DataURLFormat(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image", models.ActionStatusCompleted, "").Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -530,8 +533,8 @@ func TestProcessTask_ImageMessage_NoImageData(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -566,8 +569,8 @@ func TestProcessTask_PollMessage_Success(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusCompleted, "").Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -607,8 +610,8 @@ func TestProcessTask_PollMessage_DefaultSelectableCount(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusCompleted, "").Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -643,8 +646,8 @@ func TestProcessTask_PollMessage_SelectableCountExceedsOptions(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusCompleted, "").Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -679,8 +682,8 @@ func TestProcessTask_PollMessage_EmptyQuestion(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -710,8 +713,8 @@ func TestProcessTask_PollMessage_TooFewOptions(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -741,8 +744,8 @@ func TestProcessTask_PollMessage_TooManyOptions(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -785,8 +788,8 @@ func TestProcessTask_UnknownMessageType(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-unknown", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-unknown", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-unknown", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-unknown", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -874,8 +877,12 @@ func TestIsRetryableError_LegacyErrors(t *testing.T) {
 		{"permission", "permission denied", false},
 		{"timeout", "connection timeout", false},
 		{"context deadline", "context deadline exceeded", false},
-		{"connection error", "connection reset", true},
-		{"EOF error", "unexpected EOF", true},
+		// reset/EOF são desfecho AMBÍGUO (o WAHA pode ter entregue): retentar
+		// duplica a mensagem — nunca retryable (ver IsAmbiguousOutcome).
+		{"connection error", "connection reset", false},
+		{"EOF error", "unexpected EOF", false},
+		// refused = TCP nem conectou; comprovadamente não enviado → retry ok.
+		{"connection refused", "connection refused", true},
 		{"rate limit", "rate limit exceeded", true},
 		{"unknown error", "something went wrong", true},
 	}
@@ -939,8 +946,8 @@ func TestProcessTask_ActionHistoryUpdateOnSuccess(t *testing.T) {
 	task := createMessageTask(t, msgTask)
 
 	// Expect running then completed
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-test", models.ActionStatusRunning, "").Return(nil).Once()
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-test", models.ActionStatusCompleted, "").Return(nil).Once()
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-test", models.ActionStatusRunning, "").Return(nil).Once()
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-test", models.ActionStatusCompleted, "").Return(nil).Once()
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -973,8 +980,8 @@ func TestProcessTask_ActionHistoryUpdateOnFailure(t *testing.T) {
 	)
 
 	// Expect running then failed
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-test", models.ActionStatusRunning, "").Return(nil).Once()
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-test", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil).Once()
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-test", models.ActionStatusRunning, "").Return(nil).Once()
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-test", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil).Once()
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -1001,9 +1008,9 @@ func TestProcessTask_ActionHistoryUpdateErrorContinues(t *testing.T) {
 	task := createMessageTask(t, msgTask)
 
 	// Simulate failure to update action history (should not affect message sending)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-test", models.ActionStatusRunning, "").
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-test", models.ActionStatusRunning, "").
 		Return(errors.New("db error")).Once()
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-test", models.ActionStatusCompleted, "").
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-test", models.ActionStatusCompleted, "").
 		Return(errors.New("db error")).Once()
 
 	// Message should still be sent successfully
@@ -1034,8 +1041,8 @@ func TestMessageWorker_ProcessTaskWrapper(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-wrapped", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-wrapped", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-wrapped", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-wrapped", models.ActionStatusCompleted, "").Return(nil)
 
 	// Get the handler function
 	handlerFunc := worker.ProcessTaskWrapper()
@@ -1124,8 +1131,8 @@ func TestProcessTask_TextMessage_InvalidPayload(t *testing.T) {
 	outerJSON := `{"type":"message:text","user_id":"user-123","instance_id":"","session_name":"test-session","group_id":"group@g.us","payload":42,"action_id":"action-text-invalid"}`
 	task := asynq.NewTask(TypeMessageText, []byte(outerJSON))
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-text-invalid", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-text-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-text-invalid", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-text-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -1143,8 +1150,8 @@ func TestProcessTask_AudioMessage_InvalidPayload(t *testing.T) {
 	outerJSON := `{"type":"message:audio","user_id":"user-123","instance_id":"","session_name":"test-session","group_id":"group@g.us","payload":"not-an-object","action_id":"action-audio-invalid"}`
 	task := asynq.NewTask(TypeMessageAudio, []byte(outerJSON))
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio-invalid", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-audio-invalid", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-audio-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -1161,8 +1168,8 @@ func TestProcessTask_ImageMessage_InvalidPayload(t *testing.T) {
 	outerJSON := `{"type":"message:image","user_id":"user-123","instance_id":"","session_name":"test-session","group_id":"group@g.us","payload":true,"action_id":"action-image-invalid"}`
 	task := asynq.NewTask(TypeMessageImage, []byte(outerJSON))
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-invalid", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image-invalid", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -1179,8 +1186,8 @@ func TestProcessTask_PollMessage_InvalidPayload(t *testing.T) {
 	outerJSON := `{"type":"message:poll","user_id":"user-123","instance_id":"","session_name":"test-session","group_id":"group@g.us","payload":[1,2,3],"action_id":"action-poll-invalid"}`
 	task := asynq.NewTask(TypeMessagePoll, []byte(outerJSON))
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll-invalid", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll-invalid", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll-invalid", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -1215,8 +1222,8 @@ func TestProcessTask_ImageMessage_DataURLWithoutComma(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-nocomma", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-nocomma", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image-nocomma", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image-nocomma", models.ActionStatusCompleted, "").Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -1253,8 +1260,8 @@ func TestProcessTask_ImageMessage_DefaultMimetype(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-defmime", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-defmime", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image-defmime", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image-defmime", models.ActionStatusCompleted, "").Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -1293,8 +1300,8 @@ func TestProcessTask_ImageMessage_URLPriority(t *testing.T) {
 
 	task := createMessageTask(t, msgTask)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-both", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-both", models.ActionStatusCompleted, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image-both", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image-both", models.ActionStatusCompleted, "").Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -1344,8 +1351,8 @@ func TestProcessTask_AudioMessage_SendFails(t *testing.T) {
 		nil,
 	)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio-fail", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-audio-fail", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-audio-fail", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-audio-fail", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -1384,8 +1391,8 @@ func TestProcessTask_PollMessage_SendFails(t *testing.T) {
 		nil,
 	)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll-fail", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-poll-fail", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll-fail", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-poll-fail", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 
@@ -1422,8 +1429,8 @@ func TestProcessTask_ImageMessage_SendFails(t *testing.T) {
 		nil,
 	)
 
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-fail", models.ActionStatusRunning, "").Return(nil)
-	actionHistoryRepo.On("UpdateStatus", ctx, "action-image-fail", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image-fail", models.ActionStatusRunning, "").Return(nil)
+	actionHistoryRepo.On("UpdateStatus", mock.Anything, "action-image-fail", models.ActionStatusFailed, mock.AnythingOfType("string")).Return(nil)
 
 	err := worker.ProcessTask(ctx, task)
 

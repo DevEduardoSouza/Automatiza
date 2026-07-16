@@ -719,3 +719,6 @@ func TestIsDueForExecution(t *testing.T) {
 }
 
 func intPtr(i int) *int { return &i }
+
+// Stub do reconciliador de entregas do LIST (Service interface).
+func (m *mockSchedulerService) ReconcileListDeliveries(ctx context.Context) error { return nil }

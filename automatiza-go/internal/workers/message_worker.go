@@ -261,7 +261,23 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 				Text:        normalizedMessage,
 				Mentions:    data.Mentions,
 			}
-			_, sendErr = w.whatsappProvider.SendText(ctx, textInput)
+			// Falha do texto complementar é SEMPRE terminal: o áudio JÁ foi
+			// entregue, e devolver o erro faria o asynq re-executar a task
+			// inteira — o grupo receberia a mensagem de voz 2x (chip
+			// momentaneamente desconectado / rate-limit no SendText bastava).
+			// Perder o texto complementar é melhor que duplicar o áudio.
+			if _, textErr := w.whatsappProvider.SendText(ctx, textInput); textErr != nil {
+				w.logger.Warn("Follow-up text after voice failed; NOT retrying (voice already delivered)",
+					zap.String("automationID", data.AutomationID),
+					zap.String("groupId", data.GroupID),
+					zap.Error(textErr))
+				w.updateHistoryStatus(ctx, data.HistoryID, "completed")
+				w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
+					"status": "sent",
+					"error":  "texto complementar do audio nao enviado (falha pos-voz)",
+				})
+				return nil
+			}
 		}
 	} else if data.ImageURL != nil && *data.ImageURL != "" {
 		// Send image with URL
@@ -360,6 +376,10 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 					zap.String("automationID", data.AutomationID),
 					zap.String("instanceName", data.InstanceName),
 					zap.Error(sendErr))
+				// Na ÚLTIMA tentativa o asynq arquiva sem nos chamar de novo:
+				// sem o registro terminal aqui, o dispatch_log ficava 'queued'
+				// para sempre e o envio perdido sumia das queries por usuário.
+				w.recordFinalFailure(ctx, &data, "Sessao desconectada (retries esgotados)")
 				return sendErr // Retry
 
 			case whatsapp.ErrCodeRateLimited:
@@ -367,6 +387,7 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 					zap.String("automationID", data.AutomationID),
 					zap.String("instanceName", data.InstanceName),
 					zap.Error(sendErr))
+				w.recordFinalFailure(ctx, &data, "Rate limit (retries esgotados)")
 				return sendErr // Retry with backoff
 
 			case whatsapp.ErrCodeTimeout:
@@ -387,19 +408,25 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 			}
 		}
 
-		// Legacy error detection for non-ProviderError cases
-		if isTimeoutError(sendErr) {
-			w.logger.Warn("Message send timeout, assuming sent",
+		// Desfecho AMBÍGUO não-tipado (timeout legado, EOF/broken pipe/
+		// connection reset/closed que não veio como ProviderError): o WAHA
+		// pode ter entregue a mensagem. Retentar ou marcar failed aqui é o
+		// que duplica promoção — assume enviado e mantém o claim de dedup.
+		// (Superset do antigo isTimeoutError; alinhado ao classificador R2
+		// do adapter via IsAmbiguousOutcome.)
+		if whatsapp.IsAmbiguousOutcome(sendErr) {
+			w.logger.Warn("Ambiguous send outcome, assuming sent (no retry/fallback)",
 				zap.String("automationID", data.AutomationID),
 				zap.String("instanceName", data.InstanceName),
-				zap.String("groupId", data.GroupID))
+				zap.String("groupId", data.GroupID),
+				zap.Error(sendErr))
 			observability.CaptureMessage(sentry.LevelWarning,
-				fmt.Sprintf("Message send timeout (legacy), assuming sent: group=%s", data.GroupID),
-				map[string]string{"flow": "message-send", "reason": "timeout-assumed-sent"})
+				fmt.Sprintf("Ambiguous send outcome, assuming sent: group=%s", data.GroupID),
+				map[string]string{"flow": "message-send", "reason": "ambiguous-assumed-sent"})
 			w.updateHistoryStatus(ctx, data.HistoryID, "assumedSent")
 			w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
 				"status": "sent",
-				"error":  "Timeout - assumido como enviado",
+				"error":  "Desfecho incerto (timeout/conexao) - assumido como enviado",
 			})
 			return nil
 		}
@@ -417,11 +444,16 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 			return nil // Don't retry
 		}
 
-		if isConnectionClosedError(sendErr) {
-			w.logger.Warn("Connection closed, will retry",
+		if isConnectionRefusedError(sendErr) {
+			// connection refused = o TCP nem conectou; o request comprovadamente
+			// NÃO chegou ao WAHA — retry é seguro (não duplica). EOF/"connection
+			// closed" NÃO entram aqui: podem ocorrer após o POST ser processado
+			// e são tratados como ambíguos no gate acima.
+			w.logger.Warn("Connection refused, will retry",
 				zap.String("automationID", data.AutomationID),
 				zap.String("instanceName", data.InstanceName),
 				zap.Error(sendErr))
+			w.recordFinalFailure(ctx, &data, "WAHA inacessivel (retries esgotados)")
 			return sendErr // Retry
 		}
 
@@ -445,17 +477,20 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 			return nil // Terminal
 		}
 
-		// Other errors: retry
+		// Other errors: retry.
+		// NÃO grava 'failed' em tentativa intermediária: com retry ainda vivo
+		// no asynq, um 'failed' precoce fazia o reconciliador de lista ver
+		// "0 queued / ≥1 failed", devolver o item e liberar o claim — e o
+		// retry seguinte podia entregar → item devolvido + entrega = DUPLICATA.
+		// O status fica 'queued' (em voo) até o desfecho real: 'sent' no
+		// sucesso, 'failed' só na ÚLTIMA tentativa (recordFinalFailure).
 		w.logger.Error("Failed to send message",
 			zap.String("automationID", data.AutomationID),
 			zap.String("instanceName", data.InstanceName),
 			zap.String("groupId", data.GroupID),
 			zap.Error(sendErr))
 
-		w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
-			"status": "failed",
-			"error":  errStr,
-		})
+		w.recordFinalFailure(ctx, &data, errStr)
 
 		return sendErr
 	}
@@ -538,14 +573,44 @@ func is404Error(err error) bool {
 		strings.Contains(errStr, "instance not found")
 }
 
-func isConnectionClosedError(err error) bool {
+// isConnectionRefusedError detecta falha de CONEXÃO (TCP recusado): o request
+// nunca chegou ao servidor, então retentar é seguro. Não confundir com
+// EOF/"connection closed" — esses podem ocorrer DEPOIS de o WAHA processar o
+// POST e são classificados como desfecho ambíguo (IsAmbiguousOutcome).
+func isConnectionRefusedError(err error) bool {
 	if err == nil {
 		return false
 	}
-	errStr := strings.ToLower(err.Error())
-	return strings.Contains(errStr, "connection closed") ||
-		strings.Contains(errStr, "connection refused") ||
-		strings.Contains(errStr, "eof")
+	return strings.Contains(strings.ToLower(err.Error()), "connection refused")
+}
+
+// isFinalAttempt informa se esta execução é a ÚLTIMA tentativa da task — o
+// asynq arquiva depois dela sem nos chamar de novo, então qualquer erro
+// retryável precisa TAMBÉM registrar o desfecho terminal no dispatch_log.
+func isFinalAttempt(ctx context.Context) bool {
+	retryCount, _ := asynq.GetRetryCount(ctx)
+	maxRetry, _ := asynq.GetMaxRetry(ctx)
+	return retryCount >= maxRetry
+}
+
+// recordFinalFailure grava 'failed' no histórico e no dispatch_log quando a
+// tentativa atual é a última. Sem isso, envios perdidos por erro retryável
+// (chip caído, rate limit, WAHA fora) ficavam 'queued' para sempre —
+// invisíveis nas queries por usuário e para o reconciliador de lista.
+func (w *MessageWorker) recordFinalFailure(ctx context.Context, data *MessageJobData, reason string) {
+	if !isFinalAttempt(ctx) {
+		return
+	}
+	w.logger.Error("Send failed on final attempt — recording terminal failure",
+		zap.String("automationID", data.AutomationID),
+		zap.String("instanceName", data.InstanceName),
+		zap.String("groupId", data.GroupID),
+		zap.String("reason", reason))
+	w.updateHistoryStatus(ctx, data.HistoryID, "failed")
+	w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
+		"status": "failed",
+		"error":  reason,
+	})
 }
 
 // Ensure MessageWorker implements asynq.Handler

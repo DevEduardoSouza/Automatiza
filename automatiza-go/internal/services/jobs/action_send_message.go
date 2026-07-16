@@ -32,8 +32,11 @@ func ExecuteSendMessage(
 
 		// Determine message type based on payload
 		if job.Payload.Media != "" {
-			// Has media attachment
-			return sendMessageWithMedia(ctx, provider, sessionName, groupID, message, mentions, &job.Payload, logger)
+			// Has media attachment. Desfecho ambíguo = assumed-sent (ver
+			// ambiguousAsSent): re-agendar o job re-enviaria a mídia ao grupo.
+			return ambiguousAsSent(
+				sendMessageWithMedia(ctx, provider, sessionName, groupID, message, mentions, &job.Payload, logger),
+				logger, groupID)
 		}
 
 		// Text-only message
@@ -49,7 +52,7 @@ func ExecuteSendMessage(
 			logger.Warn("Failed to send text message",
 				zap.String("groupID", groupID),
 				zap.Error(err))
-			return err
+			return ambiguousAsSent(err, logger, groupID)
 		}
 
 		return nil

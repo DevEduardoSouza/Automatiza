@@ -513,6 +513,14 @@ func main() {
 		config.NewModuleLogger(logger, "cron"),
 	)
 
+	// Reconciliador de entregas do LIST: devolve itens consumidos no
+	// enfileiramento cuja entrega nunca se confirmou (0 sent, ≥1 failed na
+	// janela) e libera os claims de dedup dos destinos falhos. Fecha o buraco
+	// "item queimado sem envio" (chip caiu entre enfileirar e enviar).
+	cronService.RegisterTask("reconcile_list_deliveries", 10*time.Minute, func(ctx context.Context) error {
+		return automationService.ReconcileListDeliveries(ctx)
+	})
+
 	// Register WAHA failed session cleanup job (P0: reclaims RAM from zombie sessions)
 	if concreteAdapter, ok := wahaAdapter.(*whatsapp.WahaAdapter); ok {
 		// Protege números reais da limpeza: um chip PAREADO que esteja
@@ -1321,6 +1329,17 @@ func runWorker(
 	// The reconciliation service expects its own CheckpointRepository interface
 	checkpointRepoAdapter := postgres.NewCheckpointRepository(db, config.NewModuleLogger(logger, "checkpoint-repo"))
 
+	// Replay do espelho para mensagens recuperadas: sem ele, o backfill só
+	// registrava contabilidade (dispatch_logs 'reconciled') e a mensagem
+	// perdida NUNCA era re-espelhada. O composite encadeia contabilidade +
+	// replay (idempotente via claims por destino).
+	mirrorReplayProcessor := workers.NewMirrorReplayProcessor(
+		monitoringService,
+		offerGenerateService,
+		config.NewModuleLogger(logger, "mirror-replay"),
+	)
+	reconcileProcessor := workers.NewCompositeReconcileProcessor(dispatchLogProcessor, mirrorReplayProcessor)
+
 	// Create reconciliation service
 	// This handles message backfill when gaps are detected via silence watchdog
 	var reconcileSvc *reconciliation.Service
@@ -1328,10 +1347,18 @@ func runWorker(
 		reconcileSvc = reconciliation.New(
 			wahaAdapter,
 			checkpointRepoAdapter,
-			dispatchLogProcessor, // Integrates with dispatch_logs
+			reconcileProcessor, // contabilidade (dispatch_logs) + replay do espelho
 			config.NewModuleLogger(logger, "reconciliation"),
 			reconciliation.DefaultConfig(),
 		)
+
+		// Semeia os checkpoints a partir do caminho VIVO: o processador de
+		// espelho avança o watermark (sessão, grupo) após cada fan-out
+		// concluído. Sem isso a tabela de checkpoints ficava vazia e o
+		// watchdog/backfill não tinham o que reconciliar.
+		if monitoringProcessor != nil {
+			monitoringProcessor.SetCheckpointRecorder(reconcileSvc)
+		}
 
 		// Start the silence watchdog in background
 		// It will detect when a session goes silent and trigger reconciliation

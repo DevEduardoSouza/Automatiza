@@ -414,6 +414,38 @@ func (r *jobRepository) UpdateStatus(ctx context.Context, id string, status mode
 	return nil
 }
 
+// FailStaleRunning marca como 'failed' jobs presos em 'running' há mais de
+// olderThan (crash/deploy no meio da execução, ou o ctx do cron — cap 5min —
+// morreu antes do desfecho terminal). Sem isso o job sumia do pipeline em
+// 'running' eterno. Vai para 'failed' (e NÃO de volta para 'pending') de
+// propósito: re-executar um job de envio parcialmente concluído re-enviaria
+// aos grupos já atendidos — duplicar é pior que perder o restante.
+func (r *jobRepository) FailStaleRunning(ctx context.Context, olderThan time.Duration) (int64, error) {
+	query := `
+		UPDATE jobs
+		SET status = $1,
+		    error_message = 'job interrompido (crash/timeout) - marcado como failed para nao duplicar envios',
+		    updated_at = NOW()
+		WHERE status = $2 AND updated_at < $3
+	`
+
+	result, err := r.db.pool.Exec(ctx, query,
+		models.StandaloneJobStatusFailed,
+		models.StandaloneJobStatusRunning,
+		time.Now().UTC().Add(-olderThan),
+	)
+	if err != nil {
+		r.logger.Error("Failed to fail stale running jobs", zap.Error(err))
+		return 0, fmt.Errorf("fail stale running jobs: %w", err)
+	}
+
+	n := result.RowsAffected()
+	if n > 0 {
+		r.logger.Warn("Marked stale 'running' jobs as failed", zap.Int64("count", n))
+	}
+	return n, nil
+}
+
 func (r *jobRepository) ScheduleRetry(ctx context.Context, id string, nextRunAt time.Time) error {
 	query := `
 		UPDATE jobs

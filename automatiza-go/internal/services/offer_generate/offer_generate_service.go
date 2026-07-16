@@ -36,6 +36,13 @@ import (
 // Service defines the offer generate service interface
 type Service interface {
 	ProcessIncomingMessage(ctx context.Context, msg *models.IncomingMessage) error
+	// ProcessReconciledMessage processa uma mensagem RECUPERADA pelo backfill
+	// (webhook perdido / crash no meio do fan-out). Pula os claims de nível
+	// mensagem (og_content 2min / og_msg_dedup 10min) e confia no claim
+	// fail-closed POR DESTINO (claimProductSlot, janela ≥30min) + guards de
+	// loop (og_self_send/selfsend), que seguem ativos. O chamador garante
+	// frescor ≤ MaxBackfillWindow (10min).
+	ProcessReconciledMessage(ctx context.Context, msg *models.IncomingMessage) error
 }
 
 // CouponResult contains the result of applying a coupon to an offer.
@@ -113,6 +120,17 @@ func NewOfferGenerateService(
 }
 
 func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *models.IncomingMessage) error {
+	return s.processIncoming(ctx, msg, false)
+}
+
+// ProcessReconciledMessage — ver contrato na interface. fromReconcile=true
+// pula apenas os claims de nível mensagem; selfsend/og_self_send e o claim
+// por destino seguem idênticos ao caminho vivo.
+func (s *offerGenerateService) ProcessReconciledMessage(ctx context.Context, msg *models.IncomingMessage) error {
+	return s.processIncoming(ctx, msg, true)
+}
+
+func (s *offerGenerateService) processIncoming(ctx context.Context, msg *models.IncomingMessage, fromReconcile bool) error {
 	// 1. Validate: must be a group message
 	if !strings.HasSuffix(msg.RemoteJID, "@g.us") {
 		return nil
@@ -157,7 +175,7 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 		// grupos de destino exatamente como veio, sem processamento de
 		// afiliado/cupom. O grupo de origem agora aceita qualquer tipo
 		// de conteúdo informativo, não só links.
-		return s.processRelay(ctx, msg)
+		return s.processRelay(ctx, msg, fromReconcile)
 	}
 
 	s.logger.Info("Processing incoming message for offer generation",
@@ -196,16 +214,21 @@ func (s *offerGenerateService) ProcessIncomingMessage(ctx context.Context, msg *
 	// segurança por (user, destinationGroup, canonicalKey), então
 	// mesmo que esse pré-dedup falhe (Redis offline), nunca há
 	// duplicação real no destino.
-	contentKey := s.buildContentKey(dedupScope, msg.RemoteJID, msg.Body)
-	if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
-		s.logger.Debug("Offer generate: duplicate content, skipping")
-		return nil
+	// Claims de nível mensagem — pulados no replay do backfill (a passagem
+	// original pode tê-los reivindicado e morrido no meio do fan-out); a
+	// idempotência do replay é o claimProductSlot por destino.
+	if !fromReconcile {
+		contentKey := s.buildContentKey(dedupScope, msg.RemoteJID, msg.Body)
+		if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
+			s.logger.Debug("Offer generate: duplicate content, skipping")
+			return nil
+		}
 	}
 
 	// 4. Message ID dedup (10 min window). Mesma motivação do (3) —
 	// keyed por (dono, group, msgID), não por instance.
 	msgKey := fmt.Sprintf("og_msg_dedup:%s:%s:%s", dedupScope, msg.RemoteJID, msg.MessageID)
-	if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
+	if !fromReconcile && !s.claimOnce(ctx, msgKey, 10*time.Minute) {
 		s.logger.Debug("Offer generate: duplicate message ID, skipping")
 		return nil
 	}
@@ -1264,7 +1287,7 @@ func truncateStr(s string, maxLen int) string {
 // Compartilha as proteções de dedup com o fluxo principal (content
 // fingerprint + message ID) pra que múltiplos chips no grupo de origem não
 // disparem replays. Não há resolução de cupom/preço — relay é "pipe puro".
-func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.IncomingMessage) error {
+func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.IncomingMessage, fromReconcile bool) error {
 	s.logger.Info("Processing incoming message for relay (no product link)",
 		zap.String("instance", msg.InstanceName),
 		zap.String("group", msg.RemoteJID),
@@ -1283,21 +1306,26 @@ func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.Inc
 		}
 	}
 
-	// Content fingerprint dedup (2 min) — mesma chave do fluxo principal
-	// (buildContentKey hashea o Body). Pra mídia sem caption (Body=""),
-	// inclui a MediaURL no hash pra evitar que duas mídias sem legenda
-	// colidam na mesma janela.
-	contentKey := s.buildRelayContentKey(dedupScope, msg)
-	if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
-		s.logger.Debug("Offer relay: duplicate content, skipping")
-		return nil
-	}
+	// Claims de nível mensagem — pulados no replay do backfill (mesmo racional
+	// do fluxo principal); o claimProductSlot por destino (canonical
+	// relay:hash(msgID:grupo), janela 30min) segue garantindo a idempotência.
+	if !fromReconcile {
+		// Content fingerprint dedup (2 min) — mesma chave do fluxo principal
+		// (buildContentKey hashea o Body). Pra mídia sem caption (Body=""),
+		// inclui a MediaURL no hash pra evitar que duas mídias sem legenda
+		// colidam na mesma janela.
+		contentKey := s.buildRelayContentKey(dedupScope, msg)
+		if !s.claimOnce(ctx, contentKey, 2*time.Minute) {
+			s.logger.Debug("Offer relay: duplicate content, skipping")
+			return nil
+		}
 
-	// Message ID dedup (10 min) — idêntico ao fluxo principal.
-	msgKey := fmt.Sprintf("og_relay_msg_dedup:%s:%s:%s", dedupScope, msg.RemoteJID, msg.MessageID)
-	if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
-		s.logger.Debug("Offer relay: duplicate message ID, skipping")
-		return nil
+		// Message ID dedup (10 min) — idêntico ao fluxo principal.
+		msgKey := fmt.Sprintf("og_relay_msg_dedup:%s:%s:%s", dedupScope, msg.RemoteJID, msg.MessageID)
+		if !s.claimOnce(ctx, msgKey, 10*time.Minute) {
+			s.logger.Debug("Offer relay: duplicate message ID, skipping")
+			return nil
+		}
 	}
 
 	automations, err := s.automationRepo.GetOfferGenerateAutomationsForGroup(ctx, msg.RemoteJID)

@@ -50,6 +50,9 @@ type Service interface {
 	RunAutomation(ctx context.Context, automationID, userID string) (*models.RunAutomationResult, error)
 	ResetHistory(ctx context.Context, automationID, userID string) error
 	CanCreateAutomation(ctx context.Context, userID string) (canCreate bool, currentCount int, maxCount int, err error)
+	// ReconcileListDeliveries devolve itens de lista consumidos no
+	// enfileiramento cuja entrega nunca se confirmou (cron ~10min).
+	ReconcileListDeliveries(ctx context.Context) error
 }
 
 // urlSafetyEvaluator abstracts URL safety evaluation for testability.
@@ -386,21 +389,27 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 	// cycle's delivery. Reschedule sooner (abortRetryBackoff, capped at the
 	// interval) to recover, without turning a persistent timeout into a 1-min
 	// hammer loop against Shopee/WAHA.
+	//
+	// SEMPRE grava (intervalo efetivo = interval_minutes ou 60min, o mesmo
+	// default do scheduler): next_run_at agora é o gate autoritativo do
+	// isDueForExecution, então todo run precisa reagendar o próximo — um
+	// next_run_at obsoleto no passado deixaria a automação due a cada tick.
 	defer func() {
+		interval := 60 * time.Minute
 		if automation.IntervalMinutes != nil && *automation.IntervalMinutes > 0 {
-			interval := time.Duration(*automation.IntervalMinutes) * time.Minute
-			delay := interval
-			if ctx.Err() != nil && abortRetryBackoff < interval {
-				delay = abortRetryBackoff
-			}
-			nextRun := time.Now().UTC().Add(delay)
-			nrCtx, nrCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer nrCancel()
-			if updateErr := s.automationRepo.UpdateNextRunAt(nrCtx, automation.ID, nextRun); updateErr != nil {
-				s.logger.Warn("Failed to update next_run_at",
-					zap.String("automationID", automation.ID),
-					zap.Error(updateErr))
-			}
+			interval = time.Duration(*automation.IntervalMinutes) * time.Minute
+		}
+		delay := interval
+		if ctx.Err() != nil && abortRetryBackoff < interval {
+			delay = abortRetryBackoff
+		}
+		nextRun := time.Now().UTC().Add(delay)
+		nrCtx, nrCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer nrCancel()
+		if updateErr := s.automationRepo.UpdateNextRunAt(nrCtx, automation.ID, nextRun); updateErr != nil {
+			s.logger.Warn("Failed to update next_run_at",
+				zap.String("automationID", automation.ID),
+				zap.Error(updateErr))
 		}
 	}()
 
@@ -1095,6 +1104,19 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					}
 				}
 
+				// Dispatch log criado ANTES do enqueue (status queued) com o ID
+				// passado ao worker — mesmo contrato do LIST. Antes, o SEARCH
+				// gravava 'sent' no ENQUEUE e nunca passava DispatchLogID: um
+				// envio que falhasse definitivo no worker (chip caiu, bot fora
+				// do grupo, descarte stale pós-backlog) ficava 'sent' para
+				// sempre — perda silenciosa com log dizendo "enviado". Agora o
+				// desfecho real (sent/failed/skipped) é escrito pelo worker, e
+				// o TaskID dispatch:<id> ainda dedupa enfileiramento duplicado.
+				dispatchLogID := s.createDispatchLog(ctx, automation, groupID, offer.ProductURL,
+					models.DispatchLogStatusQueued, "",
+					withCanonicalKey(canonicalKey, store), withCopyIndex(copyIndex), withAffiliateLink(offer.AffiliateLink))
+				jobData.DispatchLogID = dispatchLogID
+
 				if s.queueClient != nil {
 					// Per-chip jittered accumulator (anti-ban) instead of a global
 					// sentCount×delay ramp — advanced after each successful enqueue.
@@ -1105,14 +1127,21 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 							zap.String("automationID", automation.ID),
 							zap.String("groupID", groupID),
 							zap.Error(err))
-						s.logDispatch(ctx, automation, groupID, offer.ProductURL, "failed", err.Error(), withCanonicalKey(canonicalKey, store))
+						if dispatchLogID != nil && s.dispatchLogRepo != nil {
+							if upErr := s.dispatchLogRepo.Update(ctx, *dispatchLogID, map[string]interface{}{
+								"status": models.DispatchLogStatusFailed,
+								"error":  err.Error(),
+							}); upErr != nil {
+								s.logger.Warn("Failed to mark dispatch log failed after enqueue error", zap.Error(upErr))
+							}
+						}
 						continue
 					}
 				}
 
-				// Mark as sent for deduplication
+				// Mark as sent for deduplication (claim no enfileiramento, por
+				// design: o próximo ciclo precisa ver a oferta como disparada).
 				s.markAsSent(ctx, automation.UserID, groupID, canonicalKey, dedupeHours)
-				s.logDispatch(ctx, automation, groupID, offer.ProductURL, "sent", "", withCanonicalKey(canonicalKey, store), withCopyIndex(copyIndex), withAffiliateLink(offer.AffiliateLink))
 				sentCount++
 				// Advance this chip's jittered delay accumulator (+ occasional micro-break).
 				perChipDelay[senderSession] = pacingCfg.ClampSpread(
@@ -1304,8 +1333,16 @@ func withAffiliateLink(link string) logDispatchOpt {
 }
 
 func (s *automationService) logDispatch(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg string, opts ...logDispatchOpt) {
+	s.createDispatchLog(ctx, automation, groupID, productURL, status, errorMsg, opts...)
+}
+
+// createDispatchLog cria o dispatch log e devolve o ID (nil quando desativado
+// por flag ou em erro). O caminho de ENQUEUE usa o ID para passar ao worker
+// (jobData.DispatchLogID), que grava o desfecho real — sem o ID, o log ficava
+// congelado no status do enqueue e falhas terminais viravam perda silenciosa.
+func (s *automationService) createDispatchLog(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg string, opts ...logDispatchOpt) *int {
 	if s.dispatchLogRepo == nil {
-		return
+		return nil
 	}
 
 	// Check feature flag: skip if Go should not create dispatch logs
@@ -1315,7 +1352,7 @@ func (s *automationService) logDispatch(ctx context.Context, automation *models.
 			zap.String("automationID", automation.ID),
 			zap.String("groupID", groupID),
 			zap.String("status", status))
-		return
+		return nil
 	}
 
 	log := &models.DispatchLog{
@@ -1343,7 +1380,8 @@ func (s *automationService) logDispatch(ctx context.Context, automation *models.
 	}
 
 	// W35: Capture dispatch log creation errors with Sentry tags
-	if _, err := s.dispatchLogRepo.Create(ctx, log); err != nil {
+	created, err := s.dispatchLogRepo.Create(ctx, log)
+	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to create dispatch log", err, map[string]string{
 			"module":       "automation",
 			"operation":    "dispatch_log_create",
@@ -1351,7 +1389,12 @@ func (s *automationService) logDispatch(ctx context.Context, automation *models.
 			"groupID":      groupID,
 			"status":       status,
 		})
+		return nil
 	}
+	if created == nil {
+		return nil
+	}
+	return &created.ID
 }
 
 func (s *automationService) ResetHistory(ctx context.Context, automationID, userID string) error {

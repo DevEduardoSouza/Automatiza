@@ -24,6 +24,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// MessageCheckpointRecorder registra o watermark de mensagens processadas por
+// (sessão, chat). Implementado pelo reconciliation.Service (RecordMessage);
+// chamado DEPOIS do fan-out concluir, para que um crash no meio deixe o
+// checkpoint para trás e o backfill recupere a mensagem.
+type MessageCheckpointRecorder interface {
+	RecordMessage(sessionName, chatID string, ts time.Time, messageID string)
+}
+
 // MonitoringMessageProcessor processes incoming WhatsApp messages for MONITOR mode automations.
 // It implements the MessageWebhookProcessor interface.
 //
@@ -48,9 +56,31 @@ type MonitoringMessageProcessor struct {
 	// grupos restantes nunca recebiam a oferta.
 	fanoutWG sync.WaitGroup
 
+	// chatLocks serializa o processamento POR GRUPO-FONTE (RemoteJID): dois
+	// webhooks do mesmo grupo processados concorrentemente espelhavam fora
+	// de ordem ("parte 2" antes da "parte 1") e tornavam o avanço do
+	// checkpoint não-monotônico. Grupos distintos seguem paralelos.
+	chatLocks sync.Map // RemoteJID -> *sync.Mutex
+
+	// checkpointRecorder avança o watermark vivo (sessão, chat) após o
+	// fan-out concluir. Opcional (nil = desligado).
+	checkpointRecorder MessageCheckpointRecorder
+
 	// syncForTests força processamento inline (sem goroutine) para os
 	// testes poderem assertar deterministicamente logo após ProcessMessage.
 	syncForTests bool
+}
+
+// SetCheckpointRecorder instala o gravador de watermark (reconciliation
+// service). Chamar uma vez no wiring, antes de o consumidor começar a servir.
+func (p *MonitoringMessageProcessor) SetCheckpointRecorder(r MessageCheckpointRecorder) {
+	p.checkpointRecorder = r
+}
+
+// lockChat devolve o mutex do grupo-fonte, criando-o na primeira mensagem.
+func (p *MonitoringMessageProcessor) lockChat(remoteJID string) *sync.Mutex {
+	v, _ := p.chatLocks.LoadOrStore(remoteJID, &sync.Mutex{})
+	return v.(*sync.Mutex)
 }
 
 // Drain espera os fan-outs em voo terminarem, até o timeout. Chamar após o
@@ -163,7 +193,25 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 	// can safely receive FromMe messages. A blanket early-return here used to
 	// drop them before offer_generate ever saw them — meaning users who fed
 	// offers by posting themselves got nothing relayed.
-	process := func(procCtx context.Context) {
+	// fanout executa o espelhamento. PRESSUPÕE o lock do chat (lockChat) já
+	// adquirido pelo chamador — a serialização por grupo-fonte (anti
+	// out-of-order + checkpoint monotônico) é responsabilidade de quem chama.
+	fanout := func(procCtx context.Context) {
+		// Re-checagem de frescor PÓS-lock: num burst do mesmo grupo, uma
+		// mensagem pode esperar minutos na fila do mutex — espelhar depois
+		// disso é oferta velha (mesma regra do gate de entrada, que rodou
+		// ANTES da espera). Também drena rápido a fila de waiters de um
+		// grupo quente: cada um acorda, vê que envelheceu e retorna.
+		// Timestamp zero/agora (payload sem ts) passa.
+		if ts := msg.GetTimestamp(); !ts.IsZero() && time.Since(ts) > staleWebhookMessageTTL {
+			p.logger.Warn("Discarding message gone stale while waiting for chat lock",
+				zap.String("session", sessionName),
+				zap.String("group", msg.RemoteJID),
+				zap.String("messageID", msg.MessageID),
+				zap.Duration("age", time.Since(ts)))
+			return
+		}
+
 		if !msg.FromMe {
 			if err := p.monitoringService.ProcessIncomingMessage(procCtx, msg); err != nil {
 				p.logger.Error("Failed to process message for monitoring",
@@ -182,6 +230,15 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 					zap.Error(err))
 			}
 		}
+
+		// Watermark vivo SÓ após o fan-out concluir: um hard-kill no meio
+		// deixa o checkpoint para trás → o gap fica visível e o backfill
+		// re-busca a mensagem (dedup por destino absorve o overlap). Este é
+		// o mecanismo que torna o crash de fan-out RECUPERÁVEL em vez de
+		// perda silenciosa.
+		if p.checkpointRecorder != nil {
+			p.checkpointRecorder.RecordMessage(sessionName, msg.RemoteJID, msg.GetTimestamp(), msg.MessageID)
+		}
 	}
 
 	// O fan-out do espelho leva dezenas de segundos (pacing + digitação) e
@@ -194,7 +251,10 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 	// para erro de espelho — oferta espelhada perde valor em minutos e o
 	// dedup/claim já torna retries quase sempre no-op.
 	if p.syncForTests {
-		process(ctx)
+		lock := p.lockChat(msg.RemoteJID)
+		lock.Lock()
+		fanout(ctx)
+		lock.Unlock()
 		p.logger.Debug("Message processed successfully (sync test mode)",
 			zap.String("session", sessionName),
 			zap.String("messageID", msg.MessageID))
@@ -216,10 +276,29 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 			}()
 			procCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()
-			process(procCtx)
+			// A espera do lock acontece DENTRO da goroutine (slot ocupado
+			// enquanto espera) — aceitável porque a fila de waiters de um
+			// grupo quente drena rápido: o gate de frescor pós-lock (em
+			// fanout) descarta quem envelheceu esperando.
+			lock := p.lockChat(msg.RemoteJID)
+			lock.Lock()
+			defer lock.Unlock()
+			fanout(procCtx)
 		}()
 	default:
-		process(ctx)
+		// Pool cheio: processa inline (backpressure real) — mas NUNCA
+		// bloqueia o handler asynq esperando o lock de um grupo ocupado.
+		// Bloquear aqui, sob burst de UM grupo, segurava slots do consumidor
+		// por até dezenas de minutos (cada retry do asynq empilhava mais um
+		// handler no mesmo mutex) e travava a fila de webhooks inteira.
+		// TryLock: se o grupo está ocupado, devolve erro RETRYÁVEL — o asynq
+		// re-tenta com backoff e os gates de frescor descartam se envelhecer.
+		lock := p.lockChat(msg.RemoteJID)
+		if !lock.TryLock() {
+			return fmt.Errorf("mirror fan-out busy for chat %s (backpressure, temporary — will retry)", msg.RemoteJID)
+		}
+		fanout(ctx)
+		lock.Unlock()
 	}
 
 	p.logger.Debug("Message processed successfully",

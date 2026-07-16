@@ -878,8 +878,10 @@ func TestProcessTask_LegacyConnectionClosed(t *testing.T) {
 
 	err := w.ProcessTask(context.Background(), task)
 
-	require.Error(t, err, "connection closed is retryable")
-	assert.Contains(t, err.Error(), "connection closed")
+	// "connection closed" pode ocorrer DEPOIS de o WAHA processar o POST —
+	// desfecho ambíguo: retentar duplicaria a mensagem no grupo. O contrato
+	// novo é assume-sent (nil), sem retry (ver IsAmbiguousOutcome).
+	require.NoError(t, err, "connection closed is ambiguous: assume sent, never retry")
 }
 
 // =============================================================================
@@ -1258,9 +1260,12 @@ func TestIsConnectionClosedError_Table(t *testing.T) {
 		errMsg    string
 		retryable bool // true means retryable (returns error)
 	}{
-		{"connection closed", "connection closed by peer", true},
+		// Ambíguos (podem ocorrer APÓS o POST ser processado): assume-sent,
+		// nunca retry — retentar duplicava a promoção no grupo.
+		{"connection closed", "connection closed by peer", false},
+		{"eof", "unexpected eof", false},
+		// Refused = TCP nem conectou; comprovadamente não enviado → retry ok.
 		{"connection refused", "connection refused", true},
-		{"eof", "unexpected eof", true},
 		{"unrelated", "random failure", true}, // unknown errors are retried too
 	}
 
@@ -1541,4 +1546,12 @@ func TestProcessTask_DiscardsStaleMessage(t *testing.T) {
 	assert.Contains(t, captured["error"], "descartada")
 	// Nada deve ter sido enviado
 	assert.Equal(t, 0, fakeAdapter.CallCount("SendText"), "stale message must not be sent")
+}
+
+// Stubs dos métodos novos do DispatchLogRepository (reconciliador de lista).
+func (m *mockDispatchLogRepo) MarkStaleQueuedListLogs(ctx context.Context, staleAfter, window time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *mockDispatchLogRepo) GetListResurrectCandidates(ctx context.Context, window time.Duration) ([]repository.ListResurrectCandidate, error) {
+	return nil, nil
 }

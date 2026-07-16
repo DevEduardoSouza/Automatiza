@@ -113,6 +113,40 @@ func (r *mlLinkListItemRepository) MarkAsConsumed(ctx context.Context, itemIDs [
 }
 
 // CountRemaining returns the count of unconsumed items in a list
+// ResetConsumedByIDs devolve itens específicos ao estado não-consumido.
+// Usado pelo reconciliador de entregas do LIST (ReconcileListDeliveries):
+// um item consumido no ENFILEIRAMENTO cujo envio falhou terminalmente em
+// todos os destinos volta a ser elegível no próximo ciclo, em vez de ficar
+// queimado sem nunca ter sido entregue.
+func (r *mlLinkListItemRepository) ResetConsumedByIDs(ctx context.Context, itemIDs []string) (int64, error) {
+	if len(itemIDs) == 0 {
+		return 0, nil
+	}
+
+	query := `
+		UPDATE ml_link_list_items
+		SET consumed_at = NULL,
+		    consumed_by_automation_id = NULL,
+		    consumed_by_group_id = NULL
+		WHERE id = ANY($1::uuid[]) AND consumed_at IS NOT NULL
+	`
+
+	result, err := r.db.pool.Exec(ctx, query, itemIDs)
+	if err != nil {
+		r.logger.Error("Failed to reset consumed items by IDs",
+			zap.Int("count", len(itemIDs)),
+			zap.Error(err))
+		return 0, fmt.Errorf("reset consumed by ids: %w", err)
+	}
+
+	reset := result.RowsAffected()
+	if reset > 0 {
+		r.logger.Info("Reset consumed list items for retry (never delivered)",
+			zap.Int64("reset", reset))
+	}
+	return reset, nil
+}
+
 func (r *mlLinkListItemRepository) CountRemaining(ctx context.Context, listID string) (int, error) {
 	query := `
 		SELECT COUNT(*)

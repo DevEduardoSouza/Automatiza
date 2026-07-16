@@ -133,10 +133,10 @@ func (m *MockWhatsAppProvider) RestartSession(ctx context.Context, sessionName s
 // =============================================================================
 
 type testServiceDeps struct {
-	provider        *MockWhatsAppProvider
-	checkpointRepo  *MockCheckpointRepository
-	messageProc     *MockMessageProcessor
-	config          reconciliation.Config
+	provider       *MockWhatsAppProvider
+	checkpointRepo *MockCheckpointRepository
+	messageProc    *MockMessageProcessor
+	config         reconciliation.Config
 }
 
 func newTestService(t *testing.T) (*reconciliation.Service, *testServiceDeps) {
@@ -340,7 +340,7 @@ func TestReconciliationService_Backfill_Success(t *testing.T) {
 
 		sessionName := "test-session"
 		chatID := "chat1@g.us"
-		baseTime := time.Now().Add(-1 * time.Hour)
+		baseTime := time.Now().Add(-5 * time.Minute) // dentro da MaxBackfillWindow (10min): fora dela o doReconcile pula a mensagem, por design
 
 		// Create checkpoint with old timestamp
 		checkpoint := &reconciliation.Checkpoint{
@@ -383,7 +383,7 @@ func TestReconciliationService_Backfill_Success(t *testing.T) {
 
 		sessionName := "test-session"
 		chatID := "chat1@g.us"
-		baseTime := time.Now().Add(-1 * time.Hour)
+		baseTime := time.Now().Add(-5 * time.Minute) // dentro da MaxBackfillWindow (10min): fora dela o doReconcile pula a mensagem, por design
 
 		checkpoint := &reconciliation.Checkpoint{
 			SessionName:          sessionName,
@@ -437,7 +437,7 @@ func TestReconciliationService_Backfill_Success(t *testing.T) {
 
 		sessionName := "test-session"
 		chatID := "chat1@g.us"
-		baseTime := time.Now().Add(-1 * time.Hour)
+		baseTime := time.Now().Add(-5 * time.Minute) // dentro da MaxBackfillWindow (10min): fora dela o doReconcile pula a mensagem, por design
 
 		// Checkpoint has processed msg-1
 		checkpoint := &reconciliation.Checkpoint{
@@ -1253,12 +1253,12 @@ func TestReconciliationService_Config(t *testing.T) {
 
 	t.Run("config validation applies defaults for invalid values", func(t *testing.T) {
 		config := reconciliation.Config{
-			SilenceTimeout:     0, // Invalid
-			BatchSize:          0, // Invalid
-			MaxConcurrent:      0, // Invalid
-			CheckInterval:      0, // Invalid
-			MaxRetries:         0, // Invalid
-			RetryBackoff:       0, // Invalid
+			SilenceTimeout:     0,  // Invalid
+			BatchSize:          0,  // Invalid
+			MaxConcurrent:      0,  // Invalid
+			CheckInterval:      0,  // Invalid
+			MaxRetries:         0,  // Invalid
+			RetryBackoff:       0,  // Invalid
 			MaxRestartAttempts: -1, // Invalid (negative)
 			RestartBackoff:     0,  // Invalid
 		}
@@ -1276,4 +1276,18 @@ func TestReconciliationService_Config(t *testing.T) {
 		assert.Equal(t, 3, config.MaxRestartAttempts)
 		assert.Equal(t, 1*time.Minute, config.RestartBackoff)
 	})
+}
+
+// Stubs dos métodos novos do CheckpointRepository (watermark vivo + higiene).
+// Retornos fixos (sem m.Called) de propósito: o watchdog os chama fora do
+// controle dos testes e um testify sem expectativa registrada entraria em
+// pânico.
+func (m *MockCheckpointRepository) AdvanceCheckpoint(ctx context.Context, sessionName, chatID string, lastTimestamp int64, lastMessageID string) error {
+	return nil
+}
+func (m *MockCheckpointRepository) ResetStuckCheckpoints(ctx context.Context, olderThan time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *MockCheckpointRepository) DeleteInactiveCheckpoints(ctx context.Context, olderThan time.Duration) (int64, error) {
+	return 0, nil
 }

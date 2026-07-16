@@ -214,11 +214,11 @@ func TestProcessChat_Success(t *testing.T) {
 	// Configure checkpoint repo mock for the reconcile flow
 	cpRepo.On("GetOrCreate", mock.Anything, sessionName, chatID).
 		Return(&reconciliation.Checkpoint{
-			SessionName:         sessionName,
-			ChatID:              chatID,
+			SessionName:          sessionName,
+			ChatID:               chatID,
 			LastMessageTimestamp: 0,
-			LastMessageID:       "",
-			Status:              reconciliation.CheckpointStatusIdle,
+			LastMessageID:        "",
+			Status:               reconciliation.CheckpointStatusIdle,
 		}, nil)
 	cpRepo.On("MarkRunning", mock.Anything, sessionName, chatID).Return(nil)
 	cpRepo.On("MarkIdle", mock.Anything, sessionName, chatID).Return(nil)
@@ -634,4 +634,15 @@ func TestProcessSession_ContextCancelled(t *testing.T) {
 
 	// Give the internal goroutine time to detect cancellation
 	time.Sleep(50 * time.Millisecond)
+}
+
+// Stubs dos métodos novos do CheckpointRepository (watermark vivo + higiene).
+func (m *mockCheckpointRepo) AdvanceCheckpoint(ctx context.Context, sessionName, chatID string, lastTimestamp int64, lastMessageID string) error {
+	return nil
+}
+func (m *mockCheckpointRepo) ResetStuckCheckpoints(ctx context.Context, olderThan time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *mockCheckpointRepo) DeleteInactiveCheckpoints(ctx context.Context, olderThan time.Duration) (int64, error) {
+	return 0, nil
 }

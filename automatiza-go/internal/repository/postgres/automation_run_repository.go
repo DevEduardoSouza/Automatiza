@@ -53,47 +53,57 @@ func (r *automationRunRepository) GetLock(ctx context.Context, automationID stri
 
 // AcquireLock attempts to acquire an execution lock for the specified duration
 // Returns the lock expiry time or nil if lock cannot be acquired (already locked)
-// Uses SELECT FOR UPDATE pattern to prevent race conditions
+//
+// Exclusão mútua REAL: o índice UNIQUE parcial uq_automation_runs_active_lock
+// (migração 065, automation_id WHERE lock_until IS NOT NULL) garante no máximo
+// um lock ativo por automação; o INSERT ... ON CONFLICT DO NOTHING transforma a
+// corrida (cron × "Rodar agora" da UI) em "um ganha, o outro recebe nil". O
+// antigo check-then-insert (SELECT FOR UPDATE) não protegia nada quando ainda
+// não existia linha de lock — as duas transações inseriam e a automação rodava
+// 2x (LIST entregava o mesmo item duas vezes).
 func (r *automationRunRepository) AcquireLock(ctx context.Context, automationID string, duration time.Duration) (*time.Time, error) {
-	// Use a transaction with advisory lock to prevent race conditions
 	var lockUntil *time.Time
 
 	err := r.db.WithTx(ctx, func(tx pgx.Tx) error {
-		// First, check if there's an active lock using SELECT FOR UPDATE
-		checkQuery := `
-			SELECT lock_until
-			FROM automation_runs
-			WHERE automation_id = $1 AND lock_until > NOW()
-			FOR UPDATE SKIP LOCKED
-			LIMIT 1
+		// Locks EXPIRADOS mas não liberados (run morto antes do release; o reaper
+		// diário limpa com atraso) ocupariam o slot do índice UNIQUE e negariam o
+		// acquire para sempre. Libera-os aqui, na mesma transação: sob concorrência,
+		// o UPDATE serializa nas linhas (row lock) e o perdedor re-avalia o
+		// predicado após o commit do vencedor (READ COMMITTED).
+		clearExpired := `
+			UPDATE automation_runs
+			SET lock_until = NULL,
+			    status = CASE WHEN status = $2 THEN $3 ELSE status END,
+			    completed_at = COALESCE(completed_at, NOW())
+			WHERE automation_id = $1 AND lock_until IS NOT NULL AND lock_until <= NOW()
 		`
-
-		var existingLock time.Time
-		err := tx.QueryRow(ctx, checkQuery, automationID).Scan(&existingLock)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("failed to check existing lock: %w", err)
+		if _, err := tx.Exec(ctx, clearExpired, automationID,
+			models.AutomationRunStatusRunning, models.AutomationRunStatusFailed); err != nil {
+			return fmt.Errorf("failed to clear expired locks: %w", err)
 		}
 
-		// If a lock exists, we cannot acquire
-		if err == nil {
-			r.logger.Debug("lock already held",
-				zap.String("automationID", automationID),
-				zap.Time("lockUntil", existingLock))
-			return nil // Lock already held, lockUntil stays nil
-		}
-
-		// No active lock, create a new run with lock
 		now := time.Now().UTC()
 		lockExpiry := now.Add(duration)
 
+		// ON CONFLICT DO NOTHING sem alvo explícito: casa com o índice UNIQUE
+		// parcial quando ele existe (caminho normal) e degrada graciosamente
+		// para o comportamento antigo caso a migração 065 ainda não tenha
+		// rodado (deploy com migração WARN-only) — nunca quebra o acquire.
 		insertQuery := `
 			INSERT INTO automation_runs (automation_id, status, lock_until, started_at)
 			VALUES ($1, $2, $3, $4)
+			ON CONFLICT DO NOTHING
 			RETURNING lock_until
 		`
 
-		err = tx.QueryRow(ctx, insertQuery, automationID, models.AutomationRunStatusRunning, lockExpiry, now).Scan(&lockExpiry)
+		err := tx.QueryRow(ctx, insertQuery, automationID, models.AutomationRunStatusRunning, lockExpiry, now).Scan(&lockExpiry)
 		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// Conflito no índice parcial: outra execução segura o lock ativo.
+				r.logger.Debug("lock already held (unique index conflict)",
+					zap.String("automationID", automationID))
+				return nil // lockUntil stays nil
+			}
 			return fmt.Errorf("failed to insert automation run: %w", err)
 		}
 

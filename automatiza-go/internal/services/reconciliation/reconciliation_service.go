@@ -52,12 +52,25 @@ type CheckpointRepository interface {
 	// Called after successfully processing a batch of messages.
 	UpdateCheckpoint(ctx context.Context, sessionName, chatID string, lastTimestamp int64, lastMessageID string) error
 
+	// AdvanceCheckpoint upserts the checkpoint monotonically from the LIVE
+	// message path (creates on first message, only moves the watermark
+	// forward). This is what seeds checkpoints — without it the silence
+	// watchdog and startup backfill have nothing to reconcile.
+	AdvanceCheckpoint(ctx context.Context, sessionName, chatID string, lastTimestamp int64, lastMessageID string) error
+
 	// GetActiveSessionsChats retrieves all session/chat pairs that have checkpoints.
 	// Used during startup reconciliation to know which chats to reconcile.
 	GetActiveSessionsChats(ctx context.Context) ([]SessionChat, error)
 
 	// GetBySession retrieves all checkpoints for a specific session.
 	GetBySession(ctx context.Context, sessionName string) ([]Checkpoint, error)
+
+	// ResetStuckCheckpoints devolve 'running'/'failed' antigos para 'idle'
+	// (crash no meio de um ReconcileChat não pode vetar o chat para sempre).
+	ResetStuckCheckpoints(ctx context.Context, olderThan time.Duration) (int64, error)
+
+	// DeleteInactiveCheckpoints remove checkpoints sem atividade (higiene).
+	DeleteInactiveCheckpoints(ctx context.Context, olderThan time.Duration) (int64, error)
 }
 
 // =============================================================================
@@ -175,20 +188,41 @@ type Config struct {
 	// RestartBackoff is the base duration for exponential backoff between restart attempts.
 	// Default: 1 minute.
 	RestartBackoff time.Duration
+
+	// MaxBackfillWindow limita o quão para trás o backfill busca mensagens.
+	// DEVE ficar alinhado ao staleWebhookMessageTTL do consumidor (10min): o
+	// espelho não repassa mensagem mais velha que isso no caminho vivo, e os
+	// guards de loop do offer_generate (og_self_send/selfsend, TTL 10min)
+	// assumem esse teto. Sem o clamp, um checkpoint recém-criado (timestamp 0)
+	// faria o doReconcile paginar o HISTÓRICO INTEIRO do grupo e re-espelhar
+	// ofertas antigas. Default: 10 minutos.
+	MaxBackfillWindow time.Duration
+
+	// MaxMessagesPerReconcile limita o total de mensagens processadas por
+	// ReconcileChat (backstop contra paginação descontrolada). Default: 200.
+	MaxMessagesPerReconcile int
+
+	// CheckpointWriteInterval limita a frequência de persistência do watermark
+	// vivo por (sessão, chat). Default: 45s — num crash perde-se no máximo
+	// isso de watermark, que o backfill re-cobre (dedup absorve o overlap).
+	CheckpointWriteInterval time.Duration
 }
 
 // DefaultConfig returns the default reconciliation configuration.
 func DefaultConfig() Config {
 	return Config{
-		SilenceTimeout:     5 * time.Minute,
-		BatchSize:          50,
-		MaxConcurrent:      5,
-		CheckInterval:      1 * time.Minute,
-		MaxRetries:         3,
-		RetryBackoff:       30 * time.Second,
-		HealthCheckEnabled: true,
-		MaxRestartAttempts: 3,
-		RestartBackoff:     1 * time.Minute,
+		SilenceTimeout:          5 * time.Minute,
+		BatchSize:               50,
+		MaxConcurrent:           5,
+		CheckInterval:           1 * time.Minute,
+		MaxRetries:              3,
+		RetryBackoff:            30 * time.Second,
+		HealthCheckEnabled:      true,
+		MaxRestartAttempts:      3,
+		RestartBackoff:          1 * time.Minute,
+		MaxBackfillWindow:       10 * time.Minute,
+		MaxMessagesPerReconcile: 200,
+		CheckpointWriteInterval: 45 * time.Second,
 	}
 }
 
@@ -219,6 +253,15 @@ func (c *Config) Validate() error {
 	}
 	if c.RestartBackoff <= 0 {
 		c.RestartBackoff = 1 * time.Minute
+	}
+	if c.MaxBackfillWindow <= 0 {
+		c.MaxBackfillWindow = 10 * time.Minute
+	}
+	if c.MaxMessagesPerReconcile <= 0 {
+		c.MaxMessagesPerReconcile = 200
+	}
+	if c.CheckpointWriteInterval <= 0 {
+		c.CheckpointWriteInterval = 45 * time.Second
 	}
 	return nil
 }
@@ -255,6 +298,16 @@ type Service struct {
 	restartAttempts map[string]int       // key: sessionName
 	lastRestartTime map[string]time.Time // key: sessionName
 	restartMu       sync.Mutex
+
+	// Live checkpoint write throttle (RecordMessage): last persist per
+	// "session:chat" — bounds DB writes to one per CheckpointWriteInterval.
+	checkpointWrites   map[string]time.Time
+	checkpointWritesMu sync.Mutex
+
+	// Watchdog maintenance pacing (stuck-reset / inactive purge).
+	lastStuckReset      time.Time
+	lastCheckpointPurge time.Time
+	maintenanceMu       sync.Mutex
 }
 
 // New creates a new ReconciliationService.
@@ -288,6 +341,7 @@ func New(
 		semaphore:        make(chan struct{}, config.MaxConcurrent),
 		restartAttempts:  make(map[string]int),
 		lastRestartTime:  make(map[string]time.Time),
+		checkpointWrites: make(map[string]time.Time),
 	}
 }
 
@@ -305,6 +359,49 @@ func (s *Service) RecordEvent(sessionName string) {
 
 	s.logger.Debug("Recorded event for session",
 		zap.String("session", sessionName))
+}
+
+// RecordMessage registra atividade da sessão E avança o checkpoint VIVO do
+// chat (persistência limitada por CheckpointWriteInterval). É chamado pelo
+// processador de espelho DEPOIS que o fan-out da mensagem conclui — assim o
+// watermark cobre apenas o que foi de fato processado: um hard-kill no meio
+// do fan-out deixa o checkpoint para trás, o gap fica visível e o backfill
+// re-busca a mensagem (o claim de dedup por destino absorve o overlap e só os
+// destinos não atendidos recebem).
+//
+// É este método que SEMEIA os checkpoints: sem ele a tabela ficava vazia
+// (0 linhas em produção desde sempre) e watchdog/startup-backfill eram no-ops.
+func (s *Service) RecordMessage(sessionName, chatID string, ts time.Time, messageID string) {
+	s.RecordEvent(sessionName)
+
+	if chatID == "" || messageID == "" || ts.IsZero() {
+		return
+	}
+
+	key := sessionName + ":" + chatID
+	now := time.Now()
+	s.checkpointWritesMu.Lock()
+	if last, ok := s.checkpointWrites[key]; ok && now.Sub(last) < s.config.CheckpointWriteInterval {
+		s.checkpointWritesMu.Unlock()
+		return
+	}
+	s.checkpointWrites[key] = now
+	s.checkpointWritesMu.Unlock()
+
+	// Contexto próprio e curto: chamado da goroutine de fan-out, cujo ctx
+	// morre logo depois — o watermark tem que persistir mesmo assim.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.checkpointRepo.AdvanceCheckpoint(ctx, sessionName, chatID, ts.UnixMilli(), messageID); err != nil {
+		s.logger.Warn("Failed to advance live checkpoint",
+			zap.String("session", sessionName),
+			zap.String("chat", chatID),
+			zap.Error(err))
+		// Libera o throttle para a próxima mensagem tentar de novo.
+		s.checkpointWritesMu.Lock()
+		delete(s.checkpointWrites, key)
+		s.checkpointWritesMu.Unlock()
+	}
 }
 
 // =============================================================================
@@ -446,11 +543,19 @@ func (s *Service) ReconcileChat(ctx context.Context, sessionName, chatID string)
 
 // doReconcile performs the actual reconciliation work.
 func (s *Service) doReconcile(ctx context.Context, sessionName, chatID string, checkpoint *Checkpoint) error {
-	var fromTimestamp *time.Time
+	// CLAMP de janela: nunca buscar além de MaxBackfillWindow (10min, alinhado
+	// ao staleWebhookMessageTTL do caminho vivo). Um checkpoint recém-criado
+	// (timestamp 0) sem o clamp faria paginar o HISTÓRICO INTEIRO do grupo e
+	// re-espelhar ofertas antigas — os guards de loop (og_self_send/selfsend)
+	// e as janelas de claim assumem frescor ≤10min.
+	minFrom := time.Now().Add(-s.config.MaxBackfillWindow)
+	fromTs := minFrom
 	if checkpoint.LastMessageTimestamp > 0 {
-		t := time.UnixMilli(checkpoint.LastMessageTimestamp)
-		fromTimestamp = &t
+		if t := time.UnixMilli(checkpoint.LastMessageTimestamp); t.After(minFrom) {
+			fromTs = t
+		}
 	}
+	fromTimestamp := &fromTs
 
 	offset := 0
 	totalProcessed := 0
@@ -463,18 +568,20 @@ func (s *Service) doReconcile(ctx context.Context, sessionName, chatID string, c
 			return err
 		}
 
-		// Build filter for messages since checkpoint
+		// Build filter for messages since checkpoint (clamped above)
 		filter := &whatsapp.MessageFilter{
 			FromTimestamp: fromTimestamp,
 		}
 
-		// Fetch messages from WAHA
+		// Fetch messages from WAHA — ascending so offset paging walks forward
+		// in time and the checkpoint advances deterministically.
 		result, err := s.provider.GetMessages(ctx, whatsapp.GetMessagesInput{
 			SessionName:   sessionName,
 			ChatID:        chatID,
 			Limit:         s.config.BatchSize,
 			Offset:        offset,
 			DownloadMedia: false,
+			SortAsc:       true,
 			Filter:        filter,
 		})
 		if err != nil {
@@ -494,6 +601,11 @@ func (s *Service) doReconcile(ctx context.Context, sessionName, chatID string, c
 		for _, msg := range result.Messages {
 			// Skip messages we've already processed (based on ID)
 			if msg.ID == checkpoint.LastMessageID {
+				continue
+			}
+			// Defesa em profundidade: mesmo se o filtro server-side falhar,
+			// nunca processar mensagem fora da janela de frescor.
+			if msg.Timestamp.Before(minFrom) {
 				continue
 			}
 
@@ -523,6 +635,16 @@ func (s *Service) doReconcile(ctx context.Context, sessionName, chatID string, c
 					"chat":    chatID,
 				})
 			}
+		}
+
+		// Backstop: um chat de altíssimo volume não pode transformar um
+		// reconcile em varredura sem fim.
+		if totalProcessed >= s.config.MaxMessagesPerReconcile {
+			s.logger.Warn("Reconciliation message cap reached — stopping this pass",
+				zap.String("session", sessionName),
+				zap.String("chat", chatID),
+				zap.Int("cap", s.config.MaxMessagesPerReconcile))
+			break
 		}
 
 		// Check if there are more messages
@@ -580,8 +702,42 @@ func (s *Service) StartWatchdog(ctx context.Context) context.CancelFunc {
 	return cancel
 }
 
+// runMaintenance executa a higiene periódica dos checkpoints a partir do
+// watchdog: destrava 'running'/'failed' órfãos (crash no meio de um
+// ReconcileChat vetava o chat para sempre — o MarkRunning recusa não-idle) e
+// remove checkpoints inativos (grupo morto/sessão despareada).
+func (s *Service) runMaintenance(ctx context.Context) {
+	s.maintenanceMu.Lock()
+	doReset := time.Since(s.lastStuckReset) >= 5*time.Minute
+	if doReset {
+		s.lastStuckReset = time.Now()
+	}
+	doPurge := time.Since(s.lastCheckpointPurge) >= 24*time.Hour
+	if doPurge {
+		s.lastCheckpointPurge = time.Now()
+	}
+	s.maintenanceMu.Unlock()
+
+	if doReset {
+		if n, err := s.checkpointRepo.ResetStuckCheckpoints(ctx, 30*time.Minute); err != nil {
+			s.logger.Warn("Failed to reset stuck checkpoints", zap.Error(err))
+		} else if n > 0 {
+			s.logger.Info("Reset stuck reconciliation checkpoints", zap.Int64("count", n))
+		}
+	}
+	if doPurge {
+		if n, err := s.checkpointRepo.DeleteInactiveCheckpoints(ctx, 7*24*time.Hour); err != nil {
+			s.logger.Warn("Failed to purge inactive checkpoints", zap.Error(err))
+		} else if n > 0 {
+			s.logger.Info("Purged inactive reconciliation checkpoints", zap.Int64("count", n))
+		}
+	}
+}
+
 // checkAndReconcile checks for silent sessions, verifies health, and triggers reconciliation.
 func (s *Service) checkAndReconcile(ctx context.Context) {
+	s.runMaintenance(ctx)
+
 	s.lastEventMu.RLock()
 	sessions := make(map[string]time.Time, len(s.lastEventTime))
 	for session, lastEvent := range s.lastEventTime {

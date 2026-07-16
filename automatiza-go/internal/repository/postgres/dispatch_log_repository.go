@@ -31,8 +31,8 @@ func (r *dispatchLogRepository) Create(ctx context.Context, log *models.Dispatch
 		INSERT INTO dispatch_logs (
 			user_id, automation_id, automation_name, store, group_id,
 			product_url, product_page_url, canonical_key, status, type, created_at, copy_index,
-			affiliate_link, error
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			affiliate_link, error, list_item_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id, created_at
 	`
 
@@ -43,7 +43,7 @@ func (r *dispatchLogRepository) Create(ctx context.Context, log *models.Dispatch
 	err := r.db.QueryRow(ctx, query,
 		log.UserID, log.AutomationID, log.AutomationName, log.Store, log.GroupID,
 		log.ProductURL, log.ProductPageURL, log.CanonicalKey, log.Status, log.Type, now, log.CopyIndex,
-		log.AffiliateLink, log.Error,
+		log.AffiliateLink, log.Error, log.ListItemID,
 	).Scan(&id, &createdAt)
 
 	if err != nil {
@@ -89,6 +89,86 @@ func (r *dispatchLogRepository) Update(ctx context.Context, logID int, updates m
 	}
 
 	return nil
+}
+
+// MarkStaleQueuedListLogs marca como 'error' dispatch de LIST preso em 'queued'
+// há mais de staleAfter dentro da janela window. Um 'queued' legítimo vive
+// minutos (fila → worker → sent/failed); horas em 'queued' = task perdida
+// (redis reiniciou, worker morreu com a task em voo além do lease). Sem este
+// desfecho terminal, o item de lista associado ficava consumido para sempre
+// sem nunca ter sido entregue — invisível para o reconciliador.
+func (r *dispatchLogRepository) MarkStaleQueuedListLogs(ctx context.Context, staleAfter, window time.Duration) (int64, error) {
+	query := `
+		UPDATE dispatch_logs
+		SET status = 'error', error = 'reconciliacao: envio perdido (queued sem desfecho)'
+		WHERE list_item_id IS NOT NULL
+		  AND status = 'queued'
+		  AND created_at < NOW() - make_interval(secs => $1)
+		  AND created_at > NOW() - make_interval(secs => $2)
+	`
+
+	result, err := r.db.pool.Exec(ctx, query, staleAfter.Seconds(), window.Seconds())
+	if err != nil {
+		r.logger.Error("Failed to mark stale queued list logs", zap.Error(err))
+		return 0, fmt.Errorf("mark stale queued list logs: %w", err)
+	}
+	return result.RowsAffected(), nil
+}
+
+// GetListResurrectCandidates devolve os destinos FALHOS de itens de lista que
+// foram consumidos mas cuja entrega comprovadamente NÃO aconteceu: dentro da
+// janela, o item tem 0 'sent', 0 'queued' (nada em voo), ≥1 'failed' (desfecho
+// TERMINAL escrito pelo worker — prova positiva de não-entrega) e 0 'error'.
+//
+// 'error' fica de fora dos gatilhos E veta o item: é o status que o
+// MarkStaleQueuedListLogs grava em 'queued' órfão — desfecho DESCONHECIDO
+// (a task pode ter enviado e só o update de 'sent' se perdeu, ex.: DB
+// saturado no timeout de 5s do updateDispatchLog). Devolver um item nessa
+// condição reenviaria um produto possivelmente já entregue — duplicar é pior
+// que perder o retry. Só itens ainda consumidos entram (JOIN consumed_at
+// IS NOT NULL), evitando re-processar o mesmo item a cada ciclo.
+func (r *dispatchLogRepository) GetListResurrectCandidates(ctx context.Context, window time.Duration) ([]repository.ListResurrectCandidate, error) {
+	query := `
+		WITH agg AS (
+			SELECT list_item_id,
+			       COUNT(*) FILTER (WHERE status = 'sent')   AS sent,
+			       COUNT(*) FILTER (WHERE status = 'queued') AS queued,
+			       COUNT(*) FILTER (WHERE status = 'failed') AS failed,
+			       COUNT(*) FILTER (WHERE status = 'error')  AS uncertain
+			FROM dispatch_logs
+			WHERE list_item_id IS NOT NULL
+			  AND created_at > NOW() - make_interval(secs => $1)
+			GROUP BY list_item_id
+		)
+		SELECT dl.list_item_id::text, dl.user_id, dl.group_id, dl.canonical_key
+		FROM dispatch_logs dl
+		JOIN agg ON agg.list_item_id = dl.list_item_id
+		JOIN ml_link_list_items i ON i.id = dl.list_item_id AND i.consumed_at IS NOT NULL
+		WHERE agg.sent = 0 AND agg.queued = 0 AND agg.failed > 0 AND agg.uncertain = 0
+		  AND dl.status = 'failed'
+		  AND dl.created_at > NOW() - make_interval(secs => $1)
+		LIMIT 500
+	`
+
+	rows, err := r.db.Query(ctx, query, window.Seconds())
+	if err != nil {
+		r.logger.Error("Failed to get list resurrect candidates", zap.Error(err))
+		return nil, fmt.Errorf("get list resurrect candidates: %w", err)
+	}
+	defer rows.Close()
+
+	var out []repository.ListResurrectCandidate
+	for rows.Next() {
+		var c repository.ListResurrectCandidate
+		if err := rows.Scan(&c.ListItemID, &c.UserID, &c.GroupID, &c.CanonicalKey); err != nil {
+			return nil, fmt.Errorf("scan list resurrect candidate: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate list resurrect candidates: %w", err)
+	}
+	return out, nil
 }
 
 func (r *dispatchLogRepository) GetRecentByCanonicalKey(ctx context.Context, userID, groupID, canonicalKey string, window time.Duration) (*models.DispatchLog, error) {

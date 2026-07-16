@@ -1135,3 +1135,11 @@ func TestDispatchLogProcessor_LogEntryFields(t *testing.T) {
 		t.Errorf("dedupWindowHours = %d, want 72", dispatchLogRepo.lastDedupWindow)
 	}
 }
+
+// Stubs dos métodos novos do DispatchLogRepository (reconciliador de lista).
+func (m *mockDispatchLogRepo) MarkStaleQueuedListLogs(ctx context.Context, staleAfter, window time.Duration) (int64, error) {
+	return 0, nil
+}
+func (m *mockDispatchLogRepo) GetListResurrectCandidates(ctx context.Context, window time.Duration) ([]repository.ListResurrectCandidate, error) {
+	return nil, nil
+}

@@ -72,9 +72,13 @@ func (h *WhatsAppHandler) CreateInstance(c *gin.Context) {
 	}
 
 	session, err := h.deps.WhatsAppProvider.CreateSession(c.Request.Context(), whatsapp.CreateSessionInput{
-		SessionName:   instanceName,
-		WebhookURL:    "", // Will be set by adapter from config
-		WebhookEvents: []string{"message", "session.status"},
+		SessionName: instanceName,
+		WebhookURL:  "", // Will be set by adapter from config
+		// WebhookEvents vazio => default do adapter (message.any + ack +
+		// session.status + group.join/leave), alinhado ao WHATSAPP_HOOK_EVENTS
+		// da produção. A lista explícita antiga ("message", sem fromMe e sem
+		// eventos de grupo) fazia TODO chip criado pela UI perder o gatilho
+		// fromMe do offer_generate e os joins/leaves de grupo.
 	})
 	if err != nil {
 		h.deps.Logger.Error("Failed to create instance",

@@ -50,7 +50,8 @@ func ExecuteSendPoll(
 			logger.Warn("Failed to send poll",
 				zap.String("groupID", groupID),
 				zap.Error(err))
-			return err
+			// Ambíguo = assumed-sent: retry do job re-enviaria a enquete.
+			return ambiguousAsSent(err, logger, groupID)
 		}
 
 		return nil

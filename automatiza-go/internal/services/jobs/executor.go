@@ -5,7 +5,29 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"automatiza-go/internal/adapters/whatsapp"
+
+	"go.uber.org/zap"
 )
+
+// ambiguousAsSent converte desfecho AMBÍGUO de envio em sucesso (assumed-sent).
+// Timeout/reset/EOF/502 no cliente NÃO provam que o WAHA não entregou — contar
+// como failed fazia o job re-agendar (ScheduleRetry) e RE-EXECUTAR o envio
+// inteiro: mensagem duplicada no grupo (até MaxRetries×). Mesmo contrato do
+// message_worker: duplicar é pior que perder 1 repasse.
+func ambiguousAsSent(err error, logger *zap.Logger, groupID string) error {
+	if err == nil {
+		return nil
+	}
+	if whatsapp.IsAmbiguousOutcome(err) {
+		logger.Warn("Ambiguous send outcome in job — assuming sent (no retry)",
+			zap.String("groupID", groupID),
+			zap.Error(err))
+		return nil
+	}
+	return err
+}
 
 const (
 	// RateLimitDelay is the delay between actions to avoid WAHA rate limiting
