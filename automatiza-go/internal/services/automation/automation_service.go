@@ -32,6 +32,12 @@ import (
 // executionLockDuration defines how long an automation execution lock is held
 const executionLockDuration = 10 * time.Minute
 
+// abortRetryBackoff is how soon a run is rescheduled when it was aborted by the
+// per-automation/tick timeout (likely sending nothing). Short enough to recover
+// delivery within minutes instead of skipping a whole interval, but long enough
+// that a persistently-timing-out automation cannot become a tight retry loop.
+const abortRetryBackoff = 5 * time.Minute
+
 // NOTE: This service no longer depends on internal/services/waha directly.
 // WhatsApp operations are handled via:
 // 1. The queue client (workers.QueueClient) for message sending
@@ -352,8 +358,17 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 	s.logger.Info("Execution lock acquired",
 		zap.String("automationID", automation.ID))
 
-	// Release lock when done
-	defer func() { _ = s.releaseExecutionLock(ctx, automation.ID) }()
+	// Release lock when done. Detach from the run context: if the run is killed
+	// by the per-automation (90s) or tick (5min) timeout, the raw ctx is already
+	// canceled and the release UPDATE never executes — leaving a stale 'running'
+	// row that blocks this automation until lock_until expires (~10min) and leaks
+	// a zombie row (never reaped by CleanupOldRuns). Same independent-context
+	// treatment already used for last_run_at/next_run_at below.
+	defer func() {
+		relCtx, relCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer relCancel()
+		_ = s.releaseExecutionLock(relCtx, automation.ID)
+	}()
 
 	// Update last_run_at immediately after lock to prevent double-trigger.
 	// Uses independent context so it doesn't fail on cron batch timeout.
@@ -365,11 +380,20 @@ func (s *automationService) RunAutomation(ctx context.Context, automationID, use
 			zap.Error(updateErr))
 	}
 
-	// Always update next_run_at when execution completes (success or error)
-	// This ensures the scheduler knows when to run again even if this run fails
+	// Update next_run_at when execution completes. If the run was aborted by the
+	// per-automation/tick timeout (ctx.Err() != nil), it most likely enqueued
+	// nothing, so scheduling a full interval ahead would silently drop this
+	// cycle's delivery. Reschedule sooner (abortRetryBackoff, capped at the
+	// interval) to recover, without turning a persistent timeout into a 1-min
+	// hammer loop against Shopee/WAHA.
 	defer func() {
 		if automation.IntervalMinutes != nil && *automation.IntervalMinutes > 0 {
-			nextRun := time.Now().UTC().Add(time.Duration(*automation.IntervalMinutes) * time.Minute)
+			interval := time.Duration(*automation.IntervalMinutes) * time.Minute
+			delay := interval
+			if ctx.Err() != nil && abortRetryBackoff < interval {
+				delay = abortRetryBackoff
+			}
+			nextRun := time.Now().UTC().Add(delay)
 			nrCtx, nrCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer nrCancel()
 			if updateErr := s.automationRepo.UpdateNextRunAt(nrCtx, automation.ID, nextRun); updateErr != nil {

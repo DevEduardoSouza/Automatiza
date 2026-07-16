@@ -175,6 +175,11 @@ func (m *MockAutomationRunRepository) CleanupOldRuns(ctx context.Context, olderT
 	return args.Get(0).(int64), args.Error(1)
 }
 
+func (m *MockAutomationRunRepository) ReapStaleRunningLocks(ctx context.Context, grace time.Duration) (int64, error) {
+	args := m.Called(ctx, grace)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 // MockInstanceRepository implements repository.InstanceRepository
 type MockInstanceRepository struct {
 	mock.Mock

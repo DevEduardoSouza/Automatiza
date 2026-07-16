@@ -5,6 +5,8 @@ package startup
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -42,14 +44,30 @@ type BackfillConfig struct {
 }
 
 // DefaultBackfillConfig returns sensible defaults for backfill configuration.
+// Timeout/MaxConcurrent are env-tunable: with ~600 sessions, the old 10min/5
+// budget truncated the boot backfill (~30min of serial GetMessages) — sessions
+// processed after the cutoff never had their gaps detected, and the mass ctx
+// cancellation at the deadline injected "context canceled" noise. Raised to
+// 20min/8 (fits ~600 sessions) and overridable for rollback / to dial back
+// under WAHA memory pressure.
 func DefaultBackfillConfig() BackfillConfig {
 	return BackfillConfig{
-		MaxConcurrent:   5,
-		Timeout:         10 * time.Minute,
+		MaxConcurrent:   backfillEnvInt("BACKFILL_MAX_CONCURRENT", 8),
+		Timeout:         time.Duration(backfillEnvInt("BACKFILL_TIMEOUT_MINUTES", 20)) * time.Minute,
 		GapThreshold:    60 * time.Second,
 		SkipHealthCheck: false,
 		ContinueOnError: true,
 	}
+}
+
+// backfillEnvInt reads a positive integer from env `key`, or returns `def`.
+func backfillEnvInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
 }
 
 // Validate checks configuration and applies defaults for zero values.
@@ -187,14 +205,14 @@ func (s *BackfillService) RunOnStartup(ctx context.Context) (*BackfillResult, er
 
 	// Step 2: Process sessions concurrently with bounded parallelism
 	var (
-		wg          sync.WaitGroup
-		mu          sync.Mutex
-		semaphore   = make(chan struct{}, s.config.MaxConcurrent)
-		errorsMu    sync.Mutex
-		allErrors   []error
-		checked     int
-		withGaps    int
-		enqueued    int
+		wg        sync.WaitGroup
+		mu        sync.Mutex
+		semaphore = make(chan struct{}, s.config.MaxConcurrent)
+		errorsMu  sync.Mutex
+		allErrors []error
+		checked   int
+		withGaps  int
+		enqueued  int
 	)
 
 	for _, instance := range instances {
@@ -309,7 +327,7 @@ func (s *BackfillService) processSession(ctx context.Context, sessionName string
 
 	// Step 3: Check each chat for gaps
 	var (
-		hasAnyGap    bool
+		hasAnyGap     bool
 		enqueuedCount int
 	)
 

@@ -1778,6 +1778,11 @@ func (m *mockInternalRunRepo) CleanupOldRuns(ctx context.Context, olderThan time
 	return args.Get(0).(int64), args.Error(1)
 }
 
+func (m *mockInternalRunRepo) ReapStaleRunningLocks(ctx context.Context, grace time.Duration) (int64, error) {
+	args := m.Called(ctx, grace)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 func TestAcquireExecutionLock_NilRepo(t *testing.T) {
 	t.Parallel()
 	logger := zaptest.NewLogger(t)

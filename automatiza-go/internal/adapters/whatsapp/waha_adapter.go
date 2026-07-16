@@ -377,6 +377,17 @@ func isDockerInternalURL(rawURL string) bool {
 	return false
 }
 
+// envIntDefault reads a positive integer from the environment variable `key`,
+// falling back to `def` when unset, empty, non-numeric, or non-positive.
+func envIntDefault(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
+}
+
 // NewWahaAdapter creates a new WAHA adapter with the given configuration.
 func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, error) {
 	if err := cfg.validate(); err != nil {
@@ -414,12 +425,22 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 		statusCacheTTL = 30 * time.Second
 	}
 
-	// C6: Configure HTTP transport with connection pool limits
-	// OTel: wrap with otelhttp for distributed tracing of external HTTP calls
+	// C6: Configure HTTP transport with connection pool limits.
+	// APIURL is the single waha-router host fronting both shards, so these
+	// per-host caps bound the WHOLE process's concurrency to WAHA. The previous
+	// MaxConnsPerHost=20 (+ Go's default MaxIdleConnsPerHost=2) throttled send
+	// throughput below WORKER_CONCURRENCY(40)/fanout(64) — the 21st concurrent
+	// send blocked inside the transport, and all but 2 idle conns were re-dialed
+	// each call. Raised to match the concurrency and made env-tunable so it can
+	// be dialed back if the WAHA shards are under memory pressure.
+	// OTel: wrap with otelhttp for distributed tracing of external HTTP calls.
+	maxConnsPerHost := envIntDefault("WAHA_MAX_CONNS_PER_HOST", 64)
+	maxIdleConnsPerHost := envIntDefault("WAHA_MAX_IDLE_CONNS_PER_HOST", 32)
 	transport := otelhttp.NewTransport(&http.Transport{
-		MaxIdleConns:    100,
-		MaxConnsPerHost: 20,
-		IdleConnTimeout: 90 * time.Second,
+		MaxIdleConns:        200,
+		MaxConnsPerHost:     maxConnsPerHost,
+		MaxIdleConnsPerHost: maxIdleConnsPerHost,
+		IdleConnTimeout:     90 * time.Second,
 	})
 
 	// N3: Retry enabled by default, controllable via env var for rollback

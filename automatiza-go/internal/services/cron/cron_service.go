@@ -426,6 +426,15 @@ func (s *cronService) registerDefaultTasks() {
 		if s.automationRunRepo == nil {
 			return nil
 		}
+		// First reap 'running' rows whose lock expired long ago (runs killed by
+		// timeout/crash before releaseExecutionLock ran). Grace = 15min (>> the
+		// 10min max lock) so an in-flight run is never touched. Without this they
+		// accumulate forever in the partial lock index and never hit CleanupOldRuns.
+		if reaped, reapErr := s.automationRunRepo.ReapStaleRunningLocks(ctx, 15*time.Minute); reapErr != nil {
+			s.logger.Warn("Failed to reap stale running locks", zap.Error(reapErr))
+		} else if reaped > 0 {
+			s.logger.Warn("Reaped stale 'running' automation locks", zap.Int64("reaped", reaped))
+		}
 		deleted, err := s.automationRunRepo.CleanupOldRuns(ctx, 45*24*time.Hour)
 		if err != nil {
 			return err

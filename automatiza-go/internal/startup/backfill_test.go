@@ -401,11 +401,13 @@ func TestDefaultBackfillConfig(t *testing.T) {
 
 	c := DefaultBackfillConfig()
 
-	if c.MaxConcurrent != 5 {
-		t.Errorf("MaxConcurrent = %d, want 5", c.MaxConcurrent)
+	// Defaults raised (8/20m) so the boot backfill can cover ~600 sessions
+	// without truncating at the deadline; both are env-tunable (BACKFILL_*).
+	if c.MaxConcurrent != 8 {
+		t.Errorf("MaxConcurrent = %d, want 8", c.MaxConcurrent)
 	}
-	if c.Timeout != 10*time.Minute {
-		t.Errorf("Timeout = %v, want 10m", c.Timeout)
+	if c.Timeout != 20*time.Minute {
+		t.Errorf("Timeout = %v, want 20m", c.Timeout)
 	}
 	if c.GapThreshold != 60*time.Second {
 		t.Errorf("GapThreshold = %v, want 60s", c.GapThreshold)

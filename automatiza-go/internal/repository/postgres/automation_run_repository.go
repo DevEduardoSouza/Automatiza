@@ -347,3 +347,41 @@ func (r *automationRunRepository) CleanupOldRuns(ctx context.Context, olderThan 
 
 	return deleted, nil
 }
+
+// ReapStaleRunningLocks fails 'running' rows whose execution lock expired more
+// than `grace` ago. A run is killed (per-automation/tick timeout, or a hard
+// crash) before releaseExecutionLock can run; the lock lapses (~10min max) but
+// the row stays 'running' with lock_until set, polluting the partial lock index
+// (idx_automation_runs_active_lock WHERE lock_until IS NOT NULL) and escaping
+// CleanupOldRuns (which only removes completed/failed). `grace` is a safety
+// margin beyond the max lock duration so an in-flight run is never touched.
+func (r *automationRunRepository) ReapStaleRunningLocks(ctx context.Context, grace time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-grace)
+
+	query := `
+		UPDATE automation_runs
+		SET status = $1, lock_until = NULL, completed_at = NOW()
+		WHERE status = $2 AND lock_until IS NOT NULL AND lock_until < $3
+	`
+
+	result, err := r.db.pool.Exec(ctx, query,
+		models.AutomationRunStatusFailed,
+		models.AutomationRunStatusRunning,
+		cutoff,
+	)
+	if err != nil {
+		r.logger.Error("failed to reap stale running locks",
+			zap.Duration("grace", grace),
+			zap.Error(err))
+		return 0, fmt.Errorf("failed to reap stale running locks: %w", err)
+	}
+
+	reaped := result.RowsAffected()
+	if reaped > 0 {
+		r.logger.Warn("reaped stale 'running' automation locks",
+			zap.Int64("reaped", reaped),
+			zap.Duration("grace", grace))
+	}
+
+	return reaped, nil
+}

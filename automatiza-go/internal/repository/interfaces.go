@@ -631,6 +631,11 @@ type AutomationRunRepository interface {
 
 	// CleanupOldRuns deletes old completed runs
 	CleanupOldRuns(ctx context.Context, olderThan time.Duration) (int64, error)
+
+	// ReapStaleRunningLocks fails 'running' rows whose execution lock expired
+	// more than `grace` ago (runs killed before releaseExecutionLock could run).
+	// Returns the number of rows reaped.
+	ReapStaleRunningLocks(ctx context.Context, grace time.Duration) (int64, error)
 }
 
 // SyncJob represents a group synchronization job

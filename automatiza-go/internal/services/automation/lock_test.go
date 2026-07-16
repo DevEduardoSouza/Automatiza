@@ -78,6 +78,10 @@ func (m *MockAutomationRunRepository) CleanupOldRuns(ctx context.Context, olderT
 	return 0, nil
 }
 
+func (m *MockAutomationRunRepository) ReapStaleRunningLocks(ctx context.Context, grace time.Duration) (int64, error) {
+	return 0, nil
+}
+
 // Compile-time interface verification
 var _ repository.AutomationRunRepository = (*MockAutomationRunRepository)(nil)
 

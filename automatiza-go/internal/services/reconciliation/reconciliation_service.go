@@ -604,6 +604,29 @@ func (s *Service) checkAndReconcile(ctx context.Context) {
 			continue
 		}
 
+		// Give up on sessions that already exhausted their restart budget.
+		// They emit no events (so they stay silent forever), and re-checking
+		// them every tick only spams logs and burns a GetSessionStatus call
+		// against the (often memory-pressured) WAHA shard. Drop them from
+		// tracking; if the session ever recovers, RecordEvent re-registers it
+		// automatically. The VPS-side restarters (monitor.py/session-watchdog)
+		// remain responsible for permanently-failed sessions.
+		if s.config.HealthCheckEnabled && s.config.MaxRestartAttempts > 0 {
+			s.restartMu.Lock()
+			exhausted := s.restartAttempts[sessionName] >= s.config.MaxRestartAttempts
+			s.restartMu.Unlock()
+			if exhausted {
+				s.logger.Info("Releasing permanently-failed session from watchdog (restart budget exhausted)",
+					zap.String("session", sessionName),
+					zap.Int("maxAttempts", s.config.MaxRestartAttempts))
+				s.lastEventMu.Lock()
+				delete(s.lastEventTime, sessionName)
+				s.lastEventMu.Unlock()
+				s.resetRestartAttempts(sessionName)
+				continue
+			}
+		}
+
 		s.logger.Info("Silence detected for session",
 			zap.String("session", sessionName),
 			zap.Duration("silenceDuration", silence))
@@ -908,14 +931,29 @@ func (s *Service) OnStartup(ctx context.Context) error {
 // Manual Reconciliation
 // =============================================================================
 
+// manualReconcileTimeout bounds the detached ReconcileSession goroutine. It
+// matches the whatsapp:reconcile:session asynq task budget (10min) so the
+// fire-and-forget work has the same ceiling the queue intended.
+const manualReconcileTimeout = 10 * time.Minute
+
 // ReconcileSession manually triggers reconciliation for all chats in a session.
 // This can be called when a session reconnects or on user request.
 func (s *Service) ReconcileSession(ctx context.Context, sessionName string) error {
 	s.logger.Info("Triggering manual session reconciliation",
 		zap.String("session", sessionName))
 
+	// Detach from the caller's context BEFORE the fire-and-forget goroutine.
+	// The asynq worker (reconciliation_worker.go ProcessSession) returns nil
+	// immediately after this call, which cancels the task context; running
+	// reconcileSession on that raw ctx made every checkpoint/GetMessages call
+	// fail with "context canceled" ("Failed to get checkpoints" storm on each
+	// worker recreate) AND turned the backfill into a silent no-op. A detached,
+	// bounded context lets the reconciliation actually run to completion.
+	bgCtx := context.WithoutCancel(ctx)
 	observability.SafeGo("reconciliation.manualReconcileSession."+sessionName, func() {
-		s.reconcileSession(ctx, sessionName)
+		runCtx, cancel := context.WithTimeout(bgCtx, manualReconcileTimeout)
+		defer cancel()
+		s.reconcileSession(runCtx, sessionName)
 	})
 	return nil
 }
