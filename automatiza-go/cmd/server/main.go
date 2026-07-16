@@ -508,6 +508,8 @@ func main() {
 		automationScheduler,
 		dispatchLogRepo,
 		repos.WebhookEvents,
+		repos.AutomationRun,
+		repos.ActionHistory,
 		config.NewModuleLogger(logger, "cron"),
 	)
 

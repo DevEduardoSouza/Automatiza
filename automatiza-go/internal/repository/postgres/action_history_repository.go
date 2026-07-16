@@ -28,6 +28,32 @@ func NewActionHistoryRepository(db *DB, logger *zap.Logger) repository.ActionHis
 	}
 }
 
+// CleanupOldByActionType deletes action_history rows of the given action_type older
+// than olderThan, across all users. Scoped by type so operational churn
+// ("automation_run" is ~97% of the table) is pruned while user-facing actions
+// (list edits, group operations) are preserved.
+func (r *actionHistoryRepository) CleanupOldByActionType(ctx context.Context, actionType string, olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan)
+	tag, err := r.db.pool.Exec(ctx,
+		`DELETE FROM action_history WHERE action_type = $1 AND created_at < $2`,
+		actionType, cutoff)
+	if err != nil {
+		r.logger.Error("failed to cleanup old action history",
+			zap.String("actionType", actionType),
+			zap.Duration("olderThan", olderThan),
+			zap.Error(err))
+		return 0, fmt.Errorf("failed to cleanup old action history: %w", err)
+	}
+	deleted := tag.RowsAffected()
+	if deleted > 0 {
+		r.logger.Info("cleaned up old action history",
+			zap.String("actionType", actionType),
+			zap.Int64("deleted", deleted),
+			zap.Duration("olderThan", olderThan))
+	}
+	return deleted, nil
+}
+
 func (r *actionHistoryRepository) Create(ctx context.Context, userID, actionType, description string, details map[string]interface{}) (*models.ActionHistory, error) {
 	now := time.Now().UTC()
 

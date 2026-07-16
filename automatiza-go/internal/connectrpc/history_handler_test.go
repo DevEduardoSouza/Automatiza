@@ -120,6 +120,10 @@ func (m *mockActionHistoryRepo) UpdateCounts(ctx context.Context, historyID stri
 	return args.Error(0)
 }
 
+func (m *mockActionHistoryRepo) CleanupOldByActionType(_ context.Context, _ string, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+
 func (m *mockActionHistoryRepo) DeleteUserHistory(ctx context.Context, userID string, beforeDate *time.Time, actionTypes []string) (int64, error) {
 	args := m.Called(ctx, userID, beforeDate, actionTypes)
 	return args.Get(0).(int64), args.Error(1)
@@ -684,10 +688,10 @@ func TestListHistory_TotalPagesCalculation(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		total          int32
-		pageSize       int32
-		expectedPages  int32
+		name          string
+		total         int32
+		pageSize      int32
+		expectedPages int32
 	}{
 		{"exact division", 20, 10, 2},
 		{"remainder adds page", 21, 10, 3},

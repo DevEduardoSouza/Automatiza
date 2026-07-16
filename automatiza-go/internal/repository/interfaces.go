@@ -178,6 +178,11 @@ type ActionHistoryRepository interface {
 	IncrementErrorCount(ctx context.Context, historyID string, errorMsg string) error
 	UpdateCounts(ctx context.Context, historyID string, successCount, errorCount int32) error
 	DeleteUserHistory(ctx context.Context, userID string, beforeDate *time.Time, actionTypes []string) (int64, error)
+	// CleanupOldByActionType deletes rows of a given action_type older than olderThan,
+	// across all users. Used by the retention cron to prune high-churn operational
+	// history (e.g. "automation_run", ~97% of the table) without touching user-facing
+	// actions of other types.
+	CleanupOldByActionType(ctx context.Context, actionType string, olderThan time.Duration) (int64, error)
 }
 
 // SettingsRepository handles settings data operations

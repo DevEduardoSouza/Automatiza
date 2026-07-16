@@ -563,6 +563,10 @@ func (m *MockActionHistoryRepository) UpdateCounts(ctx context.Context, historyI
 	return args.Error(0)
 }
 
+func (m *MockActionHistoryRepository) CleanupOldByActionType(_ context.Context, _ string, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+
 func (m *MockActionHistoryRepository) DeleteUserHistory(ctx context.Context, userID string, beforeDate *time.Time, actionTypes []string) (int64, error) {
 	args := m.Called(ctx, userID, beforeDate, actionTypes)
 	return args.Get(0).(int64), args.Error(1)

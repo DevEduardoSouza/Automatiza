@@ -545,6 +545,10 @@ func (m *mockActionHistoryRepo) IncrementErrorCount(ctx context.Context, history
 func (m *mockActionHistoryRepo) UpdateCounts(ctx context.Context, historyID string, successCount, errorCount int32) error {
 	return nil
 }
+func (m *mockActionHistoryRepo) CleanupOldByActionType(_ context.Context, _ string, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+
 func (m *mockActionHistoryRepo) DeleteUserHistory(ctx context.Context, userID string, beforeDate *time.Time, actionTypes []string) (int64, error) {
 	return 0, nil
 }

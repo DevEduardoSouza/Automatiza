@@ -67,6 +67,8 @@ type cronService struct {
 	automationScheduler AutomationScheduler
 	dispatchLogRepo     repository.DispatchLogRepository
 	webhookEventsRepo   repository.WebhookEventsRepository
+	automationRunRepo   repository.AutomationRunRepository
+	actionHistoryRepo   repository.ActionHistoryRepository
 	logger              *zap.Logger
 	tasks               map[string]*cronTask
 	tasksMu             sync.RWMutex
@@ -110,6 +112,8 @@ func NewCronServiceFull(
 	automationScheduler AutomationScheduler,
 	dispatchLogRepo repository.DispatchLogRepository,
 	webhookEventsRepo repository.WebhookEventsRepository,
+	automationRunRepo repository.AutomationRunRepository,
+	actionHistoryRepo repository.ActionHistoryRepository,
 	logger *zap.Logger,
 ) Service {
 	return &cronService{
@@ -117,6 +121,8 @@ func NewCronServiceFull(
 		automationScheduler: automationScheduler,
 		dispatchLogRepo:     dispatchLogRepo,
 		webhookEventsRepo:   webhookEventsRepo,
+		automationRunRepo:   automationRunRepo,
+		actionHistoryRepo:   actionHistoryRepo,
 		logger:              logger,
 		tasks:               make(map[string]*cronTask),
 	}
@@ -406,6 +412,46 @@ func (s *cronService) registerDefaultTasks() {
 		if unrec > 0 {
 			s.logger.Info("Unrecoverable webhook events cleanup completed",
 				zap.Int64("deleted", unrec))
+		}
+		return nil
+	})
+
+	// Cleanup automation run records (execution-lock rows) older than 45 dias.
+	// Uma linha por execução de automação (acquireExecutionLock/CreateRun); sem
+	// retenção a tabela cresce ~ilimitada (medido 1.9M linhas / 561MB, 153 dias).
+	// CleanupOldRuns só remove runs 'completed'/'failed' — 'running' fica intacto.
+	// GetRunsByAutomationID lê por limit (N recentes), não por janela de data,
+	// então 45d não afeta nenhum leitor.
+	s.RegisterTask("cleanup_automation_runs", 24*time.Hour, func(ctx context.Context) error {
+		if s.automationRunRepo == nil {
+			return nil
+		}
+		deleted, err := s.automationRunRepo.CleanupOldRuns(ctx, 45*24*time.Hour)
+		if err != nil {
+			return err
+		}
+		if deleted > 0 {
+			s.logger.Info("Automation runs cleanup completed",
+				zap.Int64("deleted", deleted))
+		}
+		return nil
+	})
+
+	// Cleanup operational 'automation_run' history rows older than 45 dias.
+	// action_history é ~97% 'automation_run' (medido 2.26M de 2.33M); poda só esse
+	// tipo, preservando o histórico de ações do usuário (edições de lista, grupos,
+	// foto/nome) que a UI exibe. Sem retenção crescia ~ilimitada (953MB, 230 dias).
+	s.RegisterTask("cleanup_action_history", 24*time.Hour, func(ctx context.Context) error {
+		if s.actionHistoryRepo == nil {
+			return nil
+		}
+		deleted, err := s.actionHistoryRepo.CleanupOldByActionType(ctx, "automation_run", 45*24*time.Hour)
+		if err != nil {
+			return err
+		}
+		if deleted > 0 {
+			s.logger.Info("Action history cleanup completed",
+				zap.Int64("deleted", deleted))
 		}
 		return nil
 	})

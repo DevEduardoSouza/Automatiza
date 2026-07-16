@@ -403,6 +403,10 @@ func (m *mockHistoryRepository) UpdateCounts(_ context.Context, _ string, _, _ i
 	return nil
 }
 
+func (m *mockHistoryRepository) CleanupOldByActionType(_ context.Context, _ string, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+
 func (m *mockHistoryRepository) DeleteUserHistory(_ context.Context, _ string, _ *time.Time, _ []string) (int64, error) {
 	return 0, nil
 }
