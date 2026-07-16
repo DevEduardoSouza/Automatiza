@@ -25,6 +25,8 @@ services:
     image: postgres:16-alpine
     container_name: automatiza-postgres
     restart: unless-stopped
+    shm_size: "1g"
+    mem_limit: 16g
     logging: *default-logging
     environment:
       POSTGRES_USER: ${DB_USER:-automatiza}
@@ -36,9 +38,12 @@ services:
       -c effective_cache_size=12GB
       -c work_mem=32MB
       -c maintenance_work_mem=512MB
-      -c max_connections=100
+      -c max_connections=200
       -c random_page_cost=1.1
       -c effective_io_concurrency=200
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.max=10000
+      -c pg_stat_statements.track=top
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -58,6 +63,7 @@ services:
     image: redis:7-alpine
     container_name: automatiza-redis
     restart: unless-stopped
+    mem_limit: 10g
     logging: *default-logging
     # noeviction (recomendação oficial do asynq): as estruturas de fila não têm
     # TTL e são inevictáveis — sob pressão o volatile-lru evictava exatamente as
