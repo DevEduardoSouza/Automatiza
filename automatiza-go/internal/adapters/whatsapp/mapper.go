@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"automatiza-go/internal/lib/text"
+
 	"go.uber.org/zap"
 )
 
@@ -324,6 +326,14 @@ func (m *Mapper) ParticipantInfosFromWaha(w []wahaParticipant) []ParticipantInfo
 // Message Mapping (Domain -> WAHA)
 // =============================================================================
 
+// Todo Text/Caption que sai daqui passa por text.SeparateURLEmojiGlue: este
+// mapper é o ÚLTIMO ponto antes do POST ao WAHA e o único por onde TODO envio
+// passa (worker, espelho, offer_generate, relay, jobs de ação, envio manual).
+// Insere um espaço quando um emoji ficou colado no fim de uma URL — caso
+// contrário o WhatsApp inclui o emoji no trecho clicável e o link não abre.
+// É idempotente e no-op em texto sem fronteira URL→emoji, então é seguro como
+// rede final independente do caminho que gerou a mensagem.
+
 // SendTextToWaha converts a domain SendTextInput to a WAHA request.
 func (m *Mapper) SendTextToWaha(input *SendTextInput) *wahaSendTextRequest {
 	if input == nil {
@@ -333,7 +343,7 @@ func (m *Mapper) SendTextToWaha(input *SendTextInput) *wahaSendTextRequest {
 	return &wahaSendTextRequest{
 		Session:  input.SessionName,
 		ChatID:   input.ChatID,
-		Text:     input.Text,
+		Text:     text.SeparateURLEmojiGlue(input.Text),
 		Mentions: input.Mentions,
 	}
 }
@@ -347,7 +357,7 @@ func (m *Mapper) SendImageToWaha(input *SendImageInput) *wahaSendImageRequest {
 	req := &wahaSendImageRequest{
 		Session:  input.SessionName,
 		ChatID:   input.ChatID,
-		Caption:  input.Caption,
+		Caption:  text.SeparateURLEmojiGlue(input.Caption),
 		Mentions: input.Mentions,
 	}
 
@@ -416,7 +426,7 @@ func (m *Mapper) SendLinkPreviewToWaha(input *SendLinkPreviewInput) *wahaSendLin
 	req := &wahaSendLinkPreviewRequest{
 		Session: input.SessionName,
 		ChatID:  input.ChatID,
-		Text:    input.Text,
+		Text:    text.SeparateURLEmojiGlue(input.Text),
 		// Sempre HQ: todo consumidor (espelho, listas, ofertas) quer o card
 		// com imagem grande, igual ao render nativo do WhatsApp na origem.
 		LinkPreviewHighQuality: true,
@@ -450,7 +460,7 @@ func (m *Mapper) SendVideoToWaha(input *SendVideoInput) *wahaSendVideoRequest {
 	req := &wahaSendVideoRequest{
 		Session:  input.SessionName,
 		ChatID:   input.ChatID,
-		Caption:  input.Caption,
+		Caption:  text.SeparateURLEmojiGlue(input.Caption),
 		Mentions: input.Mentions,
 		// Sem convert, vídeo não-streamable trava em ack=1 (aceito mas não
 		// entregue). Pede transcodificação ao WAHA — a menos que o caller já
@@ -481,7 +491,7 @@ func (m *Mapper) SendDocumentToWaha(input *SendDocumentInput) *wahaSendFileReque
 	req := &wahaSendFileRequest{
 		Session:  input.SessionName,
 		ChatID:   input.ChatID,
-		Caption:  input.Caption,
+		Caption:  text.SeparateURLEmojiGlue(input.Caption),
 		Mentions: input.Mentions,
 	}
 

@@ -293,8 +293,21 @@ func emojiJitter(s string, set []string, rng *mathrand.Rand) string {
 	if idx == -1 {
 		return s
 	}
-	if r, size := utf8.DecodeLastRuneInString(lines[idx]); size > 0 && unicode.In(r, unicode.So, unicode.Sk) {
+	r, size := utf8.DecodeLastRuneInString(lines[idx])
+	if size == 0 {
+		return s
+	}
+	if unicode.In(r, unicode.So, unicode.Sk) {
 		return s // already ends with an emoji/symbol
+	}
+	// A linha termina num span protegido (URL / markdown), mascarado como uma
+	// sentinela \x00<idx>\x00 que SEMPRE fecha em \x00. Anexar aqui colaria o
+	// emoji no fim da URL — o WhatsApp o engole no trecho clicável e o link não
+	// abre ("links indo com emoji"). Como a sentinela vira a URL crua no restore,
+	// SeparateURLEmojiGlue não roda depois do Vary nesses caminhos (worker/
+	// monitoring/offer_generate normalizam ANTES do Vary). Então não anexamos.
+	if r == '\x00' {
+		return s
 	}
 	lines[idx] += pick
 	return strings.Join(lines, "\n")
