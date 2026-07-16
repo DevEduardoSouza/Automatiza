@@ -698,12 +698,13 @@ func TestWahaAdapter_SendImage_RetriesTransientUpload(t *testing.T) {
 	})
 }
 
-// TestWahaAdapter_SendImage_RetriesRequestTimeout verifies that a per-request
-// httpClient timeout (WAHA/WhatsApp media upload momentarily slow) is retried
-// once — while the caller's ctx still has budget — instead of dropping the
-// image to the text-only fallback. Once 429/400 codes are retried, this timeout
-// is the dominant remaining "sem foto" cause.
-func TestWahaAdapter_SendImage_RetriesRequestTimeout(t *testing.T) {
+// TestWahaAdapter_SendImage_DoesNotRetryAmbiguousTimeout verifies R2: a message
+// send that hits the per-request httpClient timeout is NOT retried — WAHA may
+// have already delivered the message, so re-POSTing would duplicate it in the
+// group. The error is surfaced as an ambiguous outcome so the caller assumes it
+// was sent (send_outcome.go) instead of retrying. (Trade-off: a slightly higher
+// "sem foto" rate for zero timeout-driven duplicates — the chosen R2 behavior.)
+func TestWahaAdapter_SendImage_DoesNotRetryAmbiguousTimeout(t *testing.T) {
 	ctx := context.Background()
 
 	var sendCalls int32
@@ -712,27 +713,23 @@ func TestWahaAdapter_SendImage_RetriesRequestTimeout(t *testing.T) {
 			jsonResponse(t, http.StatusOK, map[string]interface{}{"name": "s", "status": "WORKING"})(w, r)
 			return
 		}
-		n := atomic.AddInt32(&sendCalls, 1)
-		if n == 1 {
-			time.Sleep(400 * time.Millisecond) // hang past the client timeout
-			return
-		}
-		jsonResponse(t, http.StatusOK, map[string]interface{}{"id": "msg-ok"})(w, r)
+		atomic.AddInt32(&sendCalls, 1)
+		time.Sleep(400 * time.Millisecond) // hang past the client timeout on every attempt
 	})
-	// Shorten the per-request timeout so the test is fast; the caller ctx
-	// (Background, no deadline) stays alive, so the timeout must be retried.
+	// Shorten the per-request timeout so the test is fast; the caller ctx stays
+	// alive, but a message send must still NOT be retried on the timeout.
 	adapter.httpClient.Timeout = 120 * time.Millisecond
 
-	result, err := adapter.SendImage(ctx, SendImageInput{
+	_, err := adapter.SendImage(ctx, SendImageInput{
 		SessionName: "s",
 		ChatID:      "group@g.us",
 		Caption:     "promo",
 		ImageBase64: "base64data",
 	})
 
-	require.NoError(t, err)
-	assert.Equal(t, "msg-ok", result.ID)
-	assert.Equal(t, int32(2), atomic.LoadInt32(&sendCalls), "a request timeout should be retried exactly once")
+	require.Error(t, err)
+	assert.True(t, IsAmbiguousOutcome(err), "an ambiguous send timeout must be reported as ambiguous so the caller assumes-sent")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&sendCalls), "a message send must NOT be retried on an ambiguous timeout (R2)")
 }
 
 // =============================================================================

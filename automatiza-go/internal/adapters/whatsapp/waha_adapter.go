@@ -486,6 +486,26 @@ var _ WhatsAppProvider = (*WahaAdapter)(nil)
 // HTTP Helper Methods
 // =============================================================================
 
+// isNonIdempotentSend reports whether the request delivers a WhatsApp message,
+// where re-POSTing after an ambiguous transport failure risks a DUPLICATE. These
+// are the message-send endpoints; session/group/presence ops are safe to retry.
+func isNonIdempotentSend(method, path string) bool {
+	if method != http.MethodPost {
+		return false
+	}
+	switch path {
+	case "/api/sendText",
+		"/api/sendImage",
+		"/api/sendVoice",
+		"/api/sendVideo",
+		"/api/sendFile",
+		"/api/sendPoll",
+		"/api/send/link-custom-preview":
+		return true
+	}
+	return false
+}
+
 // doRequest performs an HTTP request to the WAHA API with optional retry on transient errors.
 func (a *WahaAdapter) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
 	return a.doRequestWithHeaders(ctx, method, path, body, nil)
@@ -507,6 +527,13 @@ func (a *WahaAdapter) doRequestWithHeaders(ctx context.Context, method, path str
 	}
 
 	reqURL := a.apiURL + path
+	// R2: message-send POSTs are non-idempotent — re-POSTing after an ambiguous
+	// transport failure (client timeout, connection reset/EOF) risks a DUPLICATE
+	// message. WAHA documents no send-side idempotency (only session ops are
+	// "Idempotent"), and image/link-preview requests carry no client-settable id.
+	// For these, ambiguous transport errors are NOT retried and are surfaced as
+	// ErrCodeTimeout so the caller assumes-sent (see IsAmbiguousOutcome).
+	nonIdempotent := isNonIdempotentSend(method, path)
 	maxAttempts := 1
 	if a.retryEnabled {
 		maxAttempts = a.retryCfg.maxRetries + 1
@@ -564,16 +591,28 @@ func (a *WahaAdapter) doRequestWithHeaders(ctx context.Context, method, path str
 				// text-only fallback ("promoção sem foto") — the dominant cause
 				// of "sem foto" once the 429/400 codes are retried. If the
 				// caller's ctx is done, it really gave up, so return.
-				if a.retryEnabled && ctx.Err() == nil && attempt < softUploadMaxRetries {
+				// R2: retry once for IDEMPOTENT requests only. For message sends,
+				// re-POSTing an ambiguous timeout can duplicate (WAHA may have
+				// delivered) — return ErrCodeTimeout so the caller assumes-sent.
+				if a.retryEnabled && !nonIdempotent && ctx.Err() == nil && attempt < softUploadMaxRetries {
 					lastErr = err
 					continue
 				}
 				return nil, NewProviderError(ErrCodeTimeout, "request timed out", err)
 			}
 
-			// Retry on transient network errors
-			if a.retryEnabled && attempt < maxAttempts-1 && isRetryableError(err) {
-				continue
+			// Transient network errors (connection reset / EOF / broken pipe) can
+			// occur AFTER WAHA received the POST. Retry only for idempotent
+			// requests; for message sends (R2) treat as ambiguous — surface
+			// ErrCodeTimeout (caller assumes-sent) instead of retrying into a
+			// duplicate.
+			if isRetryableError(err) {
+				if a.retryEnabled && !nonIdempotent && attempt < maxAttempts-1 {
+					continue
+				}
+				if nonIdempotent {
+					return nil, NewProviderError(ErrCodeTimeout, "ambiguous send outcome after transient network error", err)
+				}
 			}
 
 			return nil, NewProviderError(ErrCodeNetworkError, "request failed", err)

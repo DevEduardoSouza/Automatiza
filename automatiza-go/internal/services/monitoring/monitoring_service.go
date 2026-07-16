@@ -1279,13 +1279,19 @@ func (s *monitoringService) claimProductSlot(ctx context.Context, userID, groupI
 			// We claimed the slot in Redis. Still check DB for stale records
 			// (Redis may have lost the key due to restart/eviction).
 		} else {
-			// FAIL-CLOSED: sem o SetNX atômico não há proteção de concorrência
-			// nenhuma — mandar assim mesmo é apostar em duplicata. Perder um
-			// repasse é melhor que repetir promoção no grupo do cliente.
-			observability.LogAndCapture(s.logger, sentry.LevelWarning, "Monitoring dedup SetNX failed — send suppressed (fail-closed)", err, map[string]string{
-				"module": "monitoring", "operation": "product_dedup_setnx", "cache_policy": "fail-closed",
-			})
-			return false
+			// Redis SetNX indisponível (OOM/brownout de escrita): perdemos a
+			// guarda atômica de concorrência, mas SUPRIMIR direto causava um
+			// blackout de espelho plataforma-wide e invisível (parecia dedup
+			// normal) a cada erro de escrita do Redis. Em vez disso, caímos no
+			// slow-path de DB abaixo: duplicatas HISTÓRICAS seguem barradas por
+			// GetRecentByCanonicalKey; só produtos realmente novos passam. A
+			// janela estreita de duplicata concorrente já foi colapsada a
+			// montante pelas camadas C2/C3 (claimOnce) do fan-out.
+			s.logger.Warn("Monitoring dedup SetNX failed — falling back to DB check",
+				zap.String("userID", userID),
+				zap.String("groupID", groupID),
+				zap.String("canonicalKey", canonicalKey),
+				zap.Error(err))
 		}
 	}
 
