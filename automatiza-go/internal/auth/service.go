@@ -828,8 +828,12 @@ func (s *AuthService) createProfile(ctx context.Context, email, displayName stri
 		input.DisplayName = &displayName
 	}
 
+	// Returning("id") is REQUIRED: DBInsertBuilder.Execute only populates dest when a
+	// RETURNING clause is set (see config/database.go). Without it the INSERT still runs
+	// (creating an orphan profile row) but result stays empty, so createProfile wrongly
+	// reported "failed to create profile" and every self-service Register returned 500.
 	var result []profileOutput
-	err := s.db.Insert("profiles", input).Execute(ctx, &result)
+	err := s.db.Insert("profiles", input).Returning("id").Execute(ctx, &result)
 	if err != nil {
 		return nil, err
 	}
