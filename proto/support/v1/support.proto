@@ -1,0 +1,378 @@
+syntax = "proto3";
+
+package support.v1;
+
+option go_package = "github.com/automatiza/proto/support/v1;supportv1";
+
+// ============================================================
+// Support Panel
+// ============================================================
+//
+// Servico de LEITURA para o painel de suporte (role 'support' ou 'admin').
+//
+// Existe separado do AdminService de proposito: o AdminService concentra acoes
+// destrutivas (reset de senha, troca de role, bloqueio de conta) e continua
+// admin-only. Aqui so entram RPCs de leitura, para que a equipe de suporte
+// nunca herde poder administrativo por um guard esquecido.
+//
+// Todos os RPCs recebem user_id arbitrario (o usuario investigado), ao
+// contrario dos services de produto, que derivam o dono do contexto de auth.
+
+// ============================================================
+// Busca de usuario
+// ============================================================
+
+message SearchUsersRequest {
+  // Texto livre: casa com email, nome, telefone do perfil, ou com o
+  // instance_id / telefone de um chip do usuario.
+  string query = 1;
+  // Default 20, maximo 50.
+  optional int32 limit = 2;
+}
+
+// Onde o termo de busca casou — mostrado na UI para o atendente entender
+// por que aquele usuario apareceu (ex.: achou pelo chip, nao pelo email).
+enum MatchField {
+  MATCH_FIELD_UNSPECIFIED = 0;
+  MATCH_FIELD_EMAIL = 1;
+  MATCH_FIELD_NAME = 2;
+  MATCH_FIELD_PHONE = 3;
+  MATCH_FIELD_INSTANCE = 4;
+}
+
+message SupportUserSummary {
+  string id = 1;
+  string email = 2;
+  optional string name = 3;
+  optional string phone_number = 4;
+  optional string plan = 5;
+  optional string billing_status = 6;
+  bool is_active = 7;
+  int32 chips_total = 8;
+  int32 chips_connected = 9;
+  int32 automations_total = 10;
+  int32 automations_active = 11;
+  optional string created_at = 12;
+  repeated MatchField matched_on = 13;
+}
+
+message SearchUsersResponse {
+  repeated SupportUserSummary users = 1;
+  // True quando o resultado foi truncado em `limit`.
+  bool has_more = 2;
+}
+
+// ============================================================
+// Visao geral do usuario
+// ============================================================
+
+message GetUserOverviewRequest {
+  string user_id = 1;
+}
+
+message SupportChip {
+  // instance_id == nome da sessao no WAHA.
+  string instance_id = 1;
+  optional string friendly_name = 2;
+  // connected | disconnected | pending
+  string status = 3;
+  optional string phone_number = 4;
+  optional string updated_at = 5;
+  // Quantos grupos deste usuario este chip participa.
+  int32 groups_count = 6;
+}
+
+// Referencia a um grupo, com nome resolvido para exibicao.
+message SupportGroupRef {
+  string wa_group_id = 1;
+  optional string name = 2;
+}
+
+message SupportAutomation {
+  string id = 1;
+  string name = 2;
+  // search | list | monitoring | offer_generate
+  string type = 3;
+  // active | paused
+  string status = 4;
+  optional int32 interval_minutes = 5;
+  optional string start_time = 6;
+  optional string end_time = 7;
+  optional string last_run_at = 8;
+  optional string next_run_at = 9;
+  optional string last_error = 10;
+  repeated string instance_ids = 11;
+  int32 send_groups_count = 12;
+  optional string ml_link_list_id = 13;
+  optional string created_at = 14;
+  // Quando o last_error foi registrado. Usado pelo painel para so tratar como
+  // problema ATUAL um erro recente — um last_error de dias atras ja pode ter
+  // sido resolvido, e mostra-lo como pendencia gera alarme falso.
+  optional string last_error_at = 15;
+  // Grupos que a automacao MONITORA (origem). So relevante para monitoring e
+  // offer_generate, que sao event-driven: escutam esses grupos (monitor_group_ids).
+  repeated SupportGroupRef monitor_groups = 16;
+  // Grupos de DESTINO para onde a automacao envia (send_groups).
+  repeated SupportGroupRef send_groups = 17;
+}
+
+message SupportLinkList {
+  string id = 1;
+  string name = 2;
+  optional string description = 3;
+  bool is_active = 4;
+  int32 items_total = 5;
+  int32 items_consumed = 6;
+  int32 items_pending = 7;
+  optional string created_at = 8;
+}
+
+message SupportGroup {
+  string wa_group_id = 1;
+  optional string name = 2;
+  bool is_admin = 3;
+  // Chips do usuario que participam deste grupo.
+  repeated string participating_instance_ids = 4;
+}
+
+message SupportUserProfile {
+  string id = 1;
+  string email = 2;
+  optional string name = 3;
+  optional string phone_number = 4;
+  optional string plan = 5;
+  optional string billing_status = 6;
+  optional string billing_suspension_reason = 7;
+  bool is_active = 8;
+  int32 max_instances = 9;
+  int32 max_automations = 10;
+  int32 max_groups = 11;
+  optional string last_login_at = 12;
+  optional string created_at = 13;
+}
+
+message GetUserOverviewResponse {
+  SupportUserProfile profile = 1;
+  repeated SupportChip chips = 2;
+  // Automacoes de TODOS os tipos; a UI separa por `type`
+  // (monitoring = monitoramento, offer_generate = espelhamento).
+  repeated SupportAutomation automations = 3;
+  repeated SupportLinkList link_lists = 4;
+  repeated SupportGroup groups = 5;
+}
+
+// ============================================================
+// Mensagens de um grupo (modal de chat)
+// ============================================================
+
+message GetGroupMessagesRequest {
+  // Dono do grupo — valida que o grupo/chip pertencem mesmo a ele.
+  string user_id = 1;
+  // Sessao WAHA (instances.instance_id).
+  string instance_id = 2;
+  // groups.wa_group_id, formato <numero>@g.us.
+  string group_id = 3;
+  // Default 30, maximo 100. Mantido baixo de proposito: o endpoint do WAHA
+  // pagina o historico inteiro do chat se soltarem a redea.
+  optional int32 limit = 4;
+}
+
+message SupportMessage {
+  string id = 1;
+  optional string body = 2;
+  bool from_me = 3;
+  // Quem enviou dentro do grupo (WAHA: participant/author).
+  optional string author = 4;
+  // Unix seconds.
+  int64 timestamp = 5;
+  bool has_media = 6;
+  // Tipo da midia quando houver (image, video, audio, document...).
+  optional string media_type = 7;
+  optional string ack_name = 8;
+}
+
+message GetGroupMessagesResponse {
+  repeated SupportMessage messages = 1;
+}
+
+// ============================================================
+// Atividade de disparo (status ao vivo, via polling)
+// ============================================================
+
+message GetUserActivityRequest {
+  string user_id = 1;
+  // Janela para a taxa de envio. Default 5, maximo 60.
+  optional int32 window_minutes = 2;
+}
+
+// Profundidade de uma fila asynq. IMPORTANTE: as filas sao GLOBAIS do sistema,
+// nao por usuario — o Asynq Inspector nao permite filtrar por payload. Estes
+// numeros descrevem a saude do sistema, nao o backlog de um cliente.
+message SupportQueueDepth {
+  // critical | webhooks | messages | default | reconciliation
+  string queue = 1;
+  int32 pending = 2;
+  int32 active = 3;
+  int32 scheduled = 4;
+  int32 retry = 5;
+}
+
+message SupportAutomationActivity {
+  string automation_id = 1;
+  // True = enviando agora. Derivado de forma DIFERENTE por tipo:
+  //  - search/list: existe automation_run com status='running' e lock vivo;
+  //  - monitoring/offer_generate: sao event-driven por webhook (o scheduler
+  //    os ignora), entao inferimos de dispatch_logs recentes.
+  bool is_dispatching = 2;
+  // Como `is_dispatching` foi determinado — a UI mostra isso para o atendente
+  // nao ler um "parado" event-driven como defeito.
+  string signal = 3;
+  optional string last_dispatch_at = 4;
+  int32 sent_in_window = 5;
+  int32 failed_in_window = 6;
+  int32 queued_now = 7;
+}
+
+message GetUserActivityResponse {
+  // Taxa REAL medida: dispatch_logs status='sent' na janela / minutos.
+  // Nao e o limite configurado (WHATSAPP_SEND_LIMIT_PER_MINUTE).
+  double sent_per_minute = 1;
+  // Velocidade CONFIGURADA: teto de envio por minuto por chip
+  // (WHATSAPP_SEND_LIMIT_PER_MINUTE). Serve de referencia para comparar com a
+  // velocidade real por automacao (busca/lista).
+  double configured_per_minute = 9;
+  int32 sent_in_window = 2;
+  int32 failed_in_window = 3;
+  // Backlog do usuario aproximado por dispatch_logs em 'queued'.
+  // Aproximado de proposito: o Asynq nao expoe a fila de um usuario.
+  int32 queued_now = 4;
+  int32 window_minutes = 5;
+  repeated SupportAutomationActivity automations = 6;
+  // Filas globais do sistema (contexto, nao do usuario).
+  repeated SupportQueueDepth queues = 7;
+  // Instante em que o servidor calculou — a UI mostra "atualizado ha Xs".
+  string measured_at = 8;
+}
+
+// ============================================================
+// Saude do sistema (aba Dashboard)
+// ============================================================
+
+message GetSystemHealthRequest {}
+
+// Capacidade das sessoes WhatsApp (WAHA).
+message WahaHealth {
+  // Sessoes na tabela instances, por status.
+  int32 sessions_total = 1;
+  int32 sessions_connected = 2;
+  int32 sessions_disconnected = 3;
+  int32 sessions_pending = 4;
+  // Capacidade dos servidores WAHA, vinda do load balancer. Em ambiente sem LB
+  // configurado (dev), servers=0 — a UI mostra "nao configurado".
+  int32 servers = 5;
+  int32 capacity = 6; // total de vagas (maxUsers somado)
+  int32 mapped = 7;   // usuarios mapeados nos servidores
+  double capacity_percent = 8;
+}
+
+message RedisHealth {
+  bool available = 1;
+  int64 used_memory_bytes = 2;
+  // 0 = sem limite configurado (maxmemory 0).
+  int64 max_memory_bytes = 3;
+  double usage_percent = 4;
+  int64 evicted_keys = 5;
+  int32 connected_clients = 6;
+  string maxmemory_policy = 7;
+}
+
+// Saude por tipo de automacao — responde "quantos monitoramentos/espelhamentos
+// estao pausados ou com erro".
+message AutomationTypeHealth {
+  // search | list | monitoring | offer_generate
+  string type = 1;
+  int32 total = 2;
+  int32 active = 3;
+  int32 paused = 4;
+  // Com erro recente (last_error_at nas ultimas 24h).
+  int32 with_error = 5;
+}
+
+message AppHealth {
+  repeated AutomationTypeHealth automation_types = 1;
+  int32 lists_total = 2;
+  int32 lists_active = 3;
+  int32 lists_inactive = 4;
+  int32 sent_last_hour = 5;
+  int32 failed_last_hour = 6;
+  int64 db_size_bytes = 7;
+}
+
+// CPU / disco / load da VPS. Coletados pela sentinela no host — nao pelo
+// backend (que roda em container e nao ve o disco real). Enquanto a sentinela
+// nao estiver conectada, available=false e a UI mostra "indisponivel" em vez de
+// um numero inventado.
+message HostHealth {
+  bool available = 1;
+  string source = 2; // "sentinela" quando conectada; senao vazio
+  double cpu_percent = 3;
+  double load_avg_1m = 4;
+  double disk_used_percent = 5;
+  int64 disk_free_bytes = 6;
+  string note = 7;
+}
+
+message GetSystemHealthResponse {
+  // Semaforo geral, calculado no servidor a partir dos limiares: ok | atencao |
+  // critico. A pior sinaleira entre os componentes vence.
+  string overall = 1;
+  string measured_at = 2;
+  WahaHealth waha = 3;
+  RedisHealth redis = 4;
+  repeated SupportQueueDepth queues = 5;
+  AppHealth app = 6;
+  HostHealth host = 7;
+}
+
+// ============================================================
+// Religar automacoes pausadas (unica escrita do painel)
+// ============================================================
+
+message ResumePausedAutomationsRequest {
+  // Quando true, apenas CONTA quantas seriam religadas, sem religar nada.
+  // A UI usa isso para mostrar o numero na confirmacao antes de agir.
+  bool dry_run = 1;
+}
+
+message ResumePausedAutomationsResponse {
+  // Religadas (ou que seriam religadas, se dry_run).
+  int32 resumed = 1;
+  // Puladas por estarem pausadas por inadimplencia (paused_by_billing) —
+  // religar dispararia para quem nao pagou.
+  int32 skipped_billing = 2;
+  // Puladas por erro recente (ex.: credencial Shopee invalida) — religar so
+  // re-quebraria na hora.
+  int32 skipped_error = 3;
+}
+
+service SupportService {
+  // Busca usuarios por email, nome, telefone ou chip.
+  rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse);
+
+  // Saude do sistema (VPS + aplicacao) para a aba Dashboard.
+  rpc GetSystemHealth(GetSystemHealthRequest) returns (GetSystemHealthResponse);
+
+  // Religa automacoes pausadas SEM motivo protetor (exclui as pausadas por
+  // cobranca e as com erro recente). Unica operacao de escrita do painel.
+  rpc ResumePausedAutomations(ResumePausedAutomationsRequest)
+      returns (ResumePausedAutomationsResponse);
+
+  // Visao completa de um usuario: chips, automacoes, listas e grupos.
+  rpc GetUserOverview(GetUserOverviewRequest) returns (GetUserOverviewResponse);
+
+  // Mensagens recentes de um grupo do usuario.
+  rpc GetGroupMessages(GetGroupMessagesRequest) returns (GetGroupMessagesResponse);
+
+  // Atividade de disparo: velocidade real, backlog e filas.
+  rpc GetUserActivity(GetUserActivityRequest) returns (GetUserActivityResponse);
+}

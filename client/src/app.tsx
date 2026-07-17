@@ -66,6 +66,8 @@ const PublicRedirect = lazyWithRetry(() => import('./pages/public-redirect'));
 const RedirectLink = lazyWithRetry(() => import('./pages/redirect-link/index'));
 const ResetPassword = lazyWithRetry(() => import('./pages/reset-password'));
 const Support = lazyWithRetry(() => import('./pages/support'));
+const SupportUser = lazyWithRetry(() => import('./pages/support-user'));
+const SupportDashboard = lazyWithRetry(() => import('./pages/support-dashboard'));
 const WhatsApp = lazyWithRetry(() => import('./pages/whatsapp'));
 
 const queryClient = new QueryClient({
@@ -335,6 +337,24 @@ const App = () => (
                       element={
                         <SupportRoute>
                           <Support />
+                        </SupportRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/support/user/:userId"
+                      element={
+                        <SupportRoute>
+                          <SupportUser />
+                        </SupportRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/support/dashboard"
+                      element={
+                        <SupportRoute>
+                          <SupportDashboard />
                         </SupportRoute>
                       }
                     />

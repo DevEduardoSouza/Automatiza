@@ -36,6 +36,7 @@ import (
 	"automatiza-go/internal/gen/profiles/v1/profilesv1connect"
 	redirectv1connect "automatiza-go/internal/gen/redirect/v1/redirectv1connect"
 	"automatiza-go/internal/gen/settings/v1/settingsv1connect"
+	"automatiza-go/internal/gen/support/v1/supportv1connect"
 	"automatiza-go/internal/gen/webhooks/v1/webhooksv1connect"
 	"automatiza-go/internal/gen/whatsapp/v1/whatsappv1connect"
 	"automatiza-go/internal/handlers"
@@ -1017,6 +1018,34 @@ func main() {
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
 	)
 	connectServer.RegisterService(adminPath, adminHTTPHandler)
+
+	// Register support service handler (requires auth + role support OR admin).
+	// Somente leitura: o AdminService acima continua admin-only e concentra as
+	// acoes destrutivas, para que a equipe de suporte nunca as herde.
+	// redisClient pode ser nil (cache Redis desabilitado); o Dashboard degrada.
+	var supportRedis *redis.Client
+	if redisClient != nil {
+		supportRedis = redisClient.Client
+	}
+	supportHandler := connectrpc.NewSupportHandler(
+		postgres.NewSupportRepository(db, logger),
+		userRoleRepo,
+		instanceRepo,
+		automationRepo,
+		groupRepo,
+		repos.MLLinkList,
+		wahaAdapter,
+		asynqInspectorServer,
+		supportRedis,
+		lbService,
+		cfg.WhatsAppSendLimitPerMinute,
+		logger,
+	)
+	supportPath, supportHTTPHandler := supportv1connect.NewSupportServiceHandler(
+		supportHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(supportPath, supportHTTPHandler)
 
 	// Register load balancer service handler (requires auth + admin role)
 	loadBalancerHandler := connectrpc.NewLoadBalancerHandler(
