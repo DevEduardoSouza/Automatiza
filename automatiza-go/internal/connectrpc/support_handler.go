@@ -787,20 +787,17 @@ func (h *SupportHandler) GetSystemHealth(
 		waha.SessionsDisconnected = int32(c.Disconnected)
 		waha.SessionsPending = int32(c.Pending)
 	}
-	if h.lbService != nil {
-		if stats, err := h.lbService.GetServerStats(ctx); err == nil && stats != nil {
-			var cap, mapped int32
-			for _, s := range stats.Servers {
-				cap += int32(s.MaxUsers)
-				mapped += int32(s.UserCount)
-			}
-			waha.Servers = int32(stats.TotalServers)
-			waha.Capacity = cap
-			waha.Mapped = mapped
-			if cap > 0 {
-				waha.CapacityPercent = float64(mapped) / float64(cap) * 100
-			}
-		}
+	// Capacidade real dos shards WAHA: publicada pela sentinela no Redis
+	// (support:waha_capacity, SETEX 300s). O backend roda em container e NAO
+	// enxerga a ocupacao real dos shards nem o cap do router — a sentinela e a
+	// fonte da verdade (mesmo padrao do hostHealth). Chave ausente => card
+	// "indisponivel", em vez do numero enganoso do load balancer legado
+	// (user_servers: so ~79 de ~874 usuarios roteados, nao reflete os shards).
+	if cap := h.wahaCapacity(ctx); cap != nil {
+		waha.Servers = cap.shards
+		waha.Capacity = cap.capTotal
+		waha.Mapped = cap.sessionsTotal
+		waha.CapacityPercent = cap.percent
 	}
 	resp.Waha = waha
 
@@ -891,6 +888,52 @@ func (h *SupportHandler) hostHealth(ctx context.Context) *supportv1.HostHealth {
 		LoadAvg_1M:      payload.LoadAvg1m,
 		DiskUsedPercent: payload.DiskUsedPercent,
 		DiskFreeBytes:   payload.DiskFreeBytes,
+	}
+}
+
+// wahaCapacitySnapshot e a ocupacao real dos shards WAHA lida do Redis.
+type wahaCapacitySnapshot struct {
+	shards        int32
+	capTotal      int32
+	sessionsTotal int32
+	percent       float64
+}
+
+// wahaCapacity le support:waha_capacity (publicada pela sentinela a cada ciclo,
+// SETEX 300s) e devolve a ocupacao real dos shards WAHA: sessoes ocupando slot
+// vs teto do router (cap/shard * nº de shards). Retorna nil se a chave nao
+// existe (sentinela parada/desatualizada) ou o payload e invalido — nesse caso
+// o card mostra "indisponivel", nunca um numero inventado. Mesmo padrao e mesma
+// razao do hostHealth: o backend em container nao ve os shards; a sentinela ve.
+func (h *SupportHandler) wahaCapacity(ctx context.Context) *wahaCapacitySnapshot {
+	if h.redisClient == nil {
+		return nil
+	}
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	raw, err := h.redisClient.Get(cctx, "support:waha_capacity").Result()
+	if err != nil {
+		// redis.Nil (ausente/expirada) ou erro de conexao: card indisponivel.
+		return nil
+	}
+	var payload struct {
+		SessionsTotal int `json:"sessions_total"`
+		CapTotal      int `json:"cap_total"`
+		Shards        int `json:"shards"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		h.logger.Warn("waha_capacity: JSON invalido da sentinela", zap.Error(err))
+		return nil
+	}
+	if payload.CapTotal <= 0 {
+		return nil
+	}
+	return &wahaCapacitySnapshot{
+		shards:        int32(payload.Shards),
+		capTotal:      int32(payload.CapTotal),
+		sessionsTotal: int32(payload.SessionsTotal),
+		percent:       float64(payload.SessionsTotal) / float64(payload.CapTotal) * 100,
 	}
 }
 
