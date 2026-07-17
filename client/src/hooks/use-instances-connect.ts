@@ -25,7 +25,7 @@ import {
 } from '@/gen/instances/v1/instances_pb';
 import { getErrorInfo } from '@/lib/connect-transport';
 import { create } from '@bufbuild/protobuf';
-import { createClient } from '@connectrpc/connect';
+import { Code, ConnectError, createClient } from '@connectrpc/connect';
 import { useTransport } from '@connectrpc/connect-query';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
@@ -88,7 +88,7 @@ interface UseInstancesConnectReturn {
   upsertInstanceStatus: (instanceId: string, status: LocalInstanceStatus) => Promise<LocalInstance>;
   cleanupInvalidInstances: () => Promise<number>;
   deleteDisconnectedInstances: () => Promise<number>;
-  deleteInstance: (id: string) => Promise<void>;
+  deleteInstance: (id: string, force?: boolean) => Promise<void>;
   setDefaultInstance: (id: string) => Promise<LocalInstance>;
   updateInstanceLabel: (id: string, friendlyName: string) => Promise<LocalInstance>;
   checkInstanceStatus: (instanceName: string) => Promise<CheckInstanceStatusResult>;
@@ -401,18 +401,36 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
   // ============================================================
 
   const deleteInstanceMutation = useMutation({
-    mutationFn: async (id: string): Promise<void> => {
+    mutationFn: async ({
+      id,
+      force,
+    }: {
+      id: string;
+      force?: boolean;
+    }): Promise<void> => {
       if (!user?.id) {
         throw new Error(t('common.errors.notAuthenticated'));
       }
 
       const client = createClient(InstancesService, transport);
-      await client.deleteInstance(create(DeleteInstanceRequestSchema, { id }));
+      await client.deleteInstance(
+        create(DeleteInstanceRequestSchema, { id, force: force ?? false })
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['instances'] });
     },
-    onError: (error: unknown) => {
+    onError: (error: unknown, variables) => {
+      // Um número CONECTADO é barrado com FailedPrecondition quando force=false.
+      // Nesse caso o chamador re-pergunta e tenta de novo com force=true, então
+      // não assustamos o usuário com um toast de erro aqui — a UI escala sozinha.
+      if (
+        !variables.force &&
+        error instanceof ConnectError &&
+        error.code === Code.FailedPrecondition
+      ) {
+        return;
+      }
       const errorInfo = getErrorInfo(error);
       toast({
         variant: 'destructive',
@@ -586,8 +604,8 @@ export function useInstancesConnect(): UseInstancesConnectReturn {
   }, [deleteDisconnectedMutation]);
 
   const deleteInstance = useCallback(
-    async (id: string): Promise<void> => {
-      return deleteInstanceMutation.mutateAsync(id);
+    async (id: string, force?: boolean): Promise<void> => {
+      return deleteInstanceMutation.mutateAsync({ id, force });
     },
     [deleteInstanceMutation]
   );

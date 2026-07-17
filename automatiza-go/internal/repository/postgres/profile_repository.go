@@ -413,9 +413,14 @@ func (r *profileRepository) PauseUserAutomations(ctx context.Context, userID str
 // Returns how many automations were reactivated.
 func (r *profileRepository) ResumeUserAutomations(ctx context.Context, userID string) (int, error) {
 	now := time.Now().UTC()
+	// Clear last_error too: reactivation starts clean, otherwise a stale error
+	// stamped before the billing pause keeps the automation showing as "com erro"
+	// in the support panel for 24h even while it dispatches fine (same reasoning
+	// as the reactivation clear in the UpdateAutomation handler).
 	query := `
 		UPDATE automations
-		SET status = 'active', paused_by_billing = false, updated_at = $1
+		SET status = 'active', paused_by_billing = false,
+		    last_error = NULL, last_error_at = NULL, updated_at = $1
 		WHERE user_id = $2 AND status = 'paused' AND paused_by_billing = true
 	`
 

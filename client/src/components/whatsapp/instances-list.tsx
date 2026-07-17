@@ -2,6 +2,7 @@ import type { LocalInstance } from '@/hooks/use-instances-connect';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useProfilesConnect } from '@/hooks/use-profiles-connect';
 import { useToast } from '@/hooks/use-toast';
+import { Code, ConnectError } from '@connectrpc/connect';
 import { Check, Loader2, Pencil, QrCode, RefreshCw, Trash2, Wifi, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -59,7 +60,7 @@ function formatPhone(raw: string | undefined): string | null {
 
 interface InstanceRowProps {
   instance: LocalInstance;
-  onDelete: (id: string, name: string) => void;
+  onDelete: (id: string, name: string, status: LocalInstance['status']) => void;
   onRename: (id: string, friendlyName: string) => Promise<void>;
   onReconnect: (instance: LocalInstance) => void;
   busy: boolean;
@@ -206,7 +207,7 @@ function InstanceRow({
         )}
         <button
           type="button"
-          onClick={() => onDelete(instance.id, instance.instance_id)}
+          onClick={() => onDelete(instance.id, instance.instance_id, instance.status)}
           disabled={busy}
           className="inline-flex items-center justify-center gap-1.5 rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm transition-all hover:-translate-y-0.5 hover:border-red-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -289,21 +290,58 @@ export function InstancesList() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    const confirmed = window.confirm(
-      t('pages.whatsapp.instancesList.confirmDelete', {
+  const handleDelete = async (
+    id: string,
+    name: string,
+    status: LocalInstance['status']
+  ) => {
+    const connectedWarning = t(
+      'pages.whatsapp.instancesList.confirmDeleteConnected',
+      {
         name,
-        defaultValue: 'Remover o número "{{name}}"? Grupos vinculados a ele perderão o vínculo.',
-      })
+        defaultValue:
+          'O número "{{name}}" está CONECTADO. Removê-lo vai DESCONECTAR o WhatsApp e você precisará escanear um novo QR Code para reconectar. Deseja continuar?',
+      }
+    );
+    const isConnected = status === 'connected';
+    const confirmed = window.confirm(
+      isConnected
+        ? connectedWarning
+        : t('pages.whatsapp.instancesList.confirmDelete', {
+            name,
+            defaultValue:
+              'Remover o número "{{name}}"? Grupos vinculados a ele perderão o vínculo.',
+          })
     );
     if (!confirmed) return;
     try {
-      await deleteInstance(id);
+      // Chip conectado exige force=true: sem isso o backend devolve
+      // FailedPrecondition e a remoção nunca acontece (era o bug do "não
+      // consigo deslogar o WhatsApp").
+      await deleteInstance(id, isConnected);
       toast({
         title: t('pages.whatsapp.instancesList.removed', 'Número removido'),
       });
-    } catch {
-      // Hook already shows error toast.
+    } catch (error) {
+      // O backend também barra um chip VIVO na WhatsApp cuja linha ainda
+      // aparece como "desconectado" (status defasado). Nesse caso oferecemos
+      // a desconexão forçada em vez de deixar o usuário travado.
+      if (
+        !isConnected &&
+        error instanceof ConnectError &&
+        error.code === Code.FailedPrecondition &&
+        window.confirm(connectedWarning)
+      ) {
+        try {
+          await deleteInstance(id, true);
+          toast({
+            title: t('pages.whatsapp.instancesList.removed', 'Número removido'),
+          });
+        } catch {
+          // Hook already shows error toast.
+        }
+      }
+      // Caso contrário, o hook já mostrou o toast de erro.
     }
   };
 

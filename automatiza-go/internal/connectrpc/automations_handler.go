@@ -474,6 +474,23 @@ func (h *AutomationsHandler) UpdateAutomation(
 		}
 	}
 
+	// Reactivating an automation clears its stale error banner. The dominant
+	// real-world flow is: Shopee/ML credential error -> dispatch path auto-pauses
+	// and stamps last_error -> user fixes the credential and turns the automation
+	// back on. Nothing else ever clears last_error/last_error_at, so without this
+	// the automation dispatches fine yet still counts as "com erro" in the support
+	// panel (GetAutomationHealthByType, 24h window) until the timestamp ages out.
+	// Only on the paused->active transition, and only when the caller isn't
+	// setting last_error explicitly in the same update.
+	if newStatus, ok := updates["status"].(string); ok &&
+		newStatus == models.AutomationStatusActive &&
+		existing.Status != models.AutomationStatusActive {
+		if _, setsErr := updates["last_error"]; !setsErr {
+			updates["last_error"] = nil
+			updates["last_error_at"] = nil
+		}
+	}
+
 	if len(updates) > 0 {
 		if err := h.automationRepo.UpdateAutomation(ctx, req.Msg.GetId(), updates); err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update automation: %w", err))
