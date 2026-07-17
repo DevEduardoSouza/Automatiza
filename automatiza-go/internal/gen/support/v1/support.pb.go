@@ -2485,16 +2485,21 @@ type FinanceKpis struct {
 	MarginPercent   float64 `protobuf:"fixed64,14,opt,name=margin_percent,json=marginPercent,proto3" json:"margin_percent,omitempty"`
 	// Reais da Kiwify (produto AUTOMATISA). Preenchidos quando kiwify_live=true;
 	// senao o painel usa a estimativa por plano (mrr_estimated) e estes ficam 0.
-	RevenueRealizedPeriod float64 `protobuf:"fixed64,15,opt,name=revenue_realized_period,json=revenueRealizedPeriod,proto3" json:"revenue_realized_period,omitempty"` // Σ vendas PAGAS no periodo (centavos/100)
+	// BRUTO (charge_amount): o que os clientes pagaram — bate com o painel Kiwify.
+	RevenueRealizedPeriod float64 `protobuf:"fixed64,15,opt,name=revenue_realized_period,json=revenueRealizedPeriod,proto3" json:"revenue_realized_period,omitempty"` // Σ charge_amount das PAGAS no periodo
 	PaidSales             int32   `protobuf:"varint,16,opt,name=paid_sales,json=paidSales,proto3" json:"paid_sales,omitempty"`
 	RefundedSales         int32   `protobuf:"varint,17,opt,name=refunded_sales,json=refundedSales,proto3" json:"refunded_sales,omitempty"`
 	RefundRate            float64 `protobuf:"fixed64,18,opt,name=refund_rate,json=refundRate,proto3" json:"refund_rate,omitempty"` // refunded / (paid + refunded) * 100
-	AvgTicket             float64 `protobuf:"fixed64,19,opt,name=avg_ticket,json=avgTicket,proto3" json:"avg_ticket,omitempty"`    // receita paga / nº de vendas pagas
+	AvgTicket             float64 `protobuf:"fixed64,19,opt,name=avg_ticket,json=avgTicket,proto3" json:"avg_ticket,omitempty"`    // faturamento bruto / nº de vendas pagas
 	// true = mrr_estimated e planos vem da Kiwify (real); false = estimativa por
 	// plano (plan_id x preco de catalogo), com a ressalva de cobertura.
-	KiwifyLive    bool `protobuf:"varint,20,opt,name=kiwify_live,json=kiwifyLive,proto3" json:"kiwify_live,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	KiwifyLive bool `protobuf:"varint,20,opt,name=kiwify_live,json=kiwifyLive,proto3" json:"kiwify_live,omitempty"`
+	// Decomposicao do bruto: bruto = taxa Kiwify + coprodutores + sua parte.
+	KiwifyFeePeriod     float64 `protobuf:"fixed64,21,opt,name=kiwify_fee_period,json=kiwifyFeePeriod,proto3" json:"kiwify_fee_period,omitempty"`             // Σ payment.fee das pagas
+	PartnerSharePeriod  float64 `protobuf:"fixed64,22,opt,name=partner_share_period,json=partnerSharePeriod,proto3" json:"partner_share_period,omitempty"`    // splits de coprodutores (revenue_partners)
+	ProducerSharePeriod float64 `protobuf:"fixed64,23,opt,name=producer_share_period,json=producerSharePeriod,proto3" json:"producer_share_period,omitempty"` // Σ net_amount — o que cai na SUA conta
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *FinanceKpis) Reset() {
@@ -2665,6 +2670,27 @@ func (x *FinanceKpis) GetKiwifyLive() bool {
 		return x.KiwifyLive
 	}
 	return false
+}
+
+func (x *FinanceKpis) GetKiwifyFeePeriod() float64 {
+	if x != nil {
+		return x.KiwifyFeePeriod
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetPartnerSharePeriod() float64 {
+	if x != nil {
+		return x.PartnerSharePeriod
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetProducerSharePeriod() float64 {
+	if x != nil {
+		return x.ProducerSharePeriod
+	}
+	return 0
 }
 
 // Receita estimada por plano (para o mix e a barra de receita por plano).
@@ -4438,7 +4464,7 @@ const file_support_v1_support_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\t \x01(\tR\tcreatedAtB\v\n" +
 	"\t_categoryB\x14\n" +
-	"\x12_recurrence_months\"\x80\x06\n" +
+	"\x12_recurrence_months\"\x92\a\n" +
 	"\vFinanceKpis\x12#\n" +
 	"\rmrr_estimated\x18\x01 \x01(\x01R\fmrrEstimated\x12#\n" +
 	"\rarr_estimated\x18\x02 \x01(\x01R\farrEstimated\x12%\n" +
@@ -4464,7 +4490,10 @@ const file_support_v1_support_proto_rawDesc = "" +
 	"\n" +
 	"avg_ticket\x18\x13 \x01(\x01R\tavgTicket\x12\x1f\n" +
 	"\vkiwify_live\x18\x14 \x01(\bR\n" +
-	"kiwifyLive\"k\n" +
+	"kiwifyLive\x12*\n" +
+	"\x11kiwify_fee_period\x18\x15 \x01(\x01R\x0fkiwifyFeePeriod\x120\n" +
+	"\x14partner_share_period\x18\x16 \x01(\x01R\x12partnerSharePeriod\x122\n" +
+	"\x15producer_share_period\x18\x17 \x01(\x01R\x13producerSharePeriod\"k\n" +
 	"\vPlanRevenue\x12\x12\n" +
 	"\x04plan\x18\x01 \x01(\tR\x04plan\x12\x14\n" +
 	"\x05price\x18\x02 \x01(\x01R\x05price\x12 \n" +

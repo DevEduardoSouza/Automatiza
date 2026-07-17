@@ -123,10 +123,16 @@ func (h *SupportHandler) GetFinanceOverview(
 	)
 
 	// --- Reais da Kiwify (produto AUTOMATISA), quando habilitado. Sobrepoe a
-	// estimativa; em erro/timeout mantem o fallback (nunca quebra o painel). ---
+	// estimativa; em erro/timeout mantem o fallback (nunca quebra o painel).
+	// Faturamento = BRUTO (charge_amount, igual ao painel Kiwify); o net_amount
+	// da Kiwify e' so a parte do produtor (pos-taxa e pos-coprodutores) e vai
+	// separado em producer_share — somar so ele sub-reportava a receita em ~52%. ---
 	var (
 		kiwifyLive            bool
-		revenueRealizedPeriod float64
+		revenueRealizedPeriod float64 // bruto
+		kiwifyFeePeriod       float64
+		partnerSharePeriod    float64
+		producerSharePeriod   float64
 		paidSales             int
 		refundedSales         int
 		refundRate            float64
@@ -137,7 +143,14 @@ func (h *SupportHandler) GetFinanceOverview(
 		mrrSum, merr := h.cachedKiwifySummary(ctx, now.AddDate(0, 0, -30), now)
 		if perr == nil && merr == nil {
 			kiwifyLive = true
-			revenueRealizedPeriod = float64(periodSum.GrossPaidCents) / 100
+			revenueRealizedPeriod = float64(periodSum.ChargeCents) / 100
+			kiwifyFeePeriod = float64(periodSum.FeeCents) / 100
+			producerSharePeriod = float64(periodSum.ProducerCents) / 100
+			// Coprodutores = o que sobra do bruto tirando taxa e parte do produtor
+			// (inclui residuais de arredondamento/juros da Kiwify).
+			if rest := periodSum.ChargeCents - periodSum.FeeCents - periodSum.ProducerCents; rest > 0 {
+				partnerSharePeriod = float64(rest) / 100
+			}
 			paidSales = periodSum.PaidCount
 			refundedSales = periodSum.RefundedCount
 			if periodSum.PaidCount+periodSum.RefundedCount > 0 {
@@ -147,24 +160,38 @@ func (h *SupportHandler) GetFinanceOverview(
 			if periodSum.PaidCount > 0 {
 				avgTicket = revenueRealizedPeriod / float64(periodSum.PaidCount)
 			}
-			// MRR real = total pago nos ultimos 30 dias; assinantes = nº de pagas.
-			mrr = float64(mrrSum.GrossPaidCents) / 100
+			// MRR real = bruto dos ultimos 30 dias MENSALIZADO (trimestral/3,
+			// semestral/6...) — senao um plano semestral pago hoje infla o MRR.
+			var mrrCents float64
+			for _, p := range mrrSum.ByPlan {
+				months := p.Months
+				if months <= 0 {
+					months = kiwify.PlanMonths(p.Plan)
+				}
+				mrrCents += float64(p.ChargeCents) / float64(months)
+			}
+			mrr = mrrCents / 100
 			activeSubs = mrrSum.PaidCount
 			planRevenue = planRevenue[:0]
 			for _, p := range mrrSum.ByPlan {
+				months := p.Months
+				if months <= 0 {
+					months = kiwify.PlanMonths(p.Plan)
+				}
 				price := 0.0
 				if p.Count > 0 {
-					price = float64(p.GrossCents) / 100 / float64(p.Count)
+					price = float64(p.ChargeCents) / 100 / float64(p.Count)
 				}
 				planRevenue = append(planRevenue, &supportv1.PlanRevenue{
 					Plan:        p.Plan,
 					Price:       price,
 					Subscribers: int32(p.Count),
-					Mrr:         float64(p.GrossCents) / 100,
+					Mrr:         float64(p.ChargeCents) / float64(months) / 100,
 				})
 			}
-			note = "Receita do produto AUTOMATISA via API da Kiwify (vendas pagas). " +
-				"MRR = total pago nos últimos 30 dias; faturamento = pago na janela filtrada."
+			note = "Receita do produto AUTOMATISA via API da Kiwify. Faturamento e MRR são BRUTOS " +
+				"(o que os clientes pagaram, igual ao painel Kiwify); MRR mensaliza planos trimestrais/semestrais. " +
+				"O resultado do período usa a SUA parte (bruto − taxa Kiwify − coprodutores)."
 		} else {
 			h.logger.Warn("finance: Kiwify indisponível, usando estimativa por plano",
 				zap.Errors("errs", []error{perr, merr}))
@@ -202,9 +229,11 @@ func (h *SupportHandler) GetFinanceOverview(
 
 	months := float64(toIdx-fromIdx) + 1
 	// Contribuicao de assinatura no periodo: real (Kiwify) ou run-rate estimado.
+	// Com Kiwify ao vivo entra a SUA parte (nao o bruto): o resultado do periodo
+	// mede dinheiro que efetivamente cai na conta.
 	subscriptionPeriod := mrr * months
 	if kiwifyLive {
-		subscriptionPeriod = revenueRealizedPeriod
+		subscriptionPeriod = producerSharePeriod
 	}
 	grossPeriod := subscriptionPeriod + revenuePeriod
 	netPeriod := grossPeriod - expensesPeriod
@@ -243,6 +272,9 @@ func (h *SupportHandler) GetFinanceOverview(
 		RefundRate:            refundRate,
 		AvgTicket:             avgTicket,
 		KiwifyLive:            kiwifyLive,
+		KiwifyFeePeriod:       kiwifyFeePeriod,
+		PartnerSharePeriod:    partnerSharePeriod,
+		ProducerSharePeriod:   producerSharePeriod,
 	}
 
 	// Projecao: 12 meses a partir do mes atual. Receita = MRR + receitas manuais
@@ -291,7 +323,9 @@ func (h *SupportHandler) GetFinanceOverview(
 // vezes, entao nao pode rodar a cada load do painel. Timeout proprio para nunca
 // travar o dashboard; erro/timeout sobe para o chamador cair na estimativa.
 func (h *SupportHandler) cachedKiwifySummary(ctx context.Context, from, to time.Time) (*kiwify.SalesSummary, error) {
-	key := fmt.Sprintf("support:kiwify_sales:%s:%s",
+	// v2: schema com bruto/taxa/parte-do-produtor — o v1 (so net_amount) nao pode
+	// ser reaproveitado senao os campos novos viriam zerados do cache antigo.
+	key := fmt.Sprintf("support:kiwify_sales:v2:%s:%s",
 		from.Format("2006-01-02"), to.Format("2006-01-02"))
 
 	if h.redisClient != nil {

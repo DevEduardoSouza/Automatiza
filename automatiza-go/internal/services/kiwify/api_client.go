@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -54,20 +55,42 @@ func (c *APIClient) Enabled() bool {
 
 // PlanAgg agrega valor pago e nº de vendas de um plano.
 type PlanAgg struct {
-	Plan       string
-	GrossCents int64
-	Count      int
+	Plan          string
+	ChargeCents   int64 // Σ charge_amount (BRUTO) das pagas do plano
+	ProducerCents int64 // Σ net_amount (parte do produtor)
+	Count         int
+	Months        int // duracao do plano em meses (p/ mensalizar MRR)
 }
 
 // SalesSummary é o resumo agregado das vendas do produto AUTOMATISA numa janela.
+// BRUTO (charge) = taxa Kiwify (fee) + coprodutores + parte do produtor.
 type SalesSummary struct {
-	GrossPaidCents int64 // Σ net_amount das vendas status=paid
-	PaidCount      int
-	RefundedCount  int
-	RefusedCount   int
-	WaitingCount   int
-	TotalCount     int
-	ByPlan         []PlanAgg
+	ChargeCents   int64 // Σ payment.charge_amount das pagas — bate com o painel Kiwify
+	FeeCents      int64 // Σ payment.fee das pagas
+	ProducerCents int64 // Σ net_amount das pagas — o que cai na conta do produtor
+	PaidCount     int
+	RefundedCount int
+	RefusedCount  int
+	WaitingCount  int
+	TotalCount    int
+	ByPlan        []PlanAgg
+}
+
+// PlanMonths deduz a duracao do plano pelo nome do catalogo Kiwify (os planos
+// de grupos sao mensais; os demais explicitam o ciclo no nome). Usado para
+// mensalizar o MRR — sem isso um semestral pago hoje conta 6 meses no MRR.
+func PlanMonths(plan string) int {
+	up := strings.ToUpper(plan)
+	switch {
+	case strings.Contains(up, "ANUAL"):
+		return 12
+	case strings.Contains(up, "SEMESTRAL"):
+		return 6
+	case strings.Contains(up, "TRIMESTRAL"):
+		return 3
+	default:
+		return 1
+	}
 }
 
 // getToken devolve um Bearer válido, cacheado em memória até ~60s antes de
@@ -109,16 +132,35 @@ func (c *APIClient) getToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("kiwify token vazio")
 	}
 	c.token = body.AccessToken
-	// expires_in ~86400s; renova 60s antes por segurança.
-	c.tokenExp = time.Now().Add(23 * time.Hour)
+	// Respeita o expires_in da resposta (renova 60s antes); fallback 23h se o
+	// campo vier ilegível — não assumir 23h fixas caso a Kiwify encurte o token.
+	ttl := 23 * time.Hour
+	switch v := body.ExpiresIn.(type) {
+	case float64:
+		if v > 120 {
+			ttl = time.Duration(v-60) * time.Second
+		}
+	case string:
+		if secs, perr := strconv.ParseFloat(v, 64); perr == nil && secs > 120 {
+			ttl = time.Duration(secs-60) * time.Second
+		}
+	}
+	c.tokenExp = time.Now().Add(ttl)
 	return c.token, nil
 }
 
-// kiwifySale é o subconjunto de campos de /v1/sales que o resumo usa.
+// kiwifySale é o subconjunto de campos de /v1/sales que o resumo usa. O objeto
+// payment (charge_amount/fee) só vem com view_full_sale_details=true — sem ele
+// a lista traz apenas net_amount (a parte do produtor), que sub-reporta a
+// receita quando há coprodutores (verificado 17/07: 100% das vendas têm split).
 type kiwifySale struct {
 	Status    string `json:"status"`
-	NetAmount int64  `json:"net_amount"` // CENTAVOS
-	Product   struct {
+	NetAmount int64  `json:"net_amount"` // CENTAVOS — parte do produtor
+	Payment   struct {
+		ChargeAmount int64 `json:"charge_amount"` // CENTAVOS — bruto pago pelo cliente
+		Fee          int64 `json:"fee"`           // CENTAVOS — taxa Kiwify
+	} `json:"payment"`
+	Product struct {
 		PlanName string `json:"plan_name"`
 	} `json:"product"`
 }
@@ -153,6 +195,8 @@ func (c *APIClient) GetSalesSummary(ctx context.Context, from, to time.Time) (*S
 		q.Set("end_date", to.Format("2006-01-02"))
 		q.Set("page_size", fmt.Sprintf("%d", pageSize))
 		q.Set("page_number", fmt.Sprintf("%d", page))
+		// Expõe payment.charge_amount/fee na listagem (senão só vem net_amount).
+		q.Set("view_full_sale_details", "true")
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 			kiwifyAPIBase+"/sales?"+q.Encode(), nil)
@@ -181,17 +225,26 @@ func (c *APIClient) GetSalesSummary(ctx context.Context, from, to time.Time) (*S
 			switch s.Status {
 			case "paid":
 				sum.PaidCount++
-				sum.GrossPaidCents += s.NetAmount
+				sum.ChargeCents += s.Payment.ChargeAmount
+				sum.FeeCents += s.Payment.Fee
+				sum.ProducerCents += s.NetAmount
 				plan := s.Product.PlanName
 				if plan == "" {
 					plan = "—"
 				}
 				if i, ok := planIdx[plan]; ok {
-					sum.ByPlan[i].GrossCents += s.NetAmount
+					sum.ByPlan[i].ChargeCents += s.Payment.ChargeAmount
+					sum.ByPlan[i].ProducerCents += s.NetAmount
 					sum.ByPlan[i].Count++
 				} else {
 					planIdx[plan] = len(sum.ByPlan)
-					sum.ByPlan = append(sum.ByPlan, PlanAgg{Plan: plan, GrossCents: s.NetAmount, Count: 1})
+					sum.ByPlan = append(sum.ByPlan, PlanAgg{
+						Plan:          plan,
+						ChargeCents:   s.Payment.ChargeAmount,
+						ProducerCents: s.NetAmount,
+						Count:         1,
+						Months:        PlanMonths(plan),
+					})
 				}
 			case "refunded", "chargedback":
 				sum.RefundedCount++

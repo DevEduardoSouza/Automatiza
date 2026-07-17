@@ -265,6 +265,35 @@ export function Financeiro() {
 						)}
 						{k.kiwifyLive && (
 							<StatCard
+								label={t("pages.support.financeiro.kpi.kiwifyFee")}
+								value={brl(k.kiwifyFeePeriod)}
+							/>
+						)}
+						{k.kiwifyLive && (
+							<StatCard
+								label={t("pages.support.financeiro.kpi.partnerShare")}
+								value={brl(k.partnerSharePeriod)}
+								hint={
+									<span className="text-[10px] text-muted-foreground">
+										{t("pages.support.financeiro.kpi.partnerShareHint")}
+									</span>
+								}
+							/>
+						)}
+						{k.kiwifyLive && (
+							<StatCard
+								label={t("pages.support.financeiro.kpi.producerShare")}
+								value={brl(k.producerSharePeriod)}
+								hint={
+									<span className="text-[10px] text-muted-foreground">
+										{t("pages.support.financeiro.kpi.producerShareHint")}
+									</span>
+								}
+								positive={k.producerSharePeriod > 0}
+							/>
+						)}
+						{k.kiwifyLive && (
+							<StatCard
 								label={t("pages.support.financeiro.kpi.avgTicket")}
 								value={brl(k.avgTicket)}
 							/>

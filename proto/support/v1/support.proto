@@ -404,14 +404,19 @@ message FinanceKpis {
 
   // Reais da Kiwify (produto AUTOMATISA). Preenchidos quando kiwify_live=true;
   // senao o painel usa a estimativa por plano (mrr_estimated) e estes ficam 0.
-  double revenue_realized_period = 15; // Σ vendas PAGAS no periodo (centavos/100)
+  // BRUTO (charge_amount): o que os clientes pagaram — bate com o painel Kiwify.
+  double revenue_realized_period = 15; // Σ charge_amount das PAGAS no periodo
   int32 paid_sales = 16;
   int32 refunded_sales = 17;
   double refund_rate = 18;   // refunded / (paid + refunded) * 100
-  double avg_ticket = 19;    // receita paga / nº de vendas pagas
+  double avg_ticket = 19;    // faturamento bruto / nº de vendas pagas
   // true = mrr_estimated e planos vem da Kiwify (real); false = estimativa por
   // plano (plan_id x preco de catalogo), com a ressalva de cobertura.
   bool kiwify_live = 20;
+  // Decomposicao do bruto: bruto = taxa Kiwify + coprodutores + sua parte.
+  double kiwify_fee_period = 21;     // Σ payment.fee das pagas
+  double partner_share_period = 22;  // splits de coprodutores (revenue_partners)
+  double producer_share_period = 23; // Σ net_amount — o que cai na SUA conta
 }
 
 // Receita estimada por plano (para o mix e a barra de receita por plano).
