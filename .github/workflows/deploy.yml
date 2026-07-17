@@ -473,7 +473,13 @@ jobs:
           # postgres/redis/waha/waha-2 are stateful and NEVER recreated here
           # (recreate do WAHA em 11/07 derrubou ~550 sessões pareadas); a
           # recriação deliberada da infra usa o input full_restart.
-          ssh vps bash -s -- "${FULL_RESTART:-false}" << 'SCRIPT'
+          #
+          # The script is shipped as a FILE and executed, never piped into
+          # `bash -s`: with a stdin-fed script, `docker compose run` (stdin
+          # attached by default) SWALLOWS the rest of the script — on 17/07 the
+          # run ended silently right after migrations and the rollout never
+          # happened. A file-based script has no stdin to steal.
+          cat > /tmp/deploy-vps.sh << 'SCRIPT'
           set -euo pipefail
           FULL_RESTART="${1:-false}"
           cd /opt/automatiza/docker
@@ -495,7 +501,8 @@ jobs:
           trap 'docker compose up -d worker >/dev/null 2>&1 || true' EXIT
 
           echo "=== Running migrations ==="
-          docker compose run --rm migrate || echo "WARNING: Migrations returned non-zero exit code (may be OK if idempotent)"
+          # -T + </dev/null: belt and suspenders against stdin/TTY capture.
+          docker compose run --rm -T migrate </dev/null || echo "WARNING: Migrations returned non-zero exit code (may be OK if idempotent)"
 
           wait "$WORKER_STOP" || true
           echo "Worker drained."
@@ -538,6 +545,8 @@ jobs:
             exit 1
           fi
           SCRIPT
+          scp /tmp/deploy-vps.sh vps:/opt/automatiza/docker/.deploy.sh
+          ssh vps "bash /opt/automatiza/docker/.deploy.sh '${FULL_RESTART:-false}'"
 
       - name: Notify on failure
         if: failure()
