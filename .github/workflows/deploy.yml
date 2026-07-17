@@ -26,6 +26,10 @@ jobs:
   # PACKAGE the artifacts: the Dockerfiles' `builder` stages are swapped out via
   # BuildKit named contexts (--build-context builder=<dir>), so the Dockerfiles
   # stay canonical for local builds and CI never compiles inside Docker.
+  #
+  # The deploy job does NOT `needs:` these jobs — it runs in parallel and polls
+  # GHCR for the pushed tags, so the VPS prep work overlaps the builds and the
+  # whole run finishes in ~build time + ~30s.
   # ---------------------------------------------------------------------------
   build-backend:
     name: Build & Push Backend
@@ -67,13 +71,21 @@ jobs:
           path: ~/go/pkg/mod
           key: gomod-${{ runner.os }}-go${{ env.GO_VERSION }}-${{ hashFiles('automatiza-go/go.sum') }}
 
+      - name: Compute cache epoch
+        id: epoch
+        # The go-build cache grows ~10MB per deploy (stale entries pile up:
+        # 460MB -> 556MB in a single day of deploys) and its restore was taking
+        # 23s. Rotating the key weekly caps the growth; the first deploy of the
+        # week compiles cold once, every later deploy restores a lean cache.
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
       - name: Restore Go build cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/go-build
-          key: gocache-${{ runner.os }}-go${{ env.GO_VERSION }}-${{ github.sha }}
+          key: gocache-${{ runner.os }}-go${{ env.GO_VERSION }}-w${{ steps.epoch.outputs.week }}-${{ github.sha }}
           restore-keys: |
-            gocache-${{ runner.os }}-go${{ env.GO_VERSION }}-
+            gocache-${{ runner.os }}-go${{ env.GO_VERSION }}-w${{ steps.epoch.outputs.week }}-
 
       - name: Build backend binary
         working-directory: automatiza-go
@@ -157,7 +169,18 @@ jobs:
         working-directory: client
         run: npm ci --prefer-offline --no-audit --no-fund
 
+      # Proto stubs only change when the protos (or the generator toolchain)
+      # change — cache them and skip the ~15s buf generate on the common
+      # code-only deploy.
+      - name: Cache generated proto stubs
+        id: proto-stubs
+        uses: actions/cache@v4
+        with:
+          path: client/src/gen
+          key: proto-gen-${{ hashFiles('proto/**', 'client/buf.gen.yaml', 'client/package-lock.json') }}
+
       - name: Generate Proto Stubs
+        if: steps.proto-stubs.outputs.cache-hit != 'true'
         working-directory: client
         # buf comes from node_modules (@bufbuild/buf, pinned by the lockfile).
         run: npx buf generate
@@ -208,24 +231,38 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
 
   # ---------------------------------------------------------------------------
-  # Everything on the VPS that does NOT depend on the new images runs in
-  # parallel with the builds: shipping compose + waha-router source, building
-  # the router image, registry logins and base-image pulls. Shares the
-  # deploy-production concurrency group so it never interleaves with an
-  # in-flight deploy of a previous run.
+  # Runs IN PARALLEL with the builds (no `needs:`). Everything that does not
+  # depend on the new images happens while they compile: shipping compose +
+  # waha-router source, building the router image, registry logins, base-image
+  # pulls. Then it waits for the image tags to appear on GHCR (aborting fast if
+  # a build job fails) and only THEN touches the stack — so a broken build
+  # leaves production completely untouched.
+  #
+  # Serialized via the deploy-production concurrency group: two runs never
+  # interleave compose commands on the VPS.
   # ---------------------------------------------------------------------------
-  prep:
-    name: Prepare VPS
+  deploy:
+    name: Deploy to VPS
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     concurrency:
       group: deploy-production
       cancel-in-progress: false
     environment: production
+    permissions:
+      contents: read
+      packages: read
+      actions: read
     steps:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: docker
+
+      - name: Generate version
+        id: version
+        # Same commit-derived formula as the build jobs — no cross-job
+        # coordination needed to agree on the tag.
+        run: echo "version=$(git log -1 --format=%cd --date=format:'%Y%m%d-%H%M%S')-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Setup SSH
         run: |
@@ -248,7 +285,7 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
-      - name: Copy compose file and waha-router source to VPS
+      - name: Prepare VPS (compose + router + base images)
         run: |
           # waha-router is built ON the VPS (compose `build: ./waha-router`), so its
           # source must be present there. Ship the latest code (session sharding +
@@ -262,16 +299,10 @@ jobs:
             docker/waha-router/go.mod \
             docker/waha-router/Dockerfile \
             vps:/opt/automatiza/docker/waha-router/
-
-      - name: Login to Docker Hub on VPS
-        run: |
           ssh vps "echo '${{ secrets.DOCKERHUB_TOKEN }}' | docker login -u devlikeapro --password-stdin 2>/dev/null" || {
             echo "WARNING: Docker Hub login failed — clearing bad credentials to allow public image pulls"
             ssh vps "docker logout 2>/dev/null" || true
           }
-
-      - name: Build waha-router and pull base images
-        run: |
           # Router build (CPU-bound, cached when source unchanged) overlaps the
           # base-image pulls (network-bound). If the router build fails we abort
           # the run HERE, while the old stack is still fully up.
@@ -287,55 +318,42 @@ jobs:
           echo "Router image ready."
           SCRIPT
 
-  # ---------------------------------------------------------------------------
-  # With prep done in parallel, this job is only: .env + pull the two new
-  # images + migrate + rolling up + health check.
-  # ---------------------------------------------------------------------------
-  deploy:
-    name: Deploy to VPS
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [prep, build-backend, build-frontend]
-    # Deploys are serialized: an in-flight deploy is never interrupted, and if
-    # several runs queue up only the newest pending one survives (GitHub cancels
-    # the intermediate ones). This also fixes the pre-existing race where two
-    # pushes could interleave compose commands on the VPS.
-    concurrency:
-      group: deploy-production
-      cancel-in-progress: false
-    environment: production
-    permissions:
-      contents: read
-      packages: read
-    env:
-      VERSION: ${{ needs.build-backend.outputs.version }}
-    steps:
-      - name: Setup SSH
+      - name: Login to GHCR (runner + VPS)
+        # Runner login: needed for `docker manifest inspect` in the wait step.
+        # VPS login: done from THIS job so the token is still valid at pull time.
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          cat >> ~/.ssh/config << 'EOF'
-          Host vps
-            HostName ${{ secrets.VPS_HOST }}
-            User ${{ secrets.VPS_USER }}
-            IdentityFile ~/.ssh/deploy_key
-            StrictHostKeyChecking accept-new
-            ControlMaster auto
-            ControlPath ~/.ssh/cm-%C
-            ControlPersist 10m
-            ServerAliveInterval 15
-            ConnectTimeout 10
-          EOF
-          chmod 600 ~/.ssh/config
-
-      - name: Login to GHCR on VPS
-        # Done here (not in prep): GITHUB_TOKEN is revoked when its job ends,
-        # so the login must come from THIS job to survive until the pulls.
-        run: |
+          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           ssh vps "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin 2>/dev/null"
 
+      - name: Wait for images (abort fast if a build fails)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BACKEND_IMAGE: ${{ env.IMAGE_PREFIX }}/backend:${{ steps.version.outputs.version }}
+          FRONTEND_IMAGE: ${{ env.IMAGE_PREFIX }}/frontend:${{ steps.version.outputs.version }}
+        run: |
+          # NOTHING on the stack is mutated until BOTH tags exist on GHCR. If a
+          # build job fails or is cancelled (superseded push), abort immediately
+          # with production untouched.
+          for i in $(seq 1 90); do
+            if docker manifest inspect "$BACKEND_IMAGE" >/dev/null 2>&1 \
+               && docker manifest inspect "$FRONTEND_IMAGE" >/dev/null 2>&1; then
+              echo "Both images available after ~$(( (i - 1) * 5 ))s of waiting."
+              exit 0
+            fi
+            BAD=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=50" \
+              --jq '[.jobs[] | select(.name | startswith("Build & Push")) | select(.conclusion == "failure" or .conclusion == "cancelled")] | length' || echo 0)
+            if [ "${BAD:-0}" -gt 0 ]; then
+              echo "::error::A build job failed or was cancelled — aborting before touching production."
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::Timed out waiting for images on GHCR."
+          exit 1
+
       - name: Write .env on VPS
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           cat > /tmp/.env.deploy << 'EOF'
           NODE_ENV=${{ vars.NODE_ENV }}
@@ -404,10 +422,12 @@ jobs:
           # and the per-session proxy pool, added out-of-band by the waha-fix ops
           # toolkit — they are intentionally not CI secrets). Overwriting .env wholesale
           # would strip them and break WAHA media storage, so we preserve them here.
+          # .env.prev keeps the previous pins for a one-command manual rollback.
           scp /tmp/.env.clean vps:/opt/automatiza/docker/.env.ci
           ssh vps '
             cd /opt/automatiza/docker
             OPS=$(grep -E "^(WAHA_MEDIA_STORAGE|WAHA_S3_[A-Z_]+|WAHA_SESSION_PROXIES)=|^#\[proxy-disabled" .env 2>/dev/null || true)
+            cp .env .env.prev 2>/dev/null || true
             cp .env.ci .env
             if [ -n "$OPS" ]; then
               printf "\n# --- ops-managed, preserved across deploys: WAHA S3 media + session proxies ---\n" >> .env
@@ -415,17 +435,9 @@ jobs:
             fi
             chmod 600 .env
             rm -f .env.ci
-          '
-          rm -f /tmp/.env.deploy /tmp/.env.clean
-
-      - name: Validate .env on VPS
-        run: |
-          echo "=== Validating .env on VPS ==="
-          ssh vps '
-            ENV_FILE="/opt/automatiza/docker/.env"
             MISSING=""
             for key in NODE_ENV PORT DB_USER DB_PASSWORD DB_NAME JWT_SECRET COOKIE_DOMAIN CORS_ORIGIN BACKEND_PUBLIC_URL SENTRY_DSN; do
-              val=$(grep "^${key}=" "$ENV_FILE" | cut -d= -f2-)
+              val=$(grep "^${key}=" .env | cut -d= -f2-)
               if [ -z "$val" ]; then
                 MISSING="${MISSING}  - ${key}\n"
               fi
@@ -435,87 +447,100 @@ jobs:
               printf "$MISSING"
               echo "Check GitHub Settings > Environments > production > Variables/Secrets"
             else
-              echo "All critical variables are set."
+              echo "All critical .env variables are set."
             fi
-            echo "--- .env keys (values masked) ---"
-            awk -F= "{print \$1 \"=\" (length(\$2) > 0 ? \"[SET]\" : \"[EMPTY]\")}" "$ENV_FILE"
           '
+          rm -f /tmp/.env.deploy /tmp/.env.clean
 
-      - name: Pull application images
+      - name: Rolling deploy (worker drained, WAHA untouched)
         env:
-          BACKEND_IMAGE: ${{ env.IMAGE_PREFIX }}/backend:${{ env.VERSION }}
-          FRONTEND_IMAGE: ${{ env.IMAGE_PREFIX }}/frontend:${{ env.VERSION }}
-        run: |
-          ssh vps "cd /opt/automatiza/docker && BACKEND_IMAGE='$BACKEND_IMAGE' FRONTEND_IMAGE='$FRONTEND_IMAGE' docker compose pull -q server worker frontend"
-
-      - name: Run migrations
-        env:
-          BACKEND_IMAGE: ${{ env.IMAGE_PREFIX }}/backend:${{ env.VERSION }}
-          FRONTEND_IMAGE: ${{ env.IMAGE_PREFIX }}/frontend:${{ env.VERSION }}
-        run: |
-          echo "=== Running migrations ==="
-          ssh vps "cd /opt/automatiza/docker && BACKEND_IMAGE='$BACKEND_IMAGE' FRONTEND_IMAGE='$FRONTEND_IMAGE' docker compose run --rm migrate" || echo "WARNING: Migrations returned non-zero exit code (may be OK if idempotent)"
-
-      - name: Rolling deploy
-        env:
-          BACKEND_IMAGE: ${{ env.IMAGE_PREFIX }}/backend:${{ env.VERSION }}
-          FRONTEND_IMAGE: ${{ env.IMAGE_PREFIX }}/frontend:${{ env.VERSION }}
           FULL_RESTART: ${{ inputs.full_restart }}
         run: |
-          # ROLLING deploy: `up -d` only recreates containers whose image or
-          # config changed — server/worker/frontend (new tags) and waha-router
-          # (if its source changed). postgres/redis/waha/waha-2 keep running
-          # untouched: no WhatsApp reconnection storm (hundreds of sessions at
-          # 2s stagger each), no Postgres cold start, no downtime for the WAHA
-          # path. The old `compose down` + `up` full bounce is available via the
-          # workflow_dispatch input `full_restart` for maintenance.
-          # waha-2 and waha-router stay in the service list on purpose: if they
-          # are ever stopped/missing, `up -d` brings them back.
+          # Sequence designed so NO send is in flight while the send path
+          # (waha-router) or the webhook receiver (server) bounces:
+          #   1. pull new images (no mutation)
+          #   2. graceful worker stop in background — honors stop_grace_period 4m
+          #      (the old `up -d --timeout 30` OVERRODE that grace and SIGKILLed
+          #      the worker mid-send at 30s: duplicates + the 15:12 storm of
+          #      "failed to check session status" for 48 users)
+          #   3. migrations run while the worker drains (ledger-tracked: seconds)
+          #   4. recreate server/frontend/waha-router with the worker offline —
+          #      queued sends wait in redis instead of failing against a
+          #      half-recreated router
+          #   5. health-gate the server, then bring the worker back
+          # A trap guarantees the worker is ALWAYS brought back up, even if a
+          # later step fails — sends must never stay paused after a red deploy.
+          # postgres/redis/waha/waha-2 are stateful and NEVER recreated here
+          # (recreate do WAHA em 11/07 derrubou ~550 sessões pareadas); a
+          # recriação deliberada da infra usa o input full_restart.
+          ssh vps bash -s -- "${FULL_RESTART:-false}" << 'SCRIPT'
+          set -euo pipefail
+          FULL_RESTART="${1:-false}"
+          cd /opt/automatiza/docker
+          export $(grep -E '^(BACKEND_IMAGE|FRONTEND_IMAGE)=' .env | xargs)
+
+          WAHA_BEFORE=$(docker inspect -f '{{.Id}}' automatiza-waha automatiza-waha-2 2>/dev/null || true)
+
           if [ "$FULL_RESTART" = "true" ]; then
             echo "=== FULL RESTART requested: stopping entire stack (WAHA sessions will reconnect) ==="
-            ssh vps "cd /opt/automatiza/docker && docker compose down --timeout 30" || true
+            docker compose down --timeout 30 || true
           fi
 
+          echo "=== Pulling application images ==="
+          docker compose pull -q server worker frontend
+
+          echo "=== Draining worker (graceful, overlapped with migrations) ==="
+          docker compose stop worker &
+          WORKER_STOP=$!
+          trap 'docker compose up -d worker >/dev/null 2>&1 || true' EXIT
+
+          echo "=== Running migrations ==="
+          docker compose run --rm migrate || echo "WARNING: Migrations returned non-zero exit code (may be OK if idempotent)"
+
+          wait "$WORKER_STOP" || true
+          echo "Worker drained."
+
           echo "=== Rolling out new images ==="
-          # Infra com ESTADO (postgres/redis/waha/waha-2): --no-recreate — sobe
-          # se estiver parada/ausente, mas NUNCA recria por diff de config ou
-          # imagem. O compose.yml é re-copiado a cada deploy e `compose pull`
-          # busca digests novos de waha, então um `up -d` normal recriava os
-          # WAHAs e derrubava ~550 sessões pareadas de uma vez (aconteceu em
-          # produção 11/07 20:47 UTC — clientes viram "números desconectando").
-          # Recriação deliberada da infra: use o input full_restart.
-          ssh vps "cd /opt/automatiza/docker && docker compose up -d --no-recreate --timeout 30 postgres redis waha waha-2"
-          ssh vps "cd /opt/automatiza/docker && BACKEND_IMAGE='$BACKEND_IMAGE' FRONTEND_IMAGE='$FRONTEND_IMAGE' docker compose up -d --timeout 30 waha-router server worker frontend"
+          docker compose up -d --no-recreate postgres redis waha waha-2
+          docker compose up -d server frontend waha-router
+
+          echo "=== Waiting for backend health ==="
+          HEALTHY=0
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/api/v1/health >/dev/null 2>&1; then
+              HEALTHY=1
+              echo "Backend is healthy! (after ~${i}s)"
+              break
+            fi
+            sleep 1
+          done
+
+          echo "=== Restarting worker ==="
+          docker compose up -d worker
+          trap - EXIT
+
+          if [ "$FULL_RESTART" != "true" ]; then
+            WAHA_AFTER=$(docker inspect -f '{{.Id}}' automatiza-waha automatiza-waha-2 2>/dev/null || true)
+            if [ "$WAHA_BEFORE" != "$WAHA_AFTER" ]; then
+              echo "::warning::WAHA containers were recreated during this deploy — paired sessions are reconnecting. Investigate: this should NEVER happen on a rolling deploy."
+            fi
+          fi
 
           echo "=== Container status ==="
-          ssh vps "cd /opt/automatiza/docker && docker compose ps"
-
-      - name: Health check via SSH
-        run: |
-          # Poll immediately at 2s intervals instead of a fixed sleep — exits as
-          # soon as the backend answers (typically a few seconds after up -d).
-          ssh vps bash -s << 'SCRIPT'
-          cd /opt/automatiza/docker
-          for i in $(seq 1 40); do
-            if curl -sf http://localhost:3000/api/v1/health; then
-              echo ""
-              echo "Backend is healthy! (after ~$(( (i - 1) * 2 ))s)"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "=== HEALTH CHECK FAILED - DEBUG INFO ==="
-          echo "--- Container status ---"
           docker compose ps
-          echo "--- Server logs (last 50 lines) ---"
-          docker compose logs server --tail=50
-          echo "--- Worker logs (last 20 lines) ---"
-          docker compose logs worker --tail=20
-          exit 1
+
+          if [ "$HEALTHY" != 1 ]; then
+            echo "=== HEALTH CHECK FAILED - DEBUG INFO ==="
+            echo "--- Server logs (last 50 lines) ---"
+            docker compose logs server --tail=50
+            echo "--- Worker logs (last 20 lines) ---"
+            docker compose logs worker --tail=20
+            exit 1
+          fi
           SCRIPT
 
       - name: Notify on failure
         if: failure()
         run: |
-          echo "::error::Deploy failed for version ${{ env.VERSION }}"
+          echo "::error::Deploy failed for version ${{ steps.version.outputs.version }}"
           echo "Check VPS logs: ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'cd /opt/automatiza/docker && docker compose logs --tail=50'"

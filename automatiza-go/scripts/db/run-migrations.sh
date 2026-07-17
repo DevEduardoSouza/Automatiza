@@ -55,10 +55,31 @@ if [ "${#MIGRATION_FILES[@]}" -eq 0 ]; then
     exit 1
 fi
 
+# Applied-migrations ledger: with 135+ files, re-running every one on every
+# deploy cost ~60s of the pipeline. A file is recorded only when psql exits 0
+# (ON_ERROR_STOP=0 keeps exit 0 on ignorable SQL errors — same tolerance as
+# the old always-rerun behavior; a connection failure exits non-zero, is NOT
+# recorded, and gets retried next run). If the ledger itself is unreachable,
+# APPLIED stays empty and we fall back to running everything, exactly as before.
+TRACK_TABLE="_deploy_migrations"
+$PSQL_CMD -q -c "CREATE TABLE IF NOT EXISTS ${TRACK_TABLE} (filename text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())" >/dev/null 2>&1 || true
+APPLIED=$($PSQL_CMD -tA -c "SELECT filename FROM ${TRACK_TABLE}" 2>/dev/null || true)
+
+SKIPPED=0
 for migration in "${MIGRATION_FILES[@]}"; do
+    if printf '%s\n' "$APPLIED" | grep -qxF "$migration"; then
+        SKIPPED=$((SKIPPED + 1))
+        continue
+    fi
     filepath="${MIGRATIONS_DIR}/${migration}"
     echo "  Applying: ${migration}"
-    $PSQL_CMD -f "$filepath" 2>&1 || true
+    if $PSQL_CMD -f "$filepath" 2>&1; then
+        $PSQL_CMD -q -c "INSERT INTO ${TRACK_TABLE} (filename) VALUES ('${migration}') ON CONFLICT (filename) DO NOTHING" >/dev/null 2>&1 || true
+    fi
 done
+
+if [ "$SKIPPED" -gt 0 ]; then
+    echo "  Skipped ${SKIPPED} already-applied migrations"
+fi
 
 echo "=== Migrations complete ==="
