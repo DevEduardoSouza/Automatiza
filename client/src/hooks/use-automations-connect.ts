@@ -608,6 +608,16 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
         throw new Error(t('automations.errors.createFailed'));
       }
 
+      // Non-blocking advisories from the backend (e.g. redundant offer_generate
+      // overlapping an existing one). The automation WAS created; just surface.
+      if (response.warnings?.length) {
+        toast({
+          title: t('automations.warnings.overlapTitle'),
+          description: response.warnings.join('\n'),
+          duration: 10000,
+        });
+      }
+
       return fromProtoAutomation(response.automation);
     },
     onError: (error: unknown) => {
@@ -685,6 +695,15 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
 
       if (!response.automation) {
         throw new Error(t('automations.errors.updateFailed'));
+      }
+
+      // Non-blocking advisories from the backend (same as create).
+      if (response.warnings?.length) {
+        toast({
+          title: t('automations.warnings.overlapTitle'),
+          description: response.warnings.join('\n'),
+          duration: 10000,
+        });
       }
 
       return fromProtoAutomation(response.automation);

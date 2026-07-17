@@ -1600,8 +1600,12 @@ func (x *CreateAutomationRequest) GetHumanizeMode() string {
 }
 
 type CreateAutomationResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Automation    *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Automation *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
+	// Avisos não-bloqueantes gerados na criação (ex.: sobreposição de
+	// origem+destino com outra offer_generate ativa, que causaria envios
+	// ignorados por dedup). A automação FOI criada; a UI deve exibir isto.
+	Warnings      []string `protobuf:"bytes,2,rep,name=warnings,proto3" json:"warnings,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1639,6 +1643,13 @@ func (*CreateAutomationResponse) Descriptor() ([]byte, []int) {
 func (x *CreateAutomationResponse) GetAutomation() *Automation {
 	if x != nil {
 		return x.Automation
+	}
+	return nil
+}
+
+func (x *CreateAutomationResponse) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
 	}
 	return nil
 }
@@ -2010,8 +2021,11 @@ func (x *UpdateAutomationRequest) GetHumanizeMode() string {
 }
 
 type UpdateAutomationResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Automation    *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Automation *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
+	// Avisos não-bloqueantes gerados na edição (mesma semântica de
+	// CreateAutomationResponse.warnings). A automação FOI atualizada.
+	Warnings      []string `protobuf:"bytes,2,rep,name=warnings,proto3" json:"warnings,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2049,6 +2063,13 @@ func (*UpdateAutomationResponse) Descriptor() ([]byte, []int) {
 func (x *UpdateAutomationResponse) GetAutomation() *Automation {
 	if x != nil {
 		return x.Automation
+	}
+	return nil
+}
+
+func (x *UpdateAutomationResponse) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
 	}
 	return nil
 }
@@ -2985,11 +3006,12 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x1d_offer_generate_send_as_imageB\x17\n" +
 	"\x15_search_send_as_imageB\x1b\n" +
 	"\x19_monitoring_send_as_imageB\x10\n" +
-	"\x0e_humanize_mode\"V\n" +
+	"\x0e_humanize_mode\"r\n" +
 	"\x18CreateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\xad\x12\n" +
+	"automation\x12\x1a\n" +
+	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\xad\x12\n" +
 	"\x17UpdateAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
 	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x127\n" +
@@ -3071,11 +3093,12 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x1d_offer_generate_send_as_imageB\x17\n" +
 	"\x15_search_send_as_imageB\x1b\n" +
 	"\x19_monitoring_send_as_imageB\x10\n" +
-	"\x0e_humanize_mode\"V\n" +
+	"\x0e_humanize_mode\"r\n" +
 	"\x18UpdateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"2\n" +
+	"automation\x12\x1a\n" +
+	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"2\n" +
 	"\x17DeleteAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\"\x1a\n" +
 	"\x18DeleteAutomationResponse\"I\n" +

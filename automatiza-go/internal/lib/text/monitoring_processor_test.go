@@ -64,10 +64,10 @@ func TestProcessarMensagem(t *testing.T) {
 			want: "cc e",
 		},
 		{
-			name: "whitespace normalization",
-			text: "  hello    world  \n   foo   bar  ",
+			name:  "whitespace normalization",
+			text:  "  hello    world  \n   foo   bar  ",
 			rules: &models.MonitoringTextRules{},
-			want: "hello world\nfoo bar",
+			want:  "hello world\nfoo bar",
 		},
 		{
 			name: "prefix added",
@@ -406,6 +406,11 @@ func TestIsShopeeLink(t *testing.T) {
 		{
 			name: "shp.ee",
 			url:  "https://shp.ee/abc",
+			want: true,
+		},
+		{
+			name: "shope.ee (encurtador global)",
+			url:  "https://shope.ee/abc123",
 			want: true,
 		},
 		{

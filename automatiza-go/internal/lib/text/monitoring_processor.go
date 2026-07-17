@@ -294,11 +294,19 @@ func ExtractMLLinks(text string) []string {
 	return mlLinks
 }
 
-// IsShopeeLink checks if a URL is a Shopee link
+// IsShopeeLink checks if a URL is a Shopee link.
+// shope.ee é o encurtador GLOBAL que a própria API Shopee emite em
+// generateShortLink (schema.graphql: ShortLinkResult.shortLink) e que
+// shopee_service.isShopeeHost já reconhece como conversível. Sem ele aqui, um
+// link shope.ee não era classificado como Shopee, escapava da conversão e caía
+// no relay cru — vazando a comissão da fonte. ExpandURL segue o redirect HTTP
+// e resolve shope.ee para a URL real, então o fluxo Shopee (converter +
+// reatribuir ao dono) funciona igual a shp.ee.
 func IsShopeeLink(url string) bool {
 	lowerURL := strings.ToLower(url)
 	return strings.Contains(lowerURL, "shopee.com.br") ||
 		strings.Contains(lowerURL, "s.shopee.com.br") ||
+		strings.Contains(lowerURL, "shope.ee") ||
 		strings.Contains(lowerURL, "shp.ee")
 }
 

@@ -402,6 +402,10 @@ message CreateAutomationRequest {
 
 message CreateAutomationResponse {
   Automation automation = 1;
+  // Avisos não-bloqueantes gerados na criação (ex.: sobreposição de
+  // origem+destino com outra offer_generate ativa, que causaria envios
+  // ignorados por dedup). A automação FOI criada; a UI deve exibir isto.
+  repeated string warnings = 2;
 }
 
 // ============================================================
@@ -477,6 +481,9 @@ message UpdateAutomationRequest {
 
 message UpdateAutomationResponse {
   Automation automation = 1;
+  // Avisos não-bloqueantes gerados na edição (mesma semântica de
+  // CreateAutomationResponse.warnings). A automação FOI atualizada.
+  repeated string warnings = 2;
 }
 
 // ============================================================

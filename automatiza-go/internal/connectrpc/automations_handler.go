@@ -203,6 +203,84 @@ func planGroupLimitExceeded(limit int, autos []models.Automation, automationID s
 	return len(afterSet) > limit && len(afterSet) > len(before), len(afterSet)
 }
 
+// detectOfferGenerateOverlap returns a non-blocking warning when an
+// offer_generate automation with the given source (monitor) and destination
+// (send) groups shares BOTH a source group AND a destination group with an
+// existing ACTIVE offer_generate on the same account.
+//
+// That combination is always pure waste: the same source produces the same
+// products, and any shared destination group already receives them from the
+// other automation, so every send to the overlapping groups is silently
+// dropped by the per-(user, group, product) dedup slot (offer_generate_service
+// claimProductSlot, 30min window). Overlap on destination *alone* is legit (two
+// sources funneling into one group), so we require BOTH to overlap before
+// warning. excludeID is skipped so UpdateAutomation doesn't flag itself.
+//
+// Returns "" when there's no overlap. Callers treat a repo error as
+// fail-open (skip the warning) — this is advisory, never a hard gate.
+func (h *AutomationsHandler) detectOfferGenerateOverlap(ctx context.Context, userID, excludeID string, monitorGroups, sendGroups []string) (string, error) {
+	if len(monitorGroups) == 0 || len(sendGroups) == 0 {
+		return "", nil
+	}
+	existing, err := h.automationRepo.GetUserAutomations(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	return offerGenerateOverlapWarning(existing, excludeID, monitorGroups, sendGroups), nil
+}
+
+// offerGenerateOverlapWarning holds the pure overlap logic (no repo/ctx) so it
+// can be unit-tested directly, mirroring planGroupLimitExceeded. Returns the
+// warning string for the first active offer_generate that shares both a source
+// and a destination group, or "" when none does.
+func offerGenerateOverlapWarning(existing []models.Automation, excludeID string, monitorGroups, sendGroups []string) string {
+	srcSet := make(map[string]struct{}, len(monitorGroups))
+	for _, g := range monitorGroups {
+		srcSet[g] = struct{}{}
+	}
+	dstSet := make(map[string]struct{}, len(sendGroups))
+	for _, g := range sendGroups {
+		dstSet[g] = struct{}{}
+	}
+	for i := range existing {
+		a := &existing[i]
+		if a.ID == excludeID || !a.IsOfferGenerate() || !a.IsActive() {
+			continue
+		}
+		if !intersects(a.MonitorGroupIDs, srcSet) {
+			continue
+		}
+		shared := 0
+		for _, g := range a.GetTargetGroups() {
+			if _, ok := dstSet[g]; ok {
+				shared++
+			}
+		}
+		if shared == 0 {
+			continue
+		}
+		name := a.Name
+		if name == "" {
+			name = "outra automação"
+		}
+		return fmt.Sprintf(
+			"A automação \"%s\" já usa a mesma origem e compartilha %d grupo(s) de destino com esta. As ofertas repetidas nesses grupos serão ignoradas por duplicata (dedup) — considere remover a sobreposição.",
+			name, shared,
+		)
+	}
+	return ""
+}
+
+// intersects reports whether any element of vals is present in set.
+func intersects(vals []string, set map[string]struct{}) bool {
+	for _, v := range vals {
+		if _, ok := set[v]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // ListAutomations returns all automations for the authenticated user.
 func (h *AutomationsHandler) ListAutomations(
 	ctx context.Context,
@@ -313,8 +391,20 @@ func (h *AutomationsHandler) CreateAutomation(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create automation: %w", err))
 	}
 
+	// Non-blocking advisory: flag a redundant offer_generate that overlaps an
+	// existing active one on BOTH source and destination (fail-open on error).
+	var warnings []string
+	if created.IsOfferGenerate() {
+		if w, wErr := h.detectOfferGenerateOverlap(ctx, user.ID, created.ID, created.MonitorGroupIDs, created.GetTargetGroups()); wErr != nil {
+			observability.LogAndCapture(h.logger, sentry.LevelWarning, "offer_generate overlap check failed (create)", wErr, map[string]string{"user_id": user.ID})
+		} else if w != "" {
+			warnings = append(warnings, w)
+		}
+	}
+
 	return connect.NewResponse(&automationsv1.CreateAutomationResponse{
 		Automation: automationToProto(created),
+		Warnings:   warnings,
 	}), nil
 }
 
@@ -396,8 +486,20 @@ func (h *AutomationsHandler) UpdateAutomation(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get updated automation: %w", err))
 	}
 
+	// Non-blocking advisory: same overlap check as create, using the effective
+	// post-update groups and excluding this automation itself (fail-open).
+	var warnings []string
+	if updated.IsOfferGenerate() && updated.IsActive() {
+		if w, wErr := h.detectOfferGenerateOverlap(ctx, user.ID, updated.ID, updated.MonitorGroupIDs, updated.GetTargetGroups()); wErr != nil {
+			observability.LogAndCapture(h.logger, sentry.LevelWarning, "offer_generate overlap check failed (update)", wErr, map[string]string{"user_id": user.ID})
+		} else if w != "" {
+			warnings = append(warnings, w)
+		}
+	}
+
 	return connect.NewResponse(&automationsv1.UpdateAutomationResponse{
 		Automation: automationToProto(updated),
+		Warnings:   warnings,
 	}), nil
 }
 
