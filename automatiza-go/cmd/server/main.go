@@ -1051,6 +1051,15 @@ func main() {
 	if redisClient != nil {
 		supportRedis = redisClient.Client
 	}
+	// Client da API Kiwify p/ a aba Financeiro (valores reais do produto
+	// AUTOMATISA). Sem credenciais => Enabled()=false e o painel usa a estimativa.
+	kiwifyAPIClient := kiwify.NewAPIClient(
+		cfg.KiwifyAPIClientID,
+		cfg.KiwifyAPIClientSecret,
+		cfg.KiwifyAPIAccountID,
+		cfg.KiwifyAPIProductID,
+		logger,
+	)
 	supportHandler := connectrpc.NewSupportHandler(
 		postgres.NewSupportRepository(db, logger),
 		userRoleRepo,
@@ -1062,6 +1071,7 @@ func main() {
 		asynqInspectorServer,
 		supportRedis,
 		lbService,
+		kiwifyAPIClient,
 		cfg.WhatsAppSendLimitPerMinute,
 		logger,
 	)

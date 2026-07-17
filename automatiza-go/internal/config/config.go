@@ -64,9 +64,9 @@ type Config struct {
 	WahaAPIKey string `mapstructure:"WAHA_API_KEY"`
 
 	// AI
-	AIApiURL     string `mapstructure:"AI_API_URL"`
-	AIApiKey     string `mapstructure:"AI_API_KEY"`
-	AIModel      string `mapstructure:"AI_MODEL"`
+	AIApiURL string `mapstructure:"AI_API_URL"`
+	AIApiKey string `mapstructure:"AI_API_KEY"`
+	AIModel  string `mapstructure:"AI_MODEL"`
 
 	// Worker
 	WorkerConcurrency          int `mapstructure:"WORKER_CONCURRENCY"`
@@ -102,6 +102,14 @@ type Config struct {
 
 	// Kiwify
 	KiwifyWebhookToken string `mapstructure:"KIWIFY_WEBHOOK_TOKEN"`
+
+	// Kiwify Public API (painel Financeiro — valores reais de venda).
+	// Vazio => painel cai na estimativa por plano. ProductID isola o produto
+	// AUTOMATISA na loja (a conta Kiwify vende vários outros produtos).
+	KiwifyAPIClientID     string `mapstructure:"KIWIFY_API_CLIENT_ID"`
+	KiwifyAPIClientSecret string `mapstructure:"KIWIFY_API_CLIENT_SECRET"`
+	KiwifyAPIAccountID    string `mapstructure:"KIWIFY_API_ACCOUNT_ID"`
+	KiwifyAPIProductID    string `mapstructure:"KIWIFY_API_PRODUCT_ID"`
 
 	// Sentry
 	SentryDSN string `mapstructure:"SENTRY_DSN"`

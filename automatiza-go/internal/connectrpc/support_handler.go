@@ -15,6 +15,7 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/repository/postgres"
+	"automatiza-go/internal/services/kiwify"
 	"automatiza-go/internal/services/loadbalancer"
 
 	"connectrpc.com/connect"
@@ -68,6 +69,10 @@ type SupportHandler struct {
 	// leitura auxiliar, nao pode derrubar o resto do painel.
 	redisClient *redis.Client
 	lbService   loadbalancer.Service
+	// kiwifyAPI alimenta a aba Financeiro com valores REAIS de venda do produto
+	// AUTOMATISA. Pode ser nil / desabilitado (sem credenciais) — o painel cai na
+	// estimativa por plano.
+	kiwifyAPI *kiwify.APIClient
 	// sendLimitPerMinute e a velocidade CONFIGURADA por chip
 	// (WHATSAPP_SEND_LIMIT_PER_MINUTE) — referencia para comparar com a real.
 	sendLimitPerMinute int
@@ -86,6 +91,7 @@ func NewSupportHandler(
 	asynqInspector *asynq.Inspector,
 	redisClient *redis.Client,
 	lbService loadbalancer.Service,
+	kiwifyAPI *kiwify.APIClient,
 	sendLimitPerMinute int,
 	logger *zap.Logger,
 ) *SupportHandler {
@@ -100,6 +106,7 @@ func NewSupportHandler(
 		asynqInspector:     asynqInspector,
 		redisClient:        redisClient,
 		lbService:          lbService,
+		kiwifyAPI:          kiwifyAPI,
 		sendLimitPerMinute: sendLimitPerMinute,
 		logger:             logger,
 	}

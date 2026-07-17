@@ -359,6 +359,10 @@ jobs:
           WAHA_API_KEY=${{ secrets.WAHA_API_KEY }}
           ML_CREDENTIALS_ENCRYPTION_KEY=${{ secrets.ML_CREDENTIALS_ENCRYPTION_KEY }}
           KIWIFY_WEBHOOK_TOKEN=${{ secrets.KIWIFY_WEBHOOK_TOKEN }}
+          KIWIFY_API_CLIENT_ID=${{ secrets.KIWIFY_API_CLIENT_ID }}
+          KIWIFY_API_CLIENT_SECRET=${{ secrets.KIWIFY_API_CLIENT_SECRET }}
+          KIWIFY_API_ACCOUNT_ID=${{ secrets.KIWIFY_API_ACCOUNT_ID }}
+          KIWIFY_API_PRODUCT_ID=${{ vars.KIWIFY_API_PRODUCT_ID }}
           SMTP_HOST=${{ vars.SMTP_HOST }}
           SMTP_PORT=${{ vars.SMTP_PORT }}
           SMTP_USER=${{ secrets.SMTP_USERNAME }}

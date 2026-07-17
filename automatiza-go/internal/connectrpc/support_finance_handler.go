@@ -2,13 +2,16 @@ package connectrpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	supportv1 "automatiza-go/internal/gen/support/v1"
 	"automatiza-go/internal/repository/postgres"
+	"automatiza-go/internal/services/kiwify"
 
 	"connectrpc.com/connect"
+	"go.uber.org/zap"
 )
 
 // ============================================================
@@ -95,7 +98,7 @@ func (h *SupportHandler) GetFinanceOverview(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	// MRR estimado + receita por plano.
+	// --- Base ESTIMADA (fallback): MRR = plan_id x preco de catalogo. ---
 	var mrr float64
 	planRevenue := make([]*supportv1.PlanRevenue, 0, len(planRows))
 	for _, p := range planRows {
@@ -107,6 +110,65 @@ func (h *SupportHandler) GetFinanceOverview(
 			Subscribers: int32(p.Subscribers),
 			Mrr:         lineMRR,
 		})
+	}
+	var coverage float64
+	if counts.Active > 0 {
+		coverage = float64(counts.Mapped) / float64(counts.Active) * 100
+	}
+	activeSubs := counts.Active
+	note := fmt.Sprintf(
+		"Receita de assinatura é ESTIMATIVA: %d de %d ativos têm plano mapeado (%.0f%%). "+
+			"A Kiwify não expõe transações no banco — os demais ativos não entram no MRR.",
+		counts.Mapped, counts.Active, coverage,
+	)
+
+	// --- Reais da Kiwify (produto AUTOMATISA), quando habilitado. Sobrepoe a
+	// estimativa; em erro/timeout mantem o fallback (nunca quebra o painel). ---
+	var (
+		kiwifyLive            bool
+		revenueRealizedPeriod float64
+		paidSales             int
+		refundedSales         int
+		refundRate            float64
+		avgTicket             float64
+	)
+	if h.kiwifyAPI != nil && h.kiwifyAPI.Enabled() {
+		periodSum, perr := h.cachedKiwifySummary(ctx, from, to)
+		mrrSum, merr := h.cachedKiwifySummary(ctx, now.AddDate(0, 0, -30), now)
+		if perr == nil && merr == nil {
+			kiwifyLive = true
+			revenueRealizedPeriod = float64(periodSum.GrossPaidCents) / 100
+			paidSales = periodSum.PaidCount
+			refundedSales = periodSum.RefundedCount
+			if periodSum.PaidCount+periodSum.RefundedCount > 0 {
+				refundRate = float64(periodSum.RefundedCount) /
+					float64(periodSum.PaidCount+periodSum.RefundedCount) * 100
+			}
+			if periodSum.PaidCount > 0 {
+				avgTicket = revenueRealizedPeriod / float64(periodSum.PaidCount)
+			}
+			// MRR real = total pago nos ultimos 30 dias; assinantes = nº de pagas.
+			mrr = float64(mrrSum.GrossPaidCents) / 100
+			activeSubs = mrrSum.PaidCount
+			planRevenue = planRevenue[:0]
+			for _, p := range mrrSum.ByPlan {
+				price := 0.0
+				if p.Count > 0 {
+					price = float64(p.GrossCents) / 100 / float64(p.Count)
+				}
+				planRevenue = append(planRevenue, &supportv1.PlanRevenue{
+					Plan:        p.Plan,
+					Price:       price,
+					Subscribers: int32(p.Count),
+					Mrr:         float64(p.GrossCents) / 100,
+				})
+			}
+			note = "Receita do produto AUTOMATISA via API da Kiwify (vendas pagas). " +
+				"MRR = total pago nos últimos 30 dias; faturamento = pago na janela filtrada."
+		} else {
+			h.logger.Warn("finance: Kiwify indisponível, usando estimativa por plano",
+				zap.Errors("errs", []error{perr, merr}))
+		}
 	}
 
 	// Fluxo do periodo filtrado (lancamentos manuais).
@@ -139,38 +201,48 @@ func (h *SupportHandler) GetFinanceOverview(
 	}
 
 	months := float64(toIdx-fromIdx) + 1
+	// Contribuicao de assinatura no periodo: real (Kiwify) ou run-rate estimado.
 	subscriptionPeriod := mrr * months
-	netPeriod := subscriptionPeriod + revenuePeriod - expensesPeriod
+	if kiwifyLive {
+		subscriptionPeriod = revenueRealizedPeriod
+	}
 	grossPeriod := subscriptionPeriod + revenuePeriod
+	netPeriod := grossPeriod - expensesPeriod
 	var margin float64
 	if grossPeriod > 0 {
 		margin = netPeriod / grossPeriod * 100
 	}
 
-	var coverage float64
-	if counts.Active > 0 {
-		coverage = float64(counts.Mapped) / float64(counts.Active) * 100
-	}
 	var arpu float64
-	if counts.Mapped > 0 {
+	if kiwifyLive {
+		if activeSubs > 0 {
+			arpu = mrr / float64(activeSubs)
+		}
+	} else if counts.Mapped > 0 {
 		arpu = mrr / float64(counts.Mapped)
 	}
 
 	kpis := &supportv1.FinanceKpis{
-		MrrEstimated:        mrr,
-		ArrEstimated:        mrr * 12,
-		ArpuEstimated:       arpu,
-		ActiveSubscribers:   int32(counts.Active),
-		MappedSubscribers:   int32(counts.Mapped),
-		CoveragePercent:     coverage,
-		Suspended:           int32(counts.Suspended),
-		Canceled:            int32(counts.Canceled),
-		Refunded:            int32(counts.Refunded),
-		Late:                int32(counts.Late),
-		ExpensesPeriod:      expensesPeriod,
-		ManualRevenuePeriod: revenuePeriod,
-		NetResultPeriod:     netPeriod,
-		MarginPercent:       margin,
+		MrrEstimated:          mrr,
+		ArrEstimated:          mrr * 12,
+		ArpuEstimated:         arpu,
+		ActiveSubscribers:     int32(activeSubs),
+		MappedSubscribers:     int32(counts.Mapped),
+		CoveragePercent:       coverage,
+		Suspended:             int32(counts.Suspended),
+		Canceled:              int32(counts.Canceled),
+		Refunded:              int32(counts.Refunded),
+		Late:                  int32(counts.Late),
+		ExpensesPeriod:        expensesPeriod,
+		ManualRevenuePeriod:   revenuePeriod,
+		NetResultPeriod:       netPeriod,
+		MarginPercent:         margin,
+		RevenueRealizedPeriod: revenueRealizedPeriod,
+		PaidSales:             int32(paidSales),
+		RefundedSales:         int32(refundedSales),
+		RefundRate:            refundRate,
+		AvgTicket:             avgTicket,
+		KiwifyLive:            kiwifyLive,
 	}
 
 	// Projecao: 12 meses a partir do mes atual. Receita = MRR + receitas manuais
@@ -205,12 +277,6 @@ func (h *SupportHandler) GetFinanceOverview(
 		protoEntries = append(protoEntries, financeEntryToProto(e))
 	}
 
-	note := fmt.Sprintf(
-		"Receita de assinatura é ESTIMATIVA: %d de %d ativos têm plano mapeado (%.0f%%). "+
-			"A Kiwify não expõe transações no banco — os demais ativos não entram no MRR.",
-		counts.Mapped, counts.Active, coverage,
-	)
-
 	return connect.NewResponse(&supportv1.GetFinanceOverviewResponse{
 		Kpis:         kpis,
 		PlanRevenue:  planRevenue,
@@ -218,6 +284,38 @@ func (h *SupportHandler) GetFinanceOverview(
 		Entries:      protoEntries,
 		CoverageNote: note,
 	}), nil
+}
+
+// cachedKiwifySummary busca o resumo de vendas da Kiwify com cache no Redis
+// (TTL 15min) — a API tem rate limit 100/min e uma janela grande pagina varias
+// vezes, entao nao pode rodar a cada load do painel. Timeout proprio para nunca
+// travar o dashboard; erro/timeout sobe para o chamador cair na estimativa.
+func (h *SupportHandler) cachedKiwifySummary(ctx context.Context, from, to time.Time) (*kiwify.SalesSummary, error) {
+	key := fmt.Sprintf("support:kiwify_sales:%s:%s",
+		from.Format("2006-01-02"), to.Format("2006-01-02"))
+
+	if h.redisClient != nil {
+		if raw, err := h.redisClient.Get(ctx, key).Result(); err == nil {
+			var s kiwify.SalesSummary
+			if json.Unmarshal([]byte(raw), &s) == nil {
+				return &s, nil
+			}
+		}
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	sum, err := h.kiwifyAPI.GetSalesSummary(cctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+
+	if h.redisClient != nil {
+		if b, e := json.Marshal(sum); e == nil {
+			h.redisClient.Set(ctx, key, b, 15*time.Minute)
+		}
+	}
+	return sum, nil
 }
 
 // CreateFinanceEntry cria um lancamento manual (despesa/lucro).
