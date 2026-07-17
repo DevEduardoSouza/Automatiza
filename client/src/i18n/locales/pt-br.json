@@ -139,7 +139,8 @@
         "diagnoseFailed": "Falha ao diagnosticar automação.",
         "runFailed": "Falha ao executar automação."
       }
-    }
+    },
+    "download": "Baixar"
   },
   "pages": {
     "index": {
@@ -2494,7 +2495,45 @@
       "nav": {
         "home": "Início",
         "dashboard": "Painel do sistema",
-        "financeiro": "Financeiro"
+        "financeiro": "Financeiro",
+        "kanban": "Kanban"
+      },
+      "kanban": {
+        "title": "Kanban de bugs",
+        "subtitle": "Acompanhe a correção dos bugs pelas colunas de resolução.",
+        "newCard": "Novo card",
+        "created": "Card criado.",
+        "deleted": "Card removido.",
+        "emptyColumn": "Sem cards",
+        "columns": {
+          "corrigir": "Corrigir",
+          "aguardando": "Aguardando",
+          "em_andamento": "Em andamento",
+          "em_revisao": "Em revisão",
+          "corrigido": "Corrigido"
+        },
+        "priority": {
+          "low": "Baixa",
+          "medium": "Média",
+          "high": "Alta"
+        },
+        "form": {
+          "newTitle": "Novo card",
+          "editTitle": "Editar card",
+          "subtitle": "Descreva o bug, defina a prioridade e anexe documentos.",
+          "title": "Título",
+          "titlePh": "Ex.: Espelhamento parou no grupo X",
+          "description": "Descrição",
+          "descriptionPh": "Detalhes, passos para reproduzir, links, observações…",
+          "priority": "Prioridade",
+          "column": "Coluna",
+          "attachments": "Anexos",
+          "addFile": "Anexar",
+          "noAttachments": "Nenhum documento anexado.",
+          "fileAdded": "Documento anexado.",
+          "errTitle": "O título é obrigatório.",
+          "confirmDelete": "Excluir este card e seus anexos?"
+        }
       },
       "financeiro": {
         "title": "Financeiro",
@@ -3892,6 +3931,9 @@
       "createFailed": "Falha ao criar automação",
       "updateFailed": "Falha ao atualizar automação",
       "diagnoseFailed": "Falha ao diagnosticar automação"
+    },
+    "warnings": {
+      "overlapTitle": "Automação redundante detectada"
     }
   },
   "sidebar": {

@@ -1,5 +1,4 @@
 import { AccountSuspendedBanner, AccountSuspendedNotice } from '@/components/billing';
-import { useAccountSuspended } from '@/hooks/use-account-suspended';
 import { ErrorFallback } from '@/components/error-boundary';
 import { AppSidebar, MobileHeader } from '@/components/layout';
 import { AdminRoute, ProtectedRoute, SupportRoute } from '@/components/routing';
@@ -9,6 +8,7 @@ import { Toaster as Sonner } from '@/components/ui/sonner';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/contexts';
+import { useAccountSuspended } from '@/hooks/use-account-suspended';
 import { transport } from '@/lib/connect-transport';
 import { TransportProvider } from '@connectrpc/connect-query';
 import * as Sentry from '@sentry/react';
@@ -69,6 +69,7 @@ const Support = lazyWithRetry(() => import('./pages/support'));
 const SupportUser = lazyWithRetry(() => import('./pages/support-user'));
 const SupportDashboard = lazyWithRetry(() => import('./pages/support-dashboard'));
 const SupportFinanceiro = lazyWithRetry(() => import('./pages/support-financeiro'));
+const SupportKanban = lazyWithRetry(() => import('./pages/support-kanban'));
 const WhatsApp = lazyWithRetry(() => import('./pages/whatsapp'));
 
 const queryClient = new QueryClient({
@@ -364,6 +365,14 @@ const App = () => (
                       element={
                         <SupportRoute>
                           <SupportFinanceiro />
+                        </SupportRoute>
+                      }
+                    />
+                    <Route
+                      path="/support/kanban"
+                      element={
+                        <SupportRoute>
+                          <SupportKanban />
                         </SupportRoute>
                       }
                     />

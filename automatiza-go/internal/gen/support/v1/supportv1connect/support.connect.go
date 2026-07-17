@@ -60,30 +60,6 @@ const (
 	// SupportServiceDeleteFinanceEntryProcedure is the fully-qualified name of the SupportService's
 	// DeleteFinanceEntry RPC.
 	SupportServiceDeleteFinanceEntryProcedure = "/support.v1.SupportService/DeleteFinanceEntry"
-	// SupportServiceListKanbanCardsProcedure is the fully-qualified name of the SupportService's
-	// ListKanbanCards RPC.
-	SupportServiceListKanbanCardsProcedure = "/support.v1.SupportService/ListKanbanCards"
-	// SupportServiceCreateKanbanCardProcedure is the fully-qualified name of the SupportService's
-	// CreateKanbanCard RPC.
-	SupportServiceCreateKanbanCardProcedure = "/support.v1.SupportService/CreateKanbanCard"
-	// SupportServiceUpdateKanbanCardProcedure is the fully-qualified name of the SupportService's
-	// UpdateKanbanCard RPC.
-	SupportServiceUpdateKanbanCardProcedure = "/support.v1.SupportService/UpdateKanbanCard"
-	// SupportServiceMoveKanbanCardProcedure is the fully-qualified name of the SupportService's
-	// MoveKanbanCard RPC.
-	SupportServiceMoveKanbanCardProcedure = "/support.v1.SupportService/MoveKanbanCard"
-	// SupportServiceDeleteKanbanCardProcedure is the fully-qualified name of the SupportService's
-	// DeleteKanbanCard RPC.
-	SupportServiceDeleteKanbanCardProcedure = "/support.v1.SupportService/DeleteKanbanCard"
-	// SupportServiceUploadKanbanAttachmentProcedure is the fully-qualified name of the SupportService's
-	// UploadKanbanAttachment RPC.
-	SupportServiceUploadKanbanAttachmentProcedure = "/support.v1.SupportService/UploadKanbanAttachment"
-	// SupportServiceDownloadKanbanAttachmentProcedure is the fully-qualified name of the
-	// SupportService's DownloadKanbanAttachment RPC.
-	SupportServiceDownloadKanbanAttachmentProcedure = "/support.v1.SupportService/DownloadKanbanAttachment"
-	// SupportServiceDeleteKanbanAttachmentProcedure is the fully-qualified name of the SupportService's
-	// DeleteKanbanAttachment RPC.
-	SupportServiceDeleteKanbanAttachmentProcedure = "/support.v1.SupportService/DeleteKanbanAttachment"
 )
 
 // SupportServiceClient is a client for the support.v1.SupportService service.
@@ -108,22 +84,6 @@ type SupportServiceClient interface {
 	CreateFinanceEntry(context.Context, *connect.Request[v1.CreateFinanceEntryRequest]) (*connect.Response[v1.CreateFinanceEntryResponse], error)
 	// Remove um lancamento financeiro manual.
 	DeleteFinanceEntry(context.Context, *connect.Request[v1.DeleteFinanceEntryRequest]) (*connect.Response[v1.DeleteFinanceEntryResponse], error)
-	// Lista todos os cards do quadro com os metadados dos anexos.
-	ListKanbanCards(context.Context, *connect.Request[v1.ListKanbanCardsRequest]) (*connect.Response[v1.ListKanbanCardsResponse], error)
-	// Cria um card na coluna informada (default 'corrigir').
-	CreateKanbanCard(context.Context, *connect.Request[v1.CreateKanbanCardRequest]) (*connect.Response[v1.CreateKanbanCardResponse], error)
-	// Atualiza titulo/descricao/prioridade de um card.
-	UpdateKanbanCard(context.Context, *connect.Request[v1.UpdateKanbanCardRequest]) (*connect.Response[v1.UpdateKanbanCardResponse], error)
-	// Move/reordena um card (coluna + posicao).
-	MoveKanbanCard(context.Context, *connect.Request[v1.MoveKanbanCardRequest]) (*connect.Response[v1.MoveKanbanCardResponse], error)
-	// Remove um card (e seus anexos, em cascata).
-	DeleteKanbanCard(context.Context, *connect.Request[v1.DeleteKanbanCardRequest]) (*connect.Response[v1.DeleteKanbanCardResponse], error)
-	// Anexa um documento a um card.
-	UploadKanbanAttachment(context.Context, *connect.Request[v1.UploadKanbanAttachmentRequest]) (*connect.Response[v1.UploadKanbanAttachmentResponse], error)
-	// Baixa o conteudo de um anexo.
-	DownloadKanbanAttachment(context.Context, *connect.Request[v1.DownloadKanbanAttachmentRequest]) (*connect.Response[v1.DownloadKanbanAttachmentResponse], error)
-	// Remove um anexo.
-	DeleteKanbanAttachment(context.Context, *connect.Request[v1.DeleteKanbanAttachmentRequest]) (*connect.Response[v1.DeleteKanbanAttachmentResponse], error)
 }
 
 // NewSupportServiceClient constructs a client for the support.v1.SupportService service. By
@@ -191,76 +151,20 @@ func NewSupportServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(supportServiceMethods.ByName("DeleteFinanceEntry")),
 			connect.WithClientOptions(opts...),
 		),
-		listKanbanCards: connect.NewClient[v1.ListKanbanCardsRequest, v1.ListKanbanCardsResponse](
-			httpClient,
-			baseURL+SupportServiceListKanbanCardsProcedure,
-			connect.WithSchema(supportServiceMethods.ByName("ListKanbanCards")),
-			connect.WithClientOptions(opts...),
-		),
-		createKanbanCard: connect.NewClient[v1.CreateKanbanCardRequest, v1.CreateKanbanCardResponse](
-			httpClient,
-			baseURL+SupportServiceCreateKanbanCardProcedure,
-			connect.WithSchema(supportServiceMethods.ByName("CreateKanbanCard")),
-			connect.WithClientOptions(opts...),
-		),
-		updateKanbanCard: connect.NewClient[v1.UpdateKanbanCardRequest, v1.UpdateKanbanCardResponse](
-			httpClient,
-			baseURL+SupportServiceUpdateKanbanCardProcedure,
-			connect.WithSchema(supportServiceMethods.ByName("UpdateKanbanCard")),
-			connect.WithClientOptions(opts...),
-		),
-		moveKanbanCard: connect.NewClient[v1.MoveKanbanCardRequest, v1.MoveKanbanCardResponse](
-			httpClient,
-			baseURL+SupportServiceMoveKanbanCardProcedure,
-			connect.WithSchema(supportServiceMethods.ByName("MoveKanbanCard")),
-			connect.WithClientOptions(opts...),
-		),
-		deleteKanbanCard: connect.NewClient[v1.DeleteKanbanCardRequest, v1.DeleteKanbanCardResponse](
-			httpClient,
-			baseURL+SupportServiceDeleteKanbanCardProcedure,
-			connect.WithSchema(supportServiceMethods.ByName("DeleteKanbanCard")),
-			connect.WithClientOptions(opts...),
-		),
-		uploadKanbanAttachment: connect.NewClient[v1.UploadKanbanAttachmentRequest, v1.UploadKanbanAttachmentResponse](
-			httpClient,
-			baseURL+SupportServiceUploadKanbanAttachmentProcedure,
-			connect.WithSchema(supportServiceMethods.ByName("UploadKanbanAttachment")),
-			connect.WithClientOptions(opts...),
-		),
-		downloadKanbanAttachment: connect.NewClient[v1.DownloadKanbanAttachmentRequest, v1.DownloadKanbanAttachmentResponse](
-			httpClient,
-			baseURL+SupportServiceDownloadKanbanAttachmentProcedure,
-			connect.WithSchema(supportServiceMethods.ByName("DownloadKanbanAttachment")),
-			connect.WithClientOptions(opts...),
-		),
-		deleteKanbanAttachment: connect.NewClient[v1.DeleteKanbanAttachmentRequest, v1.DeleteKanbanAttachmentResponse](
-			httpClient,
-			baseURL+SupportServiceDeleteKanbanAttachmentProcedure,
-			connect.WithSchema(supportServiceMethods.ByName("DeleteKanbanAttachment")),
-			connect.WithClientOptions(opts...),
-		),
 	}
 }
 
 // supportServiceClient implements SupportServiceClient.
 type supportServiceClient struct {
-	searchUsers              *connect.Client[v1.SearchUsersRequest, v1.SearchUsersResponse]
-	getSystemHealth          *connect.Client[v1.GetSystemHealthRequest, v1.GetSystemHealthResponse]
-	resumePausedAutomations  *connect.Client[v1.ResumePausedAutomationsRequest, v1.ResumePausedAutomationsResponse]
-	getUserOverview          *connect.Client[v1.GetUserOverviewRequest, v1.GetUserOverviewResponse]
-	getGroupMessages         *connect.Client[v1.GetGroupMessagesRequest, v1.GetGroupMessagesResponse]
-	getUserActivity          *connect.Client[v1.GetUserActivityRequest, v1.GetUserActivityResponse]
-	getFinanceOverview       *connect.Client[v1.GetFinanceOverviewRequest, v1.GetFinanceOverviewResponse]
-	createFinanceEntry       *connect.Client[v1.CreateFinanceEntryRequest, v1.CreateFinanceEntryResponse]
-	deleteFinanceEntry       *connect.Client[v1.DeleteFinanceEntryRequest, v1.DeleteFinanceEntryResponse]
-	listKanbanCards          *connect.Client[v1.ListKanbanCardsRequest, v1.ListKanbanCardsResponse]
-	createKanbanCard         *connect.Client[v1.CreateKanbanCardRequest, v1.CreateKanbanCardResponse]
-	updateKanbanCard         *connect.Client[v1.UpdateKanbanCardRequest, v1.UpdateKanbanCardResponse]
-	moveKanbanCard           *connect.Client[v1.MoveKanbanCardRequest, v1.MoveKanbanCardResponse]
-	deleteKanbanCard         *connect.Client[v1.DeleteKanbanCardRequest, v1.DeleteKanbanCardResponse]
-	uploadKanbanAttachment   *connect.Client[v1.UploadKanbanAttachmentRequest, v1.UploadKanbanAttachmentResponse]
-	downloadKanbanAttachment *connect.Client[v1.DownloadKanbanAttachmentRequest, v1.DownloadKanbanAttachmentResponse]
-	deleteKanbanAttachment   *connect.Client[v1.DeleteKanbanAttachmentRequest, v1.DeleteKanbanAttachmentResponse]
+	searchUsers             *connect.Client[v1.SearchUsersRequest, v1.SearchUsersResponse]
+	getSystemHealth         *connect.Client[v1.GetSystemHealthRequest, v1.GetSystemHealthResponse]
+	resumePausedAutomations *connect.Client[v1.ResumePausedAutomationsRequest, v1.ResumePausedAutomationsResponse]
+	getUserOverview         *connect.Client[v1.GetUserOverviewRequest, v1.GetUserOverviewResponse]
+	getGroupMessages        *connect.Client[v1.GetGroupMessagesRequest, v1.GetGroupMessagesResponse]
+	getUserActivity         *connect.Client[v1.GetUserActivityRequest, v1.GetUserActivityResponse]
+	getFinanceOverview      *connect.Client[v1.GetFinanceOverviewRequest, v1.GetFinanceOverviewResponse]
+	createFinanceEntry      *connect.Client[v1.CreateFinanceEntryRequest, v1.CreateFinanceEntryResponse]
+	deleteFinanceEntry      *connect.Client[v1.DeleteFinanceEntryRequest, v1.DeleteFinanceEntryResponse]
 }
 
 // SearchUsers calls support.v1.SupportService.SearchUsers.
@@ -308,46 +212,6 @@ func (c *supportServiceClient) DeleteFinanceEntry(ctx context.Context, req *conn
 	return c.deleteFinanceEntry.CallUnary(ctx, req)
 }
 
-// ListKanbanCards calls support.v1.SupportService.ListKanbanCards.
-func (c *supportServiceClient) ListKanbanCards(ctx context.Context, req *connect.Request[v1.ListKanbanCardsRequest]) (*connect.Response[v1.ListKanbanCardsResponse], error) {
-	return c.listKanbanCards.CallUnary(ctx, req)
-}
-
-// CreateKanbanCard calls support.v1.SupportService.CreateKanbanCard.
-func (c *supportServiceClient) CreateKanbanCard(ctx context.Context, req *connect.Request[v1.CreateKanbanCardRequest]) (*connect.Response[v1.CreateKanbanCardResponse], error) {
-	return c.createKanbanCard.CallUnary(ctx, req)
-}
-
-// UpdateKanbanCard calls support.v1.SupportService.UpdateKanbanCard.
-func (c *supportServiceClient) UpdateKanbanCard(ctx context.Context, req *connect.Request[v1.UpdateKanbanCardRequest]) (*connect.Response[v1.UpdateKanbanCardResponse], error) {
-	return c.updateKanbanCard.CallUnary(ctx, req)
-}
-
-// MoveKanbanCard calls support.v1.SupportService.MoveKanbanCard.
-func (c *supportServiceClient) MoveKanbanCard(ctx context.Context, req *connect.Request[v1.MoveKanbanCardRequest]) (*connect.Response[v1.MoveKanbanCardResponse], error) {
-	return c.moveKanbanCard.CallUnary(ctx, req)
-}
-
-// DeleteKanbanCard calls support.v1.SupportService.DeleteKanbanCard.
-func (c *supportServiceClient) DeleteKanbanCard(ctx context.Context, req *connect.Request[v1.DeleteKanbanCardRequest]) (*connect.Response[v1.DeleteKanbanCardResponse], error) {
-	return c.deleteKanbanCard.CallUnary(ctx, req)
-}
-
-// UploadKanbanAttachment calls support.v1.SupportService.UploadKanbanAttachment.
-func (c *supportServiceClient) UploadKanbanAttachment(ctx context.Context, req *connect.Request[v1.UploadKanbanAttachmentRequest]) (*connect.Response[v1.UploadKanbanAttachmentResponse], error) {
-	return c.uploadKanbanAttachment.CallUnary(ctx, req)
-}
-
-// DownloadKanbanAttachment calls support.v1.SupportService.DownloadKanbanAttachment.
-func (c *supportServiceClient) DownloadKanbanAttachment(ctx context.Context, req *connect.Request[v1.DownloadKanbanAttachmentRequest]) (*connect.Response[v1.DownloadKanbanAttachmentResponse], error) {
-	return c.downloadKanbanAttachment.CallUnary(ctx, req)
-}
-
-// DeleteKanbanAttachment calls support.v1.SupportService.DeleteKanbanAttachment.
-func (c *supportServiceClient) DeleteKanbanAttachment(ctx context.Context, req *connect.Request[v1.DeleteKanbanAttachmentRequest]) (*connect.Response[v1.DeleteKanbanAttachmentResponse], error) {
-	return c.deleteKanbanAttachment.CallUnary(ctx, req)
-}
-
 // SupportServiceHandler is an implementation of the support.v1.SupportService service.
 type SupportServiceHandler interface {
 	// Busca usuarios por email, nome, telefone ou chip.
@@ -370,22 +234,6 @@ type SupportServiceHandler interface {
 	CreateFinanceEntry(context.Context, *connect.Request[v1.CreateFinanceEntryRequest]) (*connect.Response[v1.CreateFinanceEntryResponse], error)
 	// Remove um lancamento financeiro manual.
 	DeleteFinanceEntry(context.Context, *connect.Request[v1.DeleteFinanceEntryRequest]) (*connect.Response[v1.DeleteFinanceEntryResponse], error)
-	// Lista todos os cards do quadro com os metadados dos anexos.
-	ListKanbanCards(context.Context, *connect.Request[v1.ListKanbanCardsRequest]) (*connect.Response[v1.ListKanbanCardsResponse], error)
-	// Cria um card na coluna informada (default 'corrigir').
-	CreateKanbanCard(context.Context, *connect.Request[v1.CreateKanbanCardRequest]) (*connect.Response[v1.CreateKanbanCardResponse], error)
-	// Atualiza titulo/descricao/prioridade de um card.
-	UpdateKanbanCard(context.Context, *connect.Request[v1.UpdateKanbanCardRequest]) (*connect.Response[v1.UpdateKanbanCardResponse], error)
-	// Move/reordena um card (coluna + posicao).
-	MoveKanbanCard(context.Context, *connect.Request[v1.MoveKanbanCardRequest]) (*connect.Response[v1.MoveKanbanCardResponse], error)
-	// Remove um card (e seus anexos, em cascata).
-	DeleteKanbanCard(context.Context, *connect.Request[v1.DeleteKanbanCardRequest]) (*connect.Response[v1.DeleteKanbanCardResponse], error)
-	// Anexa um documento a um card.
-	UploadKanbanAttachment(context.Context, *connect.Request[v1.UploadKanbanAttachmentRequest]) (*connect.Response[v1.UploadKanbanAttachmentResponse], error)
-	// Baixa o conteudo de um anexo.
-	DownloadKanbanAttachment(context.Context, *connect.Request[v1.DownloadKanbanAttachmentRequest]) (*connect.Response[v1.DownloadKanbanAttachmentResponse], error)
-	// Remove um anexo.
-	DeleteKanbanAttachment(context.Context, *connect.Request[v1.DeleteKanbanAttachmentRequest]) (*connect.Response[v1.DeleteKanbanAttachmentResponse], error)
 }
 
 // NewSupportServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -449,54 +297,6 @@ func NewSupportServiceHandler(svc SupportServiceHandler, opts ...connect.Handler
 		connect.WithSchema(supportServiceMethods.ByName("DeleteFinanceEntry")),
 		connect.WithHandlerOptions(opts...),
 	)
-	supportServiceListKanbanCardsHandler := connect.NewUnaryHandler(
-		SupportServiceListKanbanCardsProcedure,
-		svc.ListKanbanCards,
-		connect.WithSchema(supportServiceMethods.ByName("ListKanbanCards")),
-		connect.WithHandlerOptions(opts...),
-	)
-	supportServiceCreateKanbanCardHandler := connect.NewUnaryHandler(
-		SupportServiceCreateKanbanCardProcedure,
-		svc.CreateKanbanCard,
-		connect.WithSchema(supportServiceMethods.ByName("CreateKanbanCard")),
-		connect.WithHandlerOptions(opts...),
-	)
-	supportServiceUpdateKanbanCardHandler := connect.NewUnaryHandler(
-		SupportServiceUpdateKanbanCardProcedure,
-		svc.UpdateKanbanCard,
-		connect.WithSchema(supportServiceMethods.ByName("UpdateKanbanCard")),
-		connect.WithHandlerOptions(opts...),
-	)
-	supportServiceMoveKanbanCardHandler := connect.NewUnaryHandler(
-		SupportServiceMoveKanbanCardProcedure,
-		svc.MoveKanbanCard,
-		connect.WithSchema(supportServiceMethods.ByName("MoveKanbanCard")),
-		connect.WithHandlerOptions(opts...),
-	)
-	supportServiceDeleteKanbanCardHandler := connect.NewUnaryHandler(
-		SupportServiceDeleteKanbanCardProcedure,
-		svc.DeleteKanbanCard,
-		connect.WithSchema(supportServiceMethods.ByName("DeleteKanbanCard")),
-		connect.WithHandlerOptions(opts...),
-	)
-	supportServiceUploadKanbanAttachmentHandler := connect.NewUnaryHandler(
-		SupportServiceUploadKanbanAttachmentProcedure,
-		svc.UploadKanbanAttachment,
-		connect.WithSchema(supportServiceMethods.ByName("UploadKanbanAttachment")),
-		connect.WithHandlerOptions(opts...),
-	)
-	supportServiceDownloadKanbanAttachmentHandler := connect.NewUnaryHandler(
-		SupportServiceDownloadKanbanAttachmentProcedure,
-		svc.DownloadKanbanAttachment,
-		connect.WithSchema(supportServiceMethods.ByName("DownloadKanbanAttachment")),
-		connect.WithHandlerOptions(opts...),
-	)
-	supportServiceDeleteKanbanAttachmentHandler := connect.NewUnaryHandler(
-		SupportServiceDeleteKanbanAttachmentProcedure,
-		svc.DeleteKanbanAttachment,
-		connect.WithSchema(supportServiceMethods.ByName("DeleteKanbanAttachment")),
-		connect.WithHandlerOptions(opts...),
-	)
 	return "/support.v1.SupportService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SupportServiceSearchUsersProcedure:
@@ -517,22 +317,6 @@ func NewSupportServiceHandler(svc SupportServiceHandler, opts ...connect.Handler
 			supportServiceCreateFinanceEntryHandler.ServeHTTP(w, r)
 		case SupportServiceDeleteFinanceEntryProcedure:
 			supportServiceDeleteFinanceEntryHandler.ServeHTTP(w, r)
-		case SupportServiceListKanbanCardsProcedure:
-			supportServiceListKanbanCardsHandler.ServeHTTP(w, r)
-		case SupportServiceCreateKanbanCardProcedure:
-			supportServiceCreateKanbanCardHandler.ServeHTTP(w, r)
-		case SupportServiceUpdateKanbanCardProcedure:
-			supportServiceUpdateKanbanCardHandler.ServeHTTP(w, r)
-		case SupportServiceMoveKanbanCardProcedure:
-			supportServiceMoveKanbanCardHandler.ServeHTTP(w, r)
-		case SupportServiceDeleteKanbanCardProcedure:
-			supportServiceDeleteKanbanCardHandler.ServeHTTP(w, r)
-		case SupportServiceUploadKanbanAttachmentProcedure:
-			supportServiceUploadKanbanAttachmentHandler.ServeHTTP(w, r)
-		case SupportServiceDownloadKanbanAttachmentProcedure:
-			supportServiceDownloadKanbanAttachmentHandler.ServeHTTP(w, r)
-		case SupportServiceDeleteKanbanAttachmentProcedure:
-			supportServiceDeleteKanbanAttachmentHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -576,36 +360,4 @@ func (UnimplementedSupportServiceHandler) CreateFinanceEntry(context.Context, *c
 
 func (UnimplementedSupportServiceHandler) DeleteFinanceEntry(context.Context, *connect.Request[v1.DeleteFinanceEntryRequest]) (*connect.Response[v1.DeleteFinanceEntryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.DeleteFinanceEntry is not implemented"))
-}
-
-func (UnimplementedSupportServiceHandler) ListKanbanCards(context.Context, *connect.Request[v1.ListKanbanCardsRequest]) (*connect.Response[v1.ListKanbanCardsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.ListKanbanCards is not implemented"))
-}
-
-func (UnimplementedSupportServiceHandler) CreateKanbanCard(context.Context, *connect.Request[v1.CreateKanbanCardRequest]) (*connect.Response[v1.CreateKanbanCardResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.CreateKanbanCard is not implemented"))
-}
-
-func (UnimplementedSupportServiceHandler) UpdateKanbanCard(context.Context, *connect.Request[v1.UpdateKanbanCardRequest]) (*connect.Response[v1.UpdateKanbanCardResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.UpdateKanbanCard is not implemented"))
-}
-
-func (UnimplementedSupportServiceHandler) MoveKanbanCard(context.Context, *connect.Request[v1.MoveKanbanCardRequest]) (*connect.Response[v1.MoveKanbanCardResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.MoveKanbanCard is not implemented"))
-}
-
-func (UnimplementedSupportServiceHandler) DeleteKanbanCard(context.Context, *connect.Request[v1.DeleteKanbanCardRequest]) (*connect.Response[v1.DeleteKanbanCardResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.DeleteKanbanCard is not implemented"))
-}
-
-func (UnimplementedSupportServiceHandler) UploadKanbanAttachment(context.Context, *connect.Request[v1.UploadKanbanAttachmentRequest]) (*connect.Response[v1.UploadKanbanAttachmentResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.UploadKanbanAttachment is not implemented"))
-}
-
-func (UnimplementedSupportServiceHandler) DownloadKanbanAttachment(context.Context, *connect.Request[v1.DownloadKanbanAttachmentRequest]) (*connect.Response[v1.DownloadKanbanAttachmentResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.DownloadKanbanAttachment is not implemented"))
-}
-
-func (UnimplementedSupportServiceHandler) DeleteKanbanAttachment(context.Context, *connect.Request[v1.DeleteKanbanAttachmentRequest]) (*connect.Response[v1.DeleteKanbanAttachmentResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.DeleteKanbanAttachment is not implemented"))
 }
