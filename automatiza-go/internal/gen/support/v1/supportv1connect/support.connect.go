@@ -51,6 +51,15 @@ const (
 	// SupportServiceGetUserActivityProcedure is the fully-qualified name of the SupportService's
 	// GetUserActivity RPC.
 	SupportServiceGetUserActivityProcedure = "/support.v1.SupportService/GetUserActivity"
+	// SupportServiceGetFinanceOverviewProcedure is the fully-qualified name of the SupportService's
+	// GetFinanceOverview RPC.
+	SupportServiceGetFinanceOverviewProcedure = "/support.v1.SupportService/GetFinanceOverview"
+	// SupportServiceCreateFinanceEntryProcedure is the fully-qualified name of the SupportService's
+	// CreateFinanceEntry RPC.
+	SupportServiceCreateFinanceEntryProcedure = "/support.v1.SupportService/CreateFinanceEntry"
+	// SupportServiceDeleteFinanceEntryProcedure is the fully-qualified name of the SupportService's
+	// DeleteFinanceEntry RPC.
+	SupportServiceDeleteFinanceEntryProcedure = "/support.v1.SupportService/DeleteFinanceEntry"
 )
 
 // SupportServiceClient is a client for the support.v1.SupportService service.
@@ -68,6 +77,13 @@ type SupportServiceClient interface {
 	GetGroupMessages(context.Context, *connect.Request[v1.GetGroupMessagesRequest]) (*connect.Response[v1.GetGroupMessagesResponse], error)
 	// Atividade de disparo: velocidade real, backlog e filas.
 	GetUserActivity(context.Context, *connect.Request[v1.GetUserActivityRequest]) (*connect.Response[v1.GetUserActivityResponse], error)
+	// Financeiro (aba Financeiro): KPIs de SaaS, receita por plano, projecao e
+	// lancamentos manuais. Leitura.
+	GetFinanceOverview(context.Context, *connect.Request[v1.GetFinanceOverviewRequest]) (*connect.Response[v1.GetFinanceOverviewResponse], error)
+	// Cria um lancamento financeiro manual (despesa/lucro, recorrente ou nao).
+	CreateFinanceEntry(context.Context, *connect.Request[v1.CreateFinanceEntryRequest]) (*connect.Response[v1.CreateFinanceEntryResponse], error)
+	// Remove um lancamento financeiro manual.
+	DeleteFinanceEntry(context.Context, *connect.Request[v1.DeleteFinanceEntryRequest]) (*connect.Response[v1.DeleteFinanceEntryResponse], error)
 }
 
 // NewSupportServiceClient constructs a client for the support.v1.SupportService service. By
@@ -117,6 +133,24 @@ func NewSupportServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(supportServiceMethods.ByName("GetUserActivity")),
 			connect.WithClientOptions(opts...),
 		),
+		getFinanceOverview: connect.NewClient[v1.GetFinanceOverviewRequest, v1.GetFinanceOverviewResponse](
+			httpClient,
+			baseURL+SupportServiceGetFinanceOverviewProcedure,
+			connect.WithSchema(supportServiceMethods.ByName("GetFinanceOverview")),
+			connect.WithClientOptions(opts...),
+		),
+		createFinanceEntry: connect.NewClient[v1.CreateFinanceEntryRequest, v1.CreateFinanceEntryResponse](
+			httpClient,
+			baseURL+SupportServiceCreateFinanceEntryProcedure,
+			connect.WithSchema(supportServiceMethods.ByName("CreateFinanceEntry")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteFinanceEntry: connect.NewClient[v1.DeleteFinanceEntryRequest, v1.DeleteFinanceEntryResponse](
+			httpClient,
+			baseURL+SupportServiceDeleteFinanceEntryProcedure,
+			connect.WithSchema(supportServiceMethods.ByName("DeleteFinanceEntry")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -128,6 +162,9 @@ type supportServiceClient struct {
 	getUserOverview         *connect.Client[v1.GetUserOverviewRequest, v1.GetUserOverviewResponse]
 	getGroupMessages        *connect.Client[v1.GetGroupMessagesRequest, v1.GetGroupMessagesResponse]
 	getUserActivity         *connect.Client[v1.GetUserActivityRequest, v1.GetUserActivityResponse]
+	getFinanceOverview      *connect.Client[v1.GetFinanceOverviewRequest, v1.GetFinanceOverviewResponse]
+	createFinanceEntry      *connect.Client[v1.CreateFinanceEntryRequest, v1.CreateFinanceEntryResponse]
+	deleteFinanceEntry      *connect.Client[v1.DeleteFinanceEntryRequest, v1.DeleteFinanceEntryResponse]
 }
 
 // SearchUsers calls support.v1.SupportService.SearchUsers.
@@ -160,6 +197,21 @@ func (c *supportServiceClient) GetUserActivity(ctx context.Context, req *connect
 	return c.getUserActivity.CallUnary(ctx, req)
 }
 
+// GetFinanceOverview calls support.v1.SupportService.GetFinanceOverview.
+func (c *supportServiceClient) GetFinanceOverview(ctx context.Context, req *connect.Request[v1.GetFinanceOverviewRequest]) (*connect.Response[v1.GetFinanceOverviewResponse], error) {
+	return c.getFinanceOverview.CallUnary(ctx, req)
+}
+
+// CreateFinanceEntry calls support.v1.SupportService.CreateFinanceEntry.
+func (c *supportServiceClient) CreateFinanceEntry(ctx context.Context, req *connect.Request[v1.CreateFinanceEntryRequest]) (*connect.Response[v1.CreateFinanceEntryResponse], error) {
+	return c.createFinanceEntry.CallUnary(ctx, req)
+}
+
+// DeleteFinanceEntry calls support.v1.SupportService.DeleteFinanceEntry.
+func (c *supportServiceClient) DeleteFinanceEntry(ctx context.Context, req *connect.Request[v1.DeleteFinanceEntryRequest]) (*connect.Response[v1.DeleteFinanceEntryResponse], error) {
+	return c.deleteFinanceEntry.CallUnary(ctx, req)
+}
+
 // SupportServiceHandler is an implementation of the support.v1.SupportService service.
 type SupportServiceHandler interface {
 	// Busca usuarios por email, nome, telefone ou chip.
@@ -175,6 +227,13 @@ type SupportServiceHandler interface {
 	GetGroupMessages(context.Context, *connect.Request[v1.GetGroupMessagesRequest]) (*connect.Response[v1.GetGroupMessagesResponse], error)
 	// Atividade de disparo: velocidade real, backlog e filas.
 	GetUserActivity(context.Context, *connect.Request[v1.GetUserActivityRequest]) (*connect.Response[v1.GetUserActivityResponse], error)
+	// Financeiro (aba Financeiro): KPIs de SaaS, receita por plano, projecao e
+	// lancamentos manuais. Leitura.
+	GetFinanceOverview(context.Context, *connect.Request[v1.GetFinanceOverviewRequest]) (*connect.Response[v1.GetFinanceOverviewResponse], error)
+	// Cria um lancamento financeiro manual (despesa/lucro, recorrente ou nao).
+	CreateFinanceEntry(context.Context, *connect.Request[v1.CreateFinanceEntryRequest]) (*connect.Response[v1.CreateFinanceEntryResponse], error)
+	// Remove um lancamento financeiro manual.
+	DeleteFinanceEntry(context.Context, *connect.Request[v1.DeleteFinanceEntryRequest]) (*connect.Response[v1.DeleteFinanceEntryResponse], error)
 }
 
 // NewSupportServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -220,6 +279,24 @@ func NewSupportServiceHandler(svc SupportServiceHandler, opts ...connect.Handler
 		connect.WithSchema(supportServiceMethods.ByName("GetUserActivity")),
 		connect.WithHandlerOptions(opts...),
 	)
+	supportServiceGetFinanceOverviewHandler := connect.NewUnaryHandler(
+		SupportServiceGetFinanceOverviewProcedure,
+		svc.GetFinanceOverview,
+		connect.WithSchema(supportServiceMethods.ByName("GetFinanceOverview")),
+		connect.WithHandlerOptions(opts...),
+	)
+	supportServiceCreateFinanceEntryHandler := connect.NewUnaryHandler(
+		SupportServiceCreateFinanceEntryProcedure,
+		svc.CreateFinanceEntry,
+		connect.WithSchema(supportServiceMethods.ByName("CreateFinanceEntry")),
+		connect.WithHandlerOptions(opts...),
+	)
+	supportServiceDeleteFinanceEntryHandler := connect.NewUnaryHandler(
+		SupportServiceDeleteFinanceEntryProcedure,
+		svc.DeleteFinanceEntry,
+		connect.WithSchema(supportServiceMethods.ByName("DeleteFinanceEntry")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/support.v1.SupportService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SupportServiceSearchUsersProcedure:
@@ -234,6 +311,12 @@ func NewSupportServiceHandler(svc SupportServiceHandler, opts ...connect.Handler
 			supportServiceGetGroupMessagesHandler.ServeHTTP(w, r)
 		case SupportServiceGetUserActivityProcedure:
 			supportServiceGetUserActivityHandler.ServeHTTP(w, r)
+		case SupportServiceGetFinanceOverviewProcedure:
+			supportServiceGetFinanceOverviewHandler.ServeHTTP(w, r)
+		case SupportServiceCreateFinanceEntryProcedure:
+			supportServiceCreateFinanceEntryHandler.ServeHTTP(w, r)
+		case SupportServiceDeleteFinanceEntryProcedure:
+			supportServiceDeleteFinanceEntryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -265,4 +348,16 @@ func (UnimplementedSupportServiceHandler) GetGroupMessages(context.Context, *con
 
 func (UnimplementedSupportServiceHandler) GetUserActivity(context.Context, *connect.Request[v1.GetUserActivityRequest]) (*connect.Response[v1.GetUserActivityResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.GetUserActivity is not implemented"))
+}
+
+func (UnimplementedSupportServiceHandler) GetFinanceOverview(context.Context, *connect.Request[v1.GetFinanceOverviewRequest]) (*connect.Response[v1.GetFinanceOverviewResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.GetFinanceOverview is not implemented"))
+}
+
+func (UnimplementedSupportServiceHandler) CreateFinanceEntry(context.Context, *connect.Request[v1.CreateFinanceEntryRequest]) (*connect.Response[v1.CreateFinanceEntryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.CreateFinanceEntry is not implemented"))
+}
+
+func (UnimplementedSupportServiceHandler) DeleteFinanceEntry(context.Context, *connect.Request[v1.DeleteFinanceEntryRequest]) (*connect.Response[v1.DeleteFinanceEntryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("support.v1.SupportService.DeleteFinanceEntry is not implemented"))
 }

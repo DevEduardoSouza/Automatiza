@@ -68,6 +68,7 @@ const ResetPassword = lazyWithRetry(() => import('./pages/reset-password'));
 const Support = lazyWithRetry(() => import('./pages/support'));
 const SupportUser = lazyWithRetry(() => import('./pages/support-user'));
 const SupportDashboard = lazyWithRetry(() => import('./pages/support-dashboard'));
+const SupportFinanceiro = lazyWithRetry(() => import('./pages/support-financeiro'));
 const WhatsApp = lazyWithRetry(() => import('./pages/whatsapp'));
 
 const queryClient = new QueryClient({
@@ -355,6 +356,14 @@ const App = () => (
                       element={
                         <SupportRoute>
                           <SupportDashboard />
+                        </SupportRoute>
+                      }
+                    />
+                    <Route
+                      path="/support/financeiro"
+                      element={
+                        <SupportRoute>
+                          <SupportFinanceiro />
                         </SupportRoute>
                       }
                     />

@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ROUTES } from "@/constants/routes";
 import { useAuth } from "@/contexts";
-import { Activity, Headset, type LucideIcon } from "lucide-react";
+import { Activity, Headset, type LucideIcon, Wallet } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router";
 import { LogoutIcon, ToggleSidebarIcon } from "./app-sidebar";
@@ -31,6 +31,11 @@ export const supportMenuItems: SupportMenuItem[] = [
 		titleKey: "pages.support.nav.dashboard",
 		url: "/support/dashboard",
 		icon: Activity,
+	},
+	{
+		titleKey: "pages.support.nav.financeiro",
+		url: "/support/financeiro",
+		icon: Wallet,
 	},
 ];
 

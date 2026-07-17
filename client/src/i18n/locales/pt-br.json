@@ -2493,7 +2493,81 @@
       "signOut": "Sair",
       "nav": {
         "home": "Início",
-        "dashboard": "Painel do sistema"
+        "dashboard": "Painel do sistema",
+        "financeiro": "Financeiro"
+      },
+      "financeiro": {
+        "title": "Financeiro",
+        "subtitle": "Receita, despesas e projeção do SaaS",
+        "from": "De",
+        "to": "Até",
+        "newEntry": "Novo lançamento",
+        "estimate": "estimativa",
+        "entryDeleted": "Lançamento removido.",
+        "kpi": {
+          "mrr": "MRR (receita mensal)",
+          "coverage": "cobertura {{mapped}}/{{active}}",
+          "arr": "ARR (receita anual)",
+          "arpu": "ARPU (por assinante)",
+          "activeSubs": "Assinantes ativos",
+          "activeHint": "billing ativo (pagamento não rastreado por usuário)",
+          "netResult": "Resultado do período",
+          "expenses": "Despesas do período",
+          "margin": "Margem",
+          "churnRisk": "Risco de churn",
+          "churnHint": "{{suspended}} suspensos · {{late}} em atraso · {{refunded}} reembolsos"
+        },
+        "projection": {
+          "title": "Projeção de lucro",
+          "month": "Mensal",
+          "quarter": "Trimestral",
+          "year": "Anual",
+          "revenue": "Receita",
+          "expenses": "Despesas",
+          "net": "Lucro"
+        },
+        "planMix": {
+          "title": "Receita estimada por plano",
+          "empty": "Nenhum assinante ativo com plano mapeado."
+        },
+        "byPlan": {
+          "title": "Detalhe por plano",
+          "plan": "Plano",
+          "price": "Preço",
+          "subs": "Assinantes"
+        },
+        "entries": {
+          "title": "Lançamentos manuais",
+          "empty": "Nenhum lançamento ainda. Use \"Novo lançamento\".",
+          "date": "Data",
+          "description": "Descrição",
+          "recurrence": "Recorrência",
+          "amount": "Valor",
+          "once": "Único",
+          "recInfinite": "Recorrente (infinito)",
+          "recMonths": "Recorrente ({{n}} meses)"
+        },
+        "form": {
+          "title": "Novo lançamento",
+          "subtitle": "Despesa ou lucro, com recorrência opcional.",
+          "expense": "Despesa",
+          "revenue": "Lucro / receita",
+          "description": "Descrição",
+          "descriptionPh": "Ex.: Servidor Hetzner",
+          "amount": "Valor (R$)",
+          "date": "Data",
+          "category": "Categoria (opcional)",
+          "categoryPh": "Ex.: Infra, Marketing",
+          "recurring": "Recorrente",
+          "infinite": "Infinito (todo mês)",
+          "forMonths": "Por",
+          "months": "meses",
+          "save": "Salvar",
+          "saved": "Lançamento salvo.",
+          "errDescription": "Informe uma descrição.",
+          "errAmount": "Valor inválido.",
+          "errMonths": "Número de meses inválido."
+        }
       },
       "search": {
         "title": "Buscar cliente",

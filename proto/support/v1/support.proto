@@ -355,6 +355,107 @@ message ResumePausedAutomationsResponse {
   int32 skipped_error = 3;
 }
 
+// ============================================================
+// Financeiro (aba Financeiro)
+// ============================================================
+//
+// NOTA de invariante: este service e' de LEITURA (ver cabecalho). Os RPCs de
+// ESCRITA abaixo (Create/Delete de lancamento financeiro) sao um desvio
+// consciente: a aba Financeiro vive no painel de suporte e a gestao de
+// despesas/lucros e' tarefa da equipe de suporte, nao do admin. Continuam
+// protegidos por requireSupport e NAO tocam dados de cliente — so a tabela
+// finance_entries (lancamentos manuais).
+
+// Um lancamento financeiro manual (despesa ou receita/lucro).
+message FinanceEntry {
+  string id = 1;
+  string kind = 2;         // "expense" | "revenue"
+  string description = 3;
+  double amount = 4;       // sempre >= 0; o sinal vem de kind
+  optional string category = 5;
+  string entry_date = 6;   // "YYYY-MM-DD"
+  bool recurring = 7;
+  // Ausente + recurring => recorrencia infinita; N > 0 => vale por N meses.
+  optional int32 recurrence_months = 8;
+  string created_at = 9;   // RFC3339
+}
+
+// KPIs de SaaS. Os campos de assinatura sao ESTIMATIVA: derivados de
+// profiles.plan_id -> plans.price para os ativos mapeados. coverage_percent diz
+// que fracao dos ativos tem plano mapeado (o resto e' invisivel a receita).
+message FinanceKpis {
+  double mrr_estimated = 1;        // Σ preco do plano dos ativos com plan_id
+  double arr_estimated = 2;        // mrr * 12
+  double arpu_estimated = 3;       // mrr / assinantes mapeados
+  int32 active_subscribers = 4;    // billing_status = 'active'
+  int32 mapped_subscribers = 5;    // ativos com plan_id (base do MRR)
+  double coverage_percent = 6;     // mapped / active * 100
+  int32 suspended = 7;
+  int32 canceled = 8;
+  int32 refunded = 9;              // billing_last_event_type ~ refund
+  int32 late = 10;                 // subscription_late
+  // Fluxo do periodo filtrado (lancamentos manuais):
+  double expenses_period = 11;
+  double manual_revenue_period = 12;
+  // Resultado = mrr estimado (run-rate mensal) + receita manual - despesas.
+  double net_result_period = 13;
+  double margin_percent = 14;
+}
+
+// Receita estimada por plano (para o mix e a barra de receita por plano).
+message PlanRevenue {
+  string plan = 1;
+  double price = 2;
+  int32 subscribers = 3;
+  double mrr = 4;
+}
+
+// Um ponto MENSAL da projecao (a UI agrega em trimestre/ano).
+message FinanceProjectionPoint {
+  string period_start = 1;  // "YYYY-MM-01"
+  string label = 2;         // ex.: "jul/2026"
+  double revenue = 3;       // MRR estimado + receitas recorrentes/pontuais
+  double expenses = 4;      // despesas recorrentes/pontuais no mes
+  double net = 5;           // revenue - expenses
+}
+
+message GetFinanceOverviewRequest {
+  // Janela do filtro por data (YYYY-MM-DD). Ausentes => mes corrente.
+  optional string from = 1;
+  optional string to = 2;
+}
+
+message GetFinanceOverviewResponse {
+  FinanceKpis kpis = 1;
+  repeated PlanRevenue plan_revenue = 2;
+  repeated FinanceProjectionPoint projection = 3; // 12 meses a partir do mes atual
+  repeated FinanceEntry entries = 4;              // todos os lancamentos
+  // Aviso honesto exibido no rodape (cobertura da estimativa de receita).
+  string coverage_note = 5;
+}
+
+message CreateFinanceEntryRequest {
+  string kind = 1;         // "expense" | "revenue"
+  string description = 2;
+  double amount = 3;
+  optional string category = 4;
+  string entry_date = 5;   // "YYYY-MM-DD"
+  bool recurring = 6;
+  optional int32 recurrence_months = 7; // ausente + recurring => infinito
+}
+
+message CreateFinanceEntryResponse {
+  FinanceEntry entry = 1;
+}
+
+message DeleteFinanceEntryRequest {
+  string id = 1;
+}
+
+message DeleteFinanceEntryResponse {
+  bool deleted = 1;
+}
+
 service SupportService {
   // Busca usuarios por email, nome, telefone ou chip.
   rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse);
@@ -375,4 +476,17 @@ service SupportService {
 
   // Atividade de disparo: velocidade real, backlog e filas.
   rpc GetUserActivity(GetUserActivityRequest) returns (GetUserActivityResponse);
+
+  // Financeiro (aba Financeiro): KPIs de SaaS, receita por plano, projecao e
+  // lancamentos manuais. Leitura.
+  rpc GetFinanceOverview(GetFinanceOverviewRequest)
+      returns (GetFinanceOverviewResponse);
+
+  // Cria um lancamento financeiro manual (despesa/lucro, recorrente ou nao).
+  rpc CreateFinanceEntry(CreateFinanceEntryRequest)
+      returns (CreateFinanceEntryResponse);
+
+  // Remove um lancamento financeiro manual.
+  rpc DeleteFinanceEntry(DeleteFinanceEntryRequest)
+      returns (DeleteFinanceEntryResponse);
 }

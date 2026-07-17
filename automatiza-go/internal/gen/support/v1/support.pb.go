@@ -2351,6 +2351,769 @@ func (x *ResumePausedAutomationsResponse) GetSkippedError() int32 {
 	return 0
 }
 
+// Um lancamento financeiro manual (despesa ou receita/lucro).
+type FinanceEntry struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Kind        string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // "expense" | "revenue"
+	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Amount      float64                `protobuf:"fixed64,4,opt,name=amount,proto3" json:"amount,omitempty"` // sempre >= 0; o sinal vem de kind
+	Category    *string                `protobuf:"bytes,5,opt,name=category,proto3,oneof" json:"category,omitempty"`
+	EntryDate   string                 `protobuf:"bytes,6,opt,name=entry_date,json=entryDate,proto3" json:"entry_date,omitempty"` // "YYYY-MM-DD"
+	Recurring   bool                   `protobuf:"varint,7,opt,name=recurring,proto3" json:"recurring,omitempty"`
+	// Ausente + recurring => recorrencia infinita; N > 0 => vale por N meses.
+	RecurrenceMonths *int32 `protobuf:"varint,8,opt,name=recurrence_months,json=recurrenceMonths,proto3,oneof" json:"recurrence_months,omitempty"`
+	CreatedAt        string `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // RFC3339
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *FinanceEntry) Reset() {
+	*x = FinanceEntry{}
+	mi := &file_support_v1_support_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FinanceEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FinanceEntry) ProtoMessage() {}
+
+func (x *FinanceEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FinanceEntry.ProtoReflect.Descriptor instead.
+func (*FinanceEntry) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *FinanceEntry) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *FinanceEntry) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *FinanceEntry) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *FinanceEntry) GetAmount() float64 {
+	if x != nil {
+		return x.Amount
+	}
+	return 0
+}
+
+func (x *FinanceEntry) GetCategory() string {
+	if x != nil && x.Category != nil {
+		return *x.Category
+	}
+	return ""
+}
+
+func (x *FinanceEntry) GetEntryDate() string {
+	if x != nil {
+		return x.EntryDate
+	}
+	return ""
+}
+
+func (x *FinanceEntry) GetRecurring() bool {
+	if x != nil {
+		return x.Recurring
+	}
+	return false
+}
+
+func (x *FinanceEntry) GetRecurrenceMonths() int32 {
+	if x != nil && x.RecurrenceMonths != nil {
+		return *x.RecurrenceMonths
+	}
+	return 0
+}
+
+func (x *FinanceEntry) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+// KPIs de SaaS. Os campos de assinatura sao ESTIMATIVA: derivados de
+// profiles.plan_id -> plans.price para os ativos mapeados. coverage_percent diz
+// que fracao dos ativos tem plano mapeado (o resto e' invisivel a receita).
+type FinanceKpis struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	MrrEstimated      float64                `protobuf:"fixed64,1,opt,name=mrr_estimated,json=mrrEstimated,proto3" json:"mrr_estimated,omitempty"`               // Σ preco do plano dos ativos com plan_id
+	ArrEstimated      float64                `protobuf:"fixed64,2,opt,name=arr_estimated,json=arrEstimated,proto3" json:"arr_estimated,omitempty"`               // mrr * 12
+	ArpuEstimated     float64                `protobuf:"fixed64,3,opt,name=arpu_estimated,json=arpuEstimated,proto3" json:"arpu_estimated,omitempty"`            // mrr / assinantes mapeados
+	ActiveSubscribers int32                  `protobuf:"varint,4,opt,name=active_subscribers,json=activeSubscribers,proto3" json:"active_subscribers,omitempty"` // billing_status = 'active'
+	MappedSubscribers int32                  `protobuf:"varint,5,opt,name=mapped_subscribers,json=mappedSubscribers,proto3" json:"mapped_subscribers,omitempty"` // ativos com plan_id (base do MRR)
+	CoveragePercent   float64                `protobuf:"fixed64,6,opt,name=coverage_percent,json=coveragePercent,proto3" json:"coverage_percent,omitempty"`      // mapped / active * 100
+	Suspended         int32                  `protobuf:"varint,7,opt,name=suspended,proto3" json:"suspended,omitempty"`
+	Canceled          int32                  `protobuf:"varint,8,opt,name=canceled,proto3" json:"canceled,omitempty"`
+	Refunded          int32                  `protobuf:"varint,9,opt,name=refunded,proto3" json:"refunded,omitempty"` // billing_last_event_type ~ refund
+	Late              int32                  `protobuf:"varint,10,opt,name=late,proto3" json:"late,omitempty"`        // subscription_late
+	// Fluxo do periodo filtrado (lancamentos manuais):
+	ExpensesPeriod      float64 `protobuf:"fixed64,11,opt,name=expenses_period,json=expensesPeriod,proto3" json:"expenses_period,omitempty"`
+	ManualRevenuePeriod float64 `protobuf:"fixed64,12,opt,name=manual_revenue_period,json=manualRevenuePeriod,proto3" json:"manual_revenue_period,omitempty"`
+	// Resultado = mrr estimado (run-rate mensal) + receita manual - despesas.
+	NetResultPeriod float64 `protobuf:"fixed64,13,opt,name=net_result_period,json=netResultPeriod,proto3" json:"net_result_period,omitempty"`
+	MarginPercent   float64 `protobuf:"fixed64,14,opt,name=margin_percent,json=marginPercent,proto3" json:"margin_percent,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *FinanceKpis) Reset() {
+	*x = FinanceKpis{}
+	mi := &file_support_v1_support_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FinanceKpis) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FinanceKpis) ProtoMessage() {}
+
+func (x *FinanceKpis) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FinanceKpis.ProtoReflect.Descriptor instead.
+func (*FinanceKpis) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *FinanceKpis) GetMrrEstimated() float64 {
+	if x != nil {
+		return x.MrrEstimated
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetArrEstimated() float64 {
+	if x != nil {
+		return x.ArrEstimated
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetArpuEstimated() float64 {
+	if x != nil {
+		return x.ArpuEstimated
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetActiveSubscribers() int32 {
+	if x != nil {
+		return x.ActiveSubscribers
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetMappedSubscribers() int32 {
+	if x != nil {
+		return x.MappedSubscribers
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetCoveragePercent() float64 {
+	if x != nil {
+		return x.CoveragePercent
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetSuspended() int32 {
+	if x != nil {
+		return x.Suspended
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetCanceled() int32 {
+	if x != nil {
+		return x.Canceled
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetRefunded() int32 {
+	if x != nil {
+		return x.Refunded
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetLate() int32 {
+	if x != nil {
+		return x.Late
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetExpensesPeriod() float64 {
+	if x != nil {
+		return x.ExpensesPeriod
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetManualRevenuePeriod() float64 {
+	if x != nil {
+		return x.ManualRevenuePeriod
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetNetResultPeriod() float64 {
+	if x != nil {
+		return x.NetResultPeriod
+	}
+	return 0
+}
+
+func (x *FinanceKpis) GetMarginPercent() float64 {
+	if x != nil {
+		return x.MarginPercent
+	}
+	return 0
+}
+
+// Receita estimada por plano (para o mix e a barra de receita por plano).
+type PlanRevenue struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Plan          string                 `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
+	Price         float64                `protobuf:"fixed64,2,opt,name=price,proto3" json:"price,omitempty"`
+	Subscribers   int32                  `protobuf:"varint,3,opt,name=subscribers,proto3" json:"subscribers,omitempty"`
+	Mrr           float64                `protobuf:"fixed64,4,opt,name=mrr,proto3" json:"mrr,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlanRevenue) Reset() {
+	*x = PlanRevenue{}
+	mi := &file_support_v1_support_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlanRevenue) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlanRevenue) ProtoMessage() {}
+
+func (x *PlanRevenue) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlanRevenue.ProtoReflect.Descriptor instead.
+func (*PlanRevenue) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *PlanRevenue) GetPlan() string {
+	if x != nil {
+		return x.Plan
+	}
+	return ""
+}
+
+func (x *PlanRevenue) GetPrice() float64 {
+	if x != nil {
+		return x.Price
+	}
+	return 0
+}
+
+func (x *PlanRevenue) GetSubscribers() int32 {
+	if x != nil {
+		return x.Subscribers
+	}
+	return 0
+}
+
+func (x *PlanRevenue) GetMrr() float64 {
+	if x != nil {
+		return x.Mrr
+	}
+	return 0
+}
+
+// Um ponto MENSAL da projecao (a UI agrega em trimestre/ano).
+type FinanceProjectionPoint struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PeriodStart   string                 `protobuf:"bytes,1,opt,name=period_start,json=periodStart,proto3" json:"period_start,omitempty"` // "YYYY-MM-01"
+	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`                                // ex.: "jul/2026"
+	Revenue       float64                `protobuf:"fixed64,3,opt,name=revenue,proto3" json:"revenue,omitempty"`                          // MRR estimado + receitas recorrentes/pontuais
+	Expenses      float64                `protobuf:"fixed64,4,opt,name=expenses,proto3" json:"expenses,omitempty"`                        // despesas recorrentes/pontuais no mes
+	Net           float64                `protobuf:"fixed64,5,opt,name=net,proto3" json:"net,omitempty"`                                  // revenue - expenses
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FinanceProjectionPoint) Reset() {
+	*x = FinanceProjectionPoint{}
+	mi := &file_support_v1_support_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FinanceProjectionPoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FinanceProjectionPoint) ProtoMessage() {}
+
+func (x *FinanceProjectionPoint) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FinanceProjectionPoint.ProtoReflect.Descriptor instead.
+func (*FinanceProjectionPoint) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *FinanceProjectionPoint) GetPeriodStart() string {
+	if x != nil {
+		return x.PeriodStart
+	}
+	return ""
+}
+
+func (x *FinanceProjectionPoint) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *FinanceProjectionPoint) GetRevenue() float64 {
+	if x != nil {
+		return x.Revenue
+	}
+	return 0
+}
+
+func (x *FinanceProjectionPoint) GetExpenses() float64 {
+	if x != nil {
+		return x.Expenses
+	}
+	return 0
+}
+
+func (x *FinanceProjectionPoint) GetNet() float64 {
+	if x != nil {
+		return x.Net
+	}
+	return 0
+}
+
+type GetFinanceOverviewRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Janela do filtro por data (YYYY-MM-DD). Ausentes => mes corrente.
+	From          *string `protobuf:"bytes,1,opt,name=from,proto3,oneof" json:"from,omitempty"`
+	To            *string `protobuf:"bytes,2,opt,name=to,proto3,oneof" json:"to,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFinanceOverviewRequest) Reset() {
+	*x = GetFinanceOverviewRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFinanceOverviewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFinanceOverviewRequest) ProtoMessage() {}
+
+func (x *GetFinanceOverviewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFinanceOverviewRequest.ProtoReflect.Descriptor instead.
+func (*GetFinanceOverviewRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *GetFinanceOverviewRequest) GetFrom() string {
+	if x != nil && x.From != nil {
+		return *x.From
+	}
+	return ""
+}
+
+func (x *GetFinanceOverviewRequest) GetTo() string {
+	if x != nil && x.To != nil {
+		return *x.To
+	}
+	return ""
+}
+
+type GetFinanceOverviewResponse struct {
+	state       protoimpl.MessageState    `protogen:"open.v1"`
+	Kpis        *FinanceKpis              `protobuf:"bytes,1,opt,name=kpis,proto3" json:"kpis,omitempty"`
+	PlanRevenue []*PlanRevenue            `protobuf:"bytes,2,rep,name=plan_revenue,json=planRevenue,proto3" json:"plan_revenue,omitempty"`
+	Projection  []*FinanceProjectionPoint `protobuf:"bytes,3,rep,name=projection,proto3" json:"projection,omitempty"` // 12 meses a partir do mes atual
+	Entries     []*FinanceEntry           `protobuf:"bytes,4,rep,name=entries,proto3" json:"entries,omitempty"`       // todos os lancamentos
+	// Aviso honesto exibido no rodape (cobertura da estimativa de receita).
+	CoverageNote  string `protobuf:"bytes,5,opt,name=coverage_note,json=coverageNote,proto3" json:"coverage_note,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFinanceOverviewResponse) Reset() {
+	*x = GetFinanceOverviewResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFinanceOverviewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFinanceOverviewResponse) ProtoMessage() {}
+
+func (x *GetFinanceOverviewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFinanceOverviewResponse.ProtoReflect.Descriptor instead.
+func (*GetFinanceOverviewResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *GetFinanceOverviewResponse) GetKpis() *FinanceKpis {
+	if x != nil {
+		return x.Kpis
+	}
+	return nil
+}
+
+func (x *GetFinanceOverviewResponse) GetPlanRevenue() []*PlanRevenue {
+	if x != nil {
+		return x.PlanRevenue
+	}
+	return nil
+}
+
+func (x *GetFinanceOverviewResponse) GetProjection() []*FinanceProjectionPoint {
+	if x != nil {
+		return x.Projection
+	}
+	return nil
+}
+
+func (x *GetFinanceOverviewResponse) GetEntries() []*FinanceEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+func (x *GetFinanceOverviewResponse) GetCoverageNote() string {
+	if x != nil {
+		return x.CoverageNote
+	}
+	return ""
+}
+
+type CreateFinanceEntryRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Kind             string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"` // "expense" | "revenue"
+	Description      string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	Amount           float64                `protobuf:"fixed64,3,opt,name=amount,proto3" json:"amount,omitempty"`
+	Category         *string                `protobuf:"bytes,4,opt,name=category,proto3,oneof" json:"category,omitempty"`
+	EntryDate        string                 `protobuf:"bytes,5,opt,name=entry_date,json=entryDate,proto3" json:"entry_date,omitempty"` // "YYYY-MM-DD"
+	Recurring        bool                   `protobuf:"varint,6,opt,name=recurring,proto3" json:"recurring,omitempty"`
+	RecurrenceMonths *int32                 `protobuf:"varint,7,opt,name=recurrence_months,json=recurrenceMonths,proto3,oneof" json:"recurrence_months,omitempty"` // ausente + recurring => infinito
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *CreateFinanceEntryRequest) Reset() {
+	*x = CreateFinanceEntryRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateFinanceEntryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateFinanceEntryRequest) ProtoMessage() {}
+
+func (x *CreateFinanceEntryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateFinanceEntryRequest.ProtoReflect.Descriptor instead.
+func (*CreateFinanceEntryRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *CreateFinanceEntryRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *CreateFinanceEntryRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *CreateFinanceEntryRequest) GetAmount() float64 {
+	if x != nil {
+		return x.Amount
+	}
+	return 0
+}
+
+func (x *CreateFinanceEntryRequest) GetCategory() string {
+	if x != nil && x.Category != nil {
+		return *x.Category
+	}
+	return ""
+}
+
+func (x *CreateFinanceEntryRequest) GetEntryDate() string {
+	if x != nil {
+		return x.EntryDate
+	}
+	return ""
+}
+
+func (x *CreateFinanceEntryRequest) GetRecurring() bool {
+	if x != nil {
+		return x.Recurring
+	}
+	return false
+}
+
+func (x *CreateFinanceEntryRequest) GetRecurrenceMonths() int32 {
+	if x != nil && x.RecurrenceMonths != nil {
+		return *x.RecurrenceMonths
+	}
+	return 0
+}
+
+type CreateFinanceEntryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entry         *FinanceEntry          `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateFinanceEntryResponse) Reset() {
+	*x = CreateFinanceEntryResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateFinanceEntryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateFinanceEntryResponse) ProtoMessage() {}
+
+func (x *CreateFinanceEntryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateFinanceEntryResponse.ProtoReflect.Descriptor instead.
+func (*CreateFinanceEntryResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *CreateFinanceEntryResponse) GetEntry() *FinanceEntry {
+	if x != nil {
+		return x.Entry
+	}
+	return nil
+}
+
+type DeleteFinanceEntryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteFinanceEntryRequest) Reset() {
+	*x = DeleteFinanceEntryRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteFinanceEntryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteFinanceEntryRequest) ProtoMessage() {}
+
+func (x *DeleteFinanceEntryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteFinanceEntryRequest.ProtoReflect.Descriptor instead.
+func (*DeleteFinanceEntryRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *DeleteFinanceEntryRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type DeleteFinanceEntryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Deleted       bool                   `protobuf:"varint,1,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteFinanceEntryResponse) Reset() {
+	*x = DeleteFinanceEntryResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteFinanceEntryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteFinanceEntryResponse) ProtoMessage() {}
+
+func (x *DeleteFinanceEntryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteFinanceEntryResponse.ProtoReflect.Descriptor instead.
+func (*DeleteFinanceEntryResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *DeleteFinanceEntryResponse) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
+}
+
 var File_support_v1_support_proto protoreflect.FileDescriptor
 
 const file_support_v1_support_proto_rawDesc = "" +
@@ -2601,21 +3364,95 @@ const file_support_v1_support_proto_rawDesc = "" +
 	"\x1fResumePausedAutomationsResponse\x12\x18\n" +
 	"\aresumed\x18\x01 \x01(\x05R\aresumed\x12'\n" +
 	"\x0fskipped_billing\x18\x02 \x01(\x05R\x0eskippedBilling\x12#\n" +
-	"\rskipped_error\x18\x03 \x01(\x05R\fskippedError*\x87\x01\n" +
+	"\rskipped_error\x18\x03 \x01(\x05R\fskippedError\"\xbe\x02\n" +
+	"\fFinanceEntry\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x16\n" +
+	"\x06amount\x18\x04 \x01(\x01R\x06amount\x12\x1f\n" +
+	"\bcategory\x18\x05 \x01(\tH\x00R\bcategory\x88\x01\x01\x12\x1d\n" +
+	"\n" +
+	"entry_date\x18\x06 \x01(\tR\tentryDate\x12\x1c\n" +
+	"\trecurring\x18\a \x01(\bR\trecurring\x120\n" +
+	"\x11recurrence_months\x18\b \x01(\x05H\x01R\x10recurrenceMonths\x88\x01\x01\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\t \x01(\tR\tcreatedAtB\v\n" +
+	"\t_categoryB\x14\n" +
+	"\x12_recurrence_months\"\xa1\x04\n" +
+	"\vFinanceKpis\x12#\n" +
+	"\rmrr_estimated\x18\x01 \x01(\x01R\fmrrEstimated\x12#\n" +
+	"\rarr_estimated\x18\x02 \x01(\x01R\farrEstimated\x12%\n" +
+	"\x0earpu_estimated\x18\x03 \x01(\x01R\rarpuEstimated\x12-\n" +
+	"\x12active_subscribers\x18\x04 \x01(\x05R\x11activeSubscribers\x12-\n" +
+	"\x12mapped_subscribers\x18\x05 \x01(\x05R\x11mappedSubscribers\x12)\n" +
+	"\x10coverage_percent\x18\x06 \x01(\x01R\x0fcoveragePercent\x12\x1c\n" +
+	"\tsuspended\x18\a \x01(\x05R\tsuspended\x12\x1a\n" +
+	"\bcanceled\x18\b \x01(\x05R\bcanceled\x12\x1a\n" +
+	"\brefunded\x18\t \x01(\x05R\brefunded\x12\x12\n" +
+	"\x04late\x18\n" +
+	" \x01(\x05R\x04late\x12'\n" +
+	"\x0fexpenses_period\x18\v \x01(\x01R\x0eexpensesPeriod\x122\n" +
+	"\x15manual_revenue_period\x18\f \x01(\x01R\x13manualRevenuePeriod\x12*\n" +
+	"\x11net_result_period\x18\r \x01(\x01R\x0fnetResultPeriod\x12%\n" +
+	"\x0emargin_percent\x18\x0e \x01(\x01R\rmarginPercent\"k\n" +
+	"\vPlanRevenue\x12\x12\n" +
+	"\x04plan\x18\x01 \x01(\tR\x04plan\x12\x14\n" +
+	"\x05price\x18\x02 \x01(\x01R\x05price\x12 \n" +
+	"\vsubscribers\x18\x03 \x01(\x05R\vsubscribers\x12\x10\n" +
+	"\x03mrr\x18\x04 \x01(\x01R\x03mrr\"\x99\x01\n" +
+	"\x16FinanceProjectionPoint\x12!\n" +
+	"\fperiod_start\x18\x01 \x01(\tR\vperiodStart\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x12\x18\n" +
+	"\arevenue\x18\x03 \x01(\x01R\arevenue\x12\x1a\n" +
+	"\bexpenses\x18\x04 \x01(\x01R\bexpenses\x12\x10\n" +
+	"\x03net\x18\x05 \x01(\x01R\x03net\"Y\n" +
+	"\x19GetFinanceOverviewRequest\x12\x17\n" +
+	"\x04from\x18\x01 \x01(\tH\x00R\x04from\x88\x01\x01\x12\x13\n" +
+	"\x02to\x18\x02 \x01(\tH\x01R\x02to\x88\x01\x01B\a\n" +
+	"\x05_fromB\x05\n" +
+	"\x03_to\"\xa2\x02\n" +
+	"\x1aGetFinanceOverviewResponse\x12+\n" +
+	"\x04kpis\x18\x01 \x01(\v2\x17.support.v1.FinanceKpisR\x04kpis\x12:\n" +
+	"\fplan_revenue\x18\x02 \x03(\v2\x17.support.v1.PlanRevenueR\vplanRevenue\x12B\n" +
+	"\n" +
+	"projection\x18\x03 \x03(\v2\".support.v1.FinanceProjectionPointR\n" +
+	"projection\x122\n" +
+	"\aentries\x18\x04 \x03(\v2\x18.support.v1.FinanceEntryR\aentries\x12#\n" +
+	"\rcoverage_note\x18\x05 \x01(\tR\fcoverageNote\"\x9c\x02\n" +
+	"\x19CreateFinanceEntryRequest\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x16\n" +
+	"\x06amount\x18\x03 \x01(\x01R\x06amount\x12\x1f\n" +
+	"\bcategory\x18\x04 \x01(\tH\x00R\bcategory\x88\x01\x01\x12\x1d\n" +
+	"\n" +
+	"entry_date\x18\x05 \x01(\tR\tentryDate\x12\x1c\n" +
+	"\trecurring\x18\x06 \x01(\bR\trecurring\x120\n" +
+	"\x11recurrence_months\x18\a \x01(\x05H\x01R\x10recurrenceMonths\x88\x01\x01B\v\n" +
+	"\t_categoryB\x14\n" +
+	"\x12_recurrence_months\"L\n" +
+	"\x1aCreateFinanceEntryResponse\x12.\n" +
+	"\x05entry\x18\x01 \x01(\v2\x18.support.v1.FinanceEntryR\x05entry\"+\n" +
+	"\x19DeleteFinanceEntryRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"6\n" +
+	"\x1aDeleteFinanceEntryResponse\x12\x18\n" +
+	"\adeleted\x18\x01 \x01(\bR\adeleted*\x87\x01\n" +
 	"\n" +
 	"MatchField\x12\x1b\n" +
 	"\x17MATCH_FIELD_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11MATCH_FIELD_EMAIL\x10\x01\x12\x14\n" +
 	"\x10MATCH_FIELD_NAME\x10\x02\x12\x15\n" +
 	"\x11MATCH_FIELD_PHONE\x10\x03\x12\x18\n" +
-	"\x14MATCH_FIELD_INSTANCE\x10\x042\xc7\x04\n" +
+	"\x14MATCH_FIELD_INSTANCE\x10\x042\xf6\x06\n" +
 	"\x0eSupportService\x12N\n" +
 	"\vSearchUsers\x12\x1e.support.v1.SearchUsersRequest\x1a\x1f.support.v1.SearchUsersResponse\x12Z\n" +
 	"\x0fGetSystemHealth\x12\".support.v1.GetSystemHealthRequest\x1a#.support.v1.GetSystemHealthResponse\x12r\n" +
 	"\x17ResumePausedAutomations\x12*.support.v1.ResumePausedAutomationsRequest\x1a+.support.v1.ResumePausedAutomationsResponse\x12Z\n" +
 	"\x0fGetUserOverview\x12\".support.v1.GetUserOverviewRequest\x1a#.support.v1.GetUserOverviewResponse\x12]\n" +
 	"\x10GetGroupMessages\x12#.support.v1.GetGroupMessagesRequest\x1a$.support.v1.GetGroupMessagesResponse\x12Z\n" +
-	"\x0fGetUserActivity\x12\".support.v1.GetUserActivityRequest\x1a#.support.v1.GetUserActivityResponseB\x98\x01\n" +
+	"\x0fGetUserActivity\x12\".support.v1.GetUserActivityRequest\x1a#.support.v1.GetUserActivityResponse\x12c\n" +
+	"\x12GetFinanceOverview\x12%.support.v1.GetFinanceOverviewRequest\x1a&.support.v1.GetFinanceOverviewResponse\x12c\n" +
+	"\x12CreateFinanceEntry\x12%.support.v1.CreateFinanceEntryRequest\x1a&.support.v1.CreateFinanceEntryResponse\x12c\n" +
+	"\x12DeleteFinanceEntry\x12%.support.v1.DeleteFinanceEntryRequest\x1a&.support.v1.DeleteFinanceEntryResponseB\x98\x01\n" +
 	"\x0ecom.support.v1B\fSupportProtoP\x01Z/automatiza-go/internal/gen/support/v1;supportv1\xa2\x02\x03SXX\xaa\x02\n" +
 	"Support.V1\xca\x02\n" +
 	"Support\\V1\xe2\x02\x16Support\\V1\\GPBMetadata\xea\x02\vSupport::V1b\x06proto3"
@@ -2633,7 +3470,7 @@ func file_support_v1_support_proto_rawDescGZIP() []byte {
 }
 
 var file_support_v1_support_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_support_v1_support_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_support_v1_support_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_support_v1_support_proto_goTypes = []any{
 	(MatchField)(0),                         // 0: support.v1.MatchField
 	(*SearchUsersRequest)(nil),              // 1: support.v1.SearchUsersRequest
@@ -2663,6 +3500,16 @@ var file_support_v1_support_proto_goTypes = []any{
 	(*GetSystemHealthResponse)(nil),         // 25: support.v1.GetSystemHealthResponse
 	(*ResumePausedAutomationsRequest)(nil),  // 26: support.v1.ResumePausedAutomationsRequest
 	(*ResumePausedAutomationsResponse)(nil), // 27: support.v1.ResumePausedAutomationsResponse
+	(*FinanceEntry)(nil),                    // 28: support.v1.FinanceEntry
+	(*FinanceKpis)(nil),                     // 29: support.v1.FinanceKpis
+	(*PlanRevenue)(nil),                     // 30: support.v1.PlanRevenue
+	(*FinanceProjectionPoint)(nil),          // 31: support.v1.FinanceProjectionPoint
+	(*GetFinanceOverviewRequest)(nil),       // 32: support.v1.GetFinanceOverviewRequest
+	(*GetFinanceOverviewResponse)(nil),      // 33: support.v1.GetFinanceOverviewResponse
+	(*CreateFinanceEntryRequest)(nil),       // 34: support.v1.CreateFinanceEntryRequest
+	(*CreateFinanceEntryResponse)(nil),      // 35: support.v1.CreateFinanceEntryResponse
+	(*DeleteFinanceEntryRequest)(nil),       // 36: support.v1.DeleteFinanceEntryRequest
+	(*DeleteFinanceEntryResponse)(nil),      // 37: support.v1.DeleteFinanceEntryResponse
 }
 var file_support_v1_support_proto_depIdxs = []int32{
 	0,  // 0: support.v1.SupportUserSummary.matched_on:type_name -> support.v1.MatchField
@@ -2683,23 +3530,34 @@ var file_support_v1_support_proto_depIdxs = []int32{
 	16, // 15: support.v1.GetSystemHealthResponse.queues:type_name -> support.v1.SupportQueueDepth
 	23, // 16: support.v1.GetSystemHealthResponse.app:type_name -> support.v1.AppHealth
 	24, // 17: support.v1.GetSystemHealthResponse.host:type_name -> support.v1.HostHealth
-	1,  // 18: support.v1.SupportService.SearchUsers:input_type -> support.v1.SearchUsersRequest
-	19, // 19: support.v1.SupportService.GetSystemHealth:input_type -> support.v1.GetSystemHealthRequest
-	26, // 20: support.v1.SupportService.ResumePausedAutomations:input_type -> support.v1.ResumePausedAutomationsRequest
-	4,  // 21: support.v1.SupportService.GetUserOverview:input_type -> support.v1.GetUserOverviewRequest
-	12, // 22: support.v1.SupportService.GetGroupMessages:input_type -> support.v1.GetGroupMessagesRequest
-	15, // 23: support.v1.SupportService.GetUserActivity:input_type -> support.v1.GetUserActivityRequest
-	3,  // 24: support.v1.SupportService.SearchUsers:output_type -> support.v1.SearchUsersResponse
-	25, // 25: support.v1.SupportService.GetSystemHealth:output_type -> support.v1.GetSystemHealthResponse
-	27, // 26: support.v1.SupportService.ResumePausedAutomations:output_type -> support.v1.ResumePausedAutomationsResponse
-	11, // 27: support.v1.SupportService.GetUserOverview:output_type -> support.v1.GetUserOverviewResponse
-	14, // 28: support.v1.SupportService.GetGroupMessages:output_type -> support.v1.GetGroupMessagesResponse
-	18, // 29: support.v1.SupportService.GetUserActivity:output_type -> support.v1.GetUserActivityResponse
-	24, // [24:30] is the sub-list for method output_type
-	18, // [18:24] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	29, // 18: support.v1.GetFinanceOverviewResponse.kpis:type_name -> support.v1.FinanceKpis
+	30, // 19: support.v1.GetFinanceOverviewResponse.plan_revenue:type_name -> support.v1.PlanRevenue
+	31, // 20: support.v1.GetFinanceOverviewResponse.projection:type_name -> support.v1.FinanceProjectionPoint
+	28, // 21: support.v1.GetFinanceOverviewResponse.entries:type_name -> support.v1.FinanceEntry
+	28, // 22: support.v1.CreateFinanceEntryResponse.entry:type_name -> support.v1.FinanceEntry
+	1,  // 23: support.v1.SupportService.SearchUsers:input_type -> support.v1.SearchUsersRequest
+	19, // 24: support.v1.SupportService.GetSystemHealth:input_type -> support.v1.GetSystemHealthRequest
+	26, // 25: support.v1.SupportService.ResumePausedAutomations:input_type -> support.v1.ResumePausedAutomationsRequest
+	4,  // 26: support.v1.SupportService.GetUserOverview:input_type -> support.v1.GetUserOverviewRequest
+	12, // 27: support.v1.SupportService.GetGroupMessages:input_type -> support.v1.GetGroupMessagesRequest
+	15, // 28: support.v1.SupportService.GetUserActivity:input_type -> support.v1.GetUserActivityRequest
+	32, // 29: support.v1.SupportService.GetFinanceOverview:input_type -> support.v1.GetFinanceOverviewRequest
+	34, // 30: support.v1.SupportService.CreateFinanceEntry:input_type -> support.v1.CreateFinanceEntryRequest
+	36, // 31: support.v1.SupportService.DeleteFinanceEntry:input_type -> support.v1.DeleteFinanceEntryRequest
+	3,  // 32: support.v1.SupportService.SearchUsers:output_type -> support.v1.SearchUsersResponse
+	25, // 33: support.v1.SupportService.GetSystemHealth:output_type -> support.v1.GetSystemHealthResponse
+	27, // 34: support.v1.SupportService.ResumePausedAutomations:output_type -> support.v1.ResumePausedAutomationsResponse
+	11, // 35: support.v1.SupportService.GetUserOverview:output_type -> support.v1.GetUserOverviewResponse
+	14, // 36: support.v1.SupportService.GetGroupMessages:output_type -> support.v1.GetGroupMessagesResponse
+	18, // 37: support.v1.SupportService.GetUserActivity:output_type -> support.v1.GetUserActivityResponse
+	33, // 38: support.v1.SupportService.GetFinanceOverview:output_type -> support.v1.GetFinanceOverviewResponse
+	35, // 39: support.v1.SupportService.CreateFinanceEntry:output_type -> support.v1.CreateFinanceEntryResponse
+	37, // 40: support.v1.SupportService.DeleteFinanceEntry:output_type -> support.v1.DeleteFinanceEntryResponse
+	32, // [32:41] is the sub-list for method output_type
+	23, // [23:32] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_support_v1_support_proto_init() }
@@ -2719,13 +3577,16 @@ func file_support_v1_support_proto_init() {
 	file_support_v1_support_proto_msgTypes[12].OneofWrappers = []any{}
 	file_support_v1_support_proto_msgTypes[14].OneofWrappers = []any{}
 	file_support_v1_support_proto_msgTypes[16].OneofWrappers = []any{}
+	file_support_v1_support_proto_msgTypes[27].OneofWrappers = []any{}
+	file_support_v1_support_proto_msgTypes[31].OneofWrappers = []any{}
+	file_support_v1_support_proto_msgTypes[33].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_support_v1_support_proto_rawDesc), len(file_support_v1_support_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   27,
+			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

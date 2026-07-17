@@ -547,6 +547,164 @@ func (r *SupportRepository) ResumePaused(ctx context.Context) (*ResumeCounts, er
 	}, nil
 }
 
+// ============================================================
+// Financeiro (aba Financeiro)
+// ============================================================
+
+// FinancePlanRevenueRow e a receita mensal ESTIMADA de um plano (preco do
+// catalogo x assinantes ativos mapeados). Nao e' o valor efetivamente pago —
+// a Kiwify nao expoe transacao no banco (ver 069_finance_entries).
+type FinancePlanRevenueRow struct {
+	Plan        string
+	Price       float64
+	Subscribers int
+}
+
+// FinanceSubscriberCounts agrega os perfis por situacao de cobranca.
+type FinanceSubscriberCounts struct {
+	Active    int // billing_status = 'active'
+	Mapped    int // ativos com plan_id (base do MRR estimado)
+	Suspended int
+	Canceled  int
+	Refunded  int // billing_last_event_type ~ refund
+	Late      int // subscription_late
+}
+
+// FinanceEntryRow e um lancamento financeiro manual (despesa/lucro).
+type FinanceEntryRow struct {
+	ID               string
+	Kind             string
+	Description      string
+	Amount           float64
+	Category         *string
+	EntryDate        time.Time
+	Recurring        bool
+	RecurrenceMonths *int32
+	CreatedAt        time.Time
+}
+
+// CreateFinanceEntryParams sao os campos de um lancamento novo.
+type CreateFinanceEntryParams struct {
+	Kind             string
+	Description      string
+	Amount           float64
+	Category         *string
+	EntryDate        time.Time
+	Recurring        bool
+	RecurrenceMonths *int32
+	CreatedBy        *string
+}
+
+// GetFinancePlanRevenue devolve, por plano, o preco mensal e quantos ativos o
+// assinam. Preco = price_monthly (o ciclo real dos ativos e' 'monthly'), com
+// fallback para price. So planos com dono ativo e plan_id aparecem.
+func (r *SupportRepository) GetFinancePlanRevenue(ctx context.Context) ([]FinancePlanRevenueRow, error) {
+	sql := `
+		SELECT pl.name,
+		       COALESCE(pl.price_monthly, pl.price, 0)::float8 AS price,
+		       COUNT(*) AS subs
+		FROM profiles p
+		JOIN plans pl ON pl.id = p.plan_id
+		WHERE p.billing_status = 'active'
+		GROUP BY pl.name, COALESCE(pl.price_monthly, pl.price, 0)
+		ORDER BY COUNT(*) * COALESCE(pl.price_monthly, pl.price, 0) DESC
+	`
+	rows, err := r.db.pool.Query(ctx, sql)
+	if err != nil {
+		return nil, fmt.Errorf("finance plan revenue: %w", err)
+	}
+	defer rows.Close()
+
+	var out []FinancePlanRevenueRow
+	for rows.Next() {
+		var pr FinancePlanRevenueRow
+		if err := rows.Scan(&pr.Plan, &pr.Price, &pr.Subscribers); err != nil {
+			return nil, fmt.Errorf("finance plan revenue scan: %w", err)
+		}
+		out = append(out, pr)
+	}
+	return out, rows.Err()
+}
+
+// GetFinanceSubscriberCounts conta perfis por situacao de cobranca numa unica
+// varredura.
+func (r *SupportRepository) GetFinanceSubscriberCounts(ctx context.Context) (*FinanceSubscriberCounts, error) {
+	sql := `
+		SELECT
+		  COUNT(*) FILTER (WHERE billing_status = 'active'),
+		  COUNT(*) FILTER (WHERE billing_status = 'active' AND plan_id IS NOT NULL),
+		  COUNT(*) FILTER (WHERE billing_status = 'suspended'),
+		  COUNT(*) FILTER (WHERE billing_status = 'canceled'),
+		  COUNT(*) FILTER (WHERE billing_last_event_type ILIKE '%refund%'),
+		  COUNT(*) FILTER (WHERE billing_last_event_type = 'subscription_late')
+		FROM profiles
+	`
+	var c FinanceSubscriberCounts
+	err := r.db.pool.QueryRow(ctx, sql).Scan(
+		&c.Active, &c.Mapped, &c.Suspended, &c.Canceled, &c.Refunded, &c.Late,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("finance subscriber counts: %w", err)
+	}
+	return &c, nil
+}
+
+// ListFinanceEntries devolve todos os lancamentos, mais recentes primeiro.
+func (r *SupportRepository) ListFinanceEntries(ctx context.Context) ([]FinanceEntryRow, error) {
+	sql := `
+		SELECT id, kind, description, amount::float8, category, entry_date,
+		       recurring, recurrence_months, created_at
+		FROM finance_entries
+		ORDER BY entry_date DESC, created_at DESC
+	`
+	rows, err := r.db.pool.Query(ctx, sql)
+	if err != nil {
+		return nil, fmt.Errorf("list finance entries: %w", err)
+	}
+	defer rows.Close()
+
+	var out []FinanceEntryRow
+	for rows.Next() {
+		var e FinanceEntryRow
+		if err := rows.Scan(&e.ID, &e.Kind, &e.Description, &e.Amount, &e.Category,
+			&e.EntryDate, &e.Recurring, &e.RecurrenceMonths, &e.CreatedAt); err != nil {
+			return nil, fmt.Errorf("finance entry scan: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// CreateFinanceEntry insere um lancamento e devolve a linha criada.
+func (r *SupportRepository) CreateFinanceEntry(ctx context.Context, p CreateFinanceEntryParams) (*FinanceEntryRow, error) {
+	sql := `
+		INSERT INTO finance_entries
+		  (kind, description, amount, category, entry_date, recurring, recurrence_months, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, kind, description, amount::float8, category, entry_date,
+		          recurring, recurrence_months, created_at
+	`
+	var e FinanceEntryRow
+	err := r.db.pool.QueryRow(ctx, sql,
+		p.Kind, p.Description, p.Amount, p.Category, p.EntryDate,
+		p.Recurring, p.RecurrenceMonths, p.CreatedBy,
+	).Scan(&e.ID, &e.Kind, &e.Description, &e.Amount, &e.Category,
+		&e.EntryDate, &e.Recurring, &e.RecurrenceMonths, &e.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("create finance entry: %w", err)
+	}
+	return &e, nil
+}
+
+// DeleteFinanceEntry remove um lancamento; devolve false se o id nao existia.
+func (r *SupportRepository) DeleteFinanceEntry(ctx context.Context, id string) (bool, error) {
+	tag, err := r.db.pool.Exec(ctx, `DELETE FROM finance_entries WHERE id = $1`, id)
+	if err != nil {
+		return false, fmt.Errorf("delete finance entry: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // digitsOnly extrai apenas digitos — telefones sao gravados com formatacao
 // inconsistente entre cadastro manual e o que volta do WhatsApp.
 func digitsOnly(s string) string {
