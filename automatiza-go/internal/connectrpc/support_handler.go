@@ -2,6 +2,7 @@ package connectrpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -810,10 +811,7 @@ func (h *SupportHandler) GetSystemHealth(
 	resp.App = h.appHealth(ctx)
 
 	// --- Host (CPU/disco/load): coletado pela sentinela, nao pelo backend ---
-	resp.Host = &supportv1.HostHealth{
-		Available: false,
-		Note:      "CPU, disco e load da VPS sao coletados pela sentinela no host. Conecte a sentinela para exibir aqui.",
-	}
+	resp.Host = h.hostHealth(ctx)
 
 	// --- Semaforo geral ---
 	resp.Overall = h.overallStatus(waha, resp.Redis, resp.Queues)
@@ -846,6 +844,54 @@ func (h *SupportHandler) redisHealth(ctx context.Context) *supportv1.RedisHealth
 		rh.UsagePercent = float64(rh.UsedMemoryBytes) / float64(rh.MaxMemoryBytes) * 100
 	}
 	return rh
+}
+
+// hostHealth le as metricas de host (CPU/load/disco) publicadas pela sentinela
+// em Redis (chave support:host_health, SETEX 300s a cada ciclo de 2min). O
+// backend roda em container e NAO enxerga o disco real do host nem a carga
+// agregada da VPS — por isso a fonte da verdade e a sentinela. Se a chave nao
+// existir (sentinela parada/desatualizada), degrada para available=false com
+// uma nota, em vez de mostrar um numero inventado.
+//
+// A frescura e garantida pelo proprio TTL: a chave so existe se a sentinela
+// escreveu nos ultimos 300s. Chave presente => dado fresco.
+func (h *SupportHandler) hostHealth(ctx context.Context) *supportv1.HostHealth {
+	hh := &supportv1.HostHealth{
+		Available: false,
+		Note:      "CPU, disco e load da VPS sao coletados pela sentinela no host. Conecte a sentinela para exibir aqui.",
+	}
+	if h.redisClient == nil {
+		return hh
+	}
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	raw, err := h.redisClient.Get(cctx, "support:host_health").Result()
+	if err != nil {
+		// redis.Nil (chave ausente/expirada) ou erro de conexao: mantem a nota.
+		return hh
+	}
+
+	var payload struct {
+		TS              string  `json:"ts"`
+		CPUPercent      float64 `json:"cpu_percent"`
+		LoadAvg1m       float64 `json:"load_avg_1m"`
+		DiskUsedPercent float64 `json:"disk_used_percent"`
+		DiskFreeBytes   int64   `json:"disk_free_bytes"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		h.logger.Warn("host_health: JSON invalido da sentinela", zap.Error(err))
+		return hh
+	}
+
+	return &supportv1.HostHealth{
+		Available:       true,
+		Source:          "sentinela",
+		CpuPercent:      payload.CPUPercent,
+		LoadAvg_1M:      payload.LoadAvg1m,
+		DiskUsedPercent: payload.DiskUsedPercent,
+		DiskFreeBytes:   payload.DiskFreeBytes,
+	}
 }
 
 // parseRedisInfo transforma a saida do INFO ("chave:valor\r\n") num mapa.
