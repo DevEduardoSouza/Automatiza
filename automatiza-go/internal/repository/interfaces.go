@@ -313,6 +313,10 @@ type ScheduledJobRepository interface {
 type SystemEventRepository interface {
 	Create(ctx context.Context, eventType string, payload map[string]interface{}) error
 	GetRecent(ctx context.Context, limit int) ([]models.SystemEvent, error)
+	// CountByTypeAndActorSince counts events of eventType attributed to a given admin
+	// (payload->>'admin_id') at or after `since`. Backs per-admin rate-limiting of bulk
+	// operations (e.g. capping password resets to stop mass-reset abuse).
+	CountByTypeAndActorSince(ctx context.Context, eventType, adminID string, since time.Time) (int, error)
 }
 
 // KiwifyEventRepository provides idempotency and audit for Kiwify webhooks.

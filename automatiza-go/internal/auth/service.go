@@ -630,18 +630,32 @@ func (s *AuthService) getCredentials(ctx context.Context, email string) (*Creden
 	}
 
 	type profileRow struct {
-		ID    string `json:"id"`
-		Email string `json:"email"`
+		ID       string `json:"id"`
+		Email    string `json:"email"`
+		IsActive *bool  `json:"is_active"`
 	}
 
 	// First get user by email
 	var profiles []profileRow
 	err := s.db.From("profiles").
-		Select("id, email").
+		Select("id, email, is_active").
 		Eq("email", email).
 		Limit(1).
 		Execute(ctx, &profiles)
 	if err != nil || len(profiles) == 0 {
+		return nil, ErrUserNotFound
+	}
+
+	// Reject deactivated accounts at authentication. is_active is a manual admin
+	// kill-switch; before this gate, deactivating an account did NOT block login, so an
+	// attacker holding a valid password kept signing into disabled accounts (root cause of
+	// the mass password-reset abuse). NULL means "active" (COALESCE semantics, matching
+	// support_repository) — only an explicit false blocks. Returns the same error as an
+	// unknown user to avoid leaking account state.
+	if profiles[0].IsActive != nil && !*profiles[0].IsActive {
+		s.logger.Warn("login blocked: account is deactivated",
+			zap.String("event", "inactive_account_login_blocked"),
+			zap.String("email", email))
 		return nil, ErrUserNotFound
 	}
 

@@ -712,6 +712,9 @@ func (m *mockSystemEventRepo) GetRecent(ctx context.Context, limit int) ([]model
 	}
 	return []models.SystemEvent{}, nil
 }
+func (m *mockSystemEventRepo) CountByTypeAndActorSince(ctx context.Context, eventType, adminID string, since time.Time) (int, error) {
+	return 0, nil
+}
 
 // ---------------------------------------------------------------------------
 // Mock: UserRoleRepository

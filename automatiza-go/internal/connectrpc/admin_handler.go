@@ -28,6 +28,10 @@ import (
 )
 
 // AdminHandler implements the adminv1connect.AdminServiceHandler interface.
+// adminResetPasswordCapPerHour bounds how many password resets a single admin may perform
+// in a rolling hour. Legit support does a handful; the mass-reset abuse did ~700 in 3 min.
+const adminResetPasswordCapPerHour = 30
+
 type AdminHandler struct {
 	userRoleRepo        repository.UserRoleRepository
 	systemEventRepo     repository.SystemEventRepository
@@ -920,6 +924,38 @@ func (h *AdminHandler) ResetUserPassword(
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cannot reset your own password via admin endpoint"))
 	}
 
+	// Circuit-breaker: cap password resets per admin per rolling hour. A single admin
+	// session mass-resetting hundreds of accounts in minutes is the signature of a
+	// compromised admin (two such bursts of ~700 resets in 3 min hit production). Legit
+	// support resets are a handful; this stops abuse dead while leaving normal use intact.
+	if currentUser != nil && h.systemEventRepo != nil {
+		recent, cntErr := h.systemEventRepo.CountByTypeAndActorSince(ctx, "admin_reset_password", currentUser.ID, time.Now().Add(-time.Hour))
+		if cntErr != nil {
+			// Fail-open on a transient count error so a DB hiccup does not block legit
+			// support; the cap still applies on the next call once the DB recovers.
+			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to check admin reset rate limit", cntErr, map[string]string{
+				"module": "admin", "operation": "reset_rate_limit_check", "admin_id": currentUser.ID,
+			})
+		} else if recent >= adminResetPasswordCapPerHour {
+			// Emit a dedicated event so the sentinel can alarm on the attack in progress.
+			if h.systemEventRepo != nil {
+				_ = h.systemEventRepo.Create(ctx, "admin_reset_password_blocked", map[string]interface{}{
+					"admin_id":        currentUser.ID,
+					"admin_email":     currentUser.Email,
+					"count_last_hour": recent,
+					"cap":             adminResetPasswordCapPerHour,
+				})
+			}
+			h.getLogger().Warn("admin password-reset rate limit exceeded",
+				zap.String("event", "admin_reset_password_blocked"),
+				zap.String("admin_id", currentUser.ID),
+				zap.String("admin_email", currentUser.Email),
+				zap.Int("count_last_hour", recent))
+			return nil, connect.NewError(connect.CodeResourceExhausted,
+				fmt.Errorf("password reset rate limit exceeded (%d/hour) — action blocked and flagged", adminResetPasswordCapPerHour))
+		}
+	}
+
 	// Get user profile
 	profile, err := h.profileRepo.GetProfile(ctx, userID)
 	if err != nil {
@@ -966,11 +1002,12 @@ func (h *AdminHandler) ResetUserPassword(
 		}
 	}
 
-	// Send email notification with new password (best effort - don't fail if email fails)
+	// Send a password-changed NOTICE (best effort). The plaintext password is intentionally
+	// NOT emailed — that channel was the attacker's persistence vector. The new password is
+	// returned only to the admin via the RPC response below.
 	if h.emailService != nil {
-		// Build password reset notification email
-		emailBody := buildPasswordResetNotificationHTML(profile.Email, newPassword)
-		if emailErr := h.emailService.SendCustomEmail(ctx, profile.Email, "Sua senha foi resetada - Automatiza", emailBody); emailErr != nil {
+		emailBody := buildPasswordResetNotificationHTML(profile.Email)
+		if emailErr := h.emailService.SendCustomEmail(ctx, profile.Email, "Sua senha foi alterada - Automatiza", emailBody); emailErr != nil {
 			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to send password reset email", emailErr, map[string]string{
 				"module": "admin", "operation": "email_send", "user_id": userID,
 			})
@@ -1002,8 +1039,13 @@ func generateRandomPassword(length int) (string, error) {
 	return string(password), nil
 }
 
-// buildPasswordResetNotificationHTML builds the HTML email body for password reset notification
-func buildPasswordResetNotificationHTML(email, newPassword string) string {
+// buildPasswordResetNotificationHTML builds the HTML email body for a password-reset
+// notice. It deliberately does NOT contain the new password: emailing the plaintext was
+// the persistence mechanism of the mass-reset abuse — the attacker reset accounts whose
+// inboxes they controlled and read the new passwords straight out of the notification.
+// The new password is delivered only to the admin via the RPC response, to be relayed
+// through a trusted channel. The recipient should use "forgot password" to set their own.
+func buildPasswordResetNotificationHTML(email string) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
@@ -1013,32 +1055,24 @@ func buildPasswordResetNotificationHTML(email, newPassword string) string {
     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
     .header { background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
     .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-    .password-box { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #667eea; }
     .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1 style="color: white; margin: 0;">🔐 Senha Resetada</h1>
+      <h1 style="color: white; margin: 0;">🔐 Senha Alterada</h1>
     </div>
 
     <div class="content">
       <p>Olá!</p>
 
-      <p>Sua senha foi resetada por um administrador do sistema.</p>
-
-      <div class="password-box">
-        <p style="margin: 5px 0;"><strong>Email:</strong> %s</p>
-        <p style="margin: 5px 0;"><strong>Nova Senha Temporária:</strong></p>
-        <p style="background: #f4f4f4; padding: 10px; border-radius: 3px; font-size: 16px; font-family: monospace; text-align: center; margin: 10px 0;">
-          <strong>%s</strong>
-        </p>
-      </div>
+      <p>A senha da conta <strong>%s</strong> foi alterada por um administrador do sistema.</p>
 
       <div class="warning">
         <p style="margin: 0; color: #856404;">
-          <strong>⚠️ Importante:</strong> Por segurança, recomendamos que você altere esta senha temporária após o primeiro acesso.
+          <strong>⚠️ Importante:</strong> Por segurança, a nova senha não é enviada por e-mail.
+          Use a opção <strong>"Esqueci minha senha"</strong> na tela de login para definir uma senha nova, só sua.
         </p>
       </div>
 
@@ -1048,7 +1082,7 @@ func buildPasswordResetNotificationHTML(email, newPassword string) string {
     </div>
   </div>
 </body>
-</html>`, email, newPassword)
+</html>`, email)
 }
 
 // ============================================================
@@ -1488,10 +1522,37 @@ func (h *AdminHandler) GrantAdminRole(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to grant admin role: %w", err))
 	}
 
+	h.auditRoleChange(ctx, "add", models.RoleAdmin, userID, profile.Email)
+
 	return connect.NewResponse(&adminv1.GrantAdminRoleResponse{
 		Success: true,
 		Message: fmt.Sprintf("Admin role granted to user %s", profile.Email),
 	}), nil
+}
+
+// auditRoleChange records a privilege change in system_events. Admin grants were a blind
+// spot: the mass-reset abuse required admin, but no audit existed to show who granted it or
+// when. This closes that gap so every elevation is attributable and alertable.
+func (h *AdminHandler) auditRoleChange(ctx context.Context, action, role, targetUserID, targetEmail string) {
+	if h.systemEventRepo == nil {
+		return
+	}
+	actorID, actorEmail := "", ""
+	if cu := GetUserFromContext(ctx); cu != nil {
+		actorID, actorEmail = cu.ID, cu.Email
+	}
+	if err := h.systemEventRepo.Create(ctx, "admin_role_change", map[string]interface{}{
+		"action":            action, // "add" | "remove"
+		"role":              role,
+		"target_user_id":    targetUserID,
+		"target_user_email": targetEmail,
+		"admin_id":          actorID,
+		"admin_email":       actorEmail,
+	}); err != nil {
+		observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to audit role change", err, map[string]string{
+			"module": "admin", "operation": "audit_role_change", "role": role, "action": action,
+		})
+	}
 }
 
 // RevokeAdminRole revokes admin role from a user.
@@ -1530,6 +1591,8 @@ func (h *AdminHandler) RevokeAdminRole(
 	if err := h.userRoleRepo.RemoveUserRole(ctx, userID, models.RoleAdmin); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to revoke admin role: %w", err))
 	}
+
+	h.auditRoleChange(ctx, "remove", models.RoleAdmin, userID, "")
 
 	return connect.NewResponse(&adminv1.RevokeAdminRoleResponse{
 		Success: true,
@@ -1736,6 +1799,8 @@ func (h *AdminHandler) UpdateUserRole(
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to remove role: %w", err))
 		}
 	}
+
+	h.auditRoleChange(ctx, action, role, userID, profile.Email)
 
 	// Get updated roles
 	roles, rolesErr := h.userRoleRepo.GetAllUserRoles(ctx, userID)

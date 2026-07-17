@@ -169,6 +169,26 @@ func (r *systemEventRepository) DeleteOld(ctx context.Context, olderThan time.Du
 	return result.RowsAffected(), nil
 }
 
+// CountByTypeAndActorSince counts events of a given type attributed to a given admin
+// (payload->>'admin_id') created at or after `since`. Used to rate-limit bulk admin
+// operations per actor.
+func (r *systemEventRepository) CountByTypeAndActorSince(ctx context.Context, eventType, adminID string, since time.Time) (int, error) {
+	query := `
+		SELECT COUNT(*) FROM system_events
+		WHERE event_type = $1
+		  AND payload->>'admin_id' = $2
+		  AND created_at >= $3
+	`
+
+	var count int
+	err := r.db.QueryRow(ctx, query, eventType, adminID, since).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 // Count returns the total number of events
 func (r *systemEventRepository) Count(ctx context.Context) (int, error) {
 	query := `SELECT COUNT(*) FROM system_events`

@@ -1049,3 +1049,16 @@ func (m *mockSystemEventRepo) GetRecent(ctx context.Context, limit int) ([]model
 	}
 	return m.events[:limit], nil
 }
+
+func (m *mockSystemEventRepo) CountByTypeAndActorSince(ctx context.Context, eventType, adminID string, since time.Time) (int, error) {
+	count := 0
+	for _, e := range m.events {
+		if e.EventType != eventType {
+			continue
+		}
+		if id, _ := e.Payload["admin_id"].(string); id == adminID {
+			count++
+		}
+	}
+	return count, nil
+}
