@@ -468,6 +468,127 @@ message DeleteFinanceEntryResponse {
   bool deleted = 1;
 }
 
+// ============================================================
+// Kanban (aba Kanban — quadro de bugs estilo Trello)
+// ============================================================
+//
+// Quadro interno da equipe de suporte para acompanhar a correcao de bugs. Cinco
+// colunas FIXAS de fluxo (column_key): corrigir -> aguardando -> em_andamento ->
+// em_revisao -> corrigido. Escrita como o Financeiro: desvio consciente da
+// invariante read-only do painel, protegido por requireSupport e tocando so as
+// tabelas kanban_cards / kanban_attachments (nunca dados de cliente).
+
+// Um card do quadro (um bug/tarefa a corrigir).
+message KanbanCard {
+  string id = 1;
+  // Coluna atual. Uma de: corrigir | aguardando | em_andamento | em_revisao |
+  // corrigido. Validada no servidor contra esse conjunto fixo.
+  string column_key = 2;
+  // Ordem dentro da coluna (crescente = mais acima). Float para permitir
+  // inserir entre dois cards sem renumerar (ponto medio).
+  double position = 3;
+  string title = 4;
+  string description = 5;
+  // low | medium | high
+  string priority = 6;
+  string created_at = 7; // RFC3339
+  string updated_at = 8; // RFC3339
+  // Metadados dos anexos (sem os bytes — baixados sob demanda).
+  repeated KanbanAttachment attachments = 9;
+}
+
+// Metadado de um documento anexado a um card. Os bytes vivem no banco e sao
+// servidos por DownloadKanbanAttachment; a listagem carrega so o metadado.
+message KanbanAttachment {
+  string id = 1;
+  string card_id = 2;
+  string filename = 3;
+  string content_type = 4;
+  int64 size_bytes = 5;
+  string created_at = 6; // RFC3339
+}
+
+message ListKanbanCardsRequest {}
+
+message ListKanbanCardsResponse {
+  repeated KanbanCard cards = 1;
+}
+
+message CreateKanbanCardRequest {
+  string title = 1;
+  string description = 2;
+  // Coluna inicial; vazio => 'corrigir'.
+  string column_key = 3;
+  // low | medium | high; vazio => 'medium'.
+  string priority = 4;
+}
+
+message CreateKanbanCardResponse {
+  KanbanCard card = 1;
+}
+
+// Atualiza o CONTEUDO de um card (nao a posicao — isso e' MoveKanbanCard).
+message UpdateKanbanCardRequest {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string priority = 4;
+}
+
+message UpdateKanbanCardResponse {
+  KanbanCard card = 1;
+}
+
+// Move um card de coluna e/ou reordena. A UI calcula a posicao alvo (ponto
+// medio entre os vizinhos) e a envia pronta.
+message MoveKanbanCardRequest {
+  string id = 1;
+  string column_key = 2;
+  double position = 3;
+}
+
+message MoveKanbanCardResponse {
+  KanbanCard card = 1;
+}
+
+message DeleteKanbanCardRequest {
+  string id = 1;
+}
+
+message DeleteKanbanCardResponse {
+  bool deleted = 1;
+}
+
+message UploadKanbanAttachmentRequest {
+  string card_id = 1;
+  string filename = 2;
+  string content_type = 3;
+  // Conteudo bruto do arquivo. Limite de tamanho aplicado no servidor.
+  bytes data = 4;
+}
+
+message UploadKanbanAttachmentResponse {
+  KanbanAttachment attachment = 1;
+}
+
+message DownloadKanbanAttachmentRequest {
+  string id = 1;
+}
+
+message DownloadKanbanAttachmentResponse {
+  string filename = 1;
+  string content_type = 2;
+  bytes data = 3;
+}
+
+message DeleteKanbanAttachmentRequest {
+  string id = 1;
+}
+
+message DeleteKanbanAttachmentResponse {
+  bool deleted = 1;
+}
+
 service SupportService {
   // Busca usuarios por email, nome, telefone ou chip.
   rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse);
@@ -501,4 +622,33 @@ service SupportService {
   // Remove um lancamento financeiro manual.
   rpc DeleteFinanceEntry(DeleteFinanceEntryRequest)
       returns (DeleteFinanceEntryResponse);
+
+  // ---- Kanban (quadro de bugs) ----
+
+  // Lista todos os cards do quadro com os metadados dos anexos.
+  rpc ListKanbanCards(ListKanbanCardsRequest) returns (ListKanbanCardsResponse);
+
+  // Cria um card na coluna informada (default 'corrigir').
+  rpc CreateKanbanCard(CreateKanbanCardRequest) returns (CreateKanbanCardResponse);
+
+  // Atualiza titulo/descricao/prioridade de um card.
+  rpc UpdateKanbanCard(UpdateKanbanCardRequest) returns (UpdateKanbanCardResponse);
+
+  // Move/reordena um card (coluna + posicao).
+  rpc MoveKanbanCard(MoveKanbanCardRequest) returns (MoveKanbanCardResponse);
+
+  // Remove um card (e seus anexos, em cascata).
+  rpc DeleteKanbanCard(DeleteKanbanCardRequest) returns (DeleteKanbanCardResponse);
+
+  // Anexa um documento a um card.
+  rpc UploadKanbanAttachment(UploadKanbanAttachmentRequest)
+      returns (UploadKanbanAttachmentResponse);
+
+  // Baixa o conteudo de um anexo.
+  rpc DownloadKanbanAttachment(DownloadKanbanAttachmentRequest)
+      returns (DownloadKanbanAttachmentResponse);
+
+  // Remove um anexo.
+  rpc DeleteKanbanAttachment(DeleteKanbanAttachmentRequest)
+      returns (DeleteKanbanAttachmentResponse);
 }

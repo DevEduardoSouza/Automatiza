@@ -3167,6 +3167,1013 @@ func (x *DeleteFinanceEntryResponse) GetDeleted() bool {
 	return false
 }
 
+// Um card do quadro (um bug/tarefa a corrigir).
+type KanbanCard struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Coluna atual. Uma de: corrigir | aguardando | em_andamento | em_revisao |
+	// corrigido. Validada no servidor contra esse conjunto fixo.
+	ColumnKey string `protobuf:"bytes,2,opt,name=column_key,json=columnKey,proto3" json:"column_key,omitempty"`
+	// Ordem dentro da coluna (crescente = mais acima). Float para permitir
+	// inserir entre dois cards sem renumerar (ponto medio).
+	Position    float64 `protobuf:"fixed64,3,opt,name=position,proto3" json:"position,omitempty"`
+	Title       string  `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
+	Description string  `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
+	// low | medium | high
+	Priority  string `protobuf:"bytes,6,opt,name=priority,proto3" json:"priority,omitempty"`
+	CreatedAt string `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // RFC3339
+	UpdatedAt string `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"` // RFC3339
+	// Metadados dos anexos (sem os bytes — baixados sob demanda).
+	Attachments   []*KanbanAttachment `protobuf:"bytes,9,rep,name=attachments,proto3" json:"attachments,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KanbanCard) Reset() {
+	*x = KanbanCard{}
+	mi := &file_support_v1_support_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KanbanCard) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KanbanCard) ProtoMessage() {}
+
+func (x *KanbanCard) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KanbanCard.ProtoReflect.Descriptor instead.
+func (*KanbanCard) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *KanbanCard) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *KanbanCard) GetColumnKey() string {
+	if x != nil {
+		return x.ColumnKey
+	}
+	return ""
+}
+
+func (x *KanbanCard) GetPosition() float64 {
+	if x != nil {
+		return x.Position
+	}
+	return 0
+}
+
+func (x *KanbanCard) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *KanbanCard) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *KanbanCard) GetPriority() string {
+	if x != nil {
+		return x.Priority
+	}
+	return ""
+}
+
+func (x *KanbanCard) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *KanbanCard) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
+func (x *KanbanCard) GetAttachments() []*KanbanAttachment {
+	if x != nil {
+		return x.Attachments
+	}
+	return nil
+}
+
+// Metadado de um documento anexado a um card. Os bytes vivem no banco e sao
+// servidos por DownloadKanbanAttachment; a listagem carrega so o metadado.
+type KanbanAttachment struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	CardId        string                 `protobuf:"bytes,2,opt,name=card_id,json=cardId,proto3" json:"card_id,omitempty"`
+	Filename      string                 `protobuf:"bytes,3,opt,name=filename,proto3" json:"filename,omitempty"`
+	ContentType   string                 `protobuf:"bytes,4,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	SizeBytes     int64                  `protobuf:"varint,5,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	CreatedAt     string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // RFC3339
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KanbanAttachment) Reset() {
+	*x = KanbanAttachment{}
+	mi := &file_support_v1_support_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KanbanAttachment) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KanbanAttachment) ProtoMessage() {}
+
+func (x *KanbanAttachment) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KanbanAttachment.ProtoReflect.Descriptor instead.
+func (*KanbanAttachment) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *KanbanAttachment) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *KanbanAttachment) GetCardId() string {
+	if x != nil {
+		return x.CardId
+	}
+	return ""
+}
+
+func (x *KanbanAttachment) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *KanbanAttachment) GetContentType() string {
+	if x != nil {
+		return x.ContentType
+	}
+	return ""
+}
+
+func (x *KanbanAttachment) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *KanbanAttachment) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type ListKanbanCardsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListKanbanCardsRequest) Reset() {
+	*x = ListKanbanCardsRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListKanbanCardsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListKanbanCardsRequest) ProtoMessage() {}
+
+func (x *ListKanbanCardsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListKanbanCardsRequest.ProtoReflect.Descriptor instead.
+func (*ListKanbanCardsRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{39}
+}
+
+type ListKanbanCardsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Cards         []*KanbanCard          `protobuf:"bytes,1,rep,name=cards,proto3" json:"cards,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListKanbanCardsResponse) Reset() {
+	*x = ListKanbanCardsResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListKanbanCardsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListKanbanCardsResponse) ProtoMessage() {}
+
+func (x *ListKanbanCardsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListKanbanCardsResponse.ProtoReflect.Descriptor instead.
+func (*ListKanbanCardsResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *ListKanbanCardsResponse) GetCards() []*KanbanCard {
+	if x != nil {
+		return x.Cards
+	}
+	return nil
+}
+
+type CreateKanbanCardRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Title       string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
+	Description string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	// Coluna inicial; vazio => 'corrigir'.
+	ColumnKey string `protobuf:"bytes,3,opt,name=column_key,json=columnKey,proto3" json:"column_key,omitempty"`
+	// low | medium | high; vazio => 'medium'.
+	Priority      string `protobuf:"bytes,4,opt,name=priority,proto3" json:"priority,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateKanbanCardRequest) Reset() {
+	*x = CreateKanbanCardRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateKanbanCardRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateKanbanCardRequest) ProtoMessage() {}
+
+func (x *CreateKanbanCardRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateKanbanCardRequest.ProtoReflect.Descriptor instead.
+func (*CreateKanbanCardRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *CreateKanbanCardRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *CreateKanbanCardRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *CreateKanbanCardRequest) GetColumnKey() string {
+	if x != nil {
+		return x.ColumnKey
+	}
+	return ""
+}
+
+func (x *CreateKanbanCardRequest) GetPriority() string {
+	if x != nil {
+		return x.Priority
+	}
+	return ""
+}
+
+type CreateKanbanCardResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Card          *KanbanCard            `protobuf:"bytes,1,opt,name=card,proto3" json:"card,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateKanbanCardResponse) Reset() {
+	*x = CreateKanbanCardResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateKanbanCardResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateKanbanCardResponse) ProtoMessage() {}
+
+func (x *CreateKanbanCardResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateKanbanCardResponse.ProtoReflect.Descriptor instead.
+func (*CreateKanbanCardResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *CreateKanbanCardResponse) GetCard() *KanbanCard {
+	if x != nil {
+		return x.Card
+	}
+	return nil
+}
+
+// Atualiza o CONTEUDO de um card (nao a posicao — isso e' MoveKanbanCard).
+type UpdateKanbanCardRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Priority      string                 `protobuf:"bytes,4,opt,name=priority,proto3" json:"priority,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateKanbanCardRequest) Reset() {
+	*x = UpdateKanbanCardRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateKanbanCardRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateKanbanCardRequest) ProtoMessage() {}
+
+func (x *UpdateKanbanCardRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateKanbanCardRequest.ProtoReflect.Descriptor instead.
+func (*UpdateKanbanCardRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *UpdateKanbanCardRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateKanbanCardRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *UpdateKanbanCardRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *UpdateKanbanCardRequest) GetPriority() string {
+	if x != nil {
+		return x.Priority
+	}
+	return ""
+}
+
+type UpdateKanbanCardResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Card          *KanbanCard            `protobuf:"bytes,1,opt,name=card,proto3" json:"card,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateKanbanCardResponse) Reset() {
+	*x = UpdateKanbanCardResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateKanbanCardResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateKanbanCardResponse) ProtoMessage() {}
+
+func (x *UpdateKanbanCardResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateKanbanCardResponse.ProtoReflect.Descriptor instead.
+func (*UpdateKanbanCardResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *UpdateKanbanCardResponse) GetCard() *KanbanCard {
+	if x != nil {
+		return x.Card
+	}
+	return nil
+}
+
+// Move um card de coluna e/ou reordena. A UI calcula a posicao alvo (ponto
+// medio entre os vizinhos) e a envia pronta.
+type MoveKanbanCardRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ColumnKey     string                 `protobuf:"bytes,2,opt,name=column_key,json=columnKey,proto3" json:"column_key,omitempty"`
+	Position      float64                `protobuf:"fixed64,3,opt,name=position,proto3" json:"position,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MoveKanbanCardRequest) Reset() {
+	*x = MoveKanbanCardRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MoveKanbanCardRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MoveKanbanCardRequest) ProtoMessage() {}
+
+func (x *MoveKanbanCardRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MoveKanbanCardRequest.ProtoReflect.Descriptor instead.
+func (*MoveKanbanCardRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *MoveKanbanCardRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *MoveKanbanCardRequest) GetColumnKey() string {
+	if x != nil {
+		return x.ColumnKey
+	}
+	return ""
+}
+
+func (x *MoveKanbanCardRequest) GetPosition() float64 {
+	if x != nil {
+		return x.Position
+	}
+	return 0
+}
+
+type MoveKanbanCardResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Card          *KanbanCard            `protobuf:"bytes,1,opt,name=card,proto3" json:"card,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MoveKanbanCardResponse) Reset() {
+	*x = MoveKanbanCardResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MoveKanbanCardResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MoveKanbanCardResponse) ProtoMessage() {}
+
+func (x *MoveKanbanCardResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MoveKanbanCardResponse.ProtoReflect.Descriptor instead.
+func (*MoveKanbanCardResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *MoveKanbanCardResponse) GetCard() *KanbanCard {
+	if x != nil {
+		return x.Card
+	}
+	return nil
+}
+
+type DeleteKanbanCardRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteKanbanCardRequest) Reset() {
+	*x = DeleteKanbanCardRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteKanbanCardRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteKanbanCardRequest) ProtoMessage() {}
+
+func (x *DeleteKanbanCardRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteKanbanCardRequest.ProtoReflect.Descriptor instead.
+func (*DeleteKanbanCardRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *DeleteKanbanCardRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type DeleteKanbanCardResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Deleted       bool                   `protobuf:"varint,1,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteKanbanCardResponse) Reset() {
+	*x = DeleteKanbanCardResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteKanbanCardResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteKanbanCardResponse) ProtoMessage() {}
+
+func (x *DeleteKanbanCardResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteKanbanCardResponse.ProtoReflect.Descriptor instead.
+func (*DeleteKanbanCardResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *DeleteKanbanCardResponse) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
+}
+
+type UploadKanbanAttachmentRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	CardId      string                 `protobuf:"bytes,1,opt,name=card_id,json=cardId,proto3" json:"card_id,omitempty"`
+	Filename    string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	ContentType string                 `protobuf:"bytes,3,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	// Conteudo bruto do arquivo. Limite de tamanho aplicado no servidor.
+	Data          []byte `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UploadKanbanAttachmentRequest) Reset() {
+	*x = UploadKanbanAttachmentRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UploadKanbanAttachmentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UploadKanbanAttachmentRequest) ProtoMessage() {}
+
+func (x *UploadKanbanAttachmentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UploadKanbanAttachmentRequest.ProtoReflect.Descriptor instead.
+func (*UploadKanbanAttachmentRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *UploadKanbanAttachmentRequest) GetCardId() string {
+	if x != nil {
+		return x.CardId
+	}
+	return ""
+}
+
+func (x *UploadKanbanAttachmentRequest) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *UploadKanbanAttachmentRequest) GetContentType() string {
+	if x != nil {
+		return x.ContentType
+	}
+	return ""
+}
+
+func (x *UploadKanbanAttachmentRequest) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+type UploadKanbanAttachmentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Attachment    *KanbanAttachment      `protobuf:"bytes,1,opt,name=attachment,proto3" json:"attachment,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UploadKanbanAttachmentResponse) Reset() {
+	*x = UploadKanbanAttachmentResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UploadKanbanAttachmentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UploadKanbanAttachmentResponse) ProtoMessage() {}
+
+func (x *UploadKanbanAttachmentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UploadKanbanAttachmentResponse.ProtoReflect.Descriptor instead.
+func (*UploadKanbanAttachmentResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *UploadKanbanAttachmentResponse) GetAttachment() *KanbanAttachment {
+	if x != nil {
+		return x.Attachment
+	}
+	return nil
+}
+
+type DownloadKanbanAttachmentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DownloadKanbanAttachmentRequest) Reset() {
+	*x = DownloadKanbanAttachmentRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DownloadKanbanAttachmentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DownloadKanbanAttachmentRequest) ProtoMessage() {}
+
+func (x *DownloadKanbanAttachmentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DownloadKanbanAttachmentRequest.ProtoReflect.Descriptor instead.
+func (*DownloadKanbanAttachmentRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *DownloadKanbanAttachmentRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type DownloadKanbanAttachmentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
+	ContentType   string                 `protobuf:"bytes,2,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DownloadKanbanAttachmentResponse) Reset() {
+	*x = DownloadKanbanAttachmentResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DownloadKanbanAttachmentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DownloadKanbanAttachmentResponse) ProtoMessage() {}
+
+func (x *DownloadKanbanAttachmentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DownloadKanbanAttachmentResponse.ProtoReflect.Descriptor instead.
+func (*DownloadKanbanAttachmentResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *DownloadKanbanAttachmentResponse) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *DownloadKanbanAttachmentResponse) GetContentType() string {
+	if x != nil {
+		return x.ContentType
+	}
+	return ""
+}
+
+func (x *DownloadKanbanAttachmentResponse) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+type DeleteKanbanAttachmentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteKanbanAttachmentRequest) Reset() {
+	*x = DeleteKanbanAttachmentRequest{}
+	mi := &file_support_v1_support_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteKanbanAttachmentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteKanbanAttachmentRequest) ProtoMessage() {}
+
+func (x *DeleteKanbanAttachmentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteKanbanAttachmentRequest.ProtoReflect.Descriptor instead.
+func (*DeleteKanbanAttachmentRequest) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *DeleteKanbanAttachmentRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type DeleteKanbanAttachmentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Deleted       bool                   `protobuf:"varint,1,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteKanbanAttachmentResponse) Reset() {
+	*x = DeleteKanbanAttachmentResponse{}
+	mi := &file_support_v1_support_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteKanbanAttachmentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteKanbanAttachmentResponse) ProtoMessage() {}
+
+func (x *DeleteKanbanAttachmentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteKanbanAttachmentResponse.ProtoReflect.Descriptor instead.
+func (*DeleteKanbanAttachmentResponse) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *DeleteKanbanAttachmentResponse) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
+}
+
 var File_support_v1_support_proto protoreflect.FileDescriptor
 
 const file_support_v1_support_proto_rawDesc = "" +
@@ -3498,6 +4505,77 @@ const file_support_v1_support_proto_rawDesc = "" +
 	"\x19DeleteFinanceEntryRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"6\n" +
 	"\x1aDeleteFinanceEntryResponse\x12\x18\n" +
+	"\adeleted\x18\x01 \x01(\bR\adeleted\"\xa9\x02\n" +
+	"\n" +
+	"KanbanCard\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
+	"\n" +
+	"column_key\x18\x02 \x01(\tR\tcolumnKey\x12\x1a\n" +
+	"\bposition\x18\x03 \x01(\x01R\bposition\x12\x14\n" +
+	"\x05title\x18\x04 \x01(\tR\x05title\x12 \n" +
+	"\vdescription\x18\x05 \x01(\tR\vdescription\x12\x1a\n" +
+	"\bpriority\x18\x06 \x01(\tR\bpriority\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\a \x01(\tR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\b \x01(\tR\tupdatedAt\x12>\n" +
+	"\vattachments\x18\t \x03(\v2\x1c.support.v1.KanbanAttachmentR\vattachments\"\xb8\x01\n" +
+	"\x10KanbanAttachment\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\acard_id\x18\x02 \x01(\tR\x06cardId\x12\x1a\n" +
+	"\bfilename\x18\x03 \x01(\tR\bfilename\x12!\n" +
+	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x05 \x01(\x03R\tsizeBytes\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\tR\tcreatedAt\"\x18\n" +
+	"\x16ListKanbanCardsRequest\"G\n" +
+	"\x17ListKanbanCardsResponse\x12,\n" +
+	"\x05cards\x18\x01 \x03(\v2\x16.support.v1.KanbanCardR\x05cards\"\x8c\x01\n" +
+	"\x17CreateKanbanCardRequest\x12\x14\n" +
+	"\x05title\x18\x01 \x01(\tR\x05title\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1d\n" +
+	"\n" +
+	"column_key\x18\x03 \x01(\tR\tcolumnKey\x12\x1a\n" +
+	"\bpriority\x18\x04 \x01(\tR\bpriority\"F\n" +
+	"\x18CreateKanbanCardResponse\x12*\n" +
+	"\x04card\x18\x01 \x01(\v2\x16.support.v1.KanbanCardR\x04card\"}\n" +
+	"\x17UpdateKanbanCardRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x1a\n" +
+	"\bpriority\x18\x04 \x01(\tR\bpriority\"F\n" +
+	"\x18UpdateKanbanCardResponse\x12*\n" +
+	"\x04card\x18\x01 \x01(\v2\x16.support.v1.KanbanCardR\x04card\"b\n" +
+	"\x15MoveKanbanCardRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
+	"\n" +
+	"column_key\x18\x02 \x01(\tR\tcolumnKey\x12\x1a\n" +
+	"\bposition\x18\x03 \x01(\x01R\bposition\"D\n" +
+	"\x16MoveKanbanCardResponse\x12*\n" +
+	"\x04card\x18\x01 \x01(\v2\x16.support.v1.KanbanCardR\x04card\")\n" +
+	"\x17DeleteKanbanCardRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"4\n" +
+	"\x18DeleteKanbanCardResponse\x12\x18\n" +
+	"\adeleted\x18\x01 \x01(\bR\adeleted\"\x8b\x01\n" +
+	"\x1dUploadKanbanAttachmentRequest\x12\x17\n" +
+	"\acard_id\x18\x01 \x01(\tR\x06cardId\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12!\n" +
+	"\fcontent_type\x18\x03 \x01(\tR\vcontentType\x12\x12\n" +
+	"\x04data\x18\x04 \x01(\fR\x04data\"^\n" +
+	"\x1eUploadKanbanAttachmentResponse\x12<\n" +
+	"\n" +
+	"attachment\x18\x01 \x01(\v2\x1c.support.v1.KanbanAttachmentR\n" +
+	"attachment\"1\n" +
+	"\x1fDownloadKanbanAttachmentRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"u\n" +
+	" DownloadKanbanAttachmentResponse\x12\x1a\n" +
+	"\bfilename\x18\x01 \x01(\tR\bfilename\x12!\n" +
+	"\fcontent_type\x18\x02 \x01(\tR\vcontentType\x12\x12\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\"/\n" +
+	"\x1dDeleteKanbanAttachmentRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\":\n" +
+	"\x1eDeleteKanbanAttachmentResponse\x12\x18\n" +
 	"\adeleted\x18\x01 \x01(\bR\adeleted*\x87\x01\n" +
 	"\n" +
 	"MatchField\x12\x1b\n" +
@@ -3505,7 +4583,7 @@ const file_support_v1_support_proto_rawDesc = "" +
 	"\x11MATCH_FIELD_EMAIL\x10\x01\x12\x14\n" +
 	"\x10MATCH_FIELD_NAME\x10\x02\x12\x15\n" +
 	"\x11MATCH_FIELD_PHONE\x10\x03\x12\x18\n" +
-	"\x14MATCH_FIELD_INSTANCE\x10\x042\xf6\x06\n" +
+	"\x14MATCH_FIELD_INSTANCE\x10\x042\xa1\r\n" +
 	"\x0eSupportService\x12N\n" +
 	"\vSearchUsers\x12\x1e.support.v1.SearchUsersRequest\x1a\x1f.support.v1.SearchUsersResponse\x12Z\n" +
 	"\x0fGetSystemHealth\x12\".support.v1.GetSystemHealthRequest\x1a#.support.v1.GetSystemHealthResponse\x12r\n" +
@@ -3515,7 +4593,15 @@ const file_support_v1_support_proto_rawDesc = "" +
 	"\x0fGetUserActivity\x12\".support.v1.GetUserActivityRequest\x1a#.support.v1.GetUserActivityResponse\x12c\n" +
 	"\x12GetFinanceOverview\x12%.support.v1.GetFinanceOverviewRequest\x1a&.support.v1.GetFinanceOverviewResponse\x12c\n" +
 	"\x12CreateFinanceEntry\x12%.support.v1.CreateFinanceEntryRequest\x1a&.support.v1.CreateFinanceEntryResponse\x12c\n" +
-	"\x12DeleteFinanceEntry\x12%.support.v1.DeleteFinanceEntryRequest\x1a&.support.v1.DeleteFinanceEntryResponseB\x98\x01\n" +
+	"\x12DeleteFinanceEntry\x12%.support.v1.DeleteFinanceEntryRequest\x1a&.support.v1.DeleteFinanceEntryResponse\x12Z\n" +
+	"\x0fListKanbanCards\x12\".support.v1.ListKanbanCardsRequest\x1a#.support.v1.ListKanbanCardsResponse\x12]\n" +
+	"\x10CreateKanbanCard\x12#.support.v1.CreateKanbanCardRequest\x1a$.support.v1.CreateKanbanCardResponse\x12]\n" +
+	"\x10UpdateKanbanCard\x12#.support.v1.UpdateKanbanCardRequest\x1a$.support.v1.UpdateKanbanCardResponse\x12W\n" +
+	"\x0eMoveKanbanCard\x12!.support.v1.MoveKanbanCardRequest\x1a\".support.v1.MoveKanbanCardResponse\x12]\n" +
+	"\x10DeleteKanbanCard\x12#.support.v1.DeleteKanbanCardRequest\x1a$.support.v1.DeleteKanbanCardResponse\x12o\n" +
+	"\x16UploadKanbanAttachment\x12).support.v1.UploadKanbanAttachmentRequest\x1a*.support.v1.UploadKanbanAttachmentResponse\x12u\n" +
+	"\x18DownloadKanbanAttachment\x12+.support.v1.DownloadKanbanAttachmentRequest\x1a,.support.v1.DownloadKanbanAttachmentResponse\x12o\n" +
+	"\x16DeleteKanbanAttachment\x12).support.v1.DeleteKanbanAttachmentRequest\x1a*.support.v1.DeleteKanbanAttachmentResponseB\x98\x01\n" +
 	"\x0ecom.support.v1B\fSupportProtoP\x01Z/automatiza-go/internal/gen/support/v1;supportv1\xa2\x02\x03SXX\xaa\x02\n" +
 	"Support.V1\xca\x02\n" +
 	"Support\\V1\xe2\x02\x16Support\\V1\\GPBMetadata\xea\x02\vSupport::V1b\x06proto3"
@@ -3533,46 +4619,64 @@ func file_support_v1_support_proto_rawDescGZIP() []byte {
 }
 
 var file_support_v1_support_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_support_v1_support_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
+var file_support_v1_support_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_support_v1_support_proto_goTypes = []any{
-	(MatchField)(0),                         // 0: support.v1.MatchField
-	(*SearchUsersRequest)(nil),              // 1: support.v1.SearchUsersRequest
-	(*SupportUserSummary)(nil),              // 2: support.v1.SupportUserSummary
-	(*SearchUsersResponse)(nil),             // 3: support.v1.SearchUsersResponse
-	(*GetUserOverviewRequest)(nil),          // 4: support.v1.GetUserOverviewRequest
-	(*SupportChip)(nil),                     // 5: support.v1.SupportChip
-	(*SupportGroupRef)(nil),                 // 6: support.v1.SupportGroupRef
-	(*SupportAutomation)(nil),               // 7: support.v1.SupportAutomation
-	(*SupportLinkList)(nil),                 // 8: support.v1.SupportLinkList
-	(*SupportGroup)(nil),                    // 9: support.v1.SupportGroup
-	(*SupportUserProfile)(nil),              // 10: support.v1.SupportUserProfile
-	(*GetUserOverviewResponse)(nil),         // 11: support.v1.GetUserOverviewResponse
-	(*GetGroupMessagesRequest)(nil),         // 12: support.v1.GetGroupMessagesRequest
-	(*SupportMessage)(nil),                  // 13: support.v1.SupportMessage
-	(*GetGroupMessagesResponse)(nil),        // 14: support.v1.GetGroupMessagesResponse
-	(*GetUserActivityRequest)(nil),          // 15: support.v1.GetUserActivityRequest
-	(*SupportQueueDepth)(nil),               // 16: support.v1.SupportQueueDepth
-	(*SupportAutomationActivity)(nil),       // 17: support.v1.SupportAutomationActivity
-	(*GetUserActivityResponse)(nil),         // 18: support.v1.GetUserActivityResponse
-	(*GetSystemHealthRequest)(nil),          // 19: support.v1.GetSystemHealthRequest
-	(*WahaHealth)(nil),                      // 20: support.v1.WahaHealth
-	(*RedisHealth)(nil),                     // 21: support.v1.RedisHealth
-	(*AutomationTypeHealth)(nil),            // 22: support.v1.AutomationTypeHealth
-	(*AppHealth)(nil),                       // 23: support.v1.AppHealth
-	(*HostHealth)(nil),                      // 24: support.v1.HostHealth
-	(*GetSystemHealthResponse)(nil),         // 25: support.v1.GetSystemHealthResponse
-	(*ResumePausedAutomationsRequest)(nil),  // 26: support.v1.ResumePausedAutomationsRequest
-	(*ResumePausedAutomationsResponse)(nil), // 27: support.v1.ResumePausedAutomationsResponse
-	(*FinanceEntry)(nil),                    // 28: support.v1.FinanceEntry
-	(*FinanceKpis)(nil),                     // 29: support.v1.FinanceKpis
-	(*PlanRevenue)(nil),                     // 30: support.v1.PlanRevenue
-	(*FinanceProjectionPoint)(nil),          // 31: support.v1.FinanceProjectionPoint
-	(*GetFinanceOverviewRequest)(nil),       // 32: support.v1.GetFinanceOverviewRequest
-	(*GetFinanceOverviewResponse)(nil),      // 33: support.v1.GetFinanceOverviewResponse
-	(*CreateFinanceEntryRequest)(nil),       // 34: support.v1.CreateFinanceEntryRequest
-	(*CreateFinanceEntryResponse)(nil),      // 35: support.v1.CreateFinanceEntryResponse
-	(*DeleteFinanceEntryRequest)(nil),       // 36: support.v1.DeleteFinanceEntryRequest
-	(*DeleteFinanceEntryResponse)(nil),      // 37: support.v1.DeleteFinanceEntryResponse
+	(MatchField)(0),                          // 0: support.v1.MatchField
+	(*SearchUsersRequest)(nil),               // 1: support.v1.SearchUsersRequest
+	(*SupportUserSummary)(nil),               // 2: support.v1.SupportUserSummary
+	(*SearchUsersResponse)(nil),              // 3: support.v1.SearchUsersResponse
+	(*GetUserOverviewRequest)(nil),           // 4: support.v1.GetUserOverviewRequest
+	(*SupportChip)(nil),                      // 5: support.v1.SupportChip
+	(*SupportGroupRef)(nil),                  // 6: support.v1.SupportGroupRef
+	(*SupportAutomation)(nil),                // 7: support.v1.SupportAutomation
+	(*SupportLinkList)(nil),                  // 8: support.v1.SupportLinkList
+	(*SupportGroup)(nil),                     // 9: support.v1.SupportGroup
+	(*SupportUserProfile)(nil),               // 10: support.v1.SupportUserProfile
+	(*GetUserOverviewResponse)(nil),          // 11: support.v1.GetUserOverviewResponse
+	(*GetGroupMessagesRequest)(nil),          // 12: support.v1.GetGroupMessagesRequest
+	(*SupportMessage)(nil),                   // 13: support.v1.SupportMessage
+	(*GetGroupMessagesResponse)(nil),         // 14: support.v1.GetGroupMessagesResponse
+	(*GetUserActivityRequest)(nil),           // 15: support.v1.GetUserActivityRequest
+	(*SupportQueueDepth)(nil),                // 16: support.v1.SupportQueueDepth
+	(*SupportAutomationActivity)(nil),        // 17: support.v1.SupportAutomationActivity
+	(*GetUserActivityResponse)(nil),          // 18: support.v1.GetUserActivityResponse
+	(*GetSystemHealthRequest)(nil),           // 19: support.v1.GetSystemHealthRequest
+	(*WahaHealth)(nil),                       // 20: support.v1.WahaHealth
+	(*RedisHealth)(nil),                      // 21: support.v1.RedisHealth
+	(*AutomationTypeHealth)(nil),             // 22: support.v1.AutomationTypeHealth
+	(*AppHealth)(nil),                        // 23: support.v1.AppHealth
+	(*HostHealth)(nil),                       // 24: support.v1.HostHealth
+	(*GetSystemHealthResponse)(nil),          // 25: support.v1.GetSystemHealthResponse
+	(*ResumePausedAutomationsRequest)(nil),   // 26: support.v1.ResumePausedAutomationsRequest
+	(*ResumePausedAutomationsResponse)(nil),  // 27: support.v1.ResumePausedAutomationsResponse
+	(*FinanceEntry)(nil),                     // 28: support.v1.FinanceEntry
+	(*FinanceKpis)(nil),                      // 29: support.v1.FinanceKpis
+	(*PlanRevenue)(nil),                      // 30: support.v1.PlanRevenue
+	(*FinanceProjectionPoint)(nil),           // 31: support.v1.FinanceProjectionPoint
+	(*GetFinanceOverviewRequest)(nil),        // 32: support.v1.GetFinanceOverviewRequest
+	(*GetFinanceOverviewResponse)(nil),       // 33: support.v1.GetFinanceOverviewResponse
+	(*CreateFinanceEntryRequest)(nil),        // 34: support.v1.CreateFinanceEntryRequest
+	(*CreateFinanceEntryResponse)(nil),       // 35: support.v1.CreateFinanceEntryResponse
+	(*DeleteFinanceEntryRequest)(nil),        // 36: support.v1.DeleteFinanceEntryRequest
+	(*DeleteFinanceEntryResponse)(nil),       // 37: support.v1.DeleteFinanceEntryResponse
+	(*KanbanCard)(nil),                       // 38: support.v1.KanbanCard
+	(*KanbanAttachment)(nil),                 // 39: support.v1.KanbanAttachment
+	(*ListKanbanCardsRequest)(nil),           // 40: support.v1.ListKanbanCardsRequest
+	(*ListKanbanCardsResponse)(nil),          // 41: support.v1.ListKanbanCardsResponse
+	(*CreateKanbanCardRequest)(nil),          // 42: support.v1.CreateKanbanCardRequest
+	(*CreateKanbanCardResponse)(nil),         // 43: support.v1.CreateKanbanCardResponse
+	(*UpdateKanbanCardRequest)(nil),          // 44: support.v1.UpdateKanbanCardRequest
+	(*UpdateKanbanCardResponse)(nil),         // 45: support.v1.UpdateKanbanCardResponse
+	(*MoveKanbanCardRequest)(nil),            // 46: support.v1.MoveKanbanCardRequest
+	(*MoveKanbanCardResponse)(nil),           // 47: support.v1.MoveKanbanCardResponse
+	(*DeleteKanbanCardRequest)(nil),          // 48: support.v1.DeleteKanbanCardRequest
+	(*DeleteKanbanCardResponse)(nil),         // 49: support.v1.DeleteKanbanCardResponse
+	(*UploadKanbanAttachmentRequest)(nil),    // 50: support.v1.UploadKanbanAttachmentRequest
+	(*UploadKanbanAttachmentResponse)(nil),   // 51: support.v1.UploadKanbanAttachmentResponse
+	(*DownloadKanbanAttachmentRequest)(nil),  // 52: support.v1.DownloadKanbanAttachmentRequest
+	(*DownloadKanbanAttachmentResponse)(nil), // 53: support.v1.DownloadKanbanAttachmentResponse
+	(*DeleteKanbanAttachmentRequest)(nil),    // 54: support.v1.DeleteKanbanAttachmentRequest
+	(*DeleteKanbanAttachmentResponse)(nil),   // 55: support.v1.DeleteKanbanAttachmentResponse
 }
 var file_support_v1_support_proto_depIdxs = []int32{
 	0,  // 0: support.v1.SupportUserSummary.matched_on:type_name -> support.v1.MatchField
@@ -3598,29 +4702,51 @@ var file_support_v1_support_proto_depIdxs = []int32{
 	31, // 20: support.v1.GetFinanceOverviewResponse.projection:type_name -> support.v1.FinanceProjectionPoint
 	28, // 21: support.v1.GetFinanceOverviewResponse.entries:type_name -> support.v1.FinanceEntry
 	28, // 22: support.v1.CreateFinanceEntryResponse.entry:type_name -> support.v1.FinanceEntry
-	1,  // 23: support.v1.SupportService.SearchUsers:input_type -> support.v1.SearchUsersRequest
-	19, // 24: support.v1.SupportService.GetSystemHealth:input_type -> support.v1.GetSystemHealthRequest
-	26, // 25: support.v1.SupportService.ResumePausedAutomations:input_type -> support.v1.ResumePausedAutomationsRequest
-	4,  // 26: support.v1.SupportService.GetUserOverview:input_type -> support.v1.GetUserOverviewRequest
-	12, // 27: support.v1.SupportService.GetGroupMessages:input_type -> support.v1.GetGroupMessagesRequest
-	15, // 28: support.v1.SupportService.GetUserActivity:input_type -> support.v1.GetUserActivityRequest
-	32, // 29: support.v1.SupportService.GetFinanceOverview:input_type -> support.v1.GetFinanceOverviewRequest
-	34, // 30: support.v1.SupportService.CreateFinanceEntry:input_type -> support.v1.CreateFinanceEntryRequest
-	36, // 31: support.v1.SupportService.DeleteFinanceEntry:input_type -> support.v1.DeleteFinanceEntryRequest
-	3,  // 32: support.v1.SupportService.SearchUsers:output_type -> support.v1.SearchUsersResponse
-	25, // 33: support.v1.SupportService.GetSystemHealth:output_type -> support.v1.GetSystemHealthResponse
-	27, // 34: support.v1.SupportService.ResumePausedAutomations:output_type -> support.v1.ResumePausedAutomationsResponse
-	11, // 35: support.v1.SupportService.GetUserOverview:output_type -> support.v1.GetUserOverviewResponse
-	14, // 36: support.v1.SupportService.GetGroupMessages:output_type -> support.v1.GetGroupMessagesResponse
-	18, // 37: support.v1.SupportService.GetUserActivity:output_type -> support.v1.GetUserActivityResponse
-	33, // 38: support.v1.SupportService.GetFinanceOverview:output_type -> support.v1.GetFinanceOverviewResponse
-	35, // 39: support.v1.SupportService.CreateFinanceEntry:output_type -> support.v1.CreateFinanceEntryResponse
-	37, // 40: support.v1.SupportService.DeleteFinanceEntry:output_type -> support.v1.DeleteFinanceEntryResponse
-	32, // [32:41] is the sub-list for method output_type
-	23, // [23:32] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	39, // 23: support.v1.KanbanCard.attachments:type_name -> support.v1.KanbanAttachment
+	38, // 24: support.v1.ListKanbanCardsResponse.cards:type_name -> support.v1.KanbanCard
+	38, // 25: support.v1.CreateKanbanCardResponse.card:type_name -> support.v1.KanbanCard
+	38, // 26: support.v1.UpdateKanbanCardResponse.card:type_name -> support.v1.KanbanCard
+	38, // 27: support.v1.MoveKanbanCardResponse.card:type_name -> support.v1.KanbanCard
+	39, // 28: support.v1.UploadKanbanAttachmentResponse.attachment:type_name -> support.v1.KanbanAttachment
+	1,  // 29: support.v1.SupportService.SearchUsers:input_type -> support.v1.SearchUsersRequest
+	19, // 30: support.v1.SupportService.GetSystemHealth:input_type -> support.v1.GetSystemHealthRequest
+	26, // 31: support.v1.SupportService.ResumePausedAutomations:input_type -> support.v1.ResumePausedAutomationsRequest
+	4,  // 32: support.v1.SupportService.GetUserOverview:input_type -> support.v1.GetUserOverviewRequest
+	12, // 33: support.v1.SupportService.GetGroupMessages:input_type -> support.v1.GetGroupMessagesRequest
+	15, // 34: support.v1.SupportService.GetUserActivity:input_type -> support.v1.GetUserActivityRequest
+	32, // 35: support.v1.SupportService.GetFinanceOverview:input_type -> support.v1.GetFinanceOverviewRequest
+	34, // 36: support.v1.SupportService.CreateFinanceEntry:input_type -> support.v1.CreateFinanceEntryRequest
+	36, // 37: support.v1.SupportService.DeleteFinanceEntry:input_type -> support.v1.DeleteFinanceEntryRequest
+	40, // 38: support.v1.SupportService.ListKanbanCards:input_type -> support.v1.ListKanbanCardsRequest
+	42, // 39: support.v1.SupportService.CreateKanbanCard:input_type -> support.v1.CreateKanbanCardRequest
+	44, // 40: support.v1.SupportService.UpdateKanbanCard:input_type -> support.v1.UpdateKanbanCardRequest
+	46, // 41: support.v1.SupportService.MoveKanbanCard:input_type -> support.v1.MoveKanbanCardRequest
+	48, // 42: support.v1.SupportService.DeleteKanbanCard:input_type -> support.v1.DeleteKanbanCardRequest
+	50, // 43: support.v1.SupportService.UploadKanbanAttachment:input_type -> support.v1.UploadKanbanAttachmentRequest
+	52, // 44: support.v1.SupportService.DownloadKanbanAttachment:input_type -> support.v1.DownloadKanbanAttachmentRequest
+	54, // 45: support.v1.SupportService.DeleteKanbanAttachment:input_type -> support.v1.DeleteKanbanAttachmentRequest
+	3,  // 46: support.v1.SupportService.SearchUsers:output_type -> support.v1.SearchUsersResponse
+	25, // 47: support.v1.SupportService.GetSystemHealth:output_type -> support.v1.GetSystemHealthResponse
+	27, // 48: support.v1.SupportService.ResumePausedAutomations:output_type -> support.v1.ResumePausedAutomationsResponse
+	11, // 49: support.v1.SupportService.GetUserOverview:output_type -> support.v1.GetUserOverviewResponse
+	14, // 50: support.v1.SupportService.GetGroupMessages:output_type -> support.v1.GetGroupMessagesResponse
+	18, // 51: support.v1.SupportService.GetUserActivity:output_type -> support.v1.GetUserActivityResponse
+	33, // 52: support.v1.SupportService.GetFinanceOverview:output_type -> support.v1.GetFinanceOverviewResponse
+	35, // 53: support.v1.SupportService.CreateFinanceEntry:output_type -> support.v1.CreateFinanceEntryResponse
+	37, // 54: support.v1.SupportService.DeleteFinanceEntry:output_type -> support.v1.DeleteFinanceEntryResponse
+	41, // 55: support.v1.SupportService.ListKanbanCards:output_type -> support.v1.ListKanbanCardsResponse
+	43, // 56: support.v1.SupportService.CreateKanbanCard:output_type -> support.v1.CreateKanbanCardResponse
+	45, // 57: support.v1.SupportService.UpdateKanbanCard:output_type -> support.v1.UpdateKanbanCardResponse
+	47, // 58: support.v1.SupportService.MoveKanbanCard:output_type -> support.v1.MoveKanbanCardResponse
+	49, // 59: support.v1.SupportService.DeleteKanbanCard:output_type -> support.v1.DeleteKanbanCardResponse
+	51, // 60: support.v1.SupportService.UploadKanbanAttachment:output_type -> support.v1.UploadKanbanAttachmentResponse
+	53, // 61: support.v1.SupportService.DownloadKanbanAttachment:output_type -> support.v1.DownloadKanbanAttachmentResponse
+	55, // 62: support.v1.SupportService.DeleteKanbanAttachment:output_type -> support.v1.DeleteKanbanAttachmentResponse
+	46, // [46:63] is the sub-list for method output_type
+	29, // [29:46] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_support_v1_support_proto_init() }
@@ -3649,7 +4775,7 @@ func file_support_v1_support_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_support_v1_support_proto_rawDesc), len(file_support_v1_support_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   37,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
