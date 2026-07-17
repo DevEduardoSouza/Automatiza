@@ -16,11 +16,12 @@ import (
 
 // ProfileService handles profile business logic
 type ProfileService struct {
-	profileRepo    repository.ProfileRepository
-	automationRepo repository.AutomationRepository
-	instanceRepo   repository.InstanceRepository
-	userRoleRepo   repository.UserRoleRepository
-	logger         *zap.Logger
+	profileRepo     repository.ProfileRepository
+	automationRepo  repository.AutomationRepository
+	instanceRepo    repository.InstanceRepository
+	userRoleRepo    repository.UserRoleRepository
+	systemEventRepo repository.SystemEventRepository
+	logger          *zap.Logger
 }
 
 // NewProfileService creates a new profile service
@@ -29,14 +30,16 @@ func NewProfileService(
 	automationRepo repository.AutomationRepository,
 	instanceRepo repository.InstanceRepository,
 	userRoleRepo repository.UserRoleRepository,
+	systemEventRepo repository.SystemEventRepository,
 	logger *zap.Logger,
 ) *ProfileService {
 	return &ProfileService{
-		profileRepo:    profileRepo,
-		automationRepo: automationRepo,
-		instanceRepo:   instanceRepo,
-		userRoleRepo:   userRoleRepo,
-		logger:         logger,
+		profileRepo:     profileRepo,
+		automationRepo:  automationRepo,
+		instanceRepo:    instanceRepo,
+		userRoleRepo:    userRoleRepo,
+		systemEventRepo: systemEventRepo,
+		logger:          logger,
 	}
 }
 
@@ -275,11 +278,44 @@ func (s *ProfileService) UpdateUserPlan(ctx context.Context, adminUserID, target
 		return s.profileRepo.GetProfile(ctx, targetUserID)
 	}
 
+	// Snapshot before values so the audit trail shows plan/limit ELEVATIONS (a
+	// compromised admin bumping a user to enterprise/high limits was invisible before).
+	before, _ := s.profileRepo.GetProfile(ctx, targetUserID)
+
 	if err := s.profileRepo.UpdateProfile(ctx, targetUserID, updates); err != nil {
 		return nil, fmt.Errorf("update user plan: %w", err)
 	}
 
+	s.auditPlanChange(ctx, adminUserID, targetUserID, before, updates)
+
 	return s.profileRepo.GetProfile(ctx, targetUserID)
+}
+
+// auditPlanChange records an admin plan/limit change in system_events. Plan and limit
+// mutations had no audit trail, so an attacker elevating accounts left no evidence — this
+// closes that blind spot. Best-effort: never blocks the actual update.
+func (s *ProfileService) auditPlanChange(ctx context.Context, adminUserID, targetUserID string, before *models.Profile, updates map[string]interface{}) {
+	if s.systemEventRepo == nil {
+		return
+	}
+	payload := map[string]interface{}{
+		"admin_id":       adminUserID,
+		"target_user_id": targetUserID,
+		"changes":        updates, // new values (plan / max_automations / plan_access_until)
+	}
+	if before != nil {
+		payload["old_plan"] = before.Plan
+		if before.MaxAutomations != nil {
+			payload["old_max_automations"] = *before.MaxAutomations
+		}
+		payload["target_user_email"] = before.Email
+	}
+	if err := s.systemEventRepo.Create(ctx, "admin_update_user_plan", payload); err != nil {
+		s.logger.Warn("failed to audit plan change",
+			zap.String("admin_id", adminUserID),
+			zap.String("target_user_id", targetUserID),
+			zap.Error(err))
+	}
 }
 
 // GetMaxAutomationsForPlan returns the max automations allowed for a plan

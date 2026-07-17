@@ -870,6 +870,7 @@ func main() {
 		automationRepo,
 		instanceRepo,
 		userRoleRepo,
+		systemEventRepo,
 		config.NewModuleLogger(logger, "profile-service"),
 	)
 

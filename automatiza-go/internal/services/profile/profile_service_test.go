@@ -227,6 +227,7 @@ func setupProfileService(t *testing.T) (*ProfileService, *mockProfileRepo, *mock
 		automationRepo,
 		instanceRepo,
 		userRoleRepo,
+		nil,
 		logger,
 	)
 

@@ -583,7 +583,7 @@ func setupEnhancedProfileService(t *testing.T) (*ProfileService, *enhancedMockPr
 	userRoleRepo := newEnhancedMockUserRoleRepo()
 	logger := zap.NewNop()
 
-	service := NewProfileService(profileRepo, automationRepo, instanceRepo, userRoleRepo, logger)
+	service := NewProfileService(profileRepo, automationRepo, instanceRepo, userRoleRepo, nil, logger)
 	return service, profileRepo, automationRepo, instanceRepo, userRoleRepo
 }
 

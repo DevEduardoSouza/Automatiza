@@ -222,7 +222,7 @@ func TestUpdateProfile_GetProfileErrorAfterUpdate(t *testing.T) {
 	instanceRepo := newEnhancedMockInstanceRepo()
 	userRoleRepo := newEnhancedMockUserRoleRepo()
 	logger := zap.NewNop()
-	svc := NewProfileService(profileRepo, automationRepo, instanceRepo, userRoleRepo, logger)
+	svc := NewProfileService(profileRepo, automationRepo, instanceRepo, userRoleRepo, nil, logger)
 
 	// No profile exists -> no changes -> GetProfile returns not found
 	_, err := svc.UpdateProfile(ctx, "non-existent", UpdateProfileInput{})
@@ -396,9 +396,9 @@ func TestListProfiles_LimitClamp(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		inputLimit   int
-		expectNoErr  bool
+		name        string
+		inputLimit  int
+		expectNoErr bool
 	}{
 		{"negative_limit", -5, true},
 		{"zero_limit", 0, true},
@@ -599,7 +599,7 @@ func TestBlockUser_GetProfileErrorAfterBlock(t *testing.T) {
 	instanceRepo := newEnhancedMockInstanceRepo()
 	userRoleRepo := newEnhancedMockUserRoleRepo()
 	logger := zap.NewNop()
-	svc := NewProfileService(profileRepo, automationRepo, instanceRepo, userRoleRepo, logger)
+	svc := NewProfileService(profileRepo, automationRepo, instanceRepo, userRoleRepo, nil, logger)
 
 	userRoleRepo.SetAdmin("admin-user", true)
 	// Don't add the target user profile - UpdateProfile succeeds but GetProfile returns nil
@@ -886,7 +886,7 @@ func TestCleanPhoneNumber_AdditionalCases(t *testing.T) {
 		expected string
 	}{
 		{"whitespace_only", "   ", ""},
-		{"unicode_digits", "１２３", ""},  // Full-width digits are NOT ASCII digits
+		{"unicode_digits", "１２３", ""}, // Full-width digits are NOT ASCII digits
 		{"tab_separated", "55\t11\t9999", "55119999"},
 		{"newline_separated", "55\n11", "5511"},
 		{"very_long_number", "5511999998888000111", "5511999998888000111"},
