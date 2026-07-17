@@ -2126,6 +2126,9 @@ func TestNewAutomationService_WithNonNilDependencies(t *testing.T) {
 func (m *MockDispatchLogRepository) MarkStaleQueuedListLogs(ctx context.Context, staleAfter, window time.Duration) (int64, error) {
 	return 0, nil
 }
+func (m *MockDispatchLogRepository) MarkStaleQueuedOrphans(ctx context.Context, staleAfter, window time.Duration) (int64, error) {
+	return 0, nil
+}
 func (m *MockDispatchLogRepository) GetListResurrectCandidates(ctx context.Context, window time.Duration) ([]repository.ListResurrectCandidate, error) {
 	return nil, nil
 }

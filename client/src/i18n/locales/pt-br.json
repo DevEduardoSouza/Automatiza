@@ -2596,7 +2596,7 @@
           "crit": "Há um problema sério agora. Acione o time técnico."
         },
         "sessions": "Sessões WhatsApp",
-        "sessionsConnected": "conectadas",
+        "sessionsConnected": "conectadas · só pagantes (assinatura ativa)",
         "disconnected": "{{n}} desconectadas",
         "pending": "{{n}} pendentes",
         "capacity": "Capacidade dos servidores",

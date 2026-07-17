@@ -522,6 +522,29 @@ func main() {
 		return automationService.ReconcileListDeliveries(ctx)
 	})
 
+	// Reconciliador de 'queued' órfão (não-LIST-item): fecha o gap deixado pelo
+	// reconciliador de LIST. Um dispatch de search/monitoring/offer (ou de list
+	// sem list_item_id) preso em 'queued' há >2h = task perdida (worker morto além
+	// do lease, restart de deploy com job em voo) cujo update final nunca rodou.
+	// Marca 'reconciled' (desfecho DESCONHECIDO — nunca 'sent': ver
+	// MarkStaleQueuedOrphans) só como higiene: limpa o backlog do painel e a
+	// contagem de "Enviadas" sem afirmar entrega. staleAfter 2h > staleMessageTTL
+	// (90min) do worker → nunca compete com um descarte legítimo; window 24h
+	// mantém a query barata (idx_dispatch_logs_status).
+	const orphanQueuedStaleAfter = 2 * time.Hour
+	const orphanQueuedWindow = 24 * time.Hour
+	cronService.RegisterTask("reconcile_queued_orphans", 10*time.Minute, func(ctx context.Context) error {
+		marked, err := dispatchLogRepo.MarkStaleQueuedOrphans(ctx, orphanQueuedStaleAfter, orphanQueuedWindow)
+		if err != nil {
+			return err
+		}
+		if marked > 0 {
+			logger.Warn("Reconciliador: 'queued' órfãos (não-LIST) marcados como reconciled",
+				zap.Int64("marked", marked))
+		}
+		return nil
+	})
+
 	// Register WAHA failed session cleanup job (P0: reclaims RAM from zombie sessions)
 	if concreteAdapter, ok := wahaAdapter.(*whatsapp.WahaAdapter); ok {
 		// Protege números reais da limpeza: um chip PAREADO que esteja

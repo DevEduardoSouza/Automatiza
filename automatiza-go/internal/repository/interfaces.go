@@ -290,6 +290,11 @@ type DispatchLogRepository interface {
 	// consumidos mas nunca entregues (0 sent, 0 queued, ≥1 failed/error na
 	// janela). O reconciliador usa para devolver o item e liberar os claims.
 	GetListResurrectCandidates(ctx context.Context, window time.Duration) ([]ListResurrectCandidate, error)
+	// MarkStaleQueuedOrphans marca como 'reconciled' os 'queued' órfãos há mais
+	// de staleAfter (dentro de window) que NÃO são LIST-com-item — o gap deixado
+	// pelo MarkStaleQueuedListLogs (search/monitoring/offer e list sem item).
+	// Desfecho DESCONHECIDO: 'reconciled', nunca 'sent'. Higiene de backlog.
+	MarkStaleQueuedOrphans(ctx context.Context, staleAfter, window time.Duration) (int64, error)
 }
 
 // ListResurrectCandidate é um destino falho de um item de lista consumido sem

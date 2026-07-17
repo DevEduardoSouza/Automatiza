@@ -115,6 +115,44 @@ func (r *dispatchLogRepository) MarkStaleQueuedListLogs(ctx context.Context, sta
 	return result.RowsAffected(), nil
 }
 
+// MarkStaleQueuedOrphans marca como 'reconciled' os dispatch presos em 'queued'
+// há mais de staleAfter (dentro de window) que NÃO são LIST-com-item — o gap que
+// o MarkStaleQueuedListLogs (list_item_id IS NOT NULL) deixa aberto: search,
+// monitoring/offer e os dispatch de LIST sem list_item_id. Um 'queued' legítimo
+// vive minutos (fila → worker → sent/failed); horas em 'queued' = task perdida
+// (worker morto além do lease, ou restart de deploy com o job em voo — o update
+// final nunca rodou). Sem desfecho terminal o log ficava 'queued' para sempre,
+// poluindo o painel de suporte (que conta 'queued' como backlog do usuário) e a
+// contagem de "Enviadas".
+//
+// Marca 'reconciled', NÃO 'sent': o desfecho é DESCONHECIDO — a msg PODE ter
+// saído e só o update de 'sent' se perdeu (DB saturado no timeout do
+// updateDispatchLog). Afirmar 'sent' supercontaria entregas e, como 'sent' conta
+// no dedup, poderia mascarar não-entregas; 'reconciled' é o status neutro de
+// backfill e — ao contrário de 'error', usado pelo path LIST p/ alimentar o
+// resurrect — não entra na golden query de falhas. list_item_id IS NULL garante
+// que não pisamos no território do reconciliador de LIST. Planeja via
+// idx_dispatch_logs_status (só varre as linhas 'queued', não a tabela toda).
+// staleAfter deve ficar acima do staleMessageTTL (90min) do worker p/ nunca
+// competir com um descarte legítimo em andamento.
+func (r *dispatchLogRepository) MarkStaleQueuedOrphans(ctx context.Context, staleAfter, window time.Duration) (int64, error) {
+	query := `
+		UPDATE dispatch_logs
+		SET status = 'reconciled', error = 'reconciliacao: queued sem desfecho (task perdida)'
+		WHERE list_item_id IS NULL
+		  AND status = 'queued'
+		  AND created_at < NOW() - make_interval(secs => $1)
+		  AND created_at > NOW() - make_interval(secs => $2)
+	`
+
+	result, err := r.db.pool.Exec(ctx, query, staleAfter.Seconds(), window.Seconds())
+	if err != nil {
+		r.logger.Error("Failed to mark stale queued orphans", zap.Error(err))
+		return 0, fmt.Errorf("mark stale queued orphans: %w", err)
+	}
+	return result.RowsAffected(), nil
+}
+
 // GetListResurrectCandidates devolve os destinos FALHOS de itens de lista que
 // foram consumidos mas cuja entrega comprovadamente NÃO aconteceu: dentro da
 // janela, o item tem 0 'sent', 0 'queued' (nada em voo), ≥1 'failed' (desfecho

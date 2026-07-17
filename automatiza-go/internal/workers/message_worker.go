@@ -531,8 +531,9 @@ func (w *MessageWorker) updateHistoryStatus(ctx context.Context, historyID *stri
 	}
 
 	// Mesmo racional do updateDispatchLog: o desfecho precisa ser registrado
-	// mesmo com o ctx da task já cancelado/estourado.
-	updCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	// mesmo com o ctx da task já cancelado/estourado (15s p/ a mesma folga sob
+	// burst do Postgres).
+	updCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
 	if err := w.historyRepo.Update(updCtx, *historyID, updates); err != nil {
 		observability.LogAndCapture(w.logger, sentry.LevelError,
@@ -645,8 +646,10 @@ func (w *MessageWorker) updateDispatchLog(ctx context.Context, dispatchLogID *in
 	// task frequentemente já estourado (envio consumiu os 120s) — era a causa
 	// dos dispatch_logs presos em 'queued' para sempre ("Failed to update
 	// dispatch log: context deadline exceeded"). O registro do desfecho DEVE
-	// completar mesmo com a task morta.
-	updCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	// completar mesmo com a task morta. 15s (não 5s): sob burst o Postgres fica
+	// pressionado e o próprio update de 5s estourava, deixando ~150-260/dia ainda
+	// presos em 'queued' mesmo com o WithoutCancel — a folga maior absorve o pico.
+	updCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
 	if err := w.dispatchLogRepo.Update(updCtx, *dispatchLogID, updates); err != nil {
 		observability.LogAndCapture(w.logger, sentry.LevelError,

@@ -376,14 +376,21 @@ type SessionStatusCounts struct {
 	Pending      int
 }
 
-// GetSessionStatusCounts agrega instances por status.
+// GetSessionStatusCounts agrega instances por status, contando APENAS sessoes
+// de usuarios pagantes (billing_status = 'active'). Exclui suspensos (deixaram
+// de pagar) e donos sem billing/NULL (legado nao cobrado via Kiwify). O JOIN
+// (inner) tambem descarta instances orfas sem profile. Fonte da definicao de
+// "pagante": models.BillingStatusActive + suspension_interceptor (so 'suspended'
+// bloqueia; NULL e tratado como ativo no acesso, mas nao conta como pagante aqui).
 func (r *SupportRepository) GetSessionStatusCounts(ctx context.Context) (*SessionStatusCounts, error) {
 	sql := `
 		SELECT COUNT(*),
-		       COUNT(*) FILTER (WHERE status = 'connected'),
-		       COUNT(*) FILTER (WHERE status = 'disconnected'),
-		       COUNT(*) FILTER (WHERE status = 'pending')
-		FROM instances
+		       COUNT(*) FILTER (WHERE i.status = 'connected'),
+		       COUNT(*) FILTER (WHERE i.status = 'disconnected'),
+		       COUNT(*) FILTER (WHERE i.status = 'pending')
+		FROM instances i
+		JOIN profiles p ON p.id = i.user_id
+		WHERE p.billing_status = 'active'
 	`
 	var c SessionStatusCounts
 	if err := r.db.pool.QueryRow(ctx, sql).Scan(&c.Total, &c.Connected, &c.Disconnected, &c.Pending); err != nil {
