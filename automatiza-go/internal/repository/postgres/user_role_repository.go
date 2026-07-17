@@ -117,12 +117,12 @@ func (r *userRoleRepository) GetAllUserRoles(ctx context.Context, userID string)
 	return roles, rows.Err()
 }
 
-// GetAdminUsers retrieves all admin users
+// GetAdminUsers retrieves all privileged team users (admin and support roles).
 func (r *userRoleRepository) GetAdminUsers(ctx context.Context) ([]models.UserRole, error) {
 	query := `
 		SELECT id, user_id, role, created_at
 		FROM user_roles
-		WHERE role = 'admin'
+		WHERE role IN ('admin', 'support')
 	`
 
 	rows, err := r.db.Query(ctx, query)

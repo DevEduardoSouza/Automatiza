@@ -654,6 +654,7 @@ func main() {
 		repos.Plan,
 		settingsRepo,
 		userRoleRepo,
+		repos.KiwifyEvent,
 		emailService,
 		&kiwify.Config{
 			WebhookToken: cfg.KiwifyWebhookToken,

@@ -33,7 +33,7 @@ type mockUserRoleRepo struct {
 func (m *mockUserRoleRepo) GetUserRole(_ context.Context, _ string) (*models.UserRole, error) {
 	return m.role, m.err
 }
-func (m *mockUserRoleRepo) SetUserRole(_ context.Context, _, _ string) error   { return nil }
+func (m *mockUserRoleRepo) SetUserRole(_ context.Context, _, _ string) error    { return nil }
 func (m *mockUserRoleRepo) RemoveUserRole(_ context.Context, _, _ string) error { return nil }
 func (m *mockUserRoleRepo) IsAdmin(_ context.Context, _ string) (bool, error) {
 	if m.role != nil && m.role.Role == "admin" {
@@ -79,7 +79,12 @@ func (m *mockProfileRepo) UpdatePassword(_ context.Context, _, _ string) error {
 func (m *mockProfileRepo) UpdateBillingStatus(_ context.Context, _ string, _ *models.ProfileBillingFields) error {
 	return nil
 }
-func (m *mockProfileRepo) PauseUserAutomations(_ context.Context, _ string) error { return nil }
+func (m *mockProfileRepo) PauseUserAutomations(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+func (m *mockProfileRepo) ResumeUserAutomations(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
 func (m *mockProfileRepo) ListProfiles(_ context.Context, _ string, _ int) ([]*models.Profile, string, error) {
 	return nil, "", nil
 }
@@ -894,7 +899,7 @@ func (m *mockSessionStore) Refresh(_ context.Context, _, _ string) (*auth.Sessio
 	return nil, "", "", nil
 }
 func (m *mockSessionStore) UpdateActivity(_ context.Context, _ string) error { return nil }
-func (m *mockSessionStore) Revoke(_ context.Context, _ string) error        { return nil }
+func (m *mockSessionStore) Revoke(_ context.Context, _ string) error         { return nil }
 func (m *mockSessionStore) RevokeAllForUser(_ context.Context, _ string) (int, error) {
 	return 0, nil
 }

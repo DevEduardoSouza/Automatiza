@@ -62,8 +62,9 @@ type UserRole struct {
 
 // Role constants
 const (
-	RoleAdmin = "admin"
-	RoleUser  = "user"
+	RoleAdmin   = "admin"
+	RoleSupport = "support"
+	RoleUser    = "user"
 )
 
 // UpdateProfileRequest represents a request to update a profile

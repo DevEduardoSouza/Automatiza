@@ -104,8 +104,12 @@ func (m *mockProfileRepo) UpdateBillingStatus(ctx context.Context, userID string
 	return nil
 }
 
-func (m *mockProfileRepo) PauseUserAutomations(ctx context.Context, userID string) error {
-	return nil
+func (m *mockProfileRepo) PauseUserAutomations(ctx context.Context, userID string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockProfileRepo) ResumeUserAutomations(ctx context.Context, userID string) (int, error) {
+	return 0, nil
 }
 
 func (m *mockProfileRepo) GetMaxAutomations(ctx context.Context, userID string) (int, error) {

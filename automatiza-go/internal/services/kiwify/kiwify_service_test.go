@@ -28,6 +28,9 @@ type mockProfileRepo struct {
 	updateErr  error
 	billingErr error
 	pauseErr   error
+	resumeErr  error
+	pauseCount int
+	resumeN    int
 
 	// Call captures
 	createdProfile *models.Profile
@@ -36,6 +39,7 @@ type mockProfileRepo struct {
 	billingID      string
 	billingFields  *models.ProfileBillingFields
 	pausedUserID   string
+	resumedUserID  string
 	credsUserID    string
 	credsHash      string
 	calls          []string
@@ -76,10 +80,16 @@ func (m *mockProfileRepo) UpdateBillingStatus(_ context.Context, id string, b *m
 	return m.billingErr
 }
 
-func (m *mockProfileRepo) PauseUserAutomations(_ context.Context, userID string) error {
+func (m *mockProfileRepo) PauseUserAutomations(_ context.Context, userID string) (int, error) {
 	m.calls = append(m.calls, "PauseUserAutomations")
 	m.pausedUserID = userID
-	return m.pauseErr
+	return m.pauseCount, m.pauseErr
+}
+
+func (m *mockProfileRepo) ResumeUserAutomations(_ context.Context, userID string) (int, error) {
+	m.calls = append(m.calls, "ResumeUserAutomations")
+	m.resumedUserID = userID
+	return m.resumeN, m.resumeErr
 }
 
 // Unused methods — satisfy the interface.
@@ -109,6 +119,38 @@ func (m *mockProfileRepo) CountUserAutomations(context.Context, string) (int, er
 }
 func (m *mockProfileRepo) GetProfileStats(context.Context) (*repository.ProfileStats, error) {
 	panic("not implemented")
+}
+
+// mockKiwifyEventRepo implements repository.KiwifyEventRepository for testing.
+type mockKiwifyEventRepo struct {
+	claimed     bool   // what Claim returns as `claimed`
+	priorStatus string // status returned when not claimed
+	claimErr    error
+
+	claims   []string
+	finished []string
+	released []string
+	audits   []map[string]interface{}
+}
+
+func (m *mockKiwifyEventRepo) Claim(_ context.Context, key, _, _ string) (bool, string, error) {
+	m.claims = append(m.claims, key)
+	return m.claimed, m.priorStatus, m.claimErr
+}
+
+func (m *mockKiwifyEventRepo) Finish(_ context.Context, key, _, _ string) error {
+	m.finished = append(m.finished, key)
+	return nil
+}
+
+func (m *mockKiwifyEventRepo) Release(_ context.Context, key string) error {
+	m.released = append(m.released, key)
+	return nil
+}
+
+func (m *mockKiwifyEventRepo) RecordBillingAudit(_ context.Context, payload map[string]interface{}) error {
+	m.audits = append(m.audits, payload)
+	return nil
 }
 
 // mockPlanRepo implements repository.PlanRepository for testing.
@@ -256,7 +298,10 @@ func newTestService(
 	cfg *Config,
 ) *kiwifyService {
 	logger := zap.NewNop()
-	svc := NewKiwifyService(pr, plr, sr, ur, es, cfg, logger)
+	// eventRepo is nil here: the service guards nil (skips idempotency/audit), so
+	// the existing behavioral tests are unaffected. Idempotency/audit are covered
+	// by dedicated tests that inject a mockKiwifyEventRepo.
+	svc := NewKiwifyService(pr, plr, sr, ur, nil, es, cfg, logger)
 	return svc.(*kiwifyService)
 }
 
@@ -290,7 +335,7 @@ func TestNewKiwifyService(t *testing.T) {
 	t.Run("nil config uses defaults", func(t *testing.T) {
 		svc := NewKiwifyService(
 			&mockProfileRepo{}, &mockPlanRepo{}, &mockSettingsRepo{},
-			nil, nil, nil, zap.NewNop(),
+			nil, nil, nil, nil, zap.NewNop(),
 		)
 		if svc == nil {
 			t.Fatal("expected non-nil service")
@@ -301,7 +346,7 @@ func TestNewKiwifyService(t *testing.T) {
 		cfg := &Config{WebhookToken: "tok123"}
 		svc := NewKiwifyService(
 			&mockProfileRepo{}, &mockPlanRepo{}, &mockSettingsRepo{},
-			nil, nil, cfg, zap.NewNop(),
+			nil, nil, nil, cfg, zap.NewNop(),
 		).(*kiwifyService)
 		if svc.config.WebhookToken != "tok123" {
 			t.Errorf("expected token tok123, got %s", svc.config.WebhookToken)
@@ -358,7 +403,7 @@ func TestParseFlexibleDate(t *testing.T) {
 	}{
 		{name: "nil", input: nil, wantNil: true},
 		{
-			name: "float64 unix seconds",
+			name:  "float64 unix seconds",
 			input: float64(1700000000),
 			check: func(t *testing.T, r *time.Time) {
 				if r.Unix() != 1700000000 {
@@ -367,7 +412,7 @@ func TestParseFlexibleDate(t *testing.T) {
 			},
 		},
 		{
-			name: "float64 unix ms",
+			name:  "float64 unix ms",
 			input: float64(1700000000000),
 			check: func(t *testing.T, r *time.Time) {
 				if r.UnixMilli() != 1700000000000 {
@@ -376,7 +421,7 @@ func TestParseFlexibleDate(t *testing.T) {
 			},
 		},
 		{
-			name: "int64 unix seconds",
+			name:  "int64 unix seconds",
 			input: int64(1700000000),
 			check: func(t *testing.T, r *time.Time) {
 				if r.Unix() != 1700000000 {
@@ -385,7 +430,7 @@ func TestParseFlexibleDate(t *testing.T) {
 			},
 		},
 		{
-			name: "int64 unix ms",
+			name:  "int64 unix ms",
 			input: int64(1700000000000),
 			check: func(t *testing.T, r *time.Time) {
 				if r.UnixMilli() != 1700000000000 {
@@ -396,7 +441,7 @@ func TestParseFlexibleDate(t *testing.T) {
 		{name: "empty string", input: "", wantNil: true},
 		{name: "whitespace string", input: "   ", wantNil: true},
 		{
-			name: "string numeric seconds",
+			name:  "string numeric seconds",
 			input: "1700000000",
 			check: func(t *testing.T, r *time.Time) {
 				if r.Unix() != 1700000000 {
@@ -405,7 +450,7 @@ func TestParseFlexibleDate(t *testing.T) {
 			},
 		},
 		{
-			name: "string numeric ms",
+			name:  "string numeric ms",
 			input: "1700000000000",
 			check: func(t *testing.T, r *time.Time) {
 				if r.UnixMilli() != 1700000000000 {
@@ -415,7 +460,7 @@ func TestParseFlexibleDate(t *testing.T) {
 		},
 		{name: "string numeric overflow", input: "99999999999999999999999999", wantNil: true},
 		{
-			name: "string RFC3339",
+			name:  "string RFC3339",
 			input: "2024-01-15T10:30:00Z",
 			check: func(t *testing.T, r *time.Time) {
 				if r.Year() != 2024 || r.Month() != 1 || r.Day() != 15 {
@@ -424,7 +469,7 @@ func TestParseFlexibleDate(t *testing.T) {
 			},
 		},
 		{
-			name: "string RFC3339Nano",
+			name:  "string RFC3339Nano",
 			input: "2024-01-15T10:30:00.123456789Z",
 			check: func(t *testing.T, r *time.Time) {
 				if r.Year() != 2024 {
@@ -433,7 +478,7 @@ func TestParseFlexibleDate(t *testing.T) {
 			},
 		},
 		{
-			name: "string ISO without Z",
+			name:  "string ISO without Z",
 			input: "2024-01-15T10:30:00",
 			check: func(t *testing.T, r *time.Time) {
 				if r.Hour() != 10 || r.Minute() != 30 {
@@ -442,7 +487,7 @@ func TestParseFlexibleDate(t *testing.T) {
 			},
 		},
 		{
-			name: "string date only",
+			name:  "string date only",
 			input: "2024-01-15",
 			check: func(t *testing.T, r *time.Time) {
 				if r.Year() != 2024 || r.Month() != 1 || r.Day() != 15 {
@@ -451,7 +496,7 @@ func TestParseFlexibleDate(t *testing.T) {
 			},
 		},
 		{
-			name: "string datetime with space",
+			name:  "string datetime with space",
 			input: "2024-01-15 10:30:00",
 			check: func(t *testing.T, r *time.Time) {
 				if r.Hour() != 10 {
@@ -462,7 +507,7 @@ func TestParseFlexibleDate(t *testing.T) {
 		{name: "string unparseable", input: "not-a-date", wantNil: true},
 		{name: "bool (unknown type)", input: true, wantNil: true},
 		{
-			name: "float64 zero",
+			name:  "float64 zero",
 			input: float64(0),
 			check: func(t *testing.T, r *time.Time) {
 				if r.UnixMilli() != 0 {
@@ -1822,5 +1867,186 @@ func TestProcessWebhook_E2E_Portuguese_Keywords(t *testing.T) {
 				t.Errorf("event %q: expected %q in message, got %q", ev, wantContain, r.Message)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Billing suspension/reactivation cycle (root-cause regression tests)
+// ---------------------------------------------------------------------------
+
+func callsContain(calls []string, name string) bool {
+	for _, c := range calls {
+		if c == name {
+			return true
+		}
+	}
+	return false
+}
+
+// The bug: after a payment-suspension, an approved/renewal webhook cleared the
+// suspension but never resumed the automations. This asserts the symmetric
+// ResumeUserAutomations now runs.
+func TestPurchaseApproved_ResumesAfterPaymentSuspension(t *testing.T) {
+	ctx := context.Background()
+	for _, ev := range []string{"order_approved", "compra aprovada", "assinatura renovada"} {
+		t.Run(ev, func(t *testing.T) {
+			pr := &mockProfileRepo{
+				profile: makeProfile("u1", "a@test.com", "starter"),
+				billing: &models.ProfileBillingFields{
+					BillingStatus:         strPtr("suspended"),
+					BillingSuspensionKind: strPtr(models.BillingSuspensionKindPayment),
+				},
+				resumeN: 3,
+			}
+			svc := newTestService(pr, &mockPlanRepo{}, &mockSettingsRepo{}, nil, nil, nil)
+			r, err := svc.ProcessWebhook(ctx, makePayload("a@test.com", "Starter", ev), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !r.Success {
+				t.Fatalf("expected success, got %+v", r)
+			}
+			if !callsContain(pr.calls, "ResumeUserAutomations") {
+				t.Errorf("event %q: expected ResumeUserAutomations to be called; calls=%v", ev, pr.calls)
+			}
+			if pr.resumedUserID != "u1" {
+				t.Errorf("expected resume for u1, got %q", pr.resumedUserID)
+			}
+			// Suspension must be cleared.
+			if pr.billingFields == nil || pr.billingFields.BillingStatus != nil {
+				t.Errorf("expected suspension cleared (BillingStatus nil), got %+v", pr.billingFields)
+			}
+		})
+	}
+}
+
+// A manual admin block must NOT be auto-lifted by a payment webhook, and its
+// automations must stay paused.
+func TestPurchaseApproved_ManualBlock_DoesNotResume(t *testing.T) {
+	ctx := context.Background()
+	pr := &mockProfileRepo{
+		profile: makeProfile("u2", "b@test.com", "starter"),
+		billing: &models.ProfileBillingFields{
+			BillingStatus:         strPtr("suspended"),
+			BillingSuspensionKind: strPtr(models.BillingSuspensionKindManual),
+		},
+	}
+	svc := newTestService(pr, &mockPlanRepo{}, &mockSettingsRepo{}, nil, nil, nil)
+	r, err := svc.ProcessWebhook(ctx, makePayload("b@test.com", "Starter", "order_approved"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.Success || !strings.Contains(r.Message, "manual block") {
+		t.Fatalf("expected manual-block message, got %+v", r)
+	}
+	if callsContain(pr.calls, "ResumeUserAutomations") {
+		t.Errorf("manual block must NOT resume automations; calls=%v", pr.calls)
+	}
+}
+
+// Full cycle: refund pauses (marking paused_by_billing via the repo), then an
+// approved payment resumes exactly those. Both halves must be present.
+func TestBillingCycle_RefundPauses_ApprovedResumes(t *testing.T) {
+	ctx := context.Background()
+
+	// 1) Refund → suspend + pause.
+	prRefund := &mockProfileRepo{profile: makeProfile("u3", "c@test.com", "starter"), pauseCount: 2}
+	svc := newTestService(prRefund, &mockPlanRepo{}, &mockSettingsRepo{}, nil, nil, nil)
+	if _, err := svc.ProcessWebhook(ctx, makePayload("c@test.com", "Starter", "order_refunded"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if !callsContain(prRefund.calls, "PauseUserAutomations") {
+		t.Fatalf("refund must pause automations; calls=%v", prRefund.calls)
+	}
+
+	// 2) Payment approved after a payment-suspension → resume.
+	prApprove := &mockProfileRepo{
+		profile: makeProfile("u3", "c@test.com", "starter"),
+		billing: &models.ProfileBillingFields{
+			BillingStatus:         strPtr("suspended"),
+			BillingSuspensionKind: strPtr(models.BillingSuspensionKindPayment),
+		},
+		resumeN: 2,
+	}
+	svc2 := newTestService(prApprove, &mockPlanRepo{}, &mockSettingsRepo{}, nil, nil, nil)
+	if _, err := svc2.ProcessWebhook(ctx, makePayload("c@test.com", "Starter", "order_approved"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if !callsContain(prApprove.calls, "ResumeUserAutomations") {
+		t.Fatalf("approval must resume automations; calls=%v", prApprove.calls)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Idempotency / duplicate protection + audit
+// ---------------------------------------------------------------------------
+
+func TestProcessWebhook_DuplicateIgnored(t *testing.T) {
+	ctx := context.Background()
+	pr := &mockProfileRepo{profile: makeProfile("u4", "d@test.com", "starter")}
+	ev := &mockKiwifyEventRepo{claimed: false, priorStatus: "done"} // duplicate
+	svc := NewKiwifyService(pr, &mockPlanRepo{}, &mockSettingsRepo{}, nil, ev, nil, nil, zap.NewNop())
+
+	r, err := svc.ProcessWebhook(ctx, makePayload("d@test.com", "Starter", "order_approved"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.Success || !strings.Contains(r.Message, "Duplicate") {
+		t.Fatalf("expected duplicate-ignored result, got %+v", r)
+	}
+	// No side effects: a deduped event must not touch the profile at all.
+	if len(pr.calls) != 0 {
+		t.Errorf("duplicate must cause no profile mutations, got calls=%v", pr.calls)
+	}
+}
+
+func TestProcessWebhook_FirstDelivery_ClaimsAndFinishes(t *testing.T) {
+	ctx := context.Background()
+	pr := &mockProfileRepo{
+		profile: makeProfile("u5", "e@test.com", "starter"),
+		billing: &models.ProfileBillingFields{
+			BillingStatus:         strPtr("suspended"),
+			BillingSuspensionKind: strPtr(models.BillingSuspensionKindPayment),
+		},
+		resumeN: 1,
+	}
+	ev := &mockKiwifyEventRepo{claimed: true}
+	svc := NewKiwifyService(pr, &mockPlanRepo{}, &mockSettingsRepo{}, nil, ev, nil, nil, zap.NewNop())
+
+	if _, err := svc.ProcessWebhook(ctx, makePayload("e@test.com", "Starter", "order_approved"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(ev.claims) != 1 {
+		t.Errorf("expected exactly 1 claim, got %d", len(ev.claims))
+	}
+	if len(ev.finished) != 1 {
+		t.Errorf("expected the claim to be finished on success, got %d", len(ev.finished))
+	}
+	if len(ev.released) != 0 {
+		t.Errorf("expected no release on success, got %d", len(ev.released))
+	}
+	// Audit recorded for the transition (suspend→active).
+	if len(ev.audits) == 0 {
+		t.Errorf("expected a billing audit record")
+	}
+}
+
+// A processing failure must release the idempotency claim so Kiwify's retry can
+// reprocess (otherwise the event would be permanently deduped after a failure).
+func TestProcessWebhook_FailureReleasesClaim(t *testing.T) {
+	ctx := context.Background()
+	pr := &mockProfileRepo{getErr: errors.New("db down")}
+	ev := &mockKiwifyEventRepo{claimed: true}
+	svc := NewKiwifyService(pr, &mockPlanRepo{}, &mockSettingsRepo{}, nil, ev, nil, nil, zap.NewNop())
+
+	_, err := svc.ProcessWebhook(ctx, makePayload("f@test.com", "Starter", "order_approved"), "")
+	if err == nil {
+		t.Fatal("expected error when profile lookup fails")
+	}
+	if len(ev.released) != 1 {
+		t.Errorf("expected claim released on failure, got released=%d finished=%d", len(ev.released), len(ev.finished))
+	}
+	if len(ev.finished) != 0 {
+		t.Errorf("expected no finish on failure, got %d", len(ev.finished))
 	}
 }

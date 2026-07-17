@@ -11,6 +11,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -50,6 +57,8 @@ export default function TeamTab() {
     setIsDialogOpen,
     newAdminEmail,
     setNewAdminEmail,
+    newMemberRole,
+    setNewMemberRole,
     handleAddAdmin,
     handleRemoveAdmin,
   } = useTeamTab();
@@ -107,6 +116,21 @@ export default function TeamTab() {
                     aria-required="true"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="role">{t('admin.team.dialog.roleLabel')}</Label>
+                  <Select
+                    value={newMemberRole}
+                    onValueChange={(value) => setNewMemberRole(value as 'admin' | 'support')}
+                  >
+                    <SelectTrigger id="role">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">{t('admin.team.roleOptions.admin')}</SelectItem>
+                      <SelectItem value="support">{t('admin.team.roleOptions.support')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button onClick={handleAddAdmin} className="w-full">
                   <UserPlus className="h-4 w-4 mr-2" />
                   {t('admin.team.dialog.addButton')}
@@ -153,11 +177,11 @@ export default function TeamTab() {
                         })}
                       </p>
                     </div>
-                    <Badge className="text-xs">{t('admin.team.roles.admin')}</Badge>
+                    <Badge className="text-xs">{t(`admin.team.roleOptions.${member.role}`)}</Badge>
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleRemoveAdmin(member.id, member.email)}
+                    onClick={() => handleRemoveAdmin(member.id, member.email, member.role)}
                     className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
                     aria-label={t('admin.team.removeAriaLabel', { email: member.email })}
                   >
@@ -183,7 +207,7 @@ export default function TeamTab() {
                     <TableRow key={member.id}>
                       <TableCell className="font-mono text-sm">{member.email}</TableCell>
                       <TableCell>
-                        <Badge>{t('admin.team.roles.admin')}</Badge>
+                        <Badge>{t(`admin.team.roleOptions.${member.role}`)}</Badge>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {format(new Date(member.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
@@ -191,7 +215,7 @@ export default function TeamTab() {
                       <TableCell>
                         <button
                           type="button"
-                          onClick={() => handleRemoveAdmin(member.id, member.email)}
+                          onClick={() => handleRemoveAdmin(member.id, member.email, member.role)}
                           className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#8D2D53] shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
                           aria-label={t('admin.team.removeAriaLabel', { email: member.email })}
                         >

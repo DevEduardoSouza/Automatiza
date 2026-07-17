@@ -14,6 +14,8 @@ import (
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/email"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -47,6 +49,7 @@ type kiwifyService struct {
 	planRepo     repository.PlanRepository
 	settingsRepo repository.SettingsRepository
 	userRoleRepo repository.UserRoleRepository
+	eventRepo    repository.KiwifyEventRepository
 	emailService email.Service
 	config       *Config
 	logger       *zap.Logger
@@ -62,6 +65,7 @@ func NewKiwifyService(
 	planRepo repository.PlanRepository,
 	settingsRepo repository.SettingsRepository,
 	userRoleRepo repository.UserRoleRepository,
+	eventRepo repository.KiwifyEventRepository,
 	emailService email.Service,
 	config *Config,
 	logger *zap.Logger,
@@ -74,6 +78,7 @@ func NewKiwifyService(
 		planRepo:           planRepo,
 		settingsRepo:       settingsRepo,
 		userRoleRepo:       userRoleRepo,
+		eventRepo:          eventRepo,
 		emailService:       emailService,
 		config:             config,
 		logger:             logger,
@@ -83,7 +88,11 @@ func NewKiwifyService(
 }
 
 // ProcessWebhook processes an incoming Kiwify webhook.
-func (s *kiwifyService) ProcessWebhook(ctx context.Context, payload *models.KiwifyWebhookPayload, signature string) (*models.KiwifyWebhookResult, error) {
+//
+// Idempotency/concurrency: the first delivery of an event claims a unique key and
+// processes it; concurrent or retried deliveries are recognized and ignored. On a
+// processing failure the claim is released so Kiwify's retry can reprocess.
+func (s *kiwifyService) ProcessWebhook(ctx context.Context, payload *models.KiwifyWebhookPayload, signature string) (result *models.KiwifyWebhookResult, err error) {
 	// Normalize payload (handle wrapped vs direct format)
 	data := s.normalizePayload(payload)
 
@@ -113,6 +122,46 @@ func (s *kiwifyService) ProcessWebhook(ctx context.Context, payload *models.Kiwi
 		zap.String("product", data.ProductName),
 		zap.String("productID", data.ProductID),
 	)
+
+	// Idempotency + duplicate protection. Claim a unique key derived from the
+	// event's stable fields. Only the first delivery proceeds; retries/dupes are
+	// ignored. Fail-open: if the idempotency store errors, process anyway (never
+	// drop a real billing event because of a bookkeeping hiccup).
+	if s.eventRepo != nil {
+		idemKey := s.idempotencyKey(data)
+		claimed, priorStatus, claimErr := s.eventRepo.Claim(ctx, idemKey, data.Email, data.Event)
+		if claimErr != nil {
+			s.logger.Warn("Idempotency claim failed; processing without dedup",
+				zap.String("email", data.Email), zap.Error(claimErr))
+		} else if !claimed {
+			s.logger.Info("Duplicate Kiwify webhook ignored (idempotent)",
+				zap.String("email", data.Email),
+				zap.String("event", data.Event),
+				zap.String("priorStatus", priorStatus),
+			)
+			return &models.KiwifyWebhookResult{
+				Success: true,
+				Message: "Duplicate event ignored (idempotent)",
+				Event:   data.Event,
+			}, nil
+		} else {
+			// We own the key: finalize on success, release on failure so the
+			// retry can reprocess. Use a cancel-free context so bookkeeping
+			// completes even if the request context is canceled on return.
+			fctx := context.WithoutCancel(ctx)
+			defer func() {
+				if err != nil {
+					_ = s.eventRepo.Release(fctx, idemKey)
+					return
+				}
+				uid, msg := "", ""
+				if result != nil {
+					uid, msg = result.UserID, result.Message
+				}
+				_ = s.eventRepo.Finish(fctx, idemKey, uid, msg)
+			}()
+		}
+	}
 
 	// Validate token if configured
 	webhookToken := s.config.WebhookToken
@@ -183,7 +232,7 @@ func (s *kiwifyService) ProcessWebhook(ctx context.Context, payload *models.Kiwi
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to get profile during Kiwify webhook processing", err, map[string]string{
 			"external_service": "kiwify",
-			"event":           data.Event,
+			"event":            data.Event,
 		})
 		return nil, fmt.Errorf("failed to get profile: %w", err)
 	}
@@ -537,7 +586,7 @@ func (s *kiwifyService) handlePurchaseApproved(
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to update user plan from Kiwify webhook", err, map[string]string{
 			"external_service": "kiwify",
-			"event":           data.Event,
+			"event":            data.Event,
 		})
 		return nil, fmt.Errorf("failed to update plan: %w", err)
 	}
@@ -558,6 +607,9 @@ func (s *kiwifyService) handlePurchaseApproved(
 		suspensionKind = strings.ToLower(*billing.BillingSuspensionKind)
 	}
 
+	// State validation: only auto-unsuspend a PAYMENT suspension. A manual admin
+	// block (kind=manual) must survive a payment webhook — the automations stay
+	// paused on purpose. A non-suspended account also "passes" (nothing to undo).
 	shouldAutoUnsuspend := currentBillingStatus != "suspended" || suspensionKind != "manual"
 
 	if !shouldAutoUnsuspend {
@@ -565,6 +617,8 @@ func (s *kiwifyService) handlePurchaseApproved(
 			zap.String("userID", profile.ID),
 			zap.String("suspensionKind", suspensionKind),
 		)
+		s.auditBillingTransition(ctx, profile.ID, data, currentBillingStatus, "suspended",
+			"payment approved but manual block kept", 0)
 		return &models.KiwifyWebhookResult{
 			Success: true,
 			Message: "Payment approved but account remains blocked (manual block)",
@@ -590,9 +644,29 @@ func (s *kiwifyService) handlePurchaseApproved(
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to update billing status from Kiwify webhook", err, map[string]string{
 			"external_service": "kiwify",
-			"event":           data.Event,
+			"event":            data.Event,
 		})
 	}
+
+	// ROOT-CAUSE FIX: symmetric counterpart of PauseUserAutomations. On approval
+	// AND renewal (both routed here), reactivate the automations the billing
+	// suspension paused. Without this the account regularizes payment but stays
+	// silently paused forever. Idempotent and scoped to paused_by_billing, so it
+	// never touches automations the user paused on purpose and never loops.
+	resumed, resumeErr := s.profileRepo.ResumeUserAutomations(ctx, profile.ID)
+	if resumeErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to resume automations after Kiwify approval", resumeErr, map[string]string{
+			"external_service": "kiwify",
+			"event":            data.Event,
+		})
+	}
+	if resumed > 0 {
+		s.logger.Info("Reactivated billing-paused automations after payment",
+			zap.String("userID", profile.ID), zap.Int("resumed", resumed))
+	}
+
+	s.auditBillingTransition(ctx, profile.ID, data, currentBillingStatus, "active",
+		"payment approved: suspension cleared, billing-paused automations resumed", resumed)
 
 	return &models.KiwifyWebhookResult{
 		Success: true,
@@ -638,19 +712,22 @@ func (s *kiwifyService) handleRefundOrLate(
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to suspend account from Kiwify webhook", err, map[string]string{
 			"external_service": "kiwify",
-			"event":           data.Event,
+			"event":            data.Event,
 		})
 		return nil, fmt.Errorf("failed to suspend account: %w", err)
 	}
 
-	// Pause all active automations
-	err = s.profileRepo.PauseUserAutomations(ctx, profile.ID)
-	if err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to pause automations from Kiwify webhook", err, map[string]string{
+	// Pause all active automations (marking them paused_by_billing so the later
+	// payment-approved webhook can resume EXACTLY these).
+	paused, pauseErr := s.profileRepo.PauseUserAutomations(ctx, profile.ID)
+	if pauseErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to pause automations from Kiwify webhook", pauseErr, map[string]string{
 			"external_service": "kiwify",
-			"event":           data.Event,
+			"event":            data.Event,
 		})
 	}
+
+	s.auditBillingTransition(ctx, profile.ID, data, "active", "suspended", suspensionReason, paused)
 
 	return &models.KiwifyWebhookResult{
 		Success: true,
@@ -680,7 +757,7 @@ func (s *kiwifyService) handleSubscriptionCanceled(
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to clear next payment date from Kiwify webhook", err, map[string]string{
 			"external_service": "kiwify",
-			"event":           data.Event,
+			"event":            data.Event,
 		})
 	}
 
@@ -711,7 +788,7 @@ func (s *kiwifyService) handleNewUserPurchase(
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to generate temporary password for Kiwify new user", err, map[string]string{
 			"external_service": "kiwify",
-			"event":           data.Event,
+			"event":            data.Event,
 		})
 		return nil, fmt.Errorf("failed to generate password: %w", err)
 	}
@@ -721,7 +798,7 @@ func (s *kiwifyService) handleNewUserPurchase(
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to hash password for Kiwify new user", err, map[string]string{
 			"external_service": "kiwify",
-			"event":           data.Event,
+			"event":            data.Event,
 		})
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -739,7 +816,7 @@ func (s *kiwifyService) handleNewUserPurchase(
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to create profile from Kiwify webhook", err, map[string]string{
 			"external_service": "kiwify",
-			"event":           data.Event,
+			"event":            data.Event,
 		})
 		return nil, fmt.Errorf("failed to create profile: %w", err)
 	}
@@ -750,7 +827,7 @@ func (s *kiwifyService) handleNewUserPurchase(
 	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to create user credentials from Kiwify webhook", err, map[string]string{
 			"external_service": "kiwify",
-			"event":           data.Event,
+			"event":            data.Event,
 		})
 		// Don't fail - profile was created, user can be fixed manually
 	}
@@ -761,7 +838,7 @@ func (s *kiwifyService) handleNewUserPurchase(
 		if err != nil {
 			observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to set user role from Kiwify webhook", err, map[string]string{
 				"external_service": "kiwify",
-				"event":           data.Event,
+				"event":            data.Event,
 			})
 			// Don't fail - profile was created, role can be fixed manually
 		}
@@ -790,6 +867,55 @@ func (s *kiwifyService) handleNewUserPurchase(
 		Plan:    plan,
 		Event:   data.Event,
 	}, nil
+}
+
+// idempotencyKey derives a stable key from the event's identifying fields.
+// Kiwify does not send a unique event id, so we hash (email, event, order_status,
+// event_at, next_payment_at, access_until). Real retries reproduce the same key
+// (deduped); distinct events — including monthly renewals, which carry different
+// dates — hash differently and are all processed.
+func (s *kiwifyService) idempotencyKey(data *models.KiwifyProcessedData) string {
+	ts := func(t *time.Time) string {
+		if t == nil {
+			return ""
+		}
+		return strconv.FormatInt(t.UTC().Unix(), 10)
+	}
+	raw := strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(data.Email)),
+		strings.ToLower(strings.TrimSpace(data.Event)),
+		strings.ToLower(strings.TrimSpace(data.OrderStatus)),
+		ts(data.EventAt),
+		ts(data.NextPaymentAt),
+		ts(data.AccessUntil),
+	}, "|")
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
+}
+
+// auditBillingTransition records a billing state-transition audit event
+// (user, kiwify event, prev/new status, reason, automations affected, timestamp).
+// Best-effort: never fails the webhook.
+func (s *kiwifyService) auditBillingTransition(ctx context.Context, userID string, data *models.KiwifyProcessedData, prevStatus, newStatus, reason string, automationsAffected int) {
+	if s.eventRepo == nil {
+		return
+	}
+	if prevStatus == "" {
+		prevStatus = "active"
+	}
+	if err := s.eventRepo.RecordBillingAudit(ctx, map[string]interface{}{
+		"user_id":              userID,
+		"email":                data.Email,
+		"kiwify_event":         data.Event,
+		"order_status":         data.OrderStatus,
+		"prev_status":          prevStatus,
+		"new_status":           newStatus,
+		"reason":               reason,
+		"automations_affected": automationsAffected,
+	}); err != nil {
+		s.logger.Warn("Failed to record billing audit (non-fatal)",
+			zap.String("userID", userID), zap.String("event", data.Event), zap.Error(err))
+	}
 }
 
 // Helper functions

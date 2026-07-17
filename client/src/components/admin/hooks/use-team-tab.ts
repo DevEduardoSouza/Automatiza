@@ -4,6 +4,7 @@ import {
   GrantAdminRoleRequestSchema,
   ListAdminUsersRequestSchema,
   RevokeAdminRoleRequestSchema,
+  UpdateUserRoleRequestSchema,
 } from '@/gen/admin/v1/admin_pb';
 import { ProfilesService, SearchProfilesRequestSchema } from '@/gen/profiles/v1/profiles_pb';
 import { getErrorInfo } from '@/lib/connect-transport';
@@ -13,7 +14,7 @@ import { useTransport } from '@connectrpc/connect-query';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import type { TeamMember, UseTeamTabReturn } from '../types/team.types';
+import type { TeamMember, TeamRole, UseTeamTabReturn } from '../types/team.types';
 
 /**
  * Hook que gerencia a logica da aba de equipe administrativa.
@@ -27,6 +28,7 @@ export function useTeamTab(): UseTeamTabReturn {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState<TeamRole>('admin');
 
   const fetchTeamMembers = useCallback(async () => {
     if (!user) {
@@ -79,30 +81,47 @@ export function useTeamTab(): UseTeamTabReturn {
       const foundProfile = searchResponse.profiles[0];
 
       const adminClient = createClient(AdminService, transport);
-      await adminClient.grantAdminRole(
-        create(GrantAdminRoleRequestSchema, { userId: foundProfile.id })
-      );
+      if (newMemberRole === 'admin') {
+        await adminClient.grantAdminRole(
+          create(GrantAdminRoleRequestSchema, { userId: foundProfile.id })
+        );
+      } else {
+        await adminClient.updateUserRole(
+          create(UpdateUserRoleRequestSchema, {
+            userId: foundProfile.id,
+            role: newMemberRole,
+            action: 'add',
+          })
+        );
+      }
 
       toast.success(t('admin.team.success.added'));
       setIsDialogOpen(false);
       setNewAdminEmail('');
+      setNewMemberRole('admin');
       fetchTeamMembers();
     } catch (error) {
       const errInfo = getErrorInfo(error);
       if (errInfo.code === 'ALREADY_EXISTS') {
-        toast.error(t('admin.team.errors.alreadyAdmin'));
+        toast.error(t('admin.team.errors.alreadyMember'));
       } else {
         toast.error(errInfo.userMessage || t('admin.team.errors.addError'));
       }
     }
   };
 
-  const handleRemoveAdmin = async (id: string, email: string) => {
+  const handleRemoveAdmin = async (id: string, email: string, role: string) => {
     if (!confirm(t('admin.team.confirm.remove', { email }))) return;
 
     try {
       const client = createClient(AdminService, transport);
-      await client.revokeAdminRole(create(RevokeAdminRoleRequestSchema, { userId: id }));
+      if (role === 'admin') {
+        await client.revokeAdminRole(create(RevokeAdminRoleRequestSchema, { userId: id }));
+      } else {
+        await client.updateUserRole(
+          create(UpdateUserRoleRequestSchema, { userId: id, role, action: 'remove' })
+        );
+      }
 
       toast.success(t('admin.team.success.removed'));
       fetchTeamMembers();
@@ -119,6 +138,8 @@ export function useTeamTab(): UseTeamTabReturn {
     setIsDialogOpen,
     newAdminEmail,
     setNewAdminEmail,
+    newMemberRole,
+    setNewMemberRole,
     handleAddAdmin,
     handleRemoveAdmin,
   };

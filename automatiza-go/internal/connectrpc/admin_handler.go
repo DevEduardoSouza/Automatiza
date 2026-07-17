@@ -29,26 +29,26 @@ import (
 
 // AdminHandler implements the adminv1connect.AdminServiceHandler interface.
 type AdminHandler struct {
-	userRoleRepo      repository.UserRoleRepository
-	systemEventRepo   repository.SystemEventRepository
-	instanceRepo      repository.InstanceRepository
-	profileRepo       repository.ProfileRepository
-	planRepo          repository.PlanRepository
-	emailTemplateRepo repository.EmailTemplateRepository
-	actionHistoryRepo repository.ActionHistoryRepository
-	affiliateRepo     repository.AffiliateCredentialsRepository
-	dispatchLogRepo   repository.DispatchLogRepository
-	automationRepo    repository.AutomationRepository
-	groupRepo         repository.GroupRepository
-	categoryRepo      repository.CategoryRepository
+	userRoleRepo        repository.UserRoleRepository
+	systemEventRepo     repository.SystemEventRepository
+	instanceRepo        repository.InstanceRepository
+	profileRepo         repository.ProfileRepository
+	planRepo            repository.PlanRepository
+	emailTemplateRepo   repository.EmailTemplateRepository
+	actionHistoryRepo   repository.ActionHistoryRepository
+	affiliateRepo       repository.AffiliateCredentialsRepository
+	dispatchLogRepo     repository.DispatchLogRepository
+	automationRepo      repository.AutomationRepository
+	groupRepo           repository.GroupRepository
+	categoryRepo        repository.CategoryRepository
 	webhookLogRepo      WebhookLogRepository
 	webhookLogWriteRepo postgres.WebhookLogRepository
 	kiwifyService       KiwifyService
-	lbService         loadbalancer.Service
-	waProvider        whatsapp.WhatsAppProvider
-	emailService      email.Service
-	webhookBaseURL    string
-	logger            *zap.Logger
+	lbService           loadbalancer.Service
+	waProvider          whatsapp.WhatsAppProvider
+	emailService        email.Service
+	webhookBaseURL      string
+	logger              *zap.Logger
 }
 
 // WebhookLogRepository interface for webhook logs
@@ -394,11 +394,11 @@ func (h *AdminHandler) GetAdminProfileStats(
 
 	return connect.NewResponse(&adminv1.GetAdminProfileStatsResponse{
 		Stats: &adminv1.AdminProfileStats{
-			TotalUsers:   int32(stats.TotalUsers),
-			ActiveUsers:  int32(stats.ActiveUsers),
+			TotalUsers:    int32(stats.TotalUsers),
+			ActiveUsers:   int32(stats.ActiveUsers),
 			InactiveUsers: int32(stats.InactiveUsers),
-			PlanStats:    planStats,
-			GrowthData:   growthData,
+			PlanStats:     planStats,
+			GrowthData:    growthData,
 		},
 	}), nil
 }
@@ -1703,6 +1703,11 @@ func (h *AdminHandler) UpdateUserRole(
 	if role == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("role is required"))
 	}
+	// Whitelist assignable roles to avoid typos polluting user_roles.
+	// 'user' is the implicit default (no row), so only elevated roles are assignable here.
+	if role != models.RoleAdmin && role != models.RoleSupport {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid role %q: must be 'admin' or 'support'", role))
+	}
 
 	action := req.Msg.GetAction()
 	if action != "add" && action != "remove" {
@@ -2071,70 +2076,6 @@ func (h *AdminHandler) GetUserInvestigation(
 	}), nil
 }
 
-// AdminBulkUpdateAutomationStatus bulk updates automation status for a user.
-func (h *AdminHandler) AdminBulkUpdateAutomationStatus(
-	ctx context.Context,
-	req *connect.Request[adminv1.AdminBulkUpdateAutomationStatusRequest],
-) (*connect.Response[adminv1.AdminBulkUpdateAutomationStatusResponse], error) {
-	if err := h.requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-
-	userID := req.Msg.GetUserId()
-	if userID == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("user_id is required"))
-	}
-
-	targetStatus := req.Msg.GetTargetStatus()
-	if targetStatus != "active" && targetStatus != "paused" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("target_status must be 'active' or 'paused'"))
-	}
-
-	// Check if user exists
-	profile, err := h.profileRepo.GetProfile(ctx, userID)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get user profile: %w", err))
-	}
-	if profile == nil {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("user not found"))
-	}
-
-	// Get source status filter
-	var sourceStatus *string
-	if req.Msg.SourceStatus != nil && *req.Msg.SourceStatus != "" {
-		sourceStatus = req.Msg.SourceStatus
-	}
-
-	// Perform bulk update
-	count, err := h.automationRepo.BulkUpdateStatusByUserID(ctx, userID, targetStatus, sourceStatus)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update automations: %w", err))
-	}
-
-	// Log the action
-	currentUser := GetUserFromContext(ctx)
-	if h.systemEventRepo != nil && currentUser != nil {
-		if auditErr := h.systemEventRepo.Create(ctx, "admin_bulk_update_automations", map[string]interface{}{
-			"target_user_id":    userID,
-			"target_user_email": profile.Email,
-			"target_status":     targetStatus,
-			"source_status":     sourceStatus,
-			"updated_count":     count,
-			"admin_id":          currentUser.ID,
-			"admin_email":       currentUser.Email,
-		}); auditErr != nil {
-			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create audit trail for bulk automation update", auditErr, map[string]string{
-				"module": "admin", "operation": "audit_trail", "event_type": "admin_bulk_update_automations",
-			})
-		}
-	}
-
-	return connect.NewResponse(&adminv1.AdminBulkUpdateAutomationStatusResponse{
-		UpdatedCount: int32(count),
-		Message:      fmt.Sprintf("Updated %d automations to status '%s'", count, targetStatus),
-	}), nil
-}
-
 // AdminSpreadAutomationSchedule spreads next_run_at across user's automations.
 func (h *AdminHandler) AdminSpreadAutomationSchedule(
 	ctx context.Context,
@@ -2222,125 +2163,6 @@ func (h *AdminHandler) AdminSpreadAutomationSchedule(
 	return connect.NewResponse(&adminv1.AdminSpreadAutomationScheduleResponse{
 		UpdatedCount: int32(len(targetAutomations)),
 		Message:      fmt.Sprintf("Spread next_run_at for %d automations with %d minute intervals", len(targetAutomations), spreadMinutes),
-	}), nil
-}
-
-// AdminBlockUser blocks a user with extended options.
-func (h *AdminHandler) AdminBlockUser(
-	ctx context.Context,
-	req *connect.Request[adminv1.AdminBlockUserRequest],
-) (*connect.Response[adminv1.AdminBlockUserResponse], error) {
-	if err := h.requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-
-	userID := req.Msg.GetUserId()
-	if userID == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("user_id is required"))
-	}
-
-	// Prevent admin from blocking themselves
-	currentUser := GetUserFromContext(ctx)
-	if currentUser != nil && currentUser.ID == userID {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cannot block your own account"))
-	}
-
-	// Check if user exists
-	profile, err := h.profileRepo.GetProfile(ctx, userID)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get user profile: %w", err))
-	}
-	if profile == nil {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("user not found"))
-	}
-
-	// Determine suspension reason and kind
-	reason := req.Msg.GetReason()
-	if reason == "" {
-		reason = "admin_manual_block"
-	}
-
-	kind := req.Msg.GetKind()
-	if kind == "" {
-		kind = models.BillingSuspensionKindManual
-	}
-
-	now := time.Now().UTC()
-	billingStatus := "suspended"
-
-	// Update billing status to block the user
-	billing := &models.ProfileBillingFields{
-		BillingStatus:           &billingStatus,
-		BillingSuspendedAt:      &now,
-		BillingSuspensionReason: &reason,
-		BillingSuspensionKind:   &kind,
-	}
-
-	if err := h.profileRepo.UpdateBillingStatus(ctx, userID, billing); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to block user: %w", err))
-	}
-
-	// Pause automations if requested
-	var pausedCount int32
-	if req.Msg.GetPauseAutomations() {
-		sourceStatus := "active"
-		count, err := h.automationRepo.BulkUpdateStatusByUserID(ctx, userID, "paused", &sourceStatus)
-		if err != nil {
-			// Log but don't fail the request
-			if h.systemEventRepo != nil {
-				if auditErr := h.systemEventRepo.Create(ctx, "admin_block_user_pause_failed", map[string]interface{}{
-					"user_id": userID,
-					"error":   err.Error(),
-				}); auditErr != nil {
-					observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create audit trail for block user pause failure", auditErr, map[string]string{
-						"module": "admin", "operation": "audit_trail", "event_type": "admin_block_user_pause_failed",
-					})
-				}
-			}
-		} else {
-			pausedCount = int32(count)
-		}
-	}
-
-	// Log the action
-	if h.systemEventRepo != nil && currentUser != nil {
-		if auditErr := h.systemEventRepo.Create(ctx, "admin_block_user", map[string]interface{}{
-			"target_user_id":     userID,
-			"target_user_email":  profile.Email,
-			"reason":             reason,
-			"kind":               kind,
-			"pause_automations":  req.Msg.GetPauseAutomations(),
-			"paused_automations": pausedCount,
-			"admin_id":           currentUser.ID,
-			"admin_email":        currentUser.Email,
-		}); auditErr != nil {
-			observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to create audit trail for block user", auditErr, map[string]string{
-				"module": "admin", "operation": "audit_trail", "event_type": "admin_block_user",
-			})
-		}
-	}
-
-	// Fetch updated profile for response
-	updatedProfile, updProfileErr := h.profileRepo.GetProfile(ctx, userID)
-	if updProfileErr != nil {
-		observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to fetch updated profile after block", updProfileErr, map[string]string{
-			"module": "admin", "operation": "profile_enrichment", "user_id": userID,
-		})
-	}
-	if updatedProfile == nil {
-		updatedProfile = profile
-	}
-	roles, rolesErr := h.userRoleRepo.GetAllUserRoles(ctx, userID)
-	if rolesErr != nil {
-		observability.LogAndCapture(h.getLogger(), sentry.LevelWarning, "failed to get user roles after block", rolesErr, map[string]string{
-			"module": "admin", "operation": "roles", "user_id": userID,
-		})
-	}
-
-	return connect.NewResponse(&adminv1.AdminBlockUserResponse{
-		User:              profileToUserProto(updatedProfile, roles),
-		PausedAutomations: pausedCount,
-		Message:           fmt.Sprintf("User %s blocked successfully", profile.Email),
 	}), nil
 }
 

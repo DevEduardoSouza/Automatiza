@@ -1,3 +1,4 @@
+import { ROUTES } from '@/constants/routes';
 import { useAuth } from '@/contexts';
 import { useToast } from '@/hooks/use-toast';
 import { getAuthErrorKey } from '@/lib/auth-error-mapper';
@@ -53,7 +54,7 @@ export function useAuthPage(): UseAuthPageReturn {
 
   useEffect(() => {
     if (user) {
-      navigate('/dashboard');
+      navigate(user.role === 'support' ? ROUTES.SUPPORT : ROUTES.DASHBOARD);
     }
   }, [user, navigate]);
 

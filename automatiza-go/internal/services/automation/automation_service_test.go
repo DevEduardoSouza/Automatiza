@@ -721,9 +721,12 @@ func (m *MockProfileRepository) UpdateBillingStatus(ctx context.Context, userID 
 	return args.Error(0)
 }
 
-func (m *MockProfileRepository) PauseUserAutomations(ctx context.Context, userID string) error {
-	args := m.Called(ctx, userID)
-	return args.Error(0)
+func (m *MockProfileRepository) PauseUserAutomations(ctx context.Context, userID string) (int, error) {
+	return 0, nil
+}
+
+func (m *MockProfileRepository) ResumeUserAutomations(ctx context.Context, userID string) (int, error) {
+	return 0, nil
 }
 
 func (m *MockProfileRepository) ListProfiles(ctx context.Context, cursor string, limit int) ([]*models.Profile, string, error) {

@@ -1,7 +1,5 @@
 import { useAuth } from '@/contexts';
 import {
-  AdminBlockUserRequestSchema,
-  AdminBulkUpdateAutomationStatusRequestSchema,
   AdminService,
   AdminSpreadAutomationScheduleRequestSchema,
   type User as AdminUser,
@@ -81,10 +79,6 @@ export interface UseUsersTabReturn {
   bulkActionLoading: boolean;
   spreadMinutes: number;
   setSpreadMinutes: (minutes: number) => void;
-  blockReason: string;
-  setBlockReason: (reason: string) => void;
-  blockKind: 'payment' | 'manual';
-  setBlockKind: (kind: 'payment' | 'manual') => void;
   handleWhatsAppCall: (phoneNumber: string | null) => void;
   handleCreateUser: () => Promise<void>;
   isAdmin: (userId: string) => boolean;
@@ -92,11 +86,8 @@ export interface UseUsersTabReturn {
   revokeAdmin: (userId: string) => Promise<void>;
   updateMaxAutomations: (userId: string, value: number | null) => Promise<void>;
   openUserDetails: (user: User) => Promise<void>;
-  blockUserAccount: () => Promise<void>;
   unblockUserAccount: () => Promise<void>;
   handleResetPassword: () => Promise<void>;
-  pauseAllActiveAutomations: () => Promise<void>;
-  activatePausedAutomations: (alsoSpreadNextRun?: boolean) => Promise<void>;
   spreadNextRunAt: () => Promise<void>;
   handleRefreshDetails: () => void;
 }
@@ -197,8 +188,6 @@ export function useUsersTab(): UseUsersTabReturn {
   const [details, setDetails] = useState<UserInvestigation | null>(null);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [spreadMinutes, setSpreadMinutes] = useState<number>(2);
-  const [blockReason, setBlockReason] = useState<string>('');
-  const [blockKind, setBlockKind] = useState<'payment' | 'manual'>('payment');
 
   // Use ConnectRPC query for listing profiles
   const {
@@ -446,43 +435,6 @@ export function useUsersTab(): UseUsersTabReturn {
     }
   };
 
-  const blockUserAccount = async () => {
-    if (!details) return;
-    if (authUser?.id === details.profile.id) {
-      toast.error(t('admin.users.errors.cannotBlockOwnAccount'));
-      return;
-    }
-    const ok = window.confirm(t('admin.users.confirm.block', { email: details.profile.email }));
-    if (!ok) return;
-
-    setBulkActionLoading(true);
-    try {
-      const client = createClient(AdminService, transport);
-      const response = await client.adminBlockUser(
-        create(AdminBlockUserRequestSchema, {
-          userId: details.profile.id,
-          reason: blockReason || 'admin_manual_block',
-          kind: blockKind,
-          pauseAutomations: true,
-        })
-      );
-
-      toast.success(t('admin.users.success.blocked'));
-      if (response.pausedAutomations > 0) {
-        toast.info(
-          t('admin.users.success.automationsPaused', { count: response.pausedAutomations })
-        );
-      }
-      await openUserDetails(details.profile);
-      refetchList();
-    } catch (e: unknown) {
-      const errInfo = getErrorInfo(e);
-      toast.error(errInfo.userMessage || t('admin.users.errors.blockError'));
-    } finally {
-      setBulkActionLoading(false);
-    }
-  };
-
   const unblockUserAccount = async () => {
     if (!details) return;
     const ok = window.confirm(t('admin.users.confirm.unblock', { email: details.profile.email }));
@@ -543,32 +495,6 @@ export function useUsersTab(): UseUsersTabReturn {
   };
 
   /**
-   * Pauses all active automations for the user.
-   */
-  const pauseAllActiveAutomations = async () => {
-    if (!details) return;
-    setBulkActionLoading(true);
-    try {
-      const client = createClient(AdminService, transport);
-      const response = await client.adminBulkUpdateAutomationStatus(
-        create(AdminBulkUpdateAutomationStatusRequestSchema, {
-          userId: details.profile.id,
-          targetStatus: 'paused',
-          sourceStatus: 'active',
-        })
-      );
-
-      toast.success(t('admin.users.success.automationsPaused', { count: response.updatedCount }));
-      await openUserDetails(details.profile);
-    } catch (e: unknown) {
-      const errInfo = getErrorInfo(e);
-      toast.error(errInfo.userMessage || t('admin.users.errors.pauseError'));
-    } finally {
-      setBulkActionLoading(false);
-    }
-  };
-
-  /**
    * Spreads next_run_at across user's active automations.
    */
   const spreadNextRunAt = async () => {
@@ -606,39 +532,6 @@ export function useUsersTab(): UseUsersTabReturn {
     }
   };
 
-  /**
-   * Activates all paused automations for the user.
-   */
-  const activatePausedAutomations = async (alsoSpreadNextRun = false) => {
-    if (!details) return;
-    setBulkActionLoading(true);
-    try {
-      const client = createClient(AdminService, transport);
-      const response = await client.adminBulkUpdateAutomationStatus(
-        create(AdminBulkUpdateAutomationStatusRequestSchema, {
-          userId: details.profile.id,
-          targetStatus: 'active',
-          sourceStatus: 'paused',
-        })
-      );
-
-      toast.success(
-        t('admin.users.success.automationsActivated', { count: response.updatedCount })
-      );
-
-      if (alsoSpreadNextRun) {
-        await spreadNextRunAt();
-      } else {
-        await openUserDetails(details.profile);
-      }
-    } catch (e: unknown) {
-      const errInfo = getErrorInfo(e);
-      toast.error(errInfo.userMessage || t('admin.users.errors.activateError'));
-    } finally {
-      setBulkActionLoading(false);
-    }
-  };
-
   const handleRefreshDetails = () => {
     if (details) {
       openUserDetails(details.profile);
@@ -670,10 +563,6 @@ export function useUsersTab(): UseUsersTabReturn {
     bulkActionLoading,
     spreadMinutes,
     setSpreadMinutes,
-    blockReason,
-    setBlockReason,
-    blockKind,
-    setBlockKind,
     handleWhatsAppCall,
     handleCreateUser,
     isAdmin,
@@ -681,11 +570,8 @@ export function useUsersTab(): UseUsersTabReturn {
     revokeAdmin,
     updateMaxAutomations,
     openUserDetails,
-    blockUserAccount,
     unblockUserAccount,
     handleResetPassword,
-    pauseAllActiveAutomations,
-    activatePausedAutomations,
     spreadNextRunAt,
     handleRefreshDetails,
   };

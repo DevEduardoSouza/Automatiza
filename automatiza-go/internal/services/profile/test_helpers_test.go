@@ -25,12 +25,12 @@ type enhancedMockProfileRepo struct {
 	failError      error
 
 	// Per-method error overrides
-	getProfileErr      error
+	getProfileErr        error
 	getProfileByEmailErr error
-	updateProfileErr   error
-	updatePasswordErr  error
-	listProfilesErr    error
-	searchProfilesErr  error
+	updateProfileErr     error
+	updatePasswordErr    error
+	listProfilesErr      error
+	searchProfilesErr    error
 
 	// List/Search data
 	listProfilesData   []*models.Profile
@@ -195,8 +195,12 @@ func (m *enhancedMockProfileRepo) UpdateBillingStatus(ctx context.Context, userI
 	return nil
 }
 
-func (m *enhancedMockProfileRepo) PauseUserAutomations(ctx context.Context, userID string) error {
-	return nil
+func (m *enhancedMockProfileRepo) PauseUserAutomations(ctx context.Context, userID string) (int, error) {
+	return 0, nil
+}
+
+func (m *enhancedMockProfileRepo) ResumeUserAutomations(ctx context.Context, userID string) (int, error) {
+	return 0, nil
 }
 
 func (m *enhancedMockProfileRepo) GetMaxAutomations(ctx context.Context, userID string) (int, error) {
@@ -428,10 +432,10 @@ type enhancedMockTokenRepo struct {
 	failError  error
 
 	// Per-method error overrides
-	createErr             error
-	getByHashErr          error
-	markUsedErr           error
-	invalidateTokensErr   error
+	createErr           error
+	getByHashErr        error
+	markUsedErr         error
+	invalidateTokensErr error
 
 	// Call counting for GetByHash (to fail on Nth call)
 	getByHashCallCount     int

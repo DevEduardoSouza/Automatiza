@@ -16,8 +16,6 @@ const mockAdminClient = {
   grantAdminRole: vi.fn(),
   revokeAdminRole: vi.fn(),
   getUserInvestigation: vi.fn(),
-  adminBlockUser: vi.fn(),
-  adminBulkUpdateAutomationStatus: vi.fn(),
   adminSpreadAutomationSchedule: vi.fn(),
 };
 
@@ -70,8 +68,6 @@ vi.mock('@/lib/connect-transport', () => ({
 // Mock proto schemas as sentinels
 vi.mock('@/gen/admin/v1/admin_pb', () => ({
   AdminService: 'AdminService',
-  AdminBlockUserRequestSchema: 'AdminBlockUserRequestSchema',
-  AdminBulkUpdateAutomationStatusRequestSchema: 'AdminBulkUpdateAutomationStatusRequestSchema',
   AdminSpreadAutomationScheduleRequestSchema: 'AdminSpreadAutomationScheduleRequestSchema',
   CreateUserRequestSchema: 'CreateUserRequestSchema',
   GetUserInvestigationRequestSchema: 'GetUserInvestigationRequestSchema',
@@ -234,8 +230,6 @@ describe('useUsersTab', () => {
       expect(result.current.details).toBeNull();
       expect(result.current.bulkActionLoading).toBe(false);
       expect(result.current.spreadMinutes).toBe(2);
-      expect(result.current.blockReason).toBe('');
-      expect(result.current.blockKind).toBe('payment');
     });
   });
 
@@ -534,70 +528,6 @@ describe('useUsersTab', () => {
     });
   });
 
-  describe('blockUserAccount', () => {
-    it('returns early when details is null', async () => {
-      const { result } = renderHook(() => useUsersTab());
-
-      await act(async () => {
-        await result.current.blockUserAccount();
-      });
-
-      expect(mockAdminClient.adminBlockUser).not.toHaveBeenCalled();
-    });
-
-    it('shows toast.error when trying to block own account', async () => {
-      mockAdminClient.getUserInvestigation.mockResolvedValue({
-        ...sampleInvestigationResponse,
-        user: {
-          ...sampleInvestigationResponse.user,
-          id: 'auth-user-123',
-        },
-      });
-
-      const { result } = renderHook(() => useUsersTab());
-
-      // Open details for self
-      await act(async () => {
-        await result.current.openUserDetails({
-          ...sampleUser,
-          id: 'auth-user-123',
-        });
-      });
-
-      await act(async () => {
-        await result.current.blockUserAccount();
-      });
-
-      expect(toast.error).toHaveBeenCalledWith('admin.users.errors.cannotBlockOwnAccount');
-      expect(mockAdminClient.adminBlockUser).not.toHaveBeenCalled();
-    });
-
-    it('calls adminBlockUser on confirm', async () => {
-      mockAdminClient.getUserInvestigation.mockResolvedValue(sampleInvestigationResponse);
-      mockAdminClient.adminBlockUser.mockResolvedValue({
-        pausedAutomations: 2,
-      });
-
-      const { result } = renderHook(() => useUsersTab());
-
-      await act(async () => {
-        await result.current.openUserDetails(sampleUser);
-      });
-
-      await act(async () => {
-        await result.current.blockUserAccount();
-      });
-
-      expect(mockAdminClient.adminBlockUser).toHaveBeenCalledWith({
-        userId: 'user-1',
-        reason: 'admin_manual_block',
-        kind: 'payment',
-        pauseAutomations: true,
-      });
-      expect(toast.success).toHaveBeenCalledWith('admin.users.success.blocked');
-    });
-  });
-
   describe('unblockUserAccount', () => {
     it('returns early when details is null', async () => {
       const { result } = renderHook(() => useUsersTab());
@@ -691,32 +621,6 @@ describe('useUsersTab', () => {
     });
   });
 
-  describe('pauseAllActiveAutomations', () => {
-    it('calls adminBulkUpdateAutomationStatus with targetStatus=paused', async () => {
-      mockAdminClient.getUserInvestigation.mockResolvedValue(sampleInvestigationResponse);
-      mockAdminClient.adminBulkUpdateAutomationStatus.mockResolvedValue({
-        updatedCount: 3,
-      });
-
-      const { result } = renderHook(() => useUsersTab());
-
-      await act(async () => {
-        await result.current.openUserDetails(sampleUser);
-      });
-
-      await act(async () => {
-        await result.current.pauseAllActiveAutomations();
-      });
-
-      expect(mockAdminClient.adminBulkUpdateAutomationStatus).toHaveBeenCalledWith({
-        userId: 'user-1',
-        targetStatus: 'paused',
-        sourceStatus: 'active',
-      });
-      expect(toast.success).toHaveBeenCalledWith('admin.users.success.automationsPaused');
-    });
-  });
-
   describe('spreadNextRunAt', () => {
     it('calls adminSpreadAutomationSchedule and shows success', async () => {
       mockAdminClient.getUserInvestigation.mockResolvedValue(sampleInvestigationResponse);
@@ -759,55 +663,6 @@ describe('useUsersTab', () => {
       });
 
       expect(toast.message).toHaveBeenCalledWith('admin.users.details.actions.noActiveAutomations');
-    });
-  });
-
-  describe('activatePausedAutomations', () => {
-    it('calls adminBulkUpdateAutomationStatus with targetStatus=active', async () => {
-      mockAdminClient.getUserInvestigation.mockResolvedValue(sampleInvestigationResponse);
-      mockAdminClient.adminBulkUpdateAutomationStatus.mockResolvedValue({
-        updatedCount: 2,
-      });
-
-      const { result } = renderHook(() => useUsersTab());
-
-      await act(async () => {
-        await result.current.openUserDetails(sampleUser);
-      });
-
-      await act(async () => {
-        await result.current.activatePausedAutomations();
-      });
-
-      expect(mockAdminClient.adminBulkUpdateAutomationStatus).toHaveBeenCalledWith({
-        userId: 'user-1',
-        targetStatus: 'active',
-        sourceStatus: 'paused',
-      });
-      expect(toast.success).toHaveBeenCalledWith('admin.users.success.automationsActivated');
-    });
-
-    it('also calls spreadNextRunAt when alsoSpreadNextRun is true', async () => {
-      mockAdminClient.getUserInvestigation.mockResolvedValue(sampleInvestigationResponse);
-      mockAdminClient.adminBulkUpdateAutomationStatus.mockResolvedValue({
-        updatedCount: 2,
-      });
-      mockAdminClient.adminSpreadAutomationSchedule.mockResolvedValue({
-        updatedCount: 2,
-      });
-
-      const { result } = renderHook(() => useUsersTab());
-
-      await act(async () => {
-        await result.current.openUserDetails(sampleUser);
-      });
-
-      await act(async () => {
-        await result.current.activatePausedAutomations(true);
-      });
-
-      expect(mockAdminClient.adminBulkUpdateAutomationStatus).toHaveBeenCalled();
-      expect(mockAdminClient.adminSpreadAutomationSchedule).toHaveBeenCalled();
     });
   });
 

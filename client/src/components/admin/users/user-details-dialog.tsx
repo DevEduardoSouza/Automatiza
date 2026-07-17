@@ -12,13 +12,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Table,
   TableBody,
   TableCell,
@@ -41,15 +34,8 @@ interface UserDetailsDialogProps {
   bulkActionLoading: boolean;
   spreadMinutes: number;
   onSpreadMinutesChange: (minutes: number) => void;
-  blockReason: string;
-  onBlockReasonChange: (reason: string) => void;
-  blockKind: 'payment' | 'manual';
-  onBlockKindChange: (kind: 'payment' | 'manual') => void;
-  onBlockUser: () => void;
   onUnblockUser: () => void;
   onResetPassword: () => void;
-  onPauseAllAutomations: () => void;
-  onActivatePausedAutomations: (alsoSpread: boolean) => void;
   onSpreadNextRunAt: () => void;
   onRefreshDetails: () => void;
 }
@@ -65,15 +51,8 @@ export function UserDetailsDialog({
   bulkActionLoading,
   spreadMinutes,
   onSpreadMinutesChange,
-  blockReason,
-  onBlockReasonChange,
-  blockKind,
-  onBlockKindChange,
-  onBlockUser,
   onUnblockUser,
   onResetPassword,
-  onPauseAllAutomations,
-  onActivatePausedAutomations,
   onSpreadNextRunAt,
   onRefreshDetails,
 }: UserDetailsDialogProps) {
@@ -115,7 +94,7 @@ export function UserDetailsDialog({
               <CollapsibleContent className="mt-2">
                 <div className="flex flex-col gap-3 p-4 border rounded-lg bg-muted/50">
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {isSuspended ? (
+                    {isSuspended && (
                       <Button
                         variant="outline"
                         onClick={onUnblockUser}
@@ -127,51 +106,7 @@ export function UserDetailsDialog({
                           ? t('common.processing')
                           : t('admin.users.details.actions.unblock')}
                       </Button>
-                    ) : (
-                      <Button
-                        variant="destructive"
-                        onClick={onBlockUser}
-                        disabled={bulkActionLoading}
-                        title={t('admin.users.details.actions.blockTitle')}
-                        className="text-xs"
-                      >
-                        {bulkActionLoading
-                          ? t('common.processing')
-                          : t('admin.users.details.actions.block')}
-                      </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      onClick={() => onActivatePausedAutomations(false)}
-                      disabled={bulkActionLoading}
-                      title={t('admin.users.details.actions.activatePausedTitle')}
-                      className="text-xs"
-                    >
-                      {bulkActionLoading
-                        ? t('common.processing')
-                        : t('admin.users.details.actions.activatePaused')}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => onActivatePausedAutomations(true)}
-                      disabled={bulkActionLoading}
-                      title={t('admin.users.details.actions.activateAndSpreadTitle')}
-                      className="text-xs"
-                    >
-                      {bulkActionLoading
-                        ? t('common.processing')
-                        : t('admin.users.details.actions.activateAndSpread')}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={onPauseAllAutomations}
-                      disabled={bulkActionLoading}
-                      className="text-xs"
-                    >
-                      {bulkActionLoading
-                        ? t('common.processing')
-                        : t('admin.users.details.actions.pause')}
-                    </Button>
                     <Button
                       variant="outline"
                       onClick={onResetPassword}
@@ -185,44 +120,6 @@ export function UserDetailsDialog({
                         : t('admin.users.details.actions.resetPassword')}
                     </Button>
                   </div>
-                  {!isSuspended && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t">
-                      <div className="flex gap-2 items-center">
-                        <Label className="text-xs text-muted-foreground whitespace-nowrap w-16">
-                          {t('admin.users.details.actions.blockType.label')}
-                        </Label>
-                        <Select
-                          value={blockKind}
-                          onValueChange={(v) =>
-                            onBlockKindChange(v === 'manual' ? 'manual' : 'payment')
-                          }
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="payment">
-                              {t('admin.users.details.actions.blockType.payment')}
-                            </SelectItem>
-                            <SelectItem value="manual">
-                              {t('admin.users.details.actions.blockType.manual')}
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <Label className="text-xs text-muted-foreground whitespace-nowrap w-16">
-                          {t('admin.users.details.actions.blockReason.label')}
-                        </Label>
-                        <Input
-                          className="flex-1"
-                          placeholder={t('admin.users.details.actions.blockReason.placeholder')}
-                          value={blockReason}
-                          onChange={(e) => onBlockReasonChange(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  )}
                   <div className="flex gap-2 items-center pt-2 border-t">
                     <Label className="text-xs text-muted-foreground whitespace-nowrap">
                       {t('admin.users.details.actions.spreadMinutes')}

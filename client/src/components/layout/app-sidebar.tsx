@@ -301,8 +301,7 @@ const SupportIcon: LucideIcon = ({ className, ...props }) => (
   </svg>
 );
 
-
-const LogoutIcon: LucideIcon = ({ className, ...props }) => (
+export const LogoutIcon: LucideIcon = ({ className, ...props }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
@@ -321,7 +320,7 @@ const LogoutIcon: LucideIcon = ({ className, ...props }) => (
   </svg>
 );
 
-const ToggleSidebarIcon: LucideIcon = ({ className, ...props }) => (
+export const ToggleSidebarIcon: LucideIcon = ({ className, ...props }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"

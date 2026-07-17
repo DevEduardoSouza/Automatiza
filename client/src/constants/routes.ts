@@ -25,6 +25,7 @@ export const ROUTES = {
   HISTORY: '/history',
   PROFILE: '/profile',
   ADMIN: '/admin',
+  SUPPORT: '/support',
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;

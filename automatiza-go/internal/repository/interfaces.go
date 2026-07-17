@@ -17,7 +17,12 @@ type ProfileRepository interface {
 	UpdateProfile(ctx context.Context, userID string, updates map[string]interface{}) error
 	UpdatePassword(ctx context.Context, userID, passwordHash string) error
 	UpdateBillingStatus(ctx context.Context, userID string, billing *models.ProfileBillingFields) error
-	PauseUserAutomations(ctx context.Context, userID string) error
+	// PauseUserAutomations pauses all active automations for a user (billing
+	// suspension), marking them paused_by_billing. Returns the count paused.
+	PauseUserAutomations(ctx context.Context, userID string) (int, error)
+	// ResumeUserAutomations reactivates ONLY billing-paused automations. Symmetric
+	// counterpart of PauseUserAutomations. Returns the count reactivated.
+	ResumeUserAutomations(ctx context.Context, userID string) (int, error)
 	ListProfiles(ctx context.Context, cursor string, limit int) ([]*models.Profile, string, error)
 	SearchProfiles(ctx context.Context, query, cursor string, limit int) ([]*models.Profile, string, error)
 	GetMaxAutomations(ctx context.Context, userID string) (int, error)
@@ -156,7 +161,6 @@ type AutomationRepository interface {
 	UpdateLastRunAt(ctx context.Context, automationID string) error
 	UpdateNextRunAt(ctx context.Context, automationID string, nextRun time.Time) error
 	// Admin-specific methods for bulk operations
-	BulkUpdateStatusByUserID(ctx context.Context, userID, targetStatus string, sourceStatus *string) (int, error)
 	BulkUpdateNextRunAts(ctx context.Context, automationIDs []string, nextRunAts []time.Time) error
 }
 
@@ -309,6 +313,22 @@ type ScheduledJobRepository interface {
 type SystemEventRepository interface {
 	Create(ctx context.Context, eventType string, payload map[string]interface{}) error
 	GetRecent(ctx context.Context, limit int) ([]models.SystemEvent, error)
+}
+
+// KiwifyEventRepository provides idempotency and audit for Kiwify webhooks.
+type KiwifyEventRepository interface {
+	// Claim atomically reserves an idempotency key. Returns claimed=true only for
+	// the FIRST caller; concurrent/duplicate deliveries get claimed=false with the
+	// prior status ("processing" | "done"). Backed by an INSERT ... ON CONFLICT.
+	Claim(ctx context.Context, key, email, event string) (claimed bool, priorStatus string, err error)
+	// Finish marks a claimed key as done (with the user and result) so future
+	// duplicates are recognized as already processed.
+	Finish(ctx context.Context, key, userID, result string) error
+	// Release removes a claimed key after a processing failure, so the Kiwify
+	// retry can reprocess the event instead of being deduped away.
+	Release(ctx context.Context, key string) error
+	// RecordBillingAudit appends a billing state-transition audit event.
+	RecordBillingAudit(ctx context.Context, payload map[string]interface{}) error
 }
 
 // UserRoleRepository handles user role data operations

@@ -898,42 +898,6 @@ func (r *automationRepository) UpdateNextRunAt(ctx context.Context, automationID
 	return err
 }
 
-// BulkUpdateStatusByUserID updates the status of all automations for a user
-// matching the optional source status filter. Returns the count of updated records.
-func (r *automationRepository) BulkUpdateStatusByUserID(ctx context.Context, userID, targetStatus string, sourceStatus *string) (int, error) {
-	now := time.Now().UTC()
-
-	var query string
-	var args []interface{}
-
-	if sourceStatus != nil && *sourceStatus != "" {
-		query = `
-			UPDATE automations
-			SET status = $1, updated_at = $2
-			WHERE user_id = $3 AND status = $4
-		`
-		args = []interface{}{targetStatus, now, userID, *sourceStatus}
-	} else {
-		query = `
-			UPDATE automations
-			SET status = $1, updated_at = $2
-			WHERE user_id = $3
-		`
-		args = []interface{}{targetStatus, now, userID}
-	}
-
-	result, err := r.db.pool.Exec(ctx, query, args...)
-	if err != nil {
-		r.logger.Error("Failed to bulk update automation status",
-			zap.String("userID", userID),
-			zap.String("targetStatus", targetStatus),
-			zap.Error(err))
-		return 0, err
-	}
-
-	return int(result.RowsAffected()), nil
-}
-
 // BulkUpdateNextRunAts updates the next_run_at for multiple automations at once.
 // The automationIDs and nextRunAts slices must have the same length.
 func (r *automationRepository) BulkUpdateNextRunAts(ctx context.Context, automationIDs []string, nextRunAts []time.Time) error {

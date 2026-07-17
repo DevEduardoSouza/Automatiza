@@ -65,8 +65,12 @@ func (m *mockProfileRepo) UpdateBillingStatus(_ context.Context, _ string, _ *mo
 	return nil
 }
 
-func (m *mockProfileRepo) PauseUserAutomations(_ context.Context, _ string) error {
-	return nil
+func (m *mockProfileRepo) PauseUserAutomations(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockProfileRepo) ResumeUserAutomations(_ context.Context, _ string) (int, error) {
+	return 0, nil
 }
 
 func (m *mockProfileRepo) ListProfiles(_ context.Context, _ string, _ int) ([]*models.Profile, string, error) {
@@ -131,7 +135,7 @@ func TestEnsureUserProfile(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
-		repoFn func(ctx context.Context, userID, email string) (*models.Profile, error)
+		repoFn  func(ctx context.Context, userID, email string) (*models.Profile, error)
 		wantErr bool
 	}{
 		{
@@ -181,7 +185,7 @@ func TestGetProfile(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
-		repoFn func(ctx context.Context, userID string) (*models.Profile, error)
+		repoFn  func(ctx context.Context, userID string) (*models.Profile, error)
 		wantErr bool
 		wantNil bool
 	}{
@@ -236,7 +240,7 @@ func TestUpdateProfile(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
-		repoFn func(ctx context.Context, userID string, updates map[string]interface{}) error
+		repoFn  func(ctx context.Context, userID string, updates map[string]interface{}) error
 		wantErr bool
 	}{
 		{
@@ -326,11 +330,11 @@ func TestUpdateProfile_SetsUpdatedAt(t *testing.T) {
 func TestCreateUserFromWebhook(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name     string
-		data     *WebhookUserData
-		plan     *string
-		wantErr  bool
-		errMsg   string
+		name    string
+		data    *WebhookUserData
+		plan    *string
+		wantErr bool
+		errMsg  string
 	}{
 		{
 			name:    "empty email returns error",
@@ -392,7 +396,7 @@ func TestUpdateUserPlan(t *testing.T) {
 	tests := []struct {
 		name    string
 		plan    string
-		repoFn func(ctx context.Context, userID string, updates map[string]interface{}) error
+		repoFn  func(ctx context.Context, userID string, updates map[string]interface{}) error
 		wantErr bool
 		errMsg  string
 	}{
@@ -541,7 +545,7 @@ func TestSuspendUser(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
-		repoFn func(ctx context.Context, userID string, updates map[string]interface{}) error
+		repoFn  func(ctx context.Context, userID string, updates map[string]interface{}) error
 		wantErr bool
 	}{
 		{
@@ -596,7 +600,7 @@ func TestReactivateUser(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
-		repoFn func(ctx context.Context, userID string, updates map[string]interface{}) error
+		repoFn  func(ctx context.Context, userID string, updates map[string]interface{}) error
 		wantErr bool
 	}{
 		{

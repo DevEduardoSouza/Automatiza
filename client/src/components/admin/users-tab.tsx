@@ -59,21 +59,14 @@ export default function UsersTab() {
     bulkActionLoading,
     spreadMinutes,
     setSpreadMinutes,
-    blockReason,
-    setBlockReason,
-    blockKind,
-    setBlockKind,
     handleWhatsAppCall,
     handleCreateUser,
     makeAdmin,
     revokeAdmin,
     updateMaxAutomations,
     openUserDetails,
-    blockUserAccount,
     unblockUserAccount,
     handleResetPassword,
-    pauseAllActiveAutomations,
-    activatePausedAutomations,
     spreadNextRunAt,
     handleRefreshDetails,
   } = useUsersTab();
@@ -211,15 +204,8 @@ export default function UsersTab() {
         bulkActionLoading={bulkActionLoading}
         spreadMinutes={spreadMinutes}
         onSpreadMinutesChange={setSpreadMinutes}
-        blockReason={blockReason}
-        onBlockReasonChange={setBlockReason}
-        blockKind={blockKind}
-        onBlockKindChange={setBlockKind}
-        onBlockUser={blockUserAccount}
         onUnblockUser={unblockUserAccount}
         onResetPassword={handleResetPassword}
-        onPauseAllAutomations={pauseAllActiveAutomations}
-        onActivatePausedAutomations={activatePausedAutomations}
         onSpreadNextRunAt={spreadNextRunAt}
         onRefreshDetails={handleRefreshDetails}
       />

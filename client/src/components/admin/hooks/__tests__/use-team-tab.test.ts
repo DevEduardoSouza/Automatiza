@@ -236,7 +236,7 @@ describe('useTeamTab', () => {
         await result.current.handleAddAdmin();
       });
 
-      expect(toast.error).toHaveBeenCalledWith('admin.team.errors.alreadyAdmin');
+      expect(toast.error).toHaveBeenCalledWith('admin.team.errors.alreadyMember');
       unmount();
     });
   });
@@ -246,7 +246,7 @@ describe('useTeamTab', () => {
       const { result, unmount } = await renderAndWait();
 
       await act(async () => {
-        await result.current.handleRemoveAdmin('admin-1', 'admin1@test.com');
+        await result.current.handleRemoveAdmin('admin-1', 'admin1@test.com', 'admin');
       });
 
       // Wait for the fire-and-forget fetchTeamMembers refetch to complete
@@ -267,7 +267,7 @@ describe('useTeamTab', () => {
       const { result, unmount } = await renderAndWait();
 
       await act(async () => {
-        await result.current.handleRemoveAdmin('admin-1', 'admin1@test.com');
+        await result.current.handleRemoveAdmin('admin-1', 'admin1@test.com', 'admin');
       });
 
       expect(mockRevokeAdminRole).not.toHaveBeenCalled();
@@ -280,7 +280,7 @@ describe('useTeamTab', () => {
       const { result, unmount } = await renderAndWait();
 
       await act(async () => {
-        await result.current.handleRemoveAdmin('admin-1', 'admin1@test.com');
+        await result.current.handleRemoveAdmin('admin-1', 'admin1@test.com', 'admin');
       });
 
       expect(toast.error).toHaveBeenCalledWith('Revoke failed');

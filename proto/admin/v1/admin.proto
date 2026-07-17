@@ -728,19 +728,6 @@ message GetUserInvestigationResponse {
 // Admin Bulk Automation Operations
 // ============================================================
 
-message AdminBulkUpdateAutomationStatusRequest {
-  string user_id = 1;
-  // Target status: "active" or "paused"
-  string target_status = 2;
-  // Source status to filter: "active", "paused", or empty for all
-  optional string source_status = 3;
-}
-
-message AdminBulkUpdateAutomationStatusResponse {
-  int32 updated_count = 1;
-  string message = 2;
-}
-
 message AdminSpreadAutomationScheduleRequest {
   string user_id = 1;
   // Minutes between each automation's next_run_at
@@ -752,26 +739,6 @@ message AdminSpreadAutomationScheduleRequest {
 message AdminSpreadAutomationScheduleResponse {
   int32 updated_count = 1;
   string message = 2;
-}
-
-// ============================================================
-// Extended Block User
-// ============================================================
-
-message AdminBlockUserRequest {
-  string user_id = 1;
-  // Reason for blocking
-  optional string reason = 2;
-  // Type: "payment" or "manual"
-  optional string kind = 3;
-  // Also pause all active automations
-  bool pause_automations = 4;
-}
-
-message AdminBlockUserResponse {
-  User user = 1;
-  int32 paused_automations = 2;
-  string message = 3;
 }
 
 // ============================================================
@@ -1048,14 +1015,8 @@ service AdminService {
   // Gets detailed user investigation data (instances, automations).
   rpc GetUserInvestigation(GetUserInvestigationRequest) returns (GetUserInvestigationResponse);
 
-  // Bulk updates automation status for a user.
-  rpc AdminBulkUpdateAutomationStatus(AdminBulkUpdateAutomationStatusRequest) returns (AdminBulkUpdateAutomationStatusResponse);
-
   // Spreads next_run_at across user's automations.
   rpc AdminSpreadAutomationSchedule(AdminSpreadAutomationScheduleRequest) returns (AdminSpreadAutomationScheduleResponse);
-
-  // Blocks a user with extended options.
-  rpc AdminBlockUser(AdminBlockUserRequest) returns (AdminBlockUserResponse);
 
   // ============================================================
   // Admin Profile Stats

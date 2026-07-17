@@ -16,6 +16,9 @@ export interface ApiError {
   code?: string;
 }
 
+/** Cargos que podem ser concedidos a um membro da equipe. */
+export type TeamRole = 'admin' | 'support';
+
 export interface UseTeamTabReturn {
   teamMembers: TeamMember[];
   loading: boolean;
@@ -23,6 +26,8 @@ export interface UseTeamTabReturn {
   setIsDialogOpen: (open: boolean) => void;
   newAdminEmail: string;
   setNewAdminEmail: (email: string) => void;
+  newMemberRole: TeamRole;
+  setNewMemberRole: (role: TeamRole) => void;
   handleAddAdmin: () => Promise<void>;
-  handleRemoveAdmin: (id: string, email: string) => Promise<void>;
+  handleRemoveAdmin: (id: string, email: string, role: string) => Promise<void>;
 }

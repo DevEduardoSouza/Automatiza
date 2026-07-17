@@ -2485,6 +2485,15 @@
         "storesRequired": "Selecione ao menos uma loja",
         "conflictingGroups": "O grupo de origem não pode ser igual a um grupo de destino"
       }
+    },
+    "support": {
+      "title": "Painel de Suporte",
+      "welcome": "Bem-vindo(a) ao Painel de Suporte",
+      "placeholder": "As ferramentas de atendimento aparecerão aqui em breve.",
+      "signOut": "Sair",
+      "nav": {
+        "home": "Início"
+      }
     }
   },
   "admin": {
@@ -3002,7 +3011,7 @@
     },
     "team": {
       "title": "Gerenciamento de Equipe",
-      "description": "Adicione e gerencie administradores do sistema",
+      "description": "Adicione e gerencie a equipe de administradores e suporte do sistema",
       "addAdmin": "Adicionar Admin",
       "add": "Adicionar",
       "noAdmins": "Nenhum administrador cadastrado",
@@ -3015,14 +3024,16 @@
         "actions": "Ações"
       },
       "roles": {
-        "admin": "Administrador"
+        "admin": "Administrador",
+        "support": "Suporte"
       },
       "dialog": {
-        "title": "Adicionar Administrador",
-        "description": "Insira o email do usuário que deseja tornar administrador",
+        "title": "Adicionar Membro da Equipe",
+        "description": "Insira o email do usuário e escolha o cargo a conceder",
         "emailLabel": "Email do Usuário",
         "emailPlaceholder": "usuario@exemplo.com",
-        "addButton": "Adicionar como Administrador"
+        "addButton": "Adicionar à Equipe",
+        "roleLabel": "Cargo"
       },
       "errors": {
         "loadError": "Erro ao carregar membros da equipe",
@@ -3031,7 +3042,8 @@
         "alreadyAdmin": "Este usuário já é um administrador",
         "addError": "Erro ao adicionar administrador",
         "removeError": "Erro ao remover administrador",
-        "serviceNotAvailable": "Servico de gerenciamento de equipe nao esta disponivel. Aguarde a implementacao do backend."
+        "serviceNotAvailable": "Servico de gerenciamento de equipe nao esta disponivel. Aguarde a implementacao do backend.",
+        "alreadyMember": "Este usuário já possui este cargo"
       },
       "success": {
         "added": "Administrador adicionado com sucesso!",
@@ -3039,6 +3051,10 @@
       },
       "confirm": {
         "remove": "Tem certeza que deseja remover {{email}} da equipe de administradores?"
+      },
+      "roleOptions": {
+        "admin": "Administrador",
+        "support": "Suporte"
       }
     },
     "emailTemplates": {

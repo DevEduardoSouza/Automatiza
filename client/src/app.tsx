@@ -2,7 +2,7 @@ import { AccountSuspendedBanner, AccountSuspendedNotice } from '@/components/bil
 import { useAccountSuspended } from '@/hooks/use-account-suspended';
 import { ErrorFallback } from '@/components/error-boundary';
 import { AppSidebar, MobileHeader } from '@/components/layout';
-import { AdminRoute, ProtectedRoute } from '@/components/routing';
+import { AdminRoute, ProtectedRoute, SupportRoute } from '@/components/routing';
 import { PageLoader } from '@/components/ui/page-loader';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Toaster as Sonner } from '@/components/ui/sonner';
@@ -21,9 +21,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
  * Wraps React.lazy with ChunkLoadError retry.
  * Captures error in Sentry and reloads once on chunk load failure (FR7).
  */
-function lazyWithRetry<T extends React.ComponentType>(
-  loader: () => Promise<{ default: T }>,
-) {
+function lazyWithRetry<T extends React.ComponentType>(loader: () => Promise<{ default: T }>) {
   return lazy(() =>
     loader().catch((error: unknown) => {
       const isChunkError =
@@ -40,7 +38,7 @@ function lazyWithRetry<T extends React.ComponentType>(
       }
 
       throw error;
-    }),
+    })
   );
 }
 
@@ -67,6 +65,7 @@ const Profile = lazyWithRetry(() => import('./pages/profile'));
 const PublicRedirect = lazyWithRetry(() => import('./pages/public-redirect'));
 const RedirectLink = lazyWithRetry(() => import('./pages/redirect-link/index'));
 const ResetPassword = lazyWithRetry(() => import('./pages/reset-password'));
+const Support = lazyWithRetry(() => import('./pages/support'));
 const WhatsApp = lazyWithRetry(() => import('./pages/whatsapp'));
 
 const queryClient = new QueryClient({
@@ -117,7 +116,12 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TransportProvider transport={transport}>
-      <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light" enableSystem={false}>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="light"
+        forcedTheme="light"
+        enableSystem={false}
+      >
         <BrowserRouter>
           <AuthProvider>
             <TooltipProvider>
@@ -323,6 +327,15 @@ const App = () => (
                             <Admin />
                           </AppLayout>
                         </AdminRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/support"
+                      element={
+                        <SupportRoute>
+                          <Support />
+                        </SupportRoute>
                       }
                     />
 

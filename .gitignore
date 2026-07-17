@@ -8,3 +8,6 @@ CLAUDE.md
 .mcp.json
 # dumps locais com dados pessoais (nunca commitar)
 participantes.txt
+
+# Compiled waha-router binary (build artifact, never commit)
+docker/waha-router/waha-router

@@ -8,6 +8,7 @@ interface ProtectedRouteProps {
 /**
  * Rota protegida que requer autenticação.
  * Redireciona para /auth se usuário não estiver logado.
+ * Usuários de suporte não acessam telas de cliente: são levados ao painel /support.
  */
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
@@ -22,6 +23,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  if (user.role === 'support') {
+    return <Navigate to="/support" replace />;
   }
 
   return <>{children}</>;

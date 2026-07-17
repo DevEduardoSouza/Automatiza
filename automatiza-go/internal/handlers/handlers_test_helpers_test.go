@@ -228,8 +228,11 @@ func (m *mockProfileRepo) UpdatePassword(ctx context.Context, userID, passwordHa
 func (m *mockProfileRepo) UpdateBillingStatus(ctx context.Context, userID string, billing *models.ProfileBillingFields) error {
 	return nil
 }
-func (m *mockProfileRepo) PauseUserAutomations(ctx context.Context, userID string) error {
-	return nil
+func (m *mockProfileRepo) PauseUserAutomations(ctx context.Context, userID string) (int, error) {
+	return 0, nil
+}
+func (m *mockProfileRepo) ResumeUserAutomations(ctx context.Context, userID string) (int, error) {
+	return 0, nil
 }
 func (m *mockProfileRepo) ListProfiles(ctx context.Context, cursor string, limit int) ([]*models.Profile, string, error) {
 	return nil, "", nil

@@ -498,7 +498,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(protoToSessionInfo(response.session));
           setCsrfToken(response.csrfToken);
           setSentryUser({ id: magicUser.id, email: magicUser.email, role: magicUser.role });
-          navigate(ROUTES.DASHBOARD);
+          navigate(magicUser.role === 'support' ? ROUTES.SUPPORT : ROUTES.DASHBOARD);
           return { error: null };
         }
 

@@ -165,7 +165,7 @@ export function MobileHeader() {
 }
 
 /** Menu icon: lines at bottom (closed state) */
-function MenuClosedIcon({ className }: { className?: string }) {
+export function MenuClosedIcon({ className }: { className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -186,7 +186,7 @@ function MenuClosedIcon({ className }: { className?: string }) {
 }
 
 /** Menu icon: lines at top (open state) */
-function MenuOpenIcon({ className }: { className?: string }) {
+export function MenuOpenIcon({ className }: { className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

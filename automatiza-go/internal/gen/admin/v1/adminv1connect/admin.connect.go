@@ -96,15 +96,9 @@ const (
 	// AdminServiceGetUserInvestigationProcedure is the fully-qualified name of the AdminService's
 	// GetUserInvestigation RPC.
 	AdminServiceGetUserInvestigationProcedure = "/admin.v1.AdminService/GetUserInvestigation"
-	// AdminServiceAdminBulkUpdateAutomationStatusProcedure is the fully-qualified name of the
-	// AdminService's AdminBulkUpdateAutomationStatus RPC.
-	AdminServiceAdminBulkUpdateAutomationStatusProcedure = "/admin.v1.AdminService/AdminBulkUpdateAutomationStatus"
 	// AdminServiceAdminSpreadAutomationScheduleProcedure is the fully-qualified name of the
 	// AdminService's AdminSpreadAutomationSchedule RPC.
 	AdminServiceAdminSpreadAutomationScheduleProcedure = "/admin.v1.AdminService/AdminSpreadAutomationSchedule"
-	// AdminServiceAdminBlockUserProcedure is the fully-qualified name of the AdminService's
-	// AdminBlockUser RPC.
-	AdminServiceAdminBlockUserProcedure = "/admin.v1.AdminService/AdminBlockUser"
 	// AdminServiceGetAdminProfileStatsProcedure is the fully-qualified name of the AdminService's
 	// GetAdminProfileStats RPC.
 	AdminServiceGetAdminProfileStatsProcedure = "/admin.v1.AdminService/GetAdminProfileStats"
@@ -180,12 +174,8 @@ type AdminServiceClient interface {
 	UnlockUserAccount(context.Context, *connect.Request[v1.UnlockUserAccountRequest]) (*connect.Response[v1.UnlockUserAccountResponse], error)
 	// Gets detailed user investigation data (instances, automations).
 	GetUserInvestigation(context.Context, *connect.Request[v1.GetUserInvestigationRequest]) (*connect.Response[v1.GetUserInvestigationResponse], error)
-	// Bulk updates automation status for a user.
-	AdminBulkUpdateAutomationStatus(context.Context, *connect.Request[v1.AdminBulkUpdateAutomationStatusRequest]) (*connect.Response[v1.AdminBulkUpdateAutomationStatusResponse], error)
 	// Spreads next_run_at across user's automations.
 	AdminSpreadAutomationSchedule(context.Context, *connect.Request[v1.AdminSpreadAutomationScheduleRequest]) (*connect.Response[v1.AdminSpreadAutomationScheduleResponse], error)
-	// Blocks a user with extended options.
-	AdminBlockUser(context.Context, *connect.Request[v1.AdminBlockUserRequest]) (*connect.Response[v1.AdminBlockUserResponse], error)
 	// Returns aggregated profile statistics for the admin dashboard.
 	GetAdminProfileStats(context.Context, *connect.Request[v1.GetAdminProfileStatsRequest]) (*connect.Response[v1.GetAdminProfileStatsResponse], error)
 	// Lists all categories with optional subcategories (admin only).
@@ -353,22 +343,10 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("GetUserInvestigation")),
 			connect.WithClientOptions(opts...),
 		),
-		adminBulkUpdateAutomationStatus: connect.NewClient[v1.AdminBulkUpdateAutomationStatusRequest, v1.AdminBulkUpdateAutomationStatusResponse](
-			httpClient,
-			baseURL+AdminServiceAdminBulkUpdateAutomationStatusProcedure,
-			connect.WithSchema(adminServiceMethods.ByName("AdminBulkUpdateAutomationStatus")),
-			connect.WithClientOptions(opts...),
-		),
 		adminSpreadAutomationSchedule: connect.NewClient[v1.AdminSpreadAutomationScheduleRequest, v1.AdminSpreadAutomationScheduleResponse](
 			httpClient,
 			baseURL+AdminServiceAdminSpreadAutomationScheduleProcedure,
 			connect.WithSchema(adminServiceMethods.ByName("AdminSpreadAutomationSchedule")),
-			connect.WithClientOptions(opts...),
-		),
-		adminBlockUser: connect.NewClient[v1.AdminBlockUserRequest, v1.AdminBlockUserResponse](
-			httpClient,
-			baseURL+AdminServiceAdminBlockUserProcedure,
-			connect.WithSchema(adminServiceMethods.ByName("AdminBlockUser")),
 			connect.WithClientOptions(opts...),
 		),
 		getAdminProfileStats: connect.NewClient[v1.GetAdminProfileStatsRequest, v1.GetAdminProfileStatsResponse](
@@ -424,40 +402,38 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // adminServiceClient implements AdminServiceClient.
 type adminServiceClient struct {
-	getObservability                *connect.Client[v1.GetObservabilityRequest, v1.GetObservabilityResponse]
-	getShopeeAffiliateAudit         *connect.Client[v1.GetShopeeAffiliateAuditRequest, v1.GetShopeeAffiliateAuditResponse]
-	ensureWebhooks                  *connect.Client[v1.EnsureWebhooksRequest, v1.EnsureWebhooksResponse]
-	listWebhookLogs                 *connect.Client[v1.ListWebhookLogsRequest, v1.ListWebhookLogsResponse]
-	simulateKiwifyWebhook           *connect.Client[v1.SimulateKiwifyWebhookRequest, v1.SimulateKiwifyWebhookResponse]
-	getSystemEvents                 *connect.Client[v1.GetSystemEventsRequest, v1.GetSystemEventsResponse]
-	resetUserPassword               *connect.Client[v1.ResetUserPasswordRequest, v1.ResetUserPasswordResponse]
-	listPlans                       *connect.Client[v1.ListPlansRequest, v1.ListPlansResponse]
-	createPlan                      *connect.Client[v1.CreatePlanRequest, v1.CreatePlanResponse]
-	updatePlan                      *connect.Client[v1.UpdatePlanRequest, v1.UpdatePlanResponse]
-	deletePlan                      *connect.Client[v1.DeletePlanRequest, v1.DeletePlanResponse]
-	listEmailTemplates              *connect.Client[v1.ListEmailTemplatesRequest, v1.ListEmailTemplatesResponse]
-	createEmailTemplate             *connect.Client[v1.CreateEmailTemplateRequest, v1.CreateEmailTemplateResponse]
-	updateEmailTemplate             *connect.Client[v1.UpdateEmailTemplateRequest, v1.UpdateEmailTemplateResponse]
-	toggleEmailTemplateActive       *connect.Client[v1.ToggleEmailTemplateActiveRequest, v1.ToggleEmailTemplateActiveResponse]
-	listUsers                       *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
-	createUser                      *connect.Client[v1.CreateUserRequest, v1.CreateUserResponse]
-	updateUserRole                  *connect.Client[v1.UpdateUserRoleRequest, v1.UpdateUserRoleResponse]
-	listAdminUsers                  *connect.Client[v1.ListAdminUsersRequest, v1.ListAdminUsersResponse]
-	grantAdminRole                  *connect.Client[v1.GrantAdminRoleRequest, v1.GrantAdminRoleResponse]
-	revokeAdminRole                 *connect.Client[v1.RevokeAdminRoleRequest, v1.RevokeAdminRoleResponse]
-	unlockUserAccount               *connect.Client[v1.UnlockUserAccountRequest, v1.UnlockUserAccountResponse]
-	getUserInvestigation            *connect.Client[v1.GetUserInvestigationRequest, v1.GetUserInvestigationResponse]
-	adminBulkUpdateAutomationStatus *connect.Client[v1.AdminBulkUpdateAutomationStatusRequest, v1.AdminBulkUpdateAutomationStatusResponse]
-	adminSpreadAutomationSchedule   *connect.Client[v1.AdminSpreadAutomationScheduleRequest, v1.AdminSpreadAutomationScheduleResponse]
-	adminBlockUser                  *connect.Client[v1.AdminBlockUserRequest, v1.AdminBlockUserResponse]
-	getAdminProfileStats            *connect.Client[v1.GetAdminProfileStatsRequest, v1.GetAdminProfileStatsResponse]
-	listCategories                  *connect.Client[v1.ListCategoriesRequest, v1.ListCategoriesResponse]
-	createCategory                  *connect.Client[v1.CreateCategoryRequest, v1.CreateCategoryResponse]
-	updateCategory                  *connect.Client[v1.UpdateCategoryRequest, v1.UpdateCategoryResponse]
-	deleteCategory                  *connect.Client[v1.DeleteCategoryRequest, v1.DeleteCategoryResponse]
-	createSubcategory               *connect.Client[v1.CreateSubcategoryRequest, v1.CreateSubcategoryResponse]
-	updateSubcategory               *connect.Client[v1.UpdateSubcategoryRequest, v1.UpdateSubcategoryResponse]
-	deleteSubcategory               *connect.Client[v1.DeleteSubcategoryRequest, v1.DeleteSubcategoryResponse]
+	getObservability              *connect.Client[v1.GetObservabilityRequest, v1.GetObservabilityResponse]
+	getShopeeAffiliateAudit       *connect.Client[v1.GetShopeeAffiliateAuditRequest, v1.GetShopeeAffiliateAuditResponse]
+	ensureWebhooks                *connect.Client[v1.EnsureWebhooksRequest, v1.EnsureWebhooksResponse]
+	listWebhookLogs               *connect.Client[v1.ListWebhookLogsRequest, v1.ListWebhookLogsResponse]
+	simulateKiwifyWebhook         *connect.Client[v1.SimulateKiwifyWebhookRequest, v1.SimulateKiwifyWebhookResponse]
+	getSystemEvents               *connect.Client[v1.GetSystemEventsRequest, v1.GetSystemEventsResponse]
+	resetUserPassword             *connect.Client[v1.ResetUserPasswordRequest, v1.ResetUserPasswordResponse]
+	listPlans                     *connect.Client[v1.ListPlansRequest, v1.ListPlansResponse]
+	createPlan                    *connect.Client[v1.CreatePlanRequest, v1.CreatePlanResponse]
+	updatePlan                    *connect.Client[v1.UpdatePlanRequest, v1.UpdatePlanResponse]
+	deletePlan                    *connect.Client[v1.DeletePlanRequest, v1.DeletePlanResponse]
+	listEmailTemplates            *connect.Client[v1.ListEmailTemplatesRequest, v1.ListEmailTemplatesResponse]
+	createEmailTemplate           *connect.Client[v1.CreateEmailTemplateRequest, v1.CreateEmailTemplateResponse]
+	updateEmailTemplate           *connect.Client[v1.UpdateEmailTemplateRequest, v1.UpdateEmailTemplateResponse]
+	toggleEmailTemplateActive     *connect.Client[v1.ToggleEmailTemplateActiveRequest, v1.ToggleEmailTemplateActiveResponse]
+	listUsers                     *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
+	createUser                    *connect.Client[v1.CreateUserRequest, v1.CreateUserResponse]
+	updateUserRole                *connect.Client[v1.UpdateUserRoleRequest, v1.UpdateUserRoleResponse]
+	listAdminUsers                *connect.Client[v1.ListAdminUsersRequest, v1.ListAdminUsersResponse]
+	grantAdminRole                *connect.Client[v1.GrantAdminRoleRequest, v1.GrantAdminRoleResponse]
+	revokeAdminRole               *connect.Client[v1.RevokeAdminRoleRequest, v1.RevokeAdminRoleResponse]
+	unlockUserAccount             *connect.Client[v1.UnlockUserAccountRequest, v1.UnlockUserAccountResponse]
+	getUserInvestigation          *connect.Client[v1.GetUserInvestigationRequest, v1.GetUserInvestigationResponse]
+	adminSpreadAutomationSchedule *connect.Client[v1.AdminSpreadAutomationScheduleRequest, v1.AdminSpreadAutomationScheduleResponse]
+	getAdminProfileStats          *connect.Client[v1.GetAdminProfileStatsRequest, v1.GetAdminProfileStatsResponse]
+	listCategories                *connect.Client[v1.ListCategoriesRequest, v1.ListCategoriesResponse]
+	createCategory                *connect.Client[v1.CreateCategoryRequest, v1.CreateCategoryResponse]
+	updateCategory                *connect.Client[v1.UpdateCategoryRequest, v1.UpdateCategoryResponse]
+	deleteCategory                *connect.Client[v1.DeleteCategoryRequest, v1.DeleteCategoryResponse]
+	createSubcategory             *connect.Client[v1.CreateSubcategoryRequest, v1.CreateSubcategoryResponse]
+	updateSubcategory             *connect.Client[v1.UpdateSubcategoryRequest, v1.UpdateSubcategoryResponse]
+	deleteSubcategory             *connect.Client[v1.DeleteSubcategoryRequest, v1.DeleteSubcategoryResponse]
 }
 
 // GetObservability calls admin.v1.AdminService.GetObservability.
@@ -575,19 +551,9 @@ func (c *adminServiceClient) GetUserInvestigation(ctx context.Context, req *conn
 	return c.getUserInvestigation.CallUnary(ctx, req)
 }
 
-// AdminBulkUpdateAutomationStatus calls admin.v1.AdminService.AdminBulkUpdateAutomationStatus.
-func (c *adminServiceClient) AdminBulkUpdateAutomationStatus(ctx context.Context, req *connect.Request[v1.AdminBulkUpdateAutomationStatusRequest]) (*connect.Response[v1.AdminBulkUpdateAutomationStatusResponse], error) {
-	return c.adminBulkUpdateAutomationStatus.CallUnary(ctx, req)
-}
-
 // AdminSpreadAutomationSchedule calls admin.v1.AdminService.AdminSpreadAutomationSchedule.
 func (c *adminServiceClient) AdminSpreadAutomationSchedule(ctx context.Context, req *connect.Request[v1.AdminSpreadAutomationScheduleRequest]) (*connect.Response[v1.AdminSpreadAutomationScheduleResponse], error) {
 	return c.adminSpreadAutomationSchedule.CallUnary(ctx, req)
-}
-
-// AdminBlockUser calls admin.v1.AdminService.AdminBlockUser.
-func (c *adminServiceClient) AdminBlockUser(ctx context.Context, req *connect.Request[v1.AdminBlockUserRequest]) (*connect.Response[v1.AdminBlockUserResponse], error) {
-	return c.adminBlockUser.CallUnary(ctx, req)
 }
 
 // GetAdminProfileStats calls admin.v1.AdminService.GetAdminProfileStats.
@@ -679,12 +645,8 @@ type AdminServiceHandler interface {
 	UnlockUserAccount(context.Context, *connect.Request[v1.UnlockUserAccountRequest]) (*connect.Response[v1.UnlockUserAccountResponse], error)
 	// Gets detailed user investigation data (instances, automations).
 	GetUserInvestigation(context.Context, *connect.Request[v1.GetUserInvestigationRequest]) (*connect.Response[v1.GetUserInvestigationResponse], error)
-	// Bulk updates automation status for a user.
-	AdminBulkUpdateAutomationStatus(context.Context, *connect.Request[v1.AdminBulkUpdateAutomationStatusRequest]) (*connect.Response[v1.AdminBulkUpdateAutomationStatusResponse], error)
 	// Spreads next_run_at across user's automations.
 	AdminSpreadAutomationSchedule(context.Context, *connect.Request[v1.AdminSpreadAutomationScheduleRequest]) (*connect.Response[v1.AdminSpreadAutomationScheduleResponse], error)
-	// Blocks a user with extended options.
-	AdminBlockUser(context.Context, *connect.Request[v1.AdminBlockUserRequest]) (*connect.Response[v1.AdminBlockUserResponse], error)
 	// Returns aggregated profile statistics for the admin dashboard.
 	GetAdminProfileStats(context.Context, *connect.Request[v1.GetAdminProfileStatsRequest]) (*connect.Response[v1.GetAdminProfileStatsResponse], error)
 	// Lists all categories with optional subcategories (admin only).
@@ -848,22 +810,10 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("GetUserInvestigation")),
 		connect.WithHandlerOptions(opts...),
 	)
-	adminServiceAdminBulkUpdateAutomationStatusHandler := connect.NewUnaryHandler(
-		AdminServiceAdminBulkUpdateAutomationStatusProcedure,
-		svc.AdminBulkUpdateAutomationStatus,
-		connect.WithSchema(adminServiceMethods.ByName("AdminBulkUpdateAutomationStatus")),
-		connect.WithHandlerOptions(opts...),
-	)
 	adminServiceAdminSpreadAutomationScheduleHandler := connect.NewUnaryHandler(
 		AdminServiceAdminSpreadAutomationScheduleProcedure,
 		svc.AdminSpreadAutomationSchedule,
 		connect.WithSchema(adminServiceMethods.ByName("AdminSpreadAutomationSchedule")),
-		connect.WithHandlerOptions(opts...),
-	)
-	adminServiceAdminBlockUserHandler := connect.NewUnaryHandler(
-		AdminServiceAdminBlockUserProcedure,
-		svc.AdminBlockUser,
-		connect.WithSchema(adminServiceMethods.ByName("AdminBlockUser")),
 		connect.WithHandlerOptions(opts...),
 	)
 	adminServiceGetAdminProfileStatsHandler := connect.NewUnaryHandler(
@@ -962,12 +912,8 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceUnlockUserAccountHandler.ServeHTTP(w, r)
 		case AdminServiceGetUserInvestigationProcedure:
 			adminServiceGetUserInvestigationHandler.ServeHTTP(w, r)
-		case AdminServiceAdminBulkUpdateAutomationStatusProcedure:
-			adminServiceAdminBulkUpdateAutomationStatusHandler.ServeHTTP(w, r)
 		case AdminServiceAdminSpreadAutomationScheduleProcedure:
 			adminServiceAdminSpreadAutomationScheduleHandler.ServeHTTP(w, r)
-		case AdminServiceAdminBlockUserProcedure:
-			adminServiceAdminBlockUserHandler.ServeHTTP(w, r)
 		case AdminServiceGetAdminProfileStatsProcedure:
 			adminServiceGetAdminProfileStatsHandler.ServeHTTP(w, r)
 		case AdminServiceListCategoriesProcedure:
@@ -1085,16 +1031,8 @@ func (UnimplementedAdminServiceHandler) GetUserInvestigation(context.Context, *c
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("admin.v1.AdminService.GetUserInvestigation is not implemented"))
 }
 
-func (UnimplementedAdminServiceHandler) AdminBulkUpdateAutomationStatus(context.Context, *connect.Request[v1.AdminBulkUpdateAutomationStatusRequest]) (*connect.Response[v1.AdminBulkUpdateAutomationStatusResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("admin.v1.AdminService.AdminBulkUpdateAutomationStatus is not implemented"))
-}
-
 func (UnimplementedAdminServiceHandler) AdminSpreadAutomationSchedule(context.Context, *connect.Request[v1.AdminSpreadAutomationScheduleRequest]) (*connect.Response[v1.AdminSpreadAutomationScheduleResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("admin.v1.AdminService.AdminSpreadAutomationSchedule is not implemented"))
-}
-
-func (UnimplementedAdminServiceHandler) AdminBlockUser(context.Context, *connect.Request[v1.AdminBlockUserRequest]) (*connect.Response[v1.AdminBlockUserResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("admin.v1.AdminService.AdminBlockUser is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) GetAdminProfileStats(context.Context, *connect.Request[v1.GetAdminProfileStatsRequest]) (*connect.Response[v1.GetAdminProfileStatsResponse], error) {

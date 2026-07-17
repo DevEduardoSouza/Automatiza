@@ -383,25 +383,51 @@ func (r *profileRepository) UpdateBillingStatus(ctx context.Context, userID stri
 	return nil
 }
 
-// PauseUserAutomations pauses all active automations for a user.
-// This is used when a user's billing status changes to suspended.
-func (r *profileRepository) PauseUserAutomations(ctx context.Context, userID string) error {
+// PauseUserAutomations pauses all active automations for a user and marks them
+// as paused_by_billing so ResumeUserAutomations can reactivate EXACTLY these
+// (never the ones the user paused on purpose). Used when billing is suspended.
+// Returns how many automations were paused.
+func (r *profileRepository) PauseUserAutomations(ctx context.Context, userID string) (int, error) {
 	now := time.Now().UTC()
 	query := `
 		UPDATE automations
-		SET status = 'paused', updated_at = $1
+		SET status = 'paused', paused_by_billing = true, updated_at = $1
 		WHERE user_id = $2 AND status = 'active'
 	`
 
-	_, err := r.db.pool.Exec(ctx, query, now, userID)
+	res, err := r.db.pool.Exec(ctx, query, now, userID)
 	if err != nil {
 		r.logger.Error("Failed to pause user automations",
 			zap.String("userID", userID),
 			zap.Error(err))
-		return fmt.Errorf("pause automations: %w", err)
+		return 0, fmt.Errorf("pause automations: %w", err)
 	}
 
-	return nil
+	return int(res.RowsAffected()), nil
+}
+
+// ResumeUserAutomations reactivates ONLY the automations that were paused by the
+// billing suspension (paused_by_billing = true), clearing the flag. It is the
+// symmetric counterpart of PauseUserAutomations: automations the user paused
+// manually keep their status. Idempotent — a second call finds nothing to do.
+// Returns how many automations were reactivated.
+func (r *profileRepository) ResumeUserAutomations(ctx context.Context, userID string) (int, error) {
+	now := time.Now().UTC()
+	query := `
+		UPDATE automations
+		SET status = 'active', paused_by_billing = false, updated_at = $1
+		WHERE user_id = $2 AND status = 'paused' AND paused_by_billing = true
+	`
+
+	res, err := r.db.pool.Exec(ctx, query, now, userID)
+	if err != nil {
+		r.logger.Error("Failed to resume user automations",
+			zap.String("userID", userID),
+			zap.Error(err))
+		return 0, fmt.Errorf("resume automations: %w", err)
+	}
+
+	return int(res.RowsAffected()), nil
 }
 
 // ListProfiles returns profiles with cursor-based pagination
