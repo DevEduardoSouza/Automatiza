@@ -1631,6 +1631,62 @@ func initCategoryMapping() map[string][]int {
 			100916, // Tigelas e Alimentadores
 		},
 
+		// ── Novos nichos (18/07) — IDs descobertos empiricamente via
+		// productOfferV2.productCatIds (busca por keyword do nicho + validação
+		// por busca de categoria). Ver memória "novos-nichos-buscador-18jul". ──
+		"Jardinagem": {
+			100714, // Jardinagem (mangueiras, vasos, plantas)
+			101183, // Mangueiras e pulverizadores de jardim
+		},
+		"Construção e Obra": {
+			100715, // Materiais de construção e ferramentas
+			101188, // Torneiras e hidráulica
+			101186, // Vedação e impermeabilização
+		},
+		"Ferramentas": {
+			101191, // Ferramentas (jogos, chaves, parafusadeiras)
+		},
+		"Aquarismo": {
+			100921, // Aquário (filtros, bombas, decoração, betta)
+		},
+		"Roupas de Maternidade": {
+			100113, // Lingerie/camisola de amamentação e gestante
+			100395, // Blusas de amamentação/gestante
+		},
+		"Introdução Alimentar": {
+			100956, // Utensílios de alimentação do bebê (BLW, talheres, potes)
+		},
+		"Enxoval de Bebê": {
+			100687, // Roupas de bebê (macacão, body, saída de maternidade)
+			100683, // Fraldas, cueiros e panos de boca
+			100678, // Higiene e cuidados do bebê
+		},
+		"Mamães e Bebês": {
+			100632, // Mãe e Bebê (guarda-chuva do nicho)
+			100675, // Amamentação/alimentação (bomba de leite, chupeta, talheres)
+		},
+		"Roupas Fitness": {
+			100727, // Roupas esportivas (leggings, conjuntos)
+			101309, // Conjuntos fitness femininos
+		},
+		"Acessórios Fitness": {
+			101328, // Luvas/joelheiras/munhequeiras (musculação, crossfit)
+			101292, // Natação (óculos, touca, boia)
+			101890, // Musculação
+			101871, // Luvas e bandagens (lutas)
+			101329, // Acessórios esportivos (ciclismo/outdoor)
+		},
+		"Suplementos Alimentares": {
+			100005, // Suplementos (whey, creatina, pré-treino)
+		},
+		// Sex Shop: a Shopee BR não expõe categoria de produtos adultos — eles se
+		// dispersam por Saúde/Beleza misturados a suplemento/autopeça. Sem catId
+		// confiável, mapeia vazio: busca só pela keyword da automação (mesmo
+		// comportamento de "Ofertas gerais").
+		// ponytail: teto = nicho sem keyword vira busca ampla; upgrade quando/se a
+		// Shopee publicar um catId de produtos adultos.
+		"Sex Shop": {},
+
 		// ── Subcategories: Moda Feminina ──
 		"Moda Feminina - Vestidos":               {100104},
 		"Moda Feminina - Shorts":                 {100360},

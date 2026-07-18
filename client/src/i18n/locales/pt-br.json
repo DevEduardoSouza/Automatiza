@@ -3516,7 +3516,19 @@
       "maternidade": "Maternidade",
       "alimentos": "Alimentos",
       "automotivo": "Automotivo",
-      "pets": "Pets"
+      "pets": "Pets",
+      "jardinagem": "Jardinagem",
+      "construcaoObra": "Construção e Obra",
+      "ferramentas": "Ferramentas",
+      "aquarismo": "Aquarismo",
+      "roupasMaternidade": "Roupas de Maternidade",
+      "introducaoAlimentar": "Introdução Alimentar",
+      "enxovalBebe": "Enxoval de Bebê",
+      "mamaesBebes": "Mamães e Bebês",
+      "roupasFitness": "Roupas Fitness",
+      "acessoriosFitness": "Acessórios Fitness",
+      "suplementosAlimentares": "Suplementos Alimentares",
+      "sexShop": "Sex Shop"
     },
     "subcategories": {
       "eletronicos": {
