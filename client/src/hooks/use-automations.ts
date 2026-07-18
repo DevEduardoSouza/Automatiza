@@ -151,7 +151,14 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     id: local.id,
     name: local.name,
     mode: local.mode,
-    type: local.mode === 'monitor' ? 'monitoring' : local.mode === 'list' ? 'list' : local.mode === 'offer_generate' ? 'offer_generate' : 'search',
+    type:
+      local.mode === 'monitor'
+        ? 'monitoring'
+        : local.mode === 'list'
+          ? 'list'
+          : local.mode === 'offer_generate'
+            ? 'offer_generate'
+            : 'search',
     dispatch_text_id: local.dispatchTextId ?? null,
     monitoring_text_rules: local.monitoringTextRules
       ? {
@@ -344,15 +351,22 @@ export function useAutomations(): UseAutomationsReturn {
     [groupsConnect.allGroups]
   );
 
-  // Dispatch texts from ConnectRPC (only active texts available for selection)
+  // Dispatch texts from ConnectRPC (only active texts available for selection).
+  // Mantém body/copies — a prévia + edição inline no seletor precisam do
+  // conteúdo, não só id/name (a projeção enxuta antiga deixava a prévia vazia).
   const dispatchTexts: DispatchText[] = useMemo(
     () =>
       dispatchTextsConnect.dispatchTexts
         .filter((dt) => dt.is_active)
         .map((dt) => ({
           id: dt.id,
+          user_id: dt.user_id,
           name: dt.name,
+          body: dt.body,
           is_active: dt.is_active,
+          created_at: dt.created_at,
+          updated_at: dt.updated_at,
+          copies: dt.copies,
         })),
     [dispatchTextsConnect.dispatchTexts]
   );
@@ -647,9 +661,7 @@ export function useAutomations(): UseAutomationsReturn {
           searchSendAsImage:
             mode === 'search' ? Boolean(formData.search_send_as_image ?? true) : undefined,
           monitoringSendAsImage:
-            mode === 'monitor'
-              ? Boolean(formData.monitoring_send_as_image ?? false)
-              : undefined,
+            mode === 'monitor' ? Boolean(formData.monitoring_send_as_image ?? false) : undefined,
           // Empty string sent on update explicitly clears the saved
           // preference (when the user picks "all chips"). undefined
           // would leave the previous value untouched.
@@ -715,9 +727,7 @@ export function useAutomations(): UseAutomationsReturn {
           searchSendAsImage:
             mode === 'search' ? Boolean(formData.search_send_as_image ?? true) : undefined,
           monitoringSendAsImage:
-            mode === 'monitor'
-              ? Boolean(formData.monitoring_send_as_image ?? false)
-              : undefined,
+            mode === 'monitor' ? Boolean(formData.monitoring_send_as_image ?? false) : undefined,
           instanceId: formData.instance_id ?? undefined,
           instanceIds: formData.instance_ids ?? [],
           chipOverrides: formData.chip_overrides ?? {},
