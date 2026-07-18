@@ -548,7 +548,7 @@ export function AutomationFormDialog({
               </div>
               <Switch
                 id="monitoring-send-as-image"
-                checked={Boolean(formData.monitoring_send_as_image ?? false)}
+                checked={Boolean(formData.monitoring_send_as_image ?? true)}
                 onCheckedChange={(v) =>
                   setFormData((prev) => ({
                     ...prev,

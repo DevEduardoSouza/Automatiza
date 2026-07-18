@@ -1391,15 +1391,18 @@ func TestProcessAutomation_PreviewWithoutSourceTitle(t *testing.T) {
 	})
 
 	delayZero := 0
+	// Default global de monitoring_send_as_image virou TRUE (rollout 18/07);
+	// este teste valida o card, então força OFF explicitamente.
+	sendAsImageOff := false
 	auto := &models.Automation{
-		ID:           "auto-1",
-		UserID:       "user-1",
-		Name:         "test",
-		Stores:       []string{"shopee"},
-		SendGroups:   []string{"dest@g.us"},
-		Status:       "active",
-		DelaySeconds: &delayZero,
-		// MonitoringSendAsImage nil => OFF => preview mode expected
+		ID:                    "auto-1",
+		UserID:                "user-1",
+		Name:                  "test",
+		Stores:                []string{"shopee"},
+		SendGroups:            []string{"dest@g.us"},
+		Status:                "active",
+		DelaySeconds:          &delayZero,
+		MonitoringSendAsImage: &sendAsImageOff,
 	}
 
 	err := svc.processAutomation(context.Background(), auto, &models.IncomingMessage{

@@ -68,13 +68,18 @@ func shopeeConvertAndEnrich(name string, price, originalPrice float64, isMall bo
 
 func templateAutomation() *models.Automation {
 	zero := 0
+	// O default global de monitoring_send_as_image virou TRUE (rollout 18/07).
+	// Estas cascatas validam o card de preview, então mantêm send_as_image OFF
+	// explicitamente — é o comportamento que testam.
+	sendAsImageOff := false
 	return &models.Automation{
 		ID: "auto-1", UserID: "user-1", Name: "espelho",
-		Stores:         []string{"shopee"},
-		SendGroups:     []string{"dest@g.us"},
-		Status:         "active",
-		DelaySeconds:   &zero,
-		DispatchTextID: strPtr("dt-1"),
+		Stores:                []string{"shopee"},
+		SendGroups:            []string{"dest@g.us"},
+		Status:                "active",
+		DelaySeconds:          &zero,
+		DispatchTextID:        strPtr("dt-1"),
+		MonitoringSendAsImage: &sendAsImageOff,
 	}
 }
 

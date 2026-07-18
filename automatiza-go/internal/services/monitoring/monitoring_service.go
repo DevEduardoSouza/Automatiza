@@ -930,10 +930,11 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			Cfg:      mirrorHumanize,
 		})
 
-		// "Enviar como imagem" (MONITORING, default FALSE): ligado pula o
-		// preview nativo e força imagem baixada + legenda; desligado mantém o
-		// preview-first (comportamento atual). nil = false (default do schema).
-		monitoringSendAsImage := automation.MonitoringSendAsImage != nil && *automation.MonitoringSendAsImage
+		// "Enviar como imagem" (MONITORING, default TRUE desde o rollout global
+		// 18/07): ligado pula o preview nativo e força imagem baixada + legenda;
+		// desligado mantém o preview-first. nil = true (sem card por padrão).
+		// Valor explícito no banco (TRUE/FALSE) continua sobrepondo o default.
+		monitoringSendAsImage := automation.MonitoringSendAsImage == nil || *automation.MonitoringSendAsImage
 
 		// Priority 1: Link custom preview.
 		// "Enviar como imagem" DESLIGADO => sempre tenta o card de preview quando

@@ -88,7 +88,7 @@ export function ListModeConfig({
         </div>
         <Switch
           id="list-send-as-image"
-          checked={Boolean(formData.list_send_as_image ?? false)}
+          checked={Boolean(formData.list_send_as_image ?? true)}
           onCheckedChange={(v) =>
             setFormData((prev) => ({ ...prev, list_send_as_image: Boolean(v) }))
           }
@@ -112,7 +112,6 @@ export function ListModeConfig({
           }
         />
       </div>
-
     </div>
   );
 }

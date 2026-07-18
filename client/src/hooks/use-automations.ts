@@ -71,9 +71,9 @@ const DEFAULT_FORM_DATA: Partial<Automation> = {
   ml_link_list_id: null,
   list_items_per_run: 1,
   list_include_image: true,
-  list_send_as_image: false,
+  list_send_as_image: true,
   search_send_as_image: true,
-  monitoring_send_as_image: false,
+  monitoring_send_as_image: true,
 };
 
 export interface RefinementState {
@@ -657,11 +657,11 @@ export function useAutomations(): UseAutomationsReturn {
           listIncludeImage:
             mode === 'list' ? Boolean(formData.list_include_image ?? true) : undefined,
           listSendAsImage:
-            mode === 'list' ? Boolean(formData.list_send_as_image ?? false) : undefined,
+            mode === 'list' ? Boolean(formData.list_send_as_image ?? true) : undefined,
           searchSendAsImage:
             mode === 'search' ? Boolean(formData.search_send_as_image ?? true) : undefined,
           monitoringSendAsImage:
-            mode === 'monitor' ? Boolean(formData.monitoring_send_as_image ?? false) : undefined,
+            mode === 'monitor' ? Boolean(formData.monitoring_send_as_image ?? true) : undefined,
           // Empty string sent on update explicitly clears the saved
           // preference (when the user picks "all chips"). undefined
           // would leave the previous value untouched.
@@ -723,11 +723,11 @@ export function useAutomations(): UseAutomationsReturn {
           listIncludeImage:
             mode === 'list' ? Boolean(formData.list_include_image ?? true) : undefined,
           listSendAsImage:
-            mode === 'list' ? Boolean(formData.list_send_as_image ?? false) : undefined,
+            mode === 'list' ? Boolean(formData.list_send_as_image ?? true) : undefined,
           searchSendAsImage:
             mode === 'search' ? Boolean(formData.search_send_as_image ?? true) : undefined,
           monitoringSendAsImage:
-            mode === 'monitor' ? Boolean(formData.monitoring_send_as_image ?? false) : undefined,
+            mode === 'monitor' ? Boolean(formData.monitoring_send_as_image ?? true) : undefined,
           instanceId: formData.instance_id ?? undefined,
           instanceIds: formData.instance_ids ?? [],
           chipOverrides: formData.chip_overrides ?? {},
