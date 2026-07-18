@@ -49,6 +49,8 @@ type Service interface {
 type CouponResult struct {
 	Applied         bool
 	CouponText      string
+	CouponCode      string
+	SkipReason      string
 	DiscountedPrice float64
 }
 
@@ -503,6 +505,10 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 	var imageURL string
 	var canonicalKey string
 	var store string
+	// couponResult carries the rule-engine outcome for this offer so the
+	// dispatch log can audit which coupon (or why none) was applied. It's
+	// hoisted here and set in the Shopee/ML branches below.
+	var couponResult *CouponResult
 	// Dados pro card de preview nativo (usado quando offer_generate_send_as_image
 	// está OFF). previewURL é o link de afiliado (também presente no texto), e
 	// title/desc alimentam o card. Preenchidos em cada branch (Shopee/ML).
@@ -586,7 +592,6 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		// can filter correctly.
 		couponBlock := ""
 		if s.couponHandler != nil {
-			var couponResult *CouponResult
 			if preloadedCoupon != nil {
 				couponResult = s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, store)
 			} else if cr, err := s.couponHandler.ApplyCoupon(ctx, auto, offerPrice, store, product.IsMall); err == nil {
@@ -663,7 +668,6 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		// ML doesn't expose a Mall-style flag — productIsOfficial=false.
 		couponBlock := ""
 		if s.couponHandler != nil {
-			var couponResult *CouponResult
 			if preloadedCoupon != nil {
 				couponResult = s.couponHandler.ApplyCouponWithPreloaded(preloadedCoupon, offerPrice, store)
 			} else if cr, err := s.couponHandler.ApplyCoupon(ctx, auto, offerPrice, store, false); err == nil {
@@ -1001,7 +1005,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 					// só falha DEFINITIVA (envio comprovadamente não saiu) libera.
 					if whatsapp.IsAmbiguousOutcome(sendErr) {
 						s.logDispatch(ctx, auto, groupID, links[0], "failed",
-							"timeout no envio (entrega incerta) - slot de dedup mantido", canonicalKey, store)
+							"timeout no envio (entrega incerta) - slot de dedup mantido", canonicalKey, store, couponDispatchExtra(couponResult))
 						s.logger.Warn("Offer send timed out — delivery uncertain, keeping dedup slot",
 							zap.String("groupID", groupID),
 							zap.String("session", dispatchSession),
@@ -1009,7 +1013,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 						continue
 					}
 					s.releaseProductSlot(ctx, auto.UserID, groupID, canonicalKey)
-					s.logDispatch(ctx, auto, groupID, links[0], "failed", sendErr.Error(), canonicalKey, store)
+					s.logDispatch(ctx, auto, groupID, links[0], "failed", sendErr.Error(), canonicalKey, store, couponDispatchExtra(couponResult))
 					s.logger.Error("Failed to send offer",
 						zap.String("groupID", groupID),
 						zap.String("session", dispatchSession),
@@ -1017,7 +1021,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 					continue
 				}
 
-				s.logDispatch(ctx, auto, groupID, links[0], "sent", "", canonicalKey, store)
+				s.logDispatch(ctx, auto, groupID, links[0], "sent", "", canonicalKey, store, couponDispatchExtra(couponResult))
 
 				if hasMentions {
 					// Observabilidade anti-ban: quantos @todos-relays saem por hora.
@@ -1205,7 +1209,7 @@ func (s *offerGenerateService) releaseProductSlot(ctx context.Context, userID, g
 	_ = s.cache.Delete(opCtx, cacheKey)
 }
 
-func (s *offerGenerateService) logDispatch(ctx context.Context, auto *models.Automation, groupID, productURL, status, errorMsg, canonicalKey, store string) {
+func (s *offerGenerateService) logDispatch(ctx context.Context, auto *models.Automation, groupID, productURL, status, errorMsg, canonicalKey, store string, extras ...func(*models.DispatchLog)) {
 	if s.dispatchLogRepo == nil {
 		return
 	}
@@ -1237,10 +1241,28 @@ func (s *offerGenerateService) logDispatch(ctx context.Context, auto *models.Aut
 		dispatchLog.Error = &errorMsg
 	}
 
+	for _, extra := range extras {
+		if extra != nil {
+			extra(dispatchLog)
+		}
+	}
+
 	if _, err := s.dispatchLogRepo.Create(ctx, dispatchLog); err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to create offer_generate dispatch log", err, map[string]string{
 			"module": "offer_generate", "operation": "dispatch_log_create",
 		})
+	}
+}
+
+// couponDispatchExtra devolve um mutator que audita no dispatch log qual cupom
+// (ou por que nenhum) saiu neste disparo. nil-safe: cr nil (cupom não avaliado)
+// deixa as colunas NULL. A semântica das colunas mora em SetCouponAudit.
+func couponDispatchExtra(cr *CouponResult) func(*models.DispatchLog) {
+	return func(log *models.DispatchLog) {
+		if cr == nil {
+			return
+		}
+		log.SetCouponAudit(cr.Applied, cr.CouponCode, cr.SkipReason)
 	}
 }
 

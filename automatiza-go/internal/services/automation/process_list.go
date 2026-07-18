@@ -749,6 +749,8 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 						ListItemID: &item.ID,
 						CreatedAt:  time.Now().UTC().Format(time.RFC3339),
 					}
+					// Audita qual cupom (ou por que nenhum) saiu neste envio.
+					withCoupon(couponResult)(dl)
 					created, dlErr := s.dispatchLogRepo.Create(ctx, dl)
 					if dlErr == nil && created != nil {
 						dispatchLogID = &created.ID
@@ -1026,8 +1028,10 @@ func (s *automationService) buildListModeMessage(
 			message = message + "\n\n" + cta
 		}
 
-		// Auto-append coupon text if template doesn't contain {cupom_bloco}
-		if couponResult != nil && couponResult.Applied && !strings.Contains(dispatchTemplate, "{cupom_bloco}") {
+		// Auto-append coupon text só quando o template não posiciona o cupom por
+		// nenhum placeholder ({cupom_bloco} ou {couponText}) — evita render duplo.
+		if couponResult != nil && couponResult.Applied &&
+			!strings.Contains(dispatchTemplate, "{cupom_bloco}") && !strings.Contains(dispatchTemplate, "{couponText}") {
 			message = message + couponResult.CouponText
 		}
 

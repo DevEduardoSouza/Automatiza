@@ -1270,6 +1270,8 @@ func (a *couponHandlerAdapter) ApplyCouponWithPreloaded(coupon *models.Coupon, o
 	return &offer_generate.CouponResult{
 		Applied:         result.Applied,
 		CouponText:      result.CouponText,
+		CouponCode:      result.CouponCode,
+		SkipReason:      result.SkipReason,
 		DiscountedPrice: result.DiscountedPrice,
 	}
 }
@@ -1282,6 +1284,8 @@ func (a *couponHandlerAdapter) ApplyCoupon(ctx context.Context, auto *models.Aut
 	return &offer_generate.CouponResult{
 		Applied:         result.Applied,
 		CouponText:      result.CouponText,
+		CouponCode:      result.CouponCode,
+		SkipReason:      result.SkipReason,
 		DiscountedPrice: result.DiscountedPrice,
 	}, nil
 }
@@ -1303,6 +1307,7 @@ func (a *monitoringCouponAdapter) ApplyCoupon(ctx context.Context, auto *models.
 		Applied:         result.Applied,
 		CouponText:      result.CouponText,
 		CouponCode:      result.CouponCode,
+		SkipReason:      result.SkipReason,
 		DiscountedPrice: result.DiscountedPrice,
 	}, nil
 }

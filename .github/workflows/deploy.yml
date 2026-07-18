@@ -414,6 +414,12 @@ jobs:
           # do grupo). "all" = todos. "id1,id2" = allowlist de user_ids (canário).
           # Rollout sem novo deploy: gh variable set MONITOR_DISPATCH_TEXT --body <valor>.
           MONITOR_DISPATCH_TEXT=${{ vars.MONITOR_DISPATCH_TEXT }}
+          # Rollout dos cupons v2 (desempate official_only-first + cupom na BUSCA).
+          # ""/ausente/"off" = desligado (default seguro: matcher mantém a ordem
+          # antiga por min_price; busca NÃO aplica cupom). "all" = todos.
+          # "id1,id2" = allowlist de user_ids (canário). Rollout sem novo deploy:
+          # gh variable set COUPON_RULES_ROLLOUT_USERS --body <valor>.
+          COUPON_RULES_ROLLOUT_USERS=${{ vars.COUPON_RULES_ROLLOUT_USERS }}
           # Image pins: o compose usa ${BACKEND_IMAGE:-...latest}. Sem estes pins no
           # .env, qualquer `docker compose up` MANUAL no box (fora do CI) derruba a
           # build pra :latest. O CI ja passa os tags inline; isto protege ops manuais.

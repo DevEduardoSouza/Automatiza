@@ -234,7 +234,10 @@ type CouponRuleRepository interface {
 	// productIsOfficial flags Shopee Mall items so rules with
 	// official_only=true can be filtered correctly. Pass false for
 	// non-Shopee platforms or when the flag is unknown.
-	FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64, productIsOfficial bool) (*models.Coupon, error)
+	// officialFirst, when true, sorts official_only rules ahead of the
+	// min_price tie-break (rollout-gated); false keeps the historical
+	// min_price-first ordering.
+	FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64, productIsOfficial, officialFirst bool) (*models.Coupon, error)
 }
 
 // DispatchLogWithGroup represents a dispatch log with group name from a join

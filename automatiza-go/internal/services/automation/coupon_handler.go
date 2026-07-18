@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -11,6 +12,47 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// couponRolloutGate decides, per user, whether the coupon-rules changes of
+// 2026-07 are active: (1) the official_only-first matcher tie-break and (2)
+// coupon application in SEARCH mode. Controlled by env COUPON_RULES_ROLLOUT_USERS
+// parsed once at startup, same shape as monitoring's dispatchTextGate:
+//   - ""/"off"      → off for everyone (safe default: matcher keeps the old
+//     min_price-first ordering; SEARCH injects no coupon — historical behavior)
+//   - "all"         → on for everyone
+//   - "id1,id2,..." → allowlist of user_ids (canary rollout)
+//
+// Coupon APPLICATION in list/monitoring/offer_generate is NOT gated — those
+// already shipped; only the tie-break ORDER and the new SEARCH coupon are.
+type couponRolloutGate struct {
+	all     bool
+	allowed map[string]struct{}
+}
+
+func parseCouponRolloutGate(raw string) couponRolloutGate {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.EqualFold(raw, "off") {
+		return couponRolloutGate{}
+	}
+	if strings.EqualFold(raw, "all") {
+		return couponRolloutGate{all: true}
+	}
+	allowed := make(map[string]struct{})
+	for _, id := range strings.Split(raw, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			allowed[id] = struct{}{}
+		}
+	}
+	return couponRolloutGate{allowed: allowed}
+}
+
+func (g couponRolloutGate) enabledFor(userID string) bool {
+	if g.all {
+		return true
+	}
+	_, ok := g.allowed[userID]
+	return ok
+}
 
 // CouponResult contains the result of applying a coupon to an offer.
 // It tracks whether the coupon was applied successfully and provides
@@ -45,17 +87,28 @@ type CouponHandler struct {
 	couponRepo     repository.CouponRepository
 	couponRuleRepo repository.CouponRuleRepository
 	logger         *zap.Logger
+	rollout        couponRolloutGate
 }
 
 // NewCouponHandler creates a new coupon handler. couponRuleRepo can be
 // nil for callers that aren't on the rules engine yet — the handler
-// then resolves to "no coupon" on every call.
+// then resolves to "no coupon" on every call. The 2026-07 coupon-rules
+// rollout (tie-break + SEARCH coupon) is gated per user by env
+// COUPON_RULES_ROLLOUT_USERS, read once here (empty = off for everyone).
 func NewCouponHandler(couponRepo repository.CouponRepository, couponRuleRepo repository.CouponRuleRepository, logger *zap.Logger) *CouponHandler {
 	return &CouponHandler{
 		couponRepo:     couponRepo,
 		couponRuleRepo: couponRuleRepo,
 		logger:         logger,
+		rollout:        parseCouponRolloutGate(os.Getenv("COUPON_RULES_ROLLOUT_USERS")),
 	}
+}
+
+// CouponRolloutEnabledFor reports whether the 2026-07 coupon rollout (tie-break
+// + SEARCH coupon injection) is active for this user. The SEARCH flow calls it
+// to decide whether to apply a coupon at all.
+func (h *CouponHandler) CouponRolloutEnabledFor(userID string) bool {
+	return h.rollout.enabledFor(userID)
 }
 
 // ApplyCoupon resolves which coupon to inject into an offer using the
@@ -67,9 +120,10 @@ func NewCouponHandler(couponRepo repository.CouponRepository, couponRuleRepo rep
 //   - couponRuleRepo nil → handler runs without rules support, no coupon.
 //   - Otherwise: query the rules engine with (userID, offerStore,
 //     offerPrice, productIsOfficial). The engine returns the
-//     best-matching coupon (highest min_price tier the product clears,
-//     then priority, then created_at) and skips rules whose
-//     official_only=true don't match the Shopee Mall flag.
+//     best-matching coupon (most specific first: official_only rules,
+//     then highest min_price tier the product clears, then priority,
+//     then created_at) and skips rules whose official_only=true don't
+//     match the Shopee Mall flag.
 //   - Defensive checks on the resolved coupon: must be active, must not
 //     be expired. Store / min_product_price are NOT re-checked here:
 //     the rule already filtered by platform and min_price.
@@ -99,7 +153,10 @@ func (h *CouponHandler) ApplyCoupon(
 	// platform exactly as the catalog (e.g. "shopee", "mercado_livre"),
 	// so keep the same canonical form here.
 	platform := normalizeStoreName(offerStore)
-	coupon, err := h.couponRuleRepo.FindMatchingCoupon(ctx, automation.UserID, platform, offerPrice, productIsOfficial)
+	// official_only-first tie-break is gated per user during rollout; non-gated
+	// users keep the historical min_price-first ordering.
+	officialFirst := h.rollout.enabledFor(automation.UserID)
+	coupon, err := h.couponRuleRepo.FindMatchingCoupon(ctx, automation.UserID, platform, offerPrice, productIsOfficial, officialFirst)
 	if err != nil {
 		h.logger.Error("Failed to resolve coupon rule",
 			zap.String("userID", automation.UserID),

@@ -32,6 +32,38 @@ type DispatchLog struct {
 	ListItemID *string `json:"list_item_id,omitempty" db:"list_item_id"`
 }
 
+// couponCodeMaxLen is the width of dispatch_logs.coupon_code (VARCHAR(50) in
+// 000_postgresql_init.sql). Rule codes come from coupon_rules.code (VARCHAR(100)),
+// so the audit copy must be truncated or the INSERT overflows (SQLSTATE 22001)
+// and the whole dispatch log is lost on a send that already went out.
+const couponCodeMaxLen = 50
+
+// SetCouponAudit records the coupon outcome on the dispatch log for support
+// auditing. A coupon counts as "evaluated" only if it applied OR produced a
+// skip reason; a zero result (coupon never evaluated — no rules engine, no
+// price) leaves ALL coupon columns NULL, the semantics support queries rely on
+// (NULL = not evaluated; applied=false + reason = evaluated and skipped;
+// applied=true = injected). code is truncated to the column width. coupon_id is
+// deliberately NOT written here: that column is declared as a coupons(id)
+// reference, and the rule engine's id is a coupon_rules.id — writing it would
+// break that contract, so the rule is identified by code + user + timestamp.
+func (l *DispatchLog) SetCouponAudit(applied bool, code, skipReason string) {
+	if !applied && skipReason == "" {
+		return
+	}
+	a := applied
+	l.CouponApplied = &a
+	if code != "" {
+		if r := []rune(code); len(r) > couponCodeMaxLen {
+			code = string(r[:couponCodeMaxLen])
+		}
+		l.CouponCode = &code
+	}
+	if skipReason != "" {
+		l.CouponSkipReason = &skipReason
+	}
+}
+
 // DispatchLogStatus constants
 const (
 	DispatchLogStatusPending    = "pending"

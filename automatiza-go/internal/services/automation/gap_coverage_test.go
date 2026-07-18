@@ -2752,9 +2752,51 @@ func TestBuildOfferMessage_WithCoupon(t *testing.T) {
 	}
 
 	template := "{{PRODUTO_NOME}}\n{{LINK_AFILIADO}}\n{{CTA}}"
-	message := svc.buildOfferMessage(template, offer, automation, nil)
+	message := svc.buildOfferMessage(template, offer, automation, nil, nil)
 	assert.Contains(t, message, "Product A")
 	assert.Contains(t, message, "https://s.shopee.com/aff1")
+}
+
+// TestBuildOfferMessage_Coupon verifica a injeção de cupom na Busca: com um
+// CouponResult aplicado a mensagem ganha o texto do cupom e o preço com
+// desconto; com nil o comportamento é o de sempre (sem cupom).
+func TestBuildOfferMessage_Coupon(t *testing.T) {
+	t.Parallel()
+
+	logger := zaptest.NewLogger(t)
+	svc := &automationService{logger: logger}
+
+	offer := &models.ShopeeOffer{
+		Name:          "Produto Oficial",
+		Price:         100.0,
+		OriginalPrice: 150.0,
+		Discount:      33,
+		ProductURL:    "https://shopee.com/p1",
+		AffiliateLink: "https://s.shopee.com/aff1",
+		IsMall:        true,
+	}
+	automation := &models.Automation{ID: "auto-1", UserID: "user-1"}
+	// Template sem {cupom_bloco} → o bloco do cupom é auto-anexado no fim.
+	template := "{{PRODUTO_NOME}} por {{PRODUTO_PRECO}}\n{{LINK_AFILIADO}}"
+
+	t.Run("cupom aplicado injeta texto e preço com desconto", func(t *testing.T) {
+		cr := &CouponResult{
+			Applied:         true,
+			CouponCode:      "OFICIAL20",
+			CouponText:      "\n\n🎟️ Use o cupom OFICIAL20",
+			DiscountedPrice: 80.0,
+		}
+		message := svc.buildOfferMessage(template, offer, automation, nil, cr)
+		assert.Contains(t, message, "OFICIAL20", "texto do cupom deve ser anexado")
+		assert.Contains(t, message, "R$ 80,00", "preço deve refletir o desconto do cupom")
+		assert.NotContains(t, message, "R$ 100,00", "preço cheio deve ser substituído pelo com desconto")
+	})
+
+	t.Run("cupom nil mantém a mensagem sem cupom", func(t *testing.T) {
+		message := svc.buildOfferMessage(template, offer, automation, nil, nil)
+		assert.Contains(t, message, "R$ 100,00", "sem cupom → preço cheio")
+		assert.NotContains(t, message, "🎟️")
+	})
 }
 
 // =============================================================================

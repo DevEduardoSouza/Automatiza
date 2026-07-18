@@ -926,6 +926,12 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					if refreshed.OriginalPrice > 0 {
 						allOffers[i].OriginalPrice = refreshed.OriginalPrice
 					}
+					// Loja oficial (shopType→IsMall): OR das duas fontes. Search e
+					// GetProduct derivam IsMall do MESMO campo shopType, fail-closed
+					// (só true com shopType=1). Um GetProduct sem shopType parseável
+					// (fail-closed→false) não pode REBAIXAR um Mall já confirmado
+					// pela busca — senão a regra official_only deixaria de casar.
+					allOffers[i].IsMall = allOffers[i].IsMall || refreshed.IsMall
 					if allOffers[i].Price > 0 && allOffers[i].OriginalPrice > allOffers[i].Price {
 						allOffers[i].Discount = ((allOffers[i].OriginalPrice - allOffers[i].Price) / allOffers[i].OriginalPrice) * 100
 					}
@@ -993,6 +999,19 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				}
 			}
 
+			// Resolve o cupom desta oferta via rules engine (por oferta: o cupom
+			// depende do preço + flag de loja oficial, igual ao LIST). offer.IsMall
+			// dirige as regras official_only. Cupom na BUSCA é novo e fica atrás do
+			// gate de rollout por usuário (CouponRolloutEnabledFor) — usuários fora
+			// do rollout mantêm a busca SEM cupom (comportamento histórico).
+			// Fail-open: erro no cupom só significa "sem cupom", nunca bloqueia o envio.
+			var couponResult *CouponResult
+			if s.couponHandler != nil && offer.Price > 0 && s.couponHandler.CouponRolloutEnabledFor(automation.UserID) {
+				if cr, err := s.couponHandler.ApplyCoupon(ctx, automation, offer.Price, store, offer.IsMall); err == nil {
+					couponResult = cr
+				}
+			}
+
 			// Anti-ban pacing for SEARCH: per-chip jittered delay accumulator +
 			// micro-breaks (parity with LIST, honoring delay_seconds), destination
 			// shuffle, and reputation-based suppression.
@@ -1020,7 +1039,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				selectedCopy := dispatchCopies[copyIndex]
 
 				// Build message from selected copy
-				message := s.buildOfferMessage(selectedCopy, &offer, automation, ctaEntities)
+				message := s.buildOfferMessage(selectedCopy, &offer, automation, ctaEntities, couponResult)
 
 				s.logger.Debug("Message built for offer",
 					zap.String("automationID", automation.ID),
@@ -1114,7 +1133,8 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				// o TaskID dispatch:<id> ainda dedupa enfileiramento duplicado.
 				dispatchLogID := s.createDispatchLog(ctx, automation, groupID, offer.ProductURL,
 					models.DispatchLogStatusQueued, "",
-					withCanonicalKey(canonicalKey, store), withCopyIndex(copyIndex), withAffiliateLink(offer.AffiliateLink))
+					withCanonicalKey(canonicalKey, store), withCopyIndex(copyIndex), withAffiliateLink(offer.AffiliateLink),
+					withCoupon(couponResult))
 				jobData.DispatchLogID = dispatchLogID
 
 				if s.queueClient != nil {
@@ -1191,7 +1211,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 	}, nil
 }
 
-func (s *automationService) buildOfferMessage(template string, offer *models.ShopeeOffer, automation *models.Automation, ctaEntities []models.CTA) string {
+func (s *automationService) buildOfferMessage(template string, offer *models.ShopeeOffer, automation *models.Automation, ctaEntities []models.CTA, couponResult *CouponResult) string {
 	// Search mode é exclusivamente Shopee (offer vem do ShopeeOffer). Filtra
 	// ctaEntities por platform Shopee/all antes do sorteio — sem isso, uma
 	// automation com CTA "MERCADO LIVRE 🔥" no pool mandava o texto de ML
@@ -1201,11 +1221,18 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 		cta = automation.CTAs[rand.IntN(len(automation.CTAs))] //nolint:gosec // G404: non-security random for CTA selection
 	}
 
-	// Build coupon info
+	// Cupom resolvido pelo rules engine (mesmo padrão do LIST em
+	// buildListModeMessage): injeta código/bloco e usa o preço com desconto no
+	// template. couponResult nil (sem handler/oferta) → sem cupom.
 	couponCode := ""
 	couponBlock := ""
-	if automation.CouponID != nil && s.settingsRepo != nil {
-		// Coupon loading is handled elsewhere; placeholder for when coupon is available
+	effectivePrice := offer.Price
+	if couponResult != nil && couponResult.Applied {
+		couponCode = couponResult.CouponCode
+		couponBlock = couponResult.CouponText
+		if couponResult.DiscountedPrice > 0 {
+			effectivePrice = couponResult.DiscountedPrice
+		}
 	}
 
 	store := "Shopee"
@@ -1217,7 +1244,7 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 	// because RenderTemplate's cleanup regex strips all unreplaced {{...}} patterns.
 	legacyVars := map[string]string{
 		"{{PRODUTO_NOME}}":           offer.Name,
-		"{{PRODUTO_PRECO}}":          text.FormatBRLSpaced(offer.Price),
+		"{{PRODUTO_PRECO}}":          text.FormatBRLSpaced(effectivePrice),
 		"{{PRODUTO_PRECO_ORIGINAL}}": text.FormatBRLSpaced(offer.OriginalPrice),
 		"{{PRODUTO_DESCONTO}}":       fmt.Sprintf("%.0f%%", offer.Discount),
 		"{{LINK_AFILIADO}}":          offer.AffiliateLink,
@@ -1235,7 +1262,7 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 
 	vars := text.ShopeeOfferVars{
 		Title:         offer.Name,
-		Price:         offer.Price,
+		Price:         effectivePrice,
 		OriginalPrice: offer.OriginalPrice,
 		Discount:      offer.Discount,
 		Link:          offer.ProductURL,
@@ -1245,6 +1272,7 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 		Store:         store,
 		CTA:           cta,
 		CouponCode:    couponCode,
+		CouponText:    couponBlock,
 		CouponBlock:   couponBlock,
 	}
 
@@ -1253,6 +1281,14 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 	// Auto-append CTA if template doesn't contain {cta} variable but a CTA was selected
 	if cta != "" && !strings.Contains(template, "{cta}") {
 		message = message + "\n\n" + cta
+	}
+
+	// Auto-append do bloco de cupom SÓ quando o template não posiciona o cupom
+	// por nenhum placeholder ({cupom_bloco} ou {couponText}) — senão o cupom
+	// renderizaria duas vezes. Mesmo comportamento do LIST em buildListModeMessage.
+	if couponResult != nil && couponResult.Applied &&
+		!strings.Contains(template, "{cupom_bloco}") && !strings.Contains(template, "{couponText}") {
+		message = message + couponResult.CouponText
 	}
 
 	return text.NormalizeOutgoingWhatsAppText(message)
@@ -1329,6 +1365,18 @@ func withAffiliateLink(link string) logDispatchOpt {
 		if link != "" {
 			log.AffiliateLink = &link
 		}
+	}
+}
+
+// withCoupon records which coupon rule fired (or why none did) on the dispatch
+// log so support can audit coupon application. nil-safe: a nil result leaves
+// the columns NULL. The column semantics live in DispatchLog.SetCouponAudit.
+func withCoupon(cr *CouponResult) logDispatchOpt {
+	return func(log *models.DispatchLog) {
+		if cr == nil {
+			return
+		}
+		log.SetCouponAudit(cr.Applied, cr.CouponCode, cr.SkipReason)
 	}
 }
 

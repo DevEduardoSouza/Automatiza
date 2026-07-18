@@ -89,6 +89,28 @@ func newTestCouponHandler(repo repository.CouponRepository) *CouponHandler {
 	return NewCouponHandler(repo, nil, logger)
 }
 
+func TestParseCouponRolloutGate(t *testing.T) {
+	t.Parallel()
+	uid := "c8c894ed-ba31-4e86-9307-bbf295c0aed0"
+	cases := []struct {
+		raw   string
+		user  string
+		wants bool
+	}{
+		{"", uid, false},
+		{"off", uid, false},
+		{"all", uid, true},
+		{uid, uid, true},
+		{uid, "other-user", false},
+		{" a , " + uid + " , b ", uid, true},
+	}
+	for _, c := range cases {
+		if got := parseCouponRolloutGate(c.raw).enabledFor(c.user); got != c.wants {
+			t.Errorf("parseCouponRolloutGate(%q).enabledFor(%q) = %v, want %v", c.raw, c.user, got, c.wants)
+		}
+	}
+}
+
 func strPtr(s string) *string       { return &s }
 func float64Ptr(f float64) *float64 { return &f }
 

@@ -259,6 +259,62 @@ func TestDispatchLogRepository_Create(t *testing.T) {
 		assert.Equal(t, models.DispatchLogStatusQueued, created.Status)
 	})
 
+	t.Run("persists coupon fields", func(t *testing.T) {
+		couponID := "22222222-2222-2222-2222-222222222222"
+		code := "OFICIAL20"
+		applied := true
+		log := &models.DispatchLog{
+			UserID:        "user-coupon",
+			Status:        models.DispatchLogStatusQueued,
+			CouponID:      &couponID,
+			CouponCode:    &code,
+			CouponApplied: &applied,
+		}
+		created, err := repo.Create(ctx, log)
+		require.NoError(t, err)
+
+		var gotID, gotCode *string
+		var gotApplied *bool
+		var gotSkip *string
+		err = tdb.pool.QueryRow(ctx,
+			`SELECT coupon_id, coupon_code, coupon_applied, coupon_skip_reason FROM dispatch_logs WHERE id = $1`,
+			created.ID,
+		).Scan(&gotID, &gotCode, &gotApplied, &gotSkip)
+		require.NoError(t, err)
+		require.NotNil(t, gotID)
+		assert.Equal(t, couponID, *gotID)
+		require.NotNil(t, gotCode)
+		assert.Equal(t, "OFICIAL20", *gotCode)
+		require.NotNil(t, gotApplied)
+		assert.True(t, *gotApplied)
+		assert.Nil(t, gotSkip, "skip reason stays NULL when coupon applied")
+	})
+
+	t.Run("persists coupon skip reason when not applied", func(t *testing.T) {
+		applied := false
+		reason := "no coupon rule matched"
+		log := &models.DispatchLog{
+			UserID:           "user-coupon-skip",
+			Status:           models.DispatchLogStatusQueued,
+			CouponApplied:    &applied,
+			CouponSkipReason: &reason,
+		}
+		created, err := repo.Create(ctx, log)
+		require.NoError(t, err)
+
+		var gotApplied *bool
+		var gotSkip *string
+		err = tdb.pool.QueryRow(ctx,
+			`SELECT coupon_applied, coupon_skip_reason FROM dispatch_logs WHERE id = $1`,
+			created.ID,
+		).Scan(&gotApplied, &gotSkip)
+		require.NoError(t, err)
+		require.NotNil(t, gotApplied)
+		assert.False(t, *gotApplied)
+		require.NotNil(t, gotSkip)
+		assert.Equal(t, "no coupon rule matched", *gotSkip)
+	})
+
 	t.Run("creates multiple logs for same user", func(t *testing.T) {
 		userID := "user-multi-create"
 

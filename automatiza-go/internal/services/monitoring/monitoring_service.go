@@ -94,6 +94,7 @@ type CouponResult struct {
 	Applied         bool
 	CouponText      string
 	CouponCode      string
+	SkipReason      string
 	DiscountedPrice float64
 }
 
@@ -130,6 +131,10 @@ type monitoringService struct {
 type monitorDispatchRender struct {
 	Body      string
 	CardTitle string
+	// Coupon carrega o resultado do rules engine para este disparo (nil se
+	// não avaliado — sem template ou sem couponHandler) para auditar no
+	// dispatch log qual cupom saiu.
+	Coupon *CouponResult
 }
 
 // Option configura dependências opcionais do monitoringService. Aditivo: sem
@@ -576,11 +581,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	processedText := msg.Body
 	dispatchTextRendered := ""
 	dispatchCardTitle := ""
+	var couponUsed *CouponResult
 	if s.dispatchText.enabledFor(automation.UserID) && automation.DispatchTextID != nil && *automation.DispatchTextID != "" && s.settingsRepo != nil {
 		rendered := s.renderMonitorDispatchText(
 			ctx, automation, firstShopeeAff, firstShopeeOriginalLink, firstMLOriginalLink, firstMLAffiliateLink, productImageURL)
 		dispatchTextRendered = rendered.Body
 		dispatchCardTitle = rendered.CardTitle
+		couponUsed = rendered.Coupon
 	}
 	usingTemplate := dispatchTextRendered != ""
 
@@ -1042,7 +1049,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			// era uma das fontes das promoções duplicadas. Slot mantido.
 			if whatsapp.IsAmbiguousOutcome(err) {
 				s.logDispatch(ctx, automation, groupID, links[0], "failed",
-					"timeout no envio (entrega incerta) - slot de dedup mantido", canonicalKey, store)
+					"timeout no envio (entrega incerta) - slot de dedup mantido", canonicalKey, store, couponDispatchExtra(couponUsed))
 				s.logger.Warn("Send timed out — delivery uncertain, keeping dedup slot",
 					zap.String("groupID", groupID),
 					zap.Error(err))
@@ -1051,14 +1058,14 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			// Falha DEFINITIVA (envio comprovadamente não aconteceu): libera o
 			// slot para o produto poder ser retentado no próximo ciclo.
 			s.releaseProductSlot(ctx, automation.UserID, groupID, canonicalKey)
-			s.logDispatch(ctx, automation, groupID, links[0], "failed", err.Error(), canonicalKey, store)
+			s.logDispatch(ctx, automation, groupID, links[0], "failed", err.Error(), canonicalKey, store, couponDispatchExtra(couponUsed))
 			s.logger.Error("Failed to send message",
 				zap.String("groupID", groupID),
 				zap.Error(err))
 			continue
 		}
 
-		s.logDispatch(ctx, automation, groupID, links[0], "sent", "", canonicalKey, store)
+		s.logDispatch(ctx, automation, groupID, links[0], "sent", "", canonicalKey, store, couponDispatchExtra(couponUsed))
 
 		if hasMentions {
 			// Observabilidade anti-ban: quantos @todos-relays saem por hora.
@@ -1175,7 +1182,9 @@ func applyCTAAndCouponAppend(message, body, cta string, coupon *CouponResult) st
 	if cta != "" && !strings.Contains(body, "{cta}") {
 		message = message + "\n\n" + cta
 	}
-	if coupon.Applied && !strings.Contains(body, "{cupom_bloco}") {
+	// Auto-append do cupom só quando o template não o posiciona por nenhum
+	// placeholder ({cupom_bloco} ou {couponText}) — evita render duplo.
+	if coupon.Applied && !strings.Contains(body, "{cupom_bloco}") && !strings.Contains(body, "{couponText}") {
 		message = message + coupon.CouponText
 	}
 	return message
@@ -1229,7 +1238,7 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 	}
 
 	message := applyCTAAndCouponAppend(text.RenderShopeeOfferTemplate(body, vars), body, cta, coupon)
-	return monitorDispatchRender{Body: message, CardTitle: vars.Title}
+	return monitorDispatchRender{Body: message, CardTitle: vars.Title, Coupon: coupon}
 }
 
 // renderMLDispatchTemplate fills the dispatch-text template for an ML offer.
@@ -1269,7 +1278,7 @@ func (s *monitoringService) renderMLDispatchTemplate(
 	}
 
 	message := applyCTAAndCouponAppend(text.RenderMLOfferTemplate(body, vars), body, cta, coupon)
-	return monitorDispatchRender{Body: message, CardTitle: vars.Title}
+	return monitorDispatchRender{Body: message, CardTitle: vars.Title, Coupon: coupon}
 }
 
 // preferredParticipantSession returns the session of the first pinned chip
@@ -1599,7 +1608,21 @@ func (s *monitoringService) detectStore(links []string) string {
 	return ""
 }
 
-func (s *monitoringService) logDispatch(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg, canonicalKey, store string) {
+// couponDispatchExtra devolve um mutator que audita no dispatch log qual cupom
+// (ou por que nenhum) saiu neste disparo. nil-safe: cr nil (cupom não avaliado
+// — sem template ou sem couponHandler) deixa as colunas NULL. A semântica das
+// colunas mora em DispatchLog.SetCouponAudit; passar um CouponResult vazio
+// (Applied=false, SkipReason="") também deixa NULL = "não avaliado".
+func couponDispatchExtra(cr *CouponResult) func(*models.DispatchLog) {
+	return func(log *models.DispatchLog) {
+		if cr == nil {
+			return
+		}
+		log.SetCouponAudit(cr.Applied, cr.CouponCode, cr.SkipReason)
+	}
+}
+
+func (s *monitoringService) logDispatch(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg, canonicalKey, store string, extras ...func(*models.DispatchLog)) {
 	if s.dispatchLogRepo == nil {
 		return
 	}
@@ -1635,6 +1658,12 @@ func (s *monitoringService) logDispatch(ctx context.Context, automation *models.
 
 	if errorMsg != "" {
 		dispatchLog.Error = &errorMsg
+	}
+
+	for _, extra := range extras {
+		if extra != nil {
+			extra(dispatchLog)
+		}
 	}
 
 	// Use dedicated timeout to avoid inheriting caller's potentially-exhausted deadline

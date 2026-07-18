@@ -513,7 +513,7 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 		variables["page"] = page
 	}
 
-	gqlQuery := fmt.Sprintf(`query(%s) { productOfferV2(%s) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName productCatIds } } }`, varDefs, queryArgs)
+	gqlQuery := fmt.Sprintf(`query(%s) { productOfferV2(%s) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName shopType productCatIds } } }`, varDefs, queryArgs)
 
 	payload, marshalErr := json.Marshal(map[string]interface{}{
 		"query":     gqlQuery,
@@ -552,6 +552,10 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 				RatingStar        string `json:"ratingStar"`
 				PriceDiscountRate int    `json:"priceDiscountRate"`
 				ShopName          string `json:"shopName"`
+				// ShopType drives IsMall (= shopType contains 1) so
+				// official_only coupon rules can match search offers too.
+				// Scalar-or-array shape, same as GetProduct.
+				ShopType json.RawMessage `json:"shopType"`
 			} `json:"nodes"`
 		} `json:"productOfferV2"`
 	}
@@ -629,6 +633,7 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 			ShopRating:     ratingStar,
 			AffiliateLink:  node.OfferLink,
 			ProductURL:     node.ProductLink,
+			IsMall:         shopTypeIsMall(node.ShopType),
 		}
 
 		offers = append(offers, offer)

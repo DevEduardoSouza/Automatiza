@@ -139,11 +139,15 @@ func (r *couponRuleRepository) DeleteCouponRule(ctx context.Context, ruleID, use
 	return nil
 }
 
-// FindMatchingCoupon picks the rule with the highest min_price that the
-// product still clears, breaking ties by priority then created_at. The
-// SQL does the entire match in one round-trip; the LIMIT 1 plus the
-// partial index on (user_id, platform) WHERE is_active keeps it fast
-// even for users with many rules.
+// FindMatchingCoupon picks the winning rule for a product. Tie-break:
+// when officialFirst is true (rollout-gated per user), official_only rules
+// sort ahead — a rule targeted at Shopee Mall beats a generic price tier on
+// a Mall product, fixing the incident where a "Loja Oficial" rule with
+// min_price=0 lost to any generic tier on official-store products. When
+// officialFirst is false the ordering is the historical min_price DESC →
+// priority DESC → created_at DESC. The SQL does the entire match in one
+// round-trip; the LIMIT 1 plus the partial index on (user_id, platform)
+// WHERE is_active keeps it fast even for users with many rules.
 //
 // As of 048 the rule itself owns code/message/discount fields — there's
 // no JOIN to coupons anymore. We synthesize a *models.Coupon from the
@@ -156,7 +160,11 @@ func (r *couponRuleRepository) DeleteCouponRule(ctx context.Context, ruleID, use
 // items (productIsOfficial=true on the call); for non-Shopee platforms
 // productIsOfficial is always false, so an official_only rule on
 // Mercado Livre simply never matches — that's the intended behavior.
-func (r *couponRuleRepository) FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64, productIsOfficial bool) (*models.Coupon, error) {
+func (r *couponRuleRepository) FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64, productIsOfficial, officialFirst bool) (*models.Coupon, error) {
+	// The CASE keeps the tie-break rollout-gated: officialFirst=false makes the
+	// first sort key a constant FALSE for every row, so the ORDER BY collapses to
+	// the historical `min_price DESC, priority DESC, created_at DESC`. Only gated
+	// users get official_only rules sorted ahead.
 	const query = `
 		SELECT cr.id, cr.user_id, cr.platform,
 		       cr.code, cr.message, cr.discount_type, cr.discount_value, cr.max_discount,
@@ -169,17 +177,18 @@ func (r *couponRuleRepository) FindMatchingCoupon(ctx context.Context, userID, p
 		  AND (cr.period_end IS NULL OR cr.period_end >= NOW())
 		  AND cr.min_price <= $3
 		  AND (NOT cr.official_only OR $4)
-		ORDER BY cr.min_price DESC, cr.priority DESC, cr.created_at DESC
+		ORDER BY (CASE WHEN $5 THEN cr.official_only ELSE FALSE END) DESC,
+		         cr.min_price DESC, cr.priority DESC, cr.created_at DESC
 		LIMIT 1
 	`
 
-	row := r.db.QueryRow(ctx, query, userID, platform, productPrice, productIsOfficial)
+	row := r.db.QueryRow(ctx, query, userID, platform, productPrice, productIsOfficial, officialFirst)
 
 	var (
-		id, userIDOut, platformOut       string
-		code, message, discountType      *string
-		discountValue, maxDiscount       *float64
-		createdAt, updatedAt             time.Time
+		id, userIDOut, platformOut  string
+		code, message, discountType *string
+		discountValue, maxDiscount  *float64
+		createdAt, updatedAt        time.Time
 	)
 
 	if err := row.Scan(
