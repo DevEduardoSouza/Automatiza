@@ -116,6 +116,12 @@ func InitSentry(cfg SentryConfig) error {
 			if cfg.Environment == "development" || cfg.Environment == "dev" {
 				return nil
 			}
+			// Rede de segurança para capturas que não passam pelo LogAndCapture
+			// (CaptureWithTags, CaptureMessage, interceptors): erro de estado do
+			// usuário não entra no Sentry — ver userStateErrorMarkers.
+			if isUserStateEvent(event) {
+				return nil
+			}
 			return redactPII(event)
 		},
 	})
@@ -129,6 +135,57 @@ func InitSentry(cfg SentryConfig) error {
 // Flush waits until the underlying Sentry transport sends any buffered events.
 func Flush(timeout time.Duration) {
 	sentry.Flush(timeout)
+}
+
+// userStateErrorMarkers identifica erros de ESTADO/CONFIG do próprio usuário
+// (não são falhas da plataforma): credencial Shopee inválida/sem API, chip
+// desconectado ou removido do grupo. Essas classes dominavam o volume do projeto
+// (296k+ eventos de "error [10020]" até 02/07/2026) e mantinham a cota do Sentry
+// permanentemente estourada — nenhum erro real era aceito (outcome rate_limited).
+// Ficam fora do Sentry; o rastro operacional continua no zap e em dispatch_logs.
+var userStateErrorMarkers = []string{
+	"error [10020]",                     // Shopee: Invalid Credential
+	"error [10035]",                     // Shopee: conta sem Open API
+	"Invalid Signature",                 // Shopee: credencial errada
+	"no Open API access",                // Shopee: acesso revogado
+	"Session status is not as expected", // chip do usuário fora do ar
+	"is not working: current status",    // idem (ProviderError)
+	"instance not connected",            // idem (gate pré-envio)
+	"not participating in that group",   // chip removido do grupo
+}
+
+func matchesUserStateMarker(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, m := range userStateErrorMarkers {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// isUserStateError decide no ponto de captura (LogAndCapture).
+func isUserStateError(msg string, err error) bool {
+	if matchesUserStateMarker(msg) {
+		return true
+	}
+	return err != nil && matchesUserStateMarker(err.Error())
+}
+
+// isUserStateEvent decide sobre o evento final (BeforeSend), cobrindo também
+// capturas feitas fora do LogAndCapture.
+func isUserStateEvent(event *sentry.Event) bool {
+	if matchesUserStateMarker(event.Message) {
+		return true
+	}
+	for i := range event.Exception {
+		if matchesUserStateMarker(event.Exception[i].Value) {
+			return true
+		}
+	}
+	return false
 }
 
 // redactPII removes PII from Sentry events.
@@ -281,6 +338,12 @@ func LogAndCapture(logger *zap.Logger, level sentry.Level, msg string, err error
 		logger.Error(msg, fields...) // Don't call Fatal, let caller decide
 	default:
 		logger.Error(msg, fields...)
+	}
+
+	// Erro de estado/config do usuário: já logado acima; não gasta cota do Sentry
+	// (essa classe foi o flood que derrubou a ingestão até 02/07 — ver markers).
+	if isUserStateError(msg, err) {
+		return
 	}
 
 	// Rate limit key: file:line + error message
