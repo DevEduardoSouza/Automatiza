@@ -817,6 +817,22 @@ func (h *SupportHandler) GetSystemHealth(
 	// --- Host (CPU/disco/load): coletado pela sentinela, nao pelo backend ---
 	resp.Host = h.hostHealth(ctx)
 
+	// --- Erros REAIS de disparo (24h) para o card de erros do painel ---
+	// Somente status 'error'/'failed'; skips (chip desconectado etc.) ficam de
+	// fora — desconectado vira waha.sessions_disconnected. Fail-open: se a query
+	// falhar, o card fica vazio e o resto do painel segue.
+	if errs, err := h.supportRepo.GetTopDispatchErrors(ctx, 24*time.Hour, 10); err == nil {
+		for i := range errs {
+			resp.DispatchErrors = append(resp.DispatchErrors, &supportv1.DispatchErrorSignature{
+				Error: errs[i].Error,
+				Count: int32(errs[i].Count),
+				Users: int32(errs[i].Users),
+			})
+		}
+	} else {
+		h.logger.Warn("failed to load top dispatch errors for support panel", zap.Error(err))
+	}
+
 	// --- Semaforo geral ---
 	resp.Overall = h.overallStatus(waha, resp.Redis, resp.Queues)
 

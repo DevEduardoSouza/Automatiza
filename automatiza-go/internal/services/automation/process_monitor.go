@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +11,13 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// errWhatsAppNotConnected marca o caso "não há chip conectado para disparar"
+// (chip desconectado ou nenhum chip). NÃO é erro de disparo: nada foi tentado e
+// a automação fica em stand-by (o cron re-roda e retoma quando reconectar). O
+// caller loga como 'skipped' (fora do card de erros); erro real de DB continua
+// 'error'. errors.Is casa mesmo quando envolvido.
+var errWhatsAppNotConnected = errors.New("WhatsApp nao esta conectado")
 
 // processMonitorMode processes MONITOR mode automations.
 //
@@ -82,8 +90,14 @@ func (s *automationService) processMonitorMode(ctx context.Context, automation *
 	// 3. Verify WhatsApp instance is connected
 	instance, err := s.getConnectedInstance(ctx, automation.UserID)
 	if err != nil {
+		// Chip desconectado/ausente = stand-by, não erro de disparo (log 'skipped',
+		// fora do card de erros). Erro real de DB continua 'error'.
+		status := "error"
+		if errors.Is(err, errWhatsAppNotConnected) {
+			status = "skipped"
+		}
 		result.Message = fmt.Sprintf("WhatsApp nao conectado: %v", err)
-		s.logDispatch(ctx, automation, "system", "config:whatsapp", "error", result.Message)
+		s.logDispatch(ctx, automation, "system", "config:whatsapp", status, result.Message)
 		return result, nil
 	}
 
@@ -159,7 +173,7 @@ func (s *automationService) getConnectedInstance(ctx context.Context, userID str
 	}
 
 	if len(instances) == 0 {
-		return nil, fmt.Errorf("nenhuma instancia WhatsApp encontrada")
+		return nil, fmt.Errorf("nenhuma instancia WhatsApp encontrada: %w", errWhatsAppNotConnected)
 	}
 
 	for i := range instances {
@@ -168,7 +182,7 @@ func (s *automationService) getConnectedInstance(ctx context.Context, userID str
 		}
 	}
 
-	return nil, fmt.Errorf("nenhuma instancia WhatsApp conectada")
+	return nil, fmt.Errorf("nenhuma instancia WhatsApp conectada: %w", errWhatsAppNotConnected)
 }
 
 // validateMonitorAutomation performs validation for a MONITOR mode automation.

@@ -399,6 +399,48 @@ func (r *SupportRepository) GetSessionStatusCounts(ctx context.Context) (*Sessio
 	return &c, nil
 }
 
+// DispatchErrorStat e uma assinatura de ERRO de disparo agregada.
+type DispatchErrorStat struct {
+	Error string
+	Count int
+	Users int
+}
+
+// GetTopDispatchErrors agrega as assinaturas de ERRO REAL de disparo na janela,
+// para o card de erros do painel de suporte. Conta SOMENTE status 'error'/'failed'
+// — skips (dedupe, chip desconectado, sem-desconto, backpressure) NAO sao erro e
+// ficam de fora (chip desconectado vira a metrica sessions_disconnected). Agrupa
+// pela mensagem crua (assinaturas estaticas dominam o topo); janela e limite
+// parametrizados. Barato: status 'error'/'failed' e uma fracao minima da tabela.
+func (r *SupportRepository) GetTopDispatchErrors(ctx context.Context, window time.Duration, limit int) ([]DispatchErrorStat, error) {
+	sql := `
+		SELECT error, COUNT(*), COUNT(DISTINCT user_id)
+		FROM dispatch_logs
+		WHERE status IN ('error', 'failed')
+		  AND error IS NOT NULL AND error <> ''
+		  AND created_at > NOW() - $1::interval
+		GROUP BY error
+		ORDER BY COUNT(*) DESC
+		LIMIT $2
+	`
+	interval := fmt.Sprintf("%d seconds", int(window.Seconds()))
+	rows, err := r.db.pool.Query(ctx, sql, interval, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query top dispatch errors: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]DispatchErrorStat, 0, limit)
+	for rows.Next() {
+		var e DispatchErrorStat
+		if err := rows.Scan(&e.Error, &e.Count, &e.Users); err != nil {
+			return nil, fmt.Errorf("failed to scan dispatch error stat: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // AutomationTypeCounts e a saude de um tipo de automacao.
 type AutomationTypeCounts struct {
 	Type      string

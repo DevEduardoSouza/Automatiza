@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -88,8 +89,14 @@ func (s *automationService) processOfferGenerateMode(ctx context.Context, automa
 	// 4. Verify WhatsApp instance is connected
 	instance, err := s.getConnectedInstance(ctx, automation.UserID)
 	if err != nil {
+		// Chip desconectado/ausente = stand-by, nao erro de disparo (log 'skipped',
+		// fora do card de erros). Erro real de DB continua 'error'.
+		status := "error"
+		if errors.Is(err, errWhatsAppNotConnected) {
+			status = "skipped"
+		}
 		result.Message = fmt.Sprintf("WhatsApp nao conectado: %v", err)
-		s.logDispatch(ctx, automation, "system", "config:whatsapp", "error", result.Message)
+		s.logDispatch(ctx, automation, "system", "config:whatsapp", status, result.Message)
 		return result, nil
 	}
 

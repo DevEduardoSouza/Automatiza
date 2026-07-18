@@ -140,8 +140,13 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 	}
 
 	if connectedInstance == nil {
+		// Chip desconectado NÃO é erro de disparo: nada foi tentado e a automação
+		// fica em stand-by (o cron re-roda a cada minuto e retoma sozinho quando o
+		// cliente reconecta — não pausa, não carimba last_error). Registrar como
+		// 'skipped' (mesmo status do dedupe) tira do card de erros do painel; a
+		// contagem de números desconectados vira métrica própria (não erro).
 		errMsg := "WhatsApp nao esta conectado. Conecte seu WhatsApp para enviar ofertas."
-		s.logDispatch(ctx, automation, "system", "https://error.log", "error", errMsg)
+		s.logDispatch(ctx, automation, "system", "https://error.log", "skipped", errMsg)
 		return &models.RunAutomationResult{
 			Success: false,
 			Message: errMsg,
@@ -170,8 +175,9 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 	}
 
 	// Send link as downloaded image + caption instead of native link preview card.
-	// Defaults to false (keep current behavior: native preview via /api/send/link-custom-preview).
-	sendAsImage := false
+	// Defaults to true (rollout global 18/07: sem card por padrão; nil = imagem).
+	// Valor explícito no banco (TRUE/FALSE) continua sobrepondo o default.
+	sendAsImage := true
 	if automation.ListSendAsImage != nil {
 		sendAsImage = *automation.ListSendAsImage
 	}

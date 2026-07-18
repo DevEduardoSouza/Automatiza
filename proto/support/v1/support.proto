@@ -322,6 +322,15 @@ message HostHealth {
   string note = 7;
 }
 
+// DispatchErrorSignature e uma assinatura de ERRO REAL de disparo agregada
+// (status 'error'/'failed'). Skips (dedupe, chip desconectado) NAO entram aqui —
+// chip desconectado vira waha.sessions_disconnected, nao erro.
+message DispatchErrorSignature {
+  string error = 1;
+  int32 count = 2;
+  int32 users = 3; // usuarios distintos afetados
+}
+
 message GetSystemHealthResponse {
   // Semaforo geral, calculado no servidor a partir dos limiares: ok | atencao |
   // critico. A pior sinaleira entre os componentes vence.
@@ -332,6 +341,9 @@ message GetSystemHealthResponse {
   repeated SupportQueueDepth queues = 5;
   AppHealth app = 6;
   HostHealth host = 7;
+  // Top assinaturas de ERRO de disparo (24h) para o card de erros do painel.
+  // Exclui skips (chip desconectado aparece em waha.sessions_disconnected).
+  repeated DispatchErrorSignature dispatch_errors = 8;
 }
 
 // ============================================================
