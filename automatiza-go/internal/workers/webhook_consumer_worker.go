@@ -34,6 +34,22 @@ const (
 	// MaxWebhookRetries is the maximum number of retry attempts before moving to DLQ.
 	MaxWebhookRetries = 3
 
+	// maxBackpressureRetries: budget de retry DEDICADO para a classe de
+	// backpressure do fan-out do espelho ("mirror fan-out busy", origem em
+	// monitoring_message_processor.go). Esse erro é transiente — um grupo-fonte
+	// quente satura o pool de fan-out por dezenas de segundos — mas com apenas
+	// MaxWebhookRetries(3) a oferta caía na DLQ em ~14s (backoff n²), muito antes
+	// dos staleWebhookMessageTTL(10min) que o design assume como janela de vida.
+	// Resultado: perda silenciosa de ~200-360 ofertas/h nos grupos mais ativos.
+	// Com este budget o evento re-tenta pela janela inteira; o gate de frescor em
+	// handleMessageEvent dropa limpo (nil, sem DLQ) assim que passa de 10min, e
+	// no meio tempo o chat quente drena e a oferta espelha. É backstop: para
+	// mensagens com ReceivedAt válido o gate de frescor fira ANTES (~retry 12);
+	// só ReceivedAt=0 (produtores antigos) chega a este teto. Dimensionado ao
+	// backoff n²s (cumulativo ~10min por volta do retry 12). Requer que o
+	// asynq.MaxRetry da task webhook (asynq.go) seja >= este valor.
+	maxBackpressureRetries = 14
+
 	// TypeWebhookDLQ is the task type for dead letter queue entries.
 	TypeWebhookDLQ = "whatsapp:webhook:dlq"
 
@@ -695,15 +711,24 @@ func (w *WebhookConsumerWorker) handleProcessingError(
 	// Get current retry count from Asynq context
 	retryCount, _ := asynq.GetRetryCount(ctx)
 
+	// Backpressure do fan-out do espelho ("mirror fan-out busy") ganha um budget
+	// de retry maior para não cair na DLQ antes da janela de frescor de 10min que
+	// o design já assume (ver maxBackpressureRetries). Qualquer outra classe de
+	// erro mantém o MaxWebhookRetries de sempre.
+	maxRetries := MaxWebhookRetries
+	if isBackpressureError(processErr) {
+		maxRetries = maxBackpressureRetries
+	}
+
 	logger.Warn("Webhook event processing failed",
 		zap.String("eventID", data.EventID),
 		zap.String("eventType", data.Event),
 		zap.Int("retryCount", retryCount),
-		zap.Int("maxRetries", MaxWebhookRetries),
+		zap.Int("maxRetries", maxRetries),
 		zap.Error(processErr))
 
 	// Check if we should move to DLQ
-	if retryCount >= MaxWebhookRetries {
+	if retryCount >= maxRetries {
 		logger.Error("Max retries exceeded, moving to DLQ",
 			zap.String("eventID", data.EventID),
 			zap.String("eventType", data.Event),
@@ -776,6 +801,21 @@ func (w *WebhookConsumerWorker) handleProcessingError(
 
 	// Return error to trigger Asynq retry
 	return processErr
+}
+
+// isBackpressureError reports whether the error is transient fan-out backpressure
+// from the mirror path ("mirror fan-out busy ... backpressure", origin
+// monitoring_message_processor.go). This class deserves the larger
+// maxBackpressureRetries budget instead of DLQ-after-3, because a hot source
+// group saturates the fan-out pool for tens of seconds and the offer stays
+// mirror-worthy for staleWebhookMessageTTL(10min). Matched on the stable
+// "backpressure" marker rather than "temporary" (which other transient errors
+// also carry) so only this class gets the extended budget.
+func isBackpressureError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "backpressure")
 }
 
 // isRetryableError determines if an error should trigger a retry.

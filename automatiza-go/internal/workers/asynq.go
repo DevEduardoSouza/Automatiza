@@ -287,7 +287,13 @@ func (q *QueueClient) EnqueueWebhook(ctx context.Context, data *WebhookJobData) 
 	// espelho é tratado no consumidor via ReceivedAt (staleWebhookMessageTTL);
 	// eventos de status/grupo não perdem valor com o tempo e sempre processam.
 	task := asynq.NewTask(TypeWAHAWebhook, payload,
-		asynq.MaxRetry(5),
+		// MaxRetry cobre o budget dedicado de backpressure do espelho
+		// (maxBackpressureRetries no webhook_consumer_worker): sem entrega
+		// suficiente do asynq, o retry da classe "mirror fan-out busy" pararia
+		// antes da janela de frescor de 10min e a oferta cairia na DLQ. Só a
+		// classe busy usa essas tentativas extras — as demais param no gate do
+		// app (MaxWebhookRetries=3), então elevar o teto não muda o resto.
+		asynq.MaxRetry(15),
 		asynq.Queue("webhooks"),
 		asynq.Timeout(120*time.Second),
 		asynq.TaskID("waha:"+data.EventID), // Use event ID for deduplication
