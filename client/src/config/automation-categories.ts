@@ -141,16 +141,23 @@ export const MAX_SEND_GROUPS = 20;
 export const ENFORCE_GROUP_LIMITS = false;
 
 /**
- * Mostra o seletor de "Texto de disparo" (e o hint) no modo Monitoramento.
+ * Canário do "Texto de disparo" no modo Monitoramento (espelho).
  *
- * Defaults to `false` para casar com o backend, cujo gate MONITOR_DISPATCH_TEXT
- * também nasce OFF (reativação gradual da PR #243, revertida em 08/07 por bugs
- * de produção). Enquanto o backend estiver em canário (allowlist), mantenha
- * `false` aqui — assim nenhum usuário fora do teste escolhe um texto que o
- * espelho ainda ignora. Flip para `true` no MESMO deploy em que
- * MONITOR_DISPATCH_TEXT vira "all", reexpondo o seletor para todos.
+ * Allowlist de e-mails (lowercase) que veem/usam o seletor de texto de disparo
+ * no espelho. DEVE andar junto com os user_ids em MONITOR_DISPATCH_TEXT no
+ * backend — se um usuário vê o seletor mas seu id não está no backend, ele
+ * escolhe um texto que o espelho ignora (e vice-versa). Vazio = ninguém vê
+ * (feature oculta). Reativação gradual da PR #243 (revertida em 08/07 por
+ * bugs). Para abrir a TODOS: faça showMonitorDispatchTextFor devolver `true`
+ * no MESMO deploy em que MONITOR_DISPATCH_TEXT vira "all" no backend.
  */
-export const SHOW_MONITOR_DISPATCH_TEXT = false;
+export const MONITOR_DISPATCH_TEXT_EMAILS = ['isaa_deoliveira@hotmail.com'];
+
+/** True se o e-mail da conta logada está no canário do texto de disparo do espelho. */
+export function showMonitorDispatchTextFor(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return MONITOR_DISPATCH_TEXT_EMAILS.includes(email.trim().toLowerCase());
+}
 
 /** Electronics subcategories with labels and i18n keys */
 export const ELETRONICOS_SUBCATEGORIES = {

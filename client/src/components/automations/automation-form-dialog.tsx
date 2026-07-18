@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ChipSelector } from '@/components/whatsapp/chip-selector';
-import { ENFORCE_GROUP_LIMITS, SHOW_MONITOR_DISPATCH_TEXT } from '@/config/automation-categories';
+import { ENFORCE_GROUP_LIMITS, showMonitorDispatchTextFor } from '@/config/automation-categories';
+import { useAuth } from '@/contexts';
 import type { RefinementState } from '@/hooks/use-automations';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { effectiveFriendlyName } from '@/lib/instance-label';
@@ -100,6 +101,10 @@ export function AutomationFormDialog({
 }: AutomationFormDialogProps) {
   const { t } = useTranslation();
   const { instances } = useInstancesConnect();
+  const { user } = useAuth();
+  // Canário do texto de disparo no espelho: só as contas na allowlist veem o
+  // seletor (deve casar com MONITOR_DISPATCH_TEXT no backend).
+  const showMonitorDispatchText = showMonitorDispatchTextFor(user?.email);
 
   // Quais chips esta automação usa.
   //   - Modo Lista (com 2+ chips conectados): multi-select estilo
@@ -508,7 +513,7 @@ export function AutomationFormDialog({
                 que casar com o produto. Desligue se essa automação envia produtos que já estão em
                 promoção/cupom da própria loja.
                 {formData.mode === 'monitor' &&
-                  SHOW_MONITOR_DISPATCH_TEXT &&
+                  showMonitorDispatchText &&
                   ' No espelhamento, o cupom só é aplicado quando há um texto de disparo escolhido abaixo.'}
               </p>
             </div>
@@ -586,7 +591,7 @@ export function AutomationFormDialog({
               e só aí CTAs/cupons se aplicam. Backend gated por MONITOR_DISPATCH_TEXT. */}
           {(formData.mode === 'search' ||
             formData.mode === 'list' ||
-            (formData.mode === 'monitor' && SHOW_MONITOR_DISPATCH_TEXT)) && (
+            (formData.mode === 'monitor' && showMonitorDispatchText)) && (
             <DispatchTextSelector
               formData={formData}
               setFormData={setFormData}
@@ -595,7 +600,7 @@ export function AutomationFormDialog({
           )}
 
           {/* Monitor: texto de disparo é opcional. Vazio = repassa o texto do grupo. */}
-          {formData.mode === 'monitor' && SHOW_MONITOR_DISPATCH_TEXT && (
+          {formData.mode === 'monitor' && showMonitorDispatchText && (
             <div
               className="rounded-xl border px-4 py-3 text-sm"
               style={{
