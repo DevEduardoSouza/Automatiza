@@ -95,6 +95,25 @@ func isRetryableError(err error) bool {
 	return false
 }
 
+// isPreConnectionError reports whether the request failed BEFORE any bytes
+// reached WAHA — i.e. DNS resolution failed and no connection was ever opened.
+// This is unambiguously "never sent" (unlike a reset/EOF/timeout mid-flight,
+// where WAHA may already have the POST), so retrying a message send here cannot
+// duplicate. Docker's embedded resolver (127.0.0.11) returns transient SERVFAIL
+// under burst — "lookup waha-router on 127.0.0.11:53: server misbehaving" — and
+// NXDOMAIN while the router container is briefly recreating; both surface as
+// *net.DNSError. isRetryableError misses these: a *net.DNSError satisfies
+// net.Error, so that branch returns netErr.Timeout() (false for SERVFAIL) before
+// the "no such host" string check is ever reached — which is why these aborted
+// the send instead of retrying.
+func isPreConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var dnsErr *net.DNSError
+	return errors.As(err, &dnsErr)
+}
+
 // isRetryableStatusCode returns true if the HTTP status code indicates a transient server error.
 func isRetryableStatusCode(statusCode int) bool {
 	switch statusCode {
@@ -599,6 +618,16 @@ func (a *WahaAdapter) doRequestWithHeaders(ctx context.Context, method, path str
 					continue
 				}
 				return nil, NewProviderError(ErrCodeTimeout, "request timed out", err)
+			}
+
+			// Pre-connection failures (DNS SERVFAIL/NXDOMAIN from Docker's embedded
+			// resolver under burst) never reached WAHA — no bytes were sent — so
+			// retrying a message send here cannot duplicate. Retry for ALL requests,
+			// including non-idempotent sends, unlike the ambiguous reset/EOF path
+			// below. Kills the ~2.1k/7d "lookup waha-router ...: server misbehaving"
+			// aborts. On exhaustion, falls through to the definitive error below.
+			if isPreConnectionError(err) && a.retryEnabled && attempt < maxAttempts-1 {
+				continue
 			}
 
 			// Transient network errors (connection reset / EOF / broken pipe) can
