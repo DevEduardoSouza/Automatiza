@@ -615,6 +615,16 @@ func main() {
 		})
 	}
 
+	// Texto de disparo no modo monitoramento (reativação gradual da PR #243):
+	// CTA pool + cupons só valem no caminho do template; o gate por usuário vem
+	// da env MONITOR_DISPATCH_TEXT (off/all/allowlist de user_ids). Sem cupom
+	// repo → applier nil → monitor sem cupom (fail-open). Ver dispatchTextGate.
+	var monitorCouponApplier monitoring.CouponApplier
+	if couponRepo != nil {
+		monitorCouponApplier = &monitoringCouponAdapter{
+			handler: automation.NewCouponHandler(couponRepo, couponRuleRepo, logger),
+		}
+	}
 	monitoringService := monitoring.NewMonitoringService(
 		automationRepo,
 		instanceRepo,
@@ -626,6 +636,9 @@ func main() {
 		wahaAdapter,
 		cacheClient,
 		config.NewModuleLogger(logger, "monitoring"),
+		monitoring.WithCTARepo(ctaRepo),
+		monitoring.WithCouponApplier(monitorCouponApplier),
+		monitoring.WithDispatchText(os.Getenv("MONITOR_DISPATCH_TEXT")),
 	)
 
 	var ogCouponHandler offer_generate.CouponApplier
@@ -1269,6 +1282,27 @@ func (a *couponHandlerAdapter) ApplyCoupon(ctx context.Context, auto *models.Aut
 	return &offer_generate.CouponResult{
 		Applied:         result.Applied,
 		CouponText:      result.CouponText,
+		DiscountedPrice: result.DiscountedPrice,
+	}, nil
+}
+
+// monitoringCouponAdapter adapts automation.CouponHandler to
+// monitoring.CouponApplier — mesmo motivo do couponHandlerAdapter: evita o
+// pacote monitoring (caminho quente do webhook) importar automation. Só o
+// ApplyCoupon (rules engine por oferta) é exposto ao monitor.
+type monitoringCouponAdapter struct {
+	handler *automation.CouponHandler
+}
+
+func (a *monitoringCouponAdapter) ApplyCoupon(ctx context.Context, auto *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool) (*monitoring.CouponResult, error) {
+	result, err := a.handler.ApplyCoupon(ctx, auto, offerPrice, offerStore, productIsOfficial)
+	if err != nil || result == nil {
+		return nil, err
+	}
+	return &monitoring.CouponResult{
+		Applied:         result.Applied,
+		CouponText:      result.CouponText,
+		CouponCode:      result.CouponCode,
 		DiscountedPrice: result.DiscountedPrice,
 	}, nil
 }

@@ -409,6 +409,11 @@ jobs:
           IMAGE_RELAY_MAX_ASPECT=${{ vars.IMAGE_RELAY_MAX_ASPECT }}
           FEATURE_ENFORCE_PLAN_GROUP_LIMITS=${{ vars.FEATURE_ENFORCE_PLAN_GROUP_LIMITS }}
           FEATURE_KIWIFY_STRICT_SIGNATURE=${{ vars.FEATURE_KIWIFY_STRICT_SIGNATURE }}
+          # Texto de disparo no modo monitoramento (reativação gradual da PR #243).
+          # ""/ausente/"off" = desligado (default seguro: o espelho repassa o texto
+          # do grupo). "all" = todos. "id1,id2" = allowlist de user_ids (canário).
+          # Rollout sem novo deploy: gh variable set MONITOR_DISPATCH_TEXT --body <valor>.
+          MONITOR_DISPATCH_TEXT=${{ vars.MONITOR_DISPATCH_TEXT }}
           # Image pins: o compose usa ${BACKEND_IMAGE:-...latest}. Sem estes pins no
           # .env, qualquer `docker compose up` MANUAL no box (fora do CI) derruba a
           # build pra :latest. O CI ja passa os tags inline; isto protege ops manuais.

@@ -64,7 +64,8 @@ func TestRenderMonitorDispatchText_ShopeeFillsPrice(t *testing.T) {
 		AffiliateLink: "https://s.shopee.com.br/aff123", ItemID: 123, ShopID: 456, ImageURL: "https://img/aff.jpg",
 	}
 
-	out := svc.renderMonitorDispatchText(context.Background(), automation, aff, "https://shopee.com.br/prod", "", "", "")
+	rendered := svc.renderMonitorDispatchText(context.Background(), automation, aff, "https://shopee.com.br/prod", "", "", "")
+	out := rendered.Body
 
 	if !strings.Contains(out, "Fone Bluetooth XYZ") {
 		t.Fatalf("template deveria conter o nome do produto; got:\n%s", out)
@@ -74,6 +75,9 @@ func TestRenderMonitorDispatchText_ShopeeFillsPrice(t *testing.T) {
 	}
 	if !strings.Contains(out, "https://s.shopee.com.br/aff123") {
 		t.Fatalf("template deveria conter o link de afiliado; got:\n%s", out)
+	}
+	if rendered.CardTitle != "Fone Bluetooth XYZ" {
+		t.Fatalf("CardTitle deveria ser o nome do produto enriquecido; got: %q", rendered.CardTitle)
 	}
 }
 
@@ -94,7 +98,7 @@ func TestRenderMonitorDispatchText_ShopeeEnrichFails_StillRenders(t *testing.T) 
 	automation := &models.Automation{ID: "auto-1", UserID: "user-1", DispatchTextID: strPtr("dt-1")}
 	aff := &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff999", ItemID: 1, ShopID: 2}
 
-	out := svc.renderMonitorDispatchText(context.Background(), automation, aff, "https://shopee.com.br/x", "", "", "")
+	out := svc.renderMonitorDispatchText(context.Background(), automation, aff, "https://shopee.com.br/x", "", "", "").Body
 	if !strings.Contains(out, "https://s.shopee.com.br/aff999") {
 		t.Fatalf("mesmo sem preço, deveria renderizar com o link de afiliado; got:\n%s", out)
 	}

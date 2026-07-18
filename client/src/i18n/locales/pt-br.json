@@ -2187,6 +2187,7 @@
         "dispatchText": "Texto de Disparo (opcional)",
         "dispatchTextHint": "Se selecionar um Texto de Disparo, ele substitui o texto padrão do envio e você pode usar variáveis como {nome_produto} e {preco}.",
         "dispatchTextActive": "Você selecionou um Texto de Disparo. O bloco \"Textos da Mensagem\" não é usado nesse modo.",
+        "dispatchTextMonitorHint": "Opcional. Deixe vazio para continuar repassando o texto do grupo monitorado (padrão). Se escolher um texto de disparo, ele substitui a mensagem original — o preço/nome do produto são buscados automaticamente (Shopee), e os CTAs e cupons automáticos passam a valer.",
         "noDispatchTexts": "Você ainda não criou nenhum.",
         "createNow": "Criar agora",
         "useDefault": "Usar padrão do sistema",

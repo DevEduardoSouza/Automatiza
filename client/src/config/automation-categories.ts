@@ -140,6 +140,18 @@ export const MAX_SEND_GROUPS = 20;
  */
 export const ENFORCE_GROUP_LIMITS = false;
 
+/**
+ * Mostra o seletor de "Texto de disparo" (e o hint) no modo Monitoramento.
+ *
+ * Defaults to `false` para casar com o backend, cujo gate MONITOR_DISPATCH_TEXT
+ * também nasce OFF (reativação gradual da PR #243, revertida em 08/07 por bugs
+ * de produção). Enquanto o backend estiver em canário (allowlist), mantenha
+ * `false` aqui — assim nenhum usuário fora do teste escolhe um texto que o
+ * espelho ainda ignora. Flip para `true` no MESMO deploy em que
+ * MONITOR_DISPATCH_TEXT vira "all", reexpondo o seletor para todos.
+ */
+export const SHOW_MONITOR_DISPATCH_TEXT = false;
+
 /** Electronics subcategories with labels and i18n keys */
 export const ELETRONICOS_SUBCATEGORIES = {
   computadores: [

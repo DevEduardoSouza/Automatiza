@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ChipSelector } from '@/components/whatsapp/chip-selector';
-import { ENFORCE_GROUP_LIMITS } from '@/config/automation-categories';
+import { ENFORCE_GROUP_LIMITS, SHOW_MONITOR_DISPATCH_TEXT } from '@/config/automation-categories';
 import type { RefinementState } from '@/hooks/use-automations';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { effectiveFriendlyName } from '@/lib/instance-label';
@@ -441,10 +441,7 @@ export function AutomationFormDialog({
               </div>
               {selectedChipIds.length === 0 && (
                 <p className="text-xs text-amber-600">
-                  {t(
-                    'pages.offerAutomations.form.chipsRequired',
-                    'Selecione pelo menos 1 número.'
-                  )}
+                  {t('pages.offerAutomations.form.chipsRequired', 'Selecione pelo menos 1 número.')}
                 </p>
               )}
             </div>
@@ -507,9 +504,12 @@ export function AutomationFormDialog({
             <div className="space-y-0.5">
               <div className="text-sm font-medium">Aplicar cupons automáticos</div>
               <p className="text-xs text-muted-foreground">
-                Quando ligado, a automação consulta as regras de "Cupons Avançados" e
-                injeta o cupom que casar com o produto. Desligue se essa automação
-                envia produtos que já estão em promoção/cupom da própria loja.
+                Quando ligado, a automação consulta as regras de "Cupons Avançados" e injeta o cupom
+                que casar com o produto. Desligue se essa automação envia produtos que já estão em
+                promoção/cupom da própria loja.
+                {formData.mode === 'monitor' &&
+                  SHOW_MONITOR_DISPATCH_TEXT &&
+                  ' No espelhamento, o cupom só é aplicado quando há um texto de disparo escolhido abaixo.'}
               </p>
             </div>
             <Switch
@@ -521,7 +521,10 @@ export function AutomationFormDialog({
               // since that flow is event-driven (chat → bot rewrite).
               checked={formData.apply_coupon_rules ?? false}
               onCheckedChange={(checked) =>
-                setFormData((prev) => ({ ...prev, apply_coupon_rules: checked }))
+                setFormData((prev) => ({
+                  ...prev,
+                  apply_coupon_rules: checked,
+                }))
               }
               aria-label="Aplicar cupons automáticos"
             />
@@ -542,7 +545,10 @@ export function AutomationFormDialog({
                 id="monitoring-send-as-image"
                 checked={Boolean(formData.monitoring_send_as_image ?? false)}
                 onCheckedChange={(v) =>
-                  setFormData((prev) => ({ ...prev, monitoring_send_as_image: Boolean(v) }))
+                  setFormData((prev) => ({
+                    ...prev,
+                    monitoring_send_as_image: Boolean(v),
+                  }))
                 }
               />
             </div>
@@ -574,15 +580,42 @@ export function AutomationFormDialog({
             <FiltersSection formData={formData} setFormData={setFormData} />
           )}
 
-          {/* Dispatch Text — indisponível no modo monitor: a feature está
-              temporariamente desativada no backend (monitorDispatchTextEnabled)
-              por bugs em produção; o espelho sempre repassa o texto do grupo. */}
-          {(formData.mode === 'search' || formData.mode === 'list') && (
+          {/* Dispatch Text — no modo monitor é OPT-IN: vazio = repassa o texto
+              do grupo monitorado (padrão histórico); com texto de disparo, o
+              espelho envia a cópia do operador (preço/nome buscados na Shopee)
+              e só aí CTAs/cupons se aplicam. Backend gated por MONITOR_DISPATCH_TEXT. */}
+          {(formData.mode === 'search' ||
+            formData.mode === 'list' ||
+            (formData.mode === 'monitor' && SHOW_MONITOR_DISPATCH_TEXT)) && (
             <DispatchTextSelector
               formData={formData}
               setFormData={setFormData}
               dispatchTexts={dispatchTexts}
             />
+          )}
+
+          {/* Monitor: texto de disparo é opcional. Vazio = repassa o texto do grupo. */}
+          {formData.mode === 'monitor' && SHOW_MONITOR_DISPATCH_TEXT && (
+            <div
+              className="rounded-xl border px-4 py-3 text-sm"
+              style={{
+                backgroundColor: 'rgba(141, 45, 83, 0.06)',
+                borderColor: 'rgba(141, 45, 83, 0.15)',
+              }}
+            >
+              <div className="flex items-start gap-3">
+                <Info
+                  className="h-4 w-4 mt-0.5 shrink-0"
+                  style={{ color: 'rgba(141, 45, 83, 0.6)' }}
+                />
+                <p style={{ color: 'rgba(141, 45, 83, 0.8)' }}>
+                  {t(
+                    'pages.offerAutomations.form.dispatchTextMonitorHint',
+                    'Opcional. Deixe vazio para continuar repassando o texto do grupo monitorado (padrão). Se escolher um texto de disparo, ele substitui a mensagem original — o preço/nome do produto são buscados automaticamente (Shopee), e os CTAs e cupons automáticos passam a valer.'
+                  )}
+                </p>
+              </div>
+            </div>
           )}
 
           {formData.mode === 'search' && formData.dispatch_text_id && (
@@ -645,7 +678,10 @@ export function AutomationFormDialog({
                 id="search-send-as-image"
                 checked={Boolean(formData.search_send_as_image ?? true)}
                 onCheckedChange={(v) =>
-                  setFormData((prev) => ({ ...prev, search_send_as_image: Boolean(v) }))
+                  setFormData((prev) => ({
+                    ...prev,
+                    search_send_as_image: Boolean(v),
+                  }))
                 }
               />
             </div>

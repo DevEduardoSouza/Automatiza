@@ -15,6 +15,7 @@ import (
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/ctapicker"
 	"automatiza-go/internal/lib/deadgroup"
 	"automatiza-go/internal/lib/humanize"
 	"automatiza-go/internal/lib/pacing"
@@ -43,15 +44,64 @@ type Service interface {
 	ProcessReconciledMessage(ctx context.Context, msg *models.IncomingMessage) error
 }
 
-// monitorDispatchTextEnabled desativa temporariamente o texto de disparo no
-// modo monitoramento (2026-07-08): a feature vinha causando bugs em produção,
-// então todo espelhamento volta ao comportamento padrão (repassa o texto do
-// grupo monitorado). O dispatch_text_id salvo nas automations é preservado,
-// apenas ignorado aqui — para reativar a feature, volte esta flag para true.
-// Search, list e offer_generate não passam por este caminho e seguem usando
-// texto de disparo normalmente. Var (e não const) para não disparar lint de
-// condição constante.
-var monitorDispatchTextEnabled = false
+// dispatchTextGate decide se o texto de disparo do modo monitoramento está
+// ligado para um usuário. Controlado pela env MONITOR_DISPATCH_TEXT, parseada
+// UMA vez no startup (parseDispatchTextGate):
+//   - ""/"off"          → desligado para todos (default seguro; o espelho volta
+//     ao comportamento histórico: repassa o texto do grupo monitorado)
+//   - "all"             → ligado para todos
+//   - "id1,id2,..."     → allowlist de user_ids (rollout canário)
+//
+// Histórico: a feature (PR #243) foi desligada em 2026-07-08 por bugs de
+// produção na interação template × card de preview; a reativação é gradual via
+// esta env (kill-switch sem rebuild). O dispatch_text_id salvo nas automations
+// sempre foi preservado. Search/list/offer_generate não passam por aqui.
+type dispatchTextGate struct {
+	all     bool
+	allowed map[string]struct{}
+}
+
+func parseDispatchTextGate(raw string) dispatchTextGate {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.EqualFold(raw, "off") {
+		return dispatchTextGate{}
+	}
+	if strings.EqualFold(raw, "all") {
+		return dispatchTextGate{all: true}
+	}
+	allowed := make(map[string]struct{})
+	for _, id := range strings.Split(raw, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			allowed[id] = struct{}{}
+		}
+	}
+	return dispatchTextGate{allowed: allowed}
+}
+
+func (g dispatchTextGate) enabledFor(userID string) bool {
+	if g.all {
+		return true
+	}
+	_, ok := g.allowed[userID]
+	return ok
+}
+
+// CouponResult espelha o contrato de cupom de offer_generate/automation, mantido
+// local para o caminho quente do webhook não importar o pacote automation
+// (evita ciclo). É preenchido por um adapter sobre automation.CouponHandler,
+// injetado via WithCouponApplier no main.go.
+type CouponResult struct {
+	Applied         bool
+	CouponText      string
+	CouponCode      string
+	DiscountedPrice float64
+}
+
+// CouponApplier resolve o cupom (rules engine) para uma oferta. couponHandler
+// nil → nenhum cupom (o monitor sem wiring de cupom se comporta como antes).
+type CouponApplier interface {
+	ApplyCoupon(ctx context.Context, automation *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool) (*CouponResult, error)
+}
 
 type monitoringService struct {
 	automationRepo  repository.AutomationRepository
@@ -59,13 +109,49 @@ type monitoringService struct {
 	groupRepo       repository.GroupRepository
 	dispatchLogRepo repository.DispatchLogRepository
 	settingsRepo    repository.SettingsRepository
+	ctaRepo         repository.CTARepository
 
 	shopeeService shopee.Service
 	mlService     mercadolivre.Service
 	waProvider    whatsapp.WhatsAppProvider
+	couponHandler CouponApplier
+
+	dispatchText dispatchTextGate
 
 	cache  *cache.Cache
 	logger *zap.Logger
+}
+
+// monitorDispatchRender é o resultado de renderizar o texto de disparo do
+// monitor. Body vazio = sem template ou falha → o caller repassa o texto da
+// fonte. CardTitle é o nome do produto enriquecido, usado como título do card
+// de preview quando há template (nunca a primeira linha do corpo, que
+// duplicaria o CTA — bug glauribs "Espelhamento MAH").
+type monitorDispatchRender struct {
+	Body      string
+	CardTitle string
+}
+
+// Option configura dependências opcionais do monitoringService. Aditivo: sem
+// options o serviço se comporta exatamente como antes (texto de disparo off,
+// sem CTA pool, sem cupom) — preserva os call sites e testes existentes.
+type Option func(*monitoringService)
+
+// WithCTARepo liga o pool de CTAs ativos do usuário no texto de disparo do
+// monitor (paridade com search/offer_generate).
+func WithCTARepo(r repository.CTARepository) Option {
+	return func(s *monitoringService) { s.ctaRepo = r }
+}
+
+// WithCouponApplier liga os cupons automáticos no texto de disparo do monitor.
+func WithCouponApplier(c CouponApplier) Option {
+	return func(s *monitoringService) { s.couponHandler = c }
+}
+
+// WithDispatchText define o gate da feature a partir do valor bruto da env
+// MONITOR_DISPATCH_TEXT (ver dispatchTextGate).
+func WithDispatchText(env string) Option {
+	return func(s *monitoringService) { s.dispatchText = parseDispatchTextGate(env) }
 }
 
 // NewMonitoringService creates a new monitoring service.
@@ -83,8 +169,9 @@ func NewMonitoringService(
 	waProvider whatsapp.WhatsAppProvider,
 	cache *cache.Cache,
 	logger *zap.Logger,
+	opts ...Option,
 ) Service {
-	return &monitoringService{
+	svc := &monitoringService{
 		automationRepo:  automationRepo,
 		instanceRepo:    instanceRepo,
 		groupRepo:       groupRepo,
@@ -96,6 +183,10 @@ func NewMonitoringService(
 		cache:           cache,
 		logger:          logger,
 	}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 // deadGroupTTL: por quanto tempo um par (sessao, grupo) fica marcado como morto
@@ -481,15 +572,19 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	// that template as the body (enriching the product for price/title) INSTEAD
 	// of relaying the source text. Sem dispatch text → comportamento histórico:
 	// repassa msg.Body com as regras de rodapé + troca de links por afiliado.
-	// Atualmente desativado via monitorDispatchTextEnabled (ver declaração).
+	// Ligado por usuário via env MONITOR_DISPATCH_TEXT (ver dispatchTextGate).
 	processedText := msg.Body
 	dispatchTextRendered := ""
-	if monitorDispatchTextEnabled && automation.DispatchTextID != nil && *automation.DispatchTextID != "" && s.settingsRepo != nil {
-		dispatchTextRendered = s.renderMonitorDispatchText(
+	dispatchCardTitle := ""
+	if s.dispatchText.enabledFor(automation.UserID) && automation.DispatchTextID != nil && *automation.DispatchTextID != "" && s.settingsRepo != nil {
+		rendered := s.renderMonitorDispatchText(
 			ctx, automation, firstShopeeAff, firstShopeeOriginalLink, firstMLOriginalLink, firstMLAffiliateLink, productImageURL)
+		dispatchTextRendered = rendered.Body
+		dispatchCardTitle = rendered.CardTitle
 	}
+	usingTemplate := dispatchTextRendered != ""
 
-	if dispatchTextRendered != "" {
+	if usingTemplate {
 		// Template is self-contained (already carries the affiliate link), so we
 		// skip the source-text rules and link substitution entirely.
 		processedText = dispatchTextRendered
@@ -850,19 +945,30 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// og:image do produto e a oferta nunca sai texto puro tendo link.
 		noResolvedImage := imageURL == "" && imageBase64 == ""
 		if (!monitoringSendAsImage || noResolvedImage) && firstAffiliateURL != "" && !hasMentions {
-			// Título do card: SÓ o título de preview que a origem trouxe. NÃO
-			// cair pra primeira linha do corpo — essa linha (um CTA/cabeçalho
-			// promocional) já está no texto, então usá-la como título do card
-			// DUPLICA o CTA (glauribs "Espelhamento MAH": o cabeçalho aparecia
-			// no card E no corpo). Título vazio deixa o próprio WhatsApp montar
-			// o card a partir do link.
+			// Título do card:
+			//   - SEM template (repasse): SÓ o título de preview que a origem
+			//     trouxe. NÃO cair pra primeira linha do corpo — essa linha (um
+			//     CTA/cabeçalho promocional) já está no texto, então usá-la como
+			//     título DUPLICA o CTA (glauribs "Espelhamento MAH"). Título vazio
+			//     deixa o próprio WhatsApp montar o card a partir do link.
+			//   - COM template próprio: título = NOME DO PRODUTO enriquecido
+			//     (dado estruturado do GetProduct/preview, não a 1ª linha do
+			//     corpo). Nunca o título da origem — ele pode carregar o
+			//     CTA/cabeçalho de OUTRO afiliado e descasaria do corpo. Sem nome
+			//     resolvido, título vazio (WhatsApp monta do link afiliado).
+			cardTitle := msg.LinkPreviewTitle
+			cardDescription := msg.LinkPreviewDescription
+			if usingTemplate {
+				cardTitle = dispatchCardTitle
+				cardDescription = ""
+			}
 			_, err = s.waProvider.SendLinkCustomPreview(sendCtx, whatsapp.SendLinkPreviewInput{
 				SessionName: senderSession,
 				ChatID:      groupID,
 				Text:        perGroupText,
 				URL:         firstAffiliateURL,
-				Title:       msg.LinkPreviewTitle,
-				Description: msg.LinkPreviewDescription,
+				Title:       cardTitle,
+				Description: cardDescription,
 				ImageURL:    imageURL,
 				ImageBase64: imageBase64,
 				Mimetype:    imageMimetype,
@@ -976,53 +1082,115 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 // template for a monitored offer, so the relay can send the operator's own copy
 // instead of the source group's text. Shopee is enriched via GetProduct (the
 // item/shop id comes from the affiliate step) so {preco}/{nome_produto} fill in;
-// ML uses the affiliate preview (best-effort). Returns "" when there's no
-// template or no affiliated product — the caller then relays the source text.
+// ML uses the affiliate preview (best-effort). Returns an empty Body when
+// there's no template or no affiliated product — the caller then relays the
+// source text. CTA (pool ativo, filtrado por plataforma) e cupom (rules engine,
+// só com preço enriquecido) valem apenas neste caminho de template; o repasse
+// histórico nunca os aplica.
 func (s *monitoringService) renderMonitorDispatchText(
 	ctx context.Context,
 	automation *models.Automation,
 	shopeeAff *models.ShopeeAffiliateLink,
 	shopeeOriginalLink, mlOriginalLink, mlAffiliateLink, fallbackImageURL string,
-) string {
+) monitorDispatchRender {
 	dispatchText, err := s.settingsRepo.GetActiveDispatchTextByID(ctx, *automation.DispatchTextID, automation.UserID)
 	if err != nil || dispatchText == nil {
 		s.logger.Warn("Failed to load dispatch text for monitor, relaying source text",
 			zap.String("automationID", automation.ID),
 			zap.Error(err))
-		return ""
+		return monitorDispatchRender{}
 	}
 	body := dispatchText.Body
 	if len(dispatchText.Copies) > 0 {
 		body = dispatchText.Copies[rand.IntN(len(dispatchText.Copies))] //nolint:gosec // G404: non-security random for copy rotation
 	}
 	if body == "" {
-		return ""
+		return monitorDispatchRender{}
 	}
 
-	cta := ""
-	if len(automation.CTAs) > 0 {
-		cta = automation.CTAs[rand.IntN(len(automation.CTAs))] //nolint:gosec // G404: non-security random for CTA rotation
-	}
+	isShopee := shopeeAff != nil && shopeeAff.AffiliateLink != ""
+	isML := !isShopee && mlAffiliateLink != "" && s.mlService != nil
+	cta := s.pickMonitorCTA(ctx, automation, isML, isShopee)
 
-	if shopeeAff != nil && shopeeAff.AffiliateLink != "" {
+	if isShopee {
 		return s.renderShopeeDispatchTemplate(ctx, automation, body, cta, shopeeAff, shopeeOriginalLink)
 	}
-	if mlAffiliateLink != "" && s.mlService != nil {
+	if isML {
 		return s.renderMLDispatchTemplate(ctx, automation, body, cta, mlOriginalLink, mlAffiliateLink, fallbackImageURL)
+	}
+	return monitorDispatchRender{}
+}
+
+// pickMonitorCTA escolhe o texto do CTA para o disparo do monitor, com a mesma
+// política de search/offer_generate: CTAIDs preenchido → override (só esses);
+// vazio → pool inteiro de CTAs ativos do usuário; sempre filtrado por
+// plataforma via ctapicker. Fallback para os CTAs inline da automation quando
+// o pool não resolve (repo ausente/erro/nenhum elegível). "" = sem CTA.
+func (s *monitoringService) pickMonitorCTA(ctx context.Context, automation *models.Automation, isML, isShopee bool) string {
+	var pool []models.CTA
+	if s.ctaRepo != nil {
+		if len(automation.CTAIDs) > 0 {
+			if fetched, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, automation.CTAIDs, automation.UserID); ctaErr != nil {
+				s.logger.Warn("Failed to fetch CTA entities by IDs for monitor, falling back to inline CTAs",
+					zap.String("automationID", automation.ID), zap.Error(ctaErr))
+			} else {
+				pool = fetched
+			}
+		} else if fetched, ctaErr := s.ctaRepo.GetUserCTAs(ctx, automation.UserID, map[string]interface{}{"is_active": true}); ctaErr != nil {
+			s.logger.Warn("Failed to fetch user CTA pool for monitor, falling back to inline CTAs",
+				zap.String("automationID", automation.ID), zap.Error(ctaErr))
+		} else {
+			pool = fetched
+		}
+	}
+	if cta := ctapicker.PickByPlatform(pool, isML, isShopee); cta != "" {
+		return cta
+	}
+	if len(automation.CTAs) > 0 {
+		return automation.CTAs[rand.IntN(len(automation.CTAs))] //nolint:gosec // G404: non-security random for CTA rotation
 	}
 	return ""
 }
 
+// applyMonitorCoupon resolve o cupom (rules engine) para o preço/loja do produto
+// já enriquecido. Fail-open: sem handler, preço <=0, regra desligada ou erro →
+// Applied=false. Só é chamado no caminho do template, então o repasse histórico
+// nunca é afetado.
+func (s *monitoringService) applyMonitorCoupon(ctx context.Context, automation *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool) *CouponResult {
+	if s.couponHandler == nil || offerPrice <= 0 {
+		return &CouponResult{}
+	}
+	res, err := s.couponHandler.ApplyCoupon(ctx, automation, offerPrice, offerStore, productIsOfficial)
+	if err != nil || res == nil {
+		return &CouponResult{}
+	}
+	return res
+}
+
+// applyCouponAndCTA injeta o bloco de cupom nas vars, faz o render e anexa CTA
+// e cupom quando o template não traz os placeholders {cta}/{cupom_bloco} —
+// mesmo padrão de automation.buildListModeMessage. render é o RenderXOfferTemplate
+// já ligado às vars da plataforma (o cupom precisa ser injetado antes de chamá-lo).
+func applyCTAAndCouponAppend(message, body, cta string, coupon *CouponResult) string {
+	if cta != "" && !strings.Contains(body, "{cta}") {
+		message = message + "\n\n" + cta
+	}
+	if coupon.Applied && !strings.Contains(body, "{cupom_bloco}") {
+		message = message + coupon.CouponText
+	}
+	return message
+}
+
 // renderShopeeDispatchTemplate enriches the Shopee product via GetProduct
-// (best-effort — renders with at least the affiliate link if it fails) and
-// fills the dispatch-text template.
+// (best-effort — renders with at least the affiliate link if it fails), applies
+// the coupon rule (price known after enrich) and fills the dispatch-text template.
 func (s *monitoringService) renderShopeeDispatchTemplate(
 	ctx context.Context,
 	automation *models.Automation,
 	body, cta string,
 	shopeeAff *models.ShopeeAffiliateLink,
 	shopeeOriginalLink string,
-) string {
+) monitorDispatchRender {
 	vars := text.ShopeeOfferVars{
 		AffiliateLink: shopeeAff.AffiliateLink,
 		Link:          shopeeOriginalLink,
@@ -1030,6 +1198,7 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 		Store:         "Shopee",
 		CTA:           cta,
 	}
+	productIsOfficial := false
 	if s.shopeeService != nil && shopeeAff.ItemID > 0 && shopeeAff.ShopID > 0 {
 		product, prodErr := s.shopeeService.GetProduct(ctx, shopeeAff.ItemID, shopeeAff.ShopID, automation.UserID)
 		if prodErr != nil {
@@ -1039,6 +1208,7 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 			vars.Title = product.Name
 			vars.Price = product.Price
 			vars.Discount = product.Discount
+			productIsOfficial = product.IsMall
 			if product.OriginalPrice > product.Price {
 				vars.OriginalPrice = product.OriginalPrice
 			}
@@ -1047,7 +1217,19 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 			}
 		}
 	}
-	return text.RenderShopeeOfferTemplate(body, vars)
+
+	coupon := s.applyMonitorCoupon(ctx, automation, vars.Price, "shopee", productIsOfficial)
+	if coupon.Applied {
+		vars.CouponCode = coupon.CouponCode
+		vars.CouponText = coupon.CouponText
+		vars.CouponBlock = coupon.CouponText
+		if coupon.DiscountedPrice > 0 {
+			vars.Price = coupon.DiscountedPrice
+		}
+	}
+
+	message := applyCTAAndCouponAppend(text.RenderShopeeOfferTemplate(body, vars), body, cta, coupon)
+	return monitorDispatchRender{Body: message, CardTitle: vars.Title}
 }
 
 // renderMLDispatchTemplate fills the dispatch-text template for an ML offer.
@@ -1056,7 +1238,7 @@ func (s *monitoringService) renderMLDispatchTemplate(
 	ctx context.Context,
 	automation *models.Automation,
 	body, cta, mlOriginalLink, mlAffiliateLink, fallbackImageURL string,
-) string {
+) monitorDispatchRender {
 	vars := text.MLOfferVars{
 		AffiliateLink: mlAffiliateLink,
 		Link:          mlOriginalLink,
@@ -1073,7 +1255,21 @@ func (s *monitoringService) renderMLDispatchTemplate(
 			vars.OriginalPrice = *preview.OriginalPrice
 		}
 	}
-	return text.RenderMLOfferTemplate(body, vars)
+
+	// ML não expõe flag Mall-style → productIsOfficial=false; store "ml" é
+	// normalizado para "mercado_livre" no matcher de cupons.
+	coupon := s.applyMonitorCoupon(ctx, automation, vars.Price, "ml", false)
+	if coupon.Applied {
+		vars.CouponCode = coupon.CouponCode
+		vars.CouponText = coupon.CouponText
+		vars.CouponBlock = coupon.CouponText
+		if coupon.DiscountedPrice > 0 {
+			vars.Price = coupon.DiscountedPrice
+		}
+	}
+
+	message := applyCTAAndCouponAppend(text.RenderMLOfferTemplate(body, vars), body, cta, coupon)
+	return monitorDispatchRender{Body: message, CardTitle: vars.Title}
 }
 
 // preferredParticipantSession returns the session of the first pinned chip
