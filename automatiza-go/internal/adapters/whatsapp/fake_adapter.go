@@ -27,13 +27,14 @@ type FakeAdapter struct {
 	Calls []FakeCall
 
 	// Session Management function overrides
-	CreateSessionFunc    func(ctx context.Context, input CreateSessionInput) (*SessionInfo, error)
-	DeleteSessionFunc    func(ctx context.Context, sessionName string) error
-	UnpairSessionFunc    func(ctx context.Context, sessionName string) error
-	GetSessionStatusFunc func(ctx context.Context, sessionName string) (*SessionInfo, error)
-	GetQRCodeFunc        func(ctx context.Context, sessionName string) (*QRCodeData, error)
-	RestartSessionFunc   func(ctx context.Context, sessionName string) error
-	LogoutSessionFunc    func(ctx context.Context, sessionName string) error
+	CreateSessionFunc      func(ctx context.Context, input CreateSessionInput) (*SessionInfo, error)
+	DeleteSessionFunc      func(ctx context.Context, sessionName string) error
+	UnpairSessionFunc      func(ctx context.Context, sessionName string) error
+	GetSessionStatusFunc   func(ctx context.Context, sessionName string) (*SessionInfo, error)
+	GetQRCodeFunc          func(ctx context.Context, sessionName string) (*QRCodeData, error)
+	RequestPairingCodeFunc func(ctx context.Context, sessionName, phoneNumber string) (string, error)
+	RestartSessionFunc     func(ctx context.Context, sessionName string) error
+	LogoutSessionFunc      func(ctx context.Context, sessionName string) error
 
 	// Group Operations function overrides
 	GetGroupsFunc              func(ctx context.Context, sessionName string) ([]GroupInfo, error)
@@ -370,6 +371,21 @@ func (f *FakeAdapter) GetQRCode(ctx context.Context, sessionName string) (*QRCod
 	}
 
 	return qr, nil
+}
+
+// RequestPairingCode implements SessionManager.RequestPairingCode.
+func (f *FakeAdapter) RequestPairingCode(ctx context.Context, sessionName, phoneNumber string) (string, error) {
+	f.recordCall("RequestPairingCode", sessionName, phoneNumber)
+
+	if f.SimulateError != nil {
+		return "", f.SimulateError
+	}
+
+	if f.RequestPairingCodeFunc != nil {
+		return f.RequestPairingCodeFunc(ctx, sessionName, phoneNumber)
+	}
+
+	return "", nil
 }
 
 // RestartSession implements SessionManager.RestartSession.

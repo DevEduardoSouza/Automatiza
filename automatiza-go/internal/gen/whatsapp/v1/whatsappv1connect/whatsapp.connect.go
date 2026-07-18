@@ -45,6 +45,9 @@ const (
 	// WhatsAppServiceCheckStatusProcedure is the fully-qualified name of the WhatsAppService's
 	// CheckStatus RPC.
 	WhatsAppServiceCheckStatusProcedure = "/whatsapp.v1.WhatsAppService/CheckStatus"
+	// WhatsAppServiceRequestPairingCodeProcedure is the fully-qualified name of the WhatsAppService's
+	// RequestPairingCode RPC.
+	WhatsAppServiceRequestPairingCodeProcedure = "/whatsapp.v1.WhatsAppService/RequestPairingCode"
 	// WhatsAppServiceFetchGroupsProcedure is the fully-qualified name of the WhatsAppService's
 	// FetchGroups RPC.
 	WhatsAppServiceFetchGroupsProcedure = "/whatsapp.v1.WhatsAppService/FetchGroups"
@@ -99,6 +102,8 @@ type WhatsAppServiceClient interface {
 	ReconnectInstance(context.Context, *connect.Request[v1.ReconnectInstanceRequest]) (*connect.Response[v1.ReconnectInstanceResponse], error)
 	// Checks the current status of a WhatsApp instance.
 	CheckStatus(context.Context, *connect.Request[v1.CheckStatusRequest]) (*connect.Response[v1.CheckStatusResponse], error)
+	// Requests a phone pairing code (alternative to QR) for an instance waiting to pair.
+	RequestPairingCode(context.Context, *connect.Request[v1.RequestPairingCodeRequest]) (*connect.Response[v1.RequestPairingCodeResponse], error)
 	// Fetches all groups from a WhatsApp instance.
 	FetchGroups(context.Context, *connect.Request[v1.FetchGroupsRequest]) (*connect.Response[v1.FetchGroupsResponse], error)
 	// Fetches participants from a specific group.
@@ -162,6 +167,12 @@ func NewWhatsAppServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			httpClient,
 			baseURL+WhatsAppServiceCheckStatusProcedure,
 			connect.WithSchema(whatsAppServiceMethods.ByName("CheckStatus")),
+			connect.WithClientOptions(opts...),
+		),
+		requestPairingCode: connect.NewClient[v1.RequestPairingCodeRequest, v1.RequestPairingCodeResponse](
+			httpClient,
+			baseURL+WhatsAppServiceRequestPairingCodeProcedure,
+			connect.WithSchema(whatsAppServiceMethods.ByName("RequestPairingCode")),
 			connect.WithClientOptions(opts...),
 		),
 		fetchGroups: connect.NewClient[v1.FetchGroupsRequest, v1.FetchGroupsResponse](
@@ -257,6 +268,7 @@ type whatsAppServiceClient struct {
 	deleteInstance         *connect.Client[v1.DeleteInstanceRequest, v1.DeleteInstanceResponse]
 	reconnectInstance      *connect.Client[v1.ReconnectInstanceRequest, v1.ReconnectInstanceResponse]
 	checkStatus            *connect.Client[v1.CheckStatusRequest, v1.CheckStatusResponse]
+	requestPairingCode     *connect.Client[v1.RequestPairingCodeRequest, v1.RequestPairingCodeResponse]
 	fetchGroups            *connect.Client[v1.FetchGroupsRequest, v1.FetchGroupsResponse]
 	fetchGroupParticipants *connect.Client[v1.FetchGroupParticipantsRequest, v1.FetchGroupParticipantsResponse]
 	syncGroups             *connect.Client[v1.SyncGroupsRequest, v1.SyncGroupsResponse]
@@ -291,6 +303,11 @@ func (c *whatsAppServiceClient) ReconnectInstance(ctx context.Context, req *conn
 // CheckStatus calls whatsapp.v1.WhatsAppService.CheckStatus.
 func (c *whatsAppServiceClient) CheckStatus(ctx context.Context, req *connect.Request[v1.CheckStatusRequest]) (*connect.Response[v1.CheckStatusResponse], error) {
 	return c.checkStatus.CallUnary(ctx, req)
+}
+
+// RequestPairingCode calls whatsapp.v1.WhatsAppService.RequestPairingCode.
+func (c *whatsAppServiceClient) RequestPairingCode(ctx context.Context, req *connect.Request[v1.RequestPairingCodeRequest]) (*connect.Response[v1.RequestPairingCodeResponse], error) {
+	return c.requestPairingCode.CallUnary(ctx, req)
 }
 
 // FetchGroups calls whatsapp.v1.WhatsAppService.FetchGroups.
@@ -373,6 +390,8 @@ type WhatsAppServiceHandler interface {
 	ReconnectInstance(context.Context, *connect.Request[v1.ReconnectInstanceRequest]) (*connect.Response[v1.ReconnectInstanceResponse], error)
 	// Checks the current status of a WhatsApp instance.
 	CheckStatus(context.Context, *connect.Request[v1.CheckStatusRequest]) (*connect.Response[v1.CheckStatusResponse], error)
+	// Requests a phone pairing code (alternative to QR) for an instance waiting to pair.
+	RequestPairingCode(context.Context, *connect.Request[v1.RequestPairingCodeRequest]) (*connect.Response[v1.RequestPairingCodeResponse], error)
 	// Fetches all groups from a WhatsApp instance.
 	FetchGroups(context.Context, *connect.Request[v1.FetchGroupsRequest]) (*connect.Response[v1.FetchGroupsResponse], error)
 	// Fetches participants from a specific group.
@@ -432,6 +451,12 @@ func NewWhatsAppServiceHandler(svc WhatsAppServiceHandler, opts ...connect.Handl
 		WhatsAppServiceCheckStatusProcedure,
 		svc.CheckStatus,
 		connect.WithSchema(whatsAppServiceMethods.ByName("CheckStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
+	whatsAppServiceRequestPairingCodeHandler := connect.NewUnaryHandler(
+		WhatsAppServiceRequestPairingCodeProcedure,
+		svc.RequestPairingCode,
+		connect.WithSchema(whatsAppServiceMethods.ByName("RequestPairingCode")),
 		connect.WithHandlerOptions(opts...),
 	)
 	whatsAppServiceFetchGroupsHandler := connect.NewUnaryHandler(
@@ -528,6 +553,8 @@ func NewWhatsAppServiceHandler(svc WhatsAppServiceHandler, opts ...connect.Handl
 			whatsAppServiceReconnectInstanceHandler.ServeHTTP(w, r)
 		case WhatsAppServiceCheckStatusProcedure:
 			whatsAppServiceCheckStatusHandler.ServeHTTP(w, r)
+		case WhatsAppServiceRequestPairingCodeProcedure:
+			whatsAppServiceRequestPairingCodeHandler.ServeHTTP(w, r)
 		case WhatsAppServiceFetchGroupsProcedure:
 			whatsAppServiceFetchGroupsHandler.ServeHTTP(w, r)
 		case WhatsAppServiceFetchGroupParticipantsProcedure:
@@ -579,6 +606,10 @@ func (UnimplementedWhatsAppServiceHandler) ReconnectInstance(context.Context, *c
 
 func (UnimplementedWhatsAppServiceHandler) CheckStatus(context.Context, *connect.Request[v1.CheckStatusRequest]) (*connect.Response[v1.CheckStatusResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whatsapp.v1.WhatsAppService.CheckStatus is not implemented"))
+}
+
+func (UnimplementedWhatsAppServiceHandler) RequestPairingCode(context.Context, *connect.Request[v1.RequestPairingCodeRequest]) (*connect.Response[v1.RequestPairingCodeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("whatsapp.v1.WhatsAppService.RequestPairingCode is not implemented"))
 }
 
 func (UnimplementedWhatsAppServiceHandler) FetchGroups(context.Context, *connect.Request[v1.FetchGroupsRequest]) (*connect.Response[v1.FetchGroupsResponse], error) {

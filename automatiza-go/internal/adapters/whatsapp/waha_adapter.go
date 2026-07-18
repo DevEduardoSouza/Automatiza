@@ -954,6 +954,31 @@ func (a *WahaAdapter) GetQRCode(ctx context.Context, sessionName string) (*QRCod
 	}, nil
 }
 
+// RequestPairingCode requests a phone-number pairing code for a session that is
+// waiting to pair (SCAN_QR state), as an alternative to scanning the QR image.
+// WAHA (GOWS engine) responds 201 with {"code":"XXXX-XXXX"}. The OpenAPI spec
+// leaves this 201 body undocumented, so the shape was verified live against the
+// deployed WAHA on 2026-07-18 (throwaway session probe). The caller is
+// responsible for the session already existing; this only issues the code.
+func (a *WahaAdapter) RequestPairingCode(ctx context.Context, sessionName, phoneNumber string) (string, error) {
+	body := map[string]string{"phoneNumber": phoneNumber}
+	resp, err := a.doRequest(ctx, http.MethodPost, "/api/"+url.PathEscape(sessionName)+"/auth/request-code", body)
+	if err != nil {
+		return "", fmt.Errorf("failed to request pairing code: %w", err)
+	}
+
+	var parsed struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(resp, &parsed); err != nil {
+		return "", NewProviderError(ErrCodeNetworkError, "failed to parse pairing code response", err)
+	}
+	if parsed.Code == "" {
+		return "", NewProviderError(ErrCodeNetworkError, "empty pairing code from provider", nil)
+	}
+	return parsed.Code, nil
+}
+
 // RestartSession restarts an existing WhatsApp session.
 // Uses the dedicated /restart endpoint per WAHA OpenAPI spec for atomic restart.
 func (a *WahaAdapter) RestartSession(ctx context.Context, sessionName string) error {

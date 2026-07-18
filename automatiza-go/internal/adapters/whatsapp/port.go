@@ -97,6 +97,11 @@ type SessionManager interface {
 	// Returns nil if the session is already authenticated or QR is not available.
 	GetQRCode(ctx context.Context, sessionName string) (*QRCodeData, error)
 
+	// RequestPairingCode asks the provider for a phone-number pairing code as an
+	// alternative to scanning the QR image, for a session already waiting to pair.
+	// Returns the code the user types into WhatsApp > Linked devices.
+	RequestPairingCode(ctx context.Context, sessionName, phoneNumber string) (string, error)
+
 	// RestartSession restarts an existing WhatsApp session.
 	// Useful for recovering from connection issues without full re-authentication.
 	RestartSession(ctx context.Context, sessionName string) error

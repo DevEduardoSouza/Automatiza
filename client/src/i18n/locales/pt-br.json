@@ -616,6 +616,19 @@
         "checkStatus": "Verificar Status",
         "checking": "Verificando..."
       },
+      "addChipModal": {
+        "title": "Adicionar novo número",
+        "description": "Escaneie o QR code com o WhatsApp do número que você quer adicionar. Os números já conectados continuam funcionando normalmente.",
+        "creating": "Gerando QR code...",
+        "switchToCode": "Conectar com código em vez do QR",
+        "switchToQr": "Usar o QR code",
+        "codePrompt": "Digite o número do WhatsApp que você quer conectar (com DDI e DDD):",
+        "codeInvalidPhone": "Informe o número com DDI + DDD (ex.: 55 31 99999-8888).",
+        "codeGenerate": "Gerar código",
+        "codeRegenerate": "Gerar outro código",
+        "codeInstructions": "No celular abra WhatsApp › Aparelhos conectados › Conectar com número de telefone, e digite:",
+        "codeError": "Não foi possível gerar o código. Tente novamente."
+      },
       "qrCode": {
         "title": "QR Code",
         "description": "Escaneie com seu WhatsApp",
@@ -2756,7 +2769,11 @@
         "dispatchWindow": "última 1 hora",
         "dbSize": "banco: {{size}}",
         "host": "Host da VPS (CPU, disco, load)",
-        "hostUnavailable": "Métricas do host indisponíveis."
+        "hostUnavailable": "Métricas do host indisponíveis.",
+        "dispatchErrors": "Erros de disparo (24h)",
+        "dispatchErrorsEmpty": "Nenhum erro de disparo nas últimas 24h.",
+        "dispatchErrorsUsers": "{{n}} usuário(s)",
+        "dispatchErrorsHint": "Só erros reais — chip desconectado aparece nas Sessões, não aqui."
       },
       "resume": {
         "button": "Religar automações pausadas",

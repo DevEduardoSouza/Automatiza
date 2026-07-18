@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
@@ -124,9 +125,9 @@ func (h *WhatsAppHandler) CreateInstance(
 			observability.LogAndCapture(zap.L(), sentry.LevelWarning,
 				"failed to persist instance after CreateSession", upsertErr,
 				map[string]string{
-					"module":   "whatsapp-handler",
+					"module":    "whatsapp-handler",
 					"operation": "create-persist",
-					"instance": sessionInfo.Name,
+					"instance":  sessionInfo.Name,
 				})
 		}
 	}
@@ -333,8 +334,10 @@ func (h *WhatsAppHandler) CheckStatus(
 		State:   waSessionStatusToProto(sessionInfo.Status),
 	}
 
-	// Include QR code when session is waiting for QR scan (used by frontend refresh)
-	if sessionInfo.Status == whatsapp.SessionStatusScanQR {
+	// Include QR code when session is waiting for QR scan (used by frontend refresh).
+	// The pairing-code flow sets skip_qr: it only polls for the connection state and
+	// must not trigger QR reads that churn the session mid-pairing.
+	if sessionInfo.Status == whatsapp.SessionStatusScanQR && !req.Msg.GetSkipQr() {
 		qrData, err := h.waProvider.GetQRCode(ctx, req.Msg.GetInstanceName())
 		if err != nil {
 			// SQ12: Capture QR fetch failure during status check
@@ -347,6 +350,101 @@ func (h *WhatsAppHandler) CheckStatus(
 	}
 
 	return connect.NewResponse(resp), nil
+}
+
+// RequestPairingCode issues a phone-number pairing code (alternative to the QR
+// scan) for an instance the caller already created and that is waiting to pair.
+// Additive path: the QR flow is untouched — this only serves users who prefer
+// typing a code into WhatsApp > Linked devices > Link with phone number.
+func (h *WhatsAppHandler) RequestPairingCode(
+	ctx context.Context,
+	req *connect.Request[whatsappv1.RequestPairingCodeRequest],
+) (*connect.Response[whatsappv1.RequestPairingCodeResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if h.waProvider == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("WhatsApp provider not configured"))
+	}
+
+	instanceName := req.Msg.GetInstanceName()
+
+	// Ownership: only the instance owner may drive pairing on it. Mirrors
+	// DeleteInstance — an authenticated user must not request a code for a
+	// session created by someone else. Instance without a DB row is denied (the
+	// UI flow always creates the row via CreateInstance first).
+	if h.instanceRepo != nil {
+		inst, err := h.instanceRepo.GetInstanceByUserAndName(ctx, user.ID, instanceName)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to verify instance ownership: %w", err))
+		}
+		if inst == nil {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("instance not found for this user"))
+		}
+	}
+
+	// Normalize to digits only at the trust boundary — WAHA wants an
+	// international number with no "+", spaces or punctuation ("5531999998888").
+	digits := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, req.Msg.GetPhoneNumber())
+	if len(digits) < 8 || len(digits) > 15 {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("número de telefone inválido: informe DDI + DDD + número (só dígitos)"))
+	}
+
+	// WAHA only issues a pairing code once the session reached SCAN_QR. The modal
+	// can flip to code mode before a freshly-created session finishes STARTING, so
+	// poll briefly (mirrors CreateInstance) instead of failing that early race.
+	status := whatsapp.SessionStatusStarting
+	if info, statusErr := h.waProvider.GetSessionStatus(ctx, instanceName); statusErr == nil && info != nil {
+		status = info.Status
+	}
+	for i := 0; i < 4 && status == whatsapp.SessionStatusStarting; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, connect.NewError(connect.CodeCanceled, ctx.Err())
+		case <-time.After(1 * time.Second):
+		}
+		if info, statusErr := h.waProvider.GetSessionStatus(ctx, instanceName); statusErr == nil && info != nil {
+			status = info.Status
+		}
+	}
+	if status != whatsapp.SessionStatusScanQR {
+		// Not pairable yet (still starting, already connected, or failed). Surface
+		// it in the response so the modal shows a real reason and can retry —
+		// never as a thrown connect error (rendered as a generic failure).
+		notReady := "a conexão ainda não está pronta para gerar o código; aguarde alguns segundos e tente de novo"
+		return connect.NewResponse(&whatsappv1.RequestPairingCodeResponse{
+			Success: false,
+			Error:   &notReady,
+		}), nil
+	}
+
+	code, err := h.waProvider.RequestPairingCode(ctx, instanceName, digits)
+	if err != nil {
+		// Provider failure (invalid number, rate-limit, session dropped) → return
+		// it as a response error so the modal surfaces it inline and can retry,
+		// instead of a connect CodeInternal that renders as the generic message.
+		observability.LogAndCapture(zap.L(), sentry.LevelInfo, "request pairing code failed", err, map[string]string{
+			"module": "whatsapp-handler", "operation": "request-pairing-code", "instance": instanceName,
+		})
+		failMsg := "não foi possível gerar o código para este número; confira o número e tente de novo"
+		return connect.NewResponse(&whatsappv1.RequestPairingCodeResponse{
+			Success: false,
+			Error:   &failMsg,
+		}), nil
+	}
+
+	return connect.NewResponse(&whatsappv1.RequestPairingCodeResponse{
+		Success: true,
+		Code:    &code,
+	}), nil
 }
 
 // FetchGroups fetches all groups from a WhatsApp instance.

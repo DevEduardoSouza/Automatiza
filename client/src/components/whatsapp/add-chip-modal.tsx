@@ -1,9 +1,11 @@
+import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { useInstancesConnect } from '@/hooks/use-instances-connect';
 import { useToast } from '@/hooks/use-toast';
 import { useWhatsAppConnect } from '@/hooks/use-whatsapp-connect';
-import { Loader2, RefreshCw, Wifi } from 'lucide-react';
+import { KeyRound, Loader2, QrCode, RefreshCw, Wifi } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -42,7 +44,7 @@ type Phase = 'creating' | 'awaiting_qr' | 'connected' | 'failed';
 export function AddChipModal({ open, onClose }: AddChipModalProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const { createInstance, deleteInstance, checkStatus } = useWhatsAppConnect();
+  const { createInstance, deleteInstance, checkStatus, requestPairingCode } = useWhatsAppConnect();
   const { refetch: refetchInstances } = useInstancesConnect();
 
   const [phase, setPhase] = useState<Phase>('creating');
@@ -51,11 +53,23 @@ export function AddChipModal({ open, onClose }: AddChipModalProps) {
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Pairing-by-code (alternative to QR). QR stays the default so the existing
+  // flow — and any cached older frontend — is untouched.
+  const [authMode, setAuthMode] = useState<'qr' | 'code'>('qr');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [requestingCode, setRequestingCode] = useState(false);
+
   // Latest values for async callbacks (avoid stale closures)
   const instanceNameRef = useRef<string | null>(null);
   instanceNameRef.current = instanceName;
   const phaseRef = useRef<Phase>(phase);
   phaseRef.current = phase;
+  // Read inside the QR-recycle interval: in code mode we must NOT recycle the
+  // session, or WAHA invalidates the pairing code the user is typing.
+  const authModeRef = useRef<'qr' | 'code'>(authMode);
+  authModeRef.current = authMode;
 
   // Stabilise mutation callbacks: useWhatsAppConnect returns new function
   // identities on every render, which would otherwise re-fire the bootstrap
@@ -73,6 +87,11 @@ export function AddChipModal({ open, onClose }: AddChipModalProps) {
     setQrCode(null);
     setCountdown(COUNTDOWN_SECONDS);
     setErrorMessage(null);
+    setAuthMode('qr');
+    setPhoneNumber('');
+    setPairingCode(null);
+    setCodeError(null);
+    setRequestingCode(false);
   }, []);
 
   // Bootstrap: when the modal opens, create a fresh instance and grab the QR.
@@ -132,7 +151,9 @@ export function AddChipModal({ open, onClose }: AddChipModalProps) {
       if (!name) return;
 
       try {
-        const data = await checkStatusRef.current(name);
+        // In code mode, skip the QR fetch: we only need the connection state,
+        // and re-reading the QR each poll would churn the pairing session.
+        const data = await checkStatusRef.current(name, authModeRef.current === 'code');
         if (data.qrcodeBase64 && phaseRef.current === 'awaiting_qr') {
           setQrCode(data.qrcodeBase64);
         }
@@ -157,9 +178,11 @@ export function AddChipModal({ open, onClose }: AddChipModalProps) {
   }, [open, phase, instanceName]);
 
   // QR countdown — refreshes the chip when it hits zero.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refs intentional
   useEffect(() => {
-    if (!open || phase !== 'awaiting_qr' || !qrCode) return;
+    // QR mode only: the recycle recreates the session (which would invalidate a
+    // pairing code mid-entry), and code mode has no countdown to tick — so the
+    // interval must not even be created there (no wasted 1s timer).
+    if (!open || phase !== 'awaiting_qr' || !qrCode || authMode === 'code') return;
 
     const interval = setInterval(() => {
       setCountdown((prev) => {
@@ -196,7 +219,7 @@ export function AddChipModal({ open, onClose }: AddChipModalProps) {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [open, phase, qrCode]);
+  }, [open, phase, qrCode, authMode]);
 
   // Cleanup on cancel: if the user closes before the chip connected,
   // remove the dangling instance so it doesn't show up as "pending" forever.
@@ -225,12 +248,53 @@ export function AddChipModal({ open, onClose }: AddChipModalProps) {
     onClose();
   }, [onClose]);
 
+  // Request a phone pairing code for the already-created session (code mode).
+  // The status poll keeps running and flips the phase to "connected" once the
+  // user confirms the code in WhatsApp — same completion path as the QR scan.
+  const handleRequestCode = useCallback(async () => {
+    const name = instanceNameRef.current;
+    if (!name) return;
+    const digits = phoneNumber.replace(/\D/g, '');
+    if (digits.length < 8) {
+      setCodeError(
+        t(
+          'pages.whatsapp.addChipModal.codeInvalidPhone',
+          'Informe o número com DDI + DDD (ex.: 55 31 99999-8888).'
+        )
+      );
+      return;
+    }
+    setRequestingCode(true);
+    setCodeError(null);
+    try {
+      const res = await requestPairingCode({ instanceName: name, phoneNumber: digits });
+      if (res.success && res.code) {
+        setPairingCode(res.code);
+      } else {
+        setCodeError(
+          res.error ??
+            t(
+              'pages.whatsapp.addChipModal.codeError',
+              'Não foi possível gerar o código. Tente novamente.'
+            )
+        );
+      }
+    } catch {
+      setCodeError(
+        t(
+          'pages.whatsapp.addChipModal.codeError',
+          'Não foi possível gerar o código. Tente novamente.'
+        )
+      );
+    } finally {
+      setRequestingCode(false);
+    }
+  }, [phoneNumber, requestPairingCode, t]);
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent className="max-w-md">
-        <DialogTitle>
-          {t('pages.whatsapp.addChipModal.title', 'Adicionar novo número')}
-        </DialogTitle>
+        <DialogTitle>{t('pages.whatsapp.addChipModal.title', 'Adicionar novo número')}</DialogTitle>
         <DialogDescription>
           {t(
             'pages.whatsapp.addChipModal.description',
@@ -248,45 +312,144 @@ export function AddChipModal({ open, onClose }: AddChipModalProps) {
             </div>
           )}
 
-          {phase === 'awaiting_qr' && qrCode && (
+          {phase === 'awaiting_qr' && (
             <div className="flex flex-col items-center">
-              <div
-                className="p-3 rounded-2xl border"
-                style={{
-                  borderColor: colors.wineBorder,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                  backgroundColor: '#ffffff',
-                }}
-              >
-                <img src={qrCode} alt="QR Code" className="w-56 h-56" />
-              </div>
+              {authMode === 'qr' ? (
+                qrCode ? (
+                  <>
+                    <div
+                      className="p-3 rounded-2xl border"
+                      style={{
+                        borderColor: colors.wineBorder,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                        backgroundColor: '#ffffff',
+                      }}
+                    >
+                      <img src={qrCode} alt="QR Code" className="w-56 h-56" />
+                    </div>
 
-              <div className="mt-4 w-full">
-                <div className="flex items-center justify-between text-sm mb-1.5">
-                  <span style={{ color: colors.wineTextMuted }}>
-                    {t('pages.whatsapp.qrCode.expiresIn', { seconds: countdown })}
-                  </span>
-                  <RefreshCw className="h-3.5 w-3.5" style={{ color: colors.wine }} />
+                    <div className="mt-4 w-full">
+                      <div className="flex items-center justify-between text-sm mb-1.5">
+                        <span style={{ color: colors.wineTextMuted }}>
+                          {t('pages.whatsapp.qrCode.expiresIn', { seconds: countdown })}
+                        </span>
+                        <RefreshCw className="h-3.5 w-3.5" style={{ color: colors.wine }} />
+                      </div>
+                      <Progress
+                        value={(countdown / COUNTDOWN_SECONDS) * 100}
+                        className="h-2"
+                        style={{ backgroundColor: 'rgba(141,45,83,0.1)' }}
+                      />
+                    </div>
+
+                    <p className="text-xs mt-4 text-center" style={{ color: colors.wineTextMuted }}>
+                      {t('pages.whatsapp.qrCode.waiting')}
+                    </p>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center py-8">
+                    <Loader2
+                      className="h-12 w-12 animate-spin mb-3"
+                      style={{ color: colors.wine }}
+                    />
+                    <p className="text-sm" style={{ color: colors.wineTextMuted }}>
+                      {t('pages.whatsapp.qrCode.generating')}
+                    </p>
+                  </div>
+                )
+              ) : pairingCode ? (
+                <div className="flex flex-col items-center py-2 w-full">
+                  <p className="text-sm mb-3 text-center" style={{ color: colors.wineTextMuted }}>
+                    {t(
+                      'pages.whatsapp.addChipModal.codeInstructions',
+                      'No celular abra WhatsApp › Aparelhos conectados › Conectar com número de telefone, e digite:'
+                    )}
+                  </p>
+                  <div
+                    className="px-5 py-3 rounded-xl border font-mono text-2xl font-semibold tracking-[0.25em]"
+                    style={{
+                      borderColor: colors.wineBorder,
+                      backgroundColor: colors.wineBg,
+                      color: colors.wine,
+                    }}
+                  >
+                    {pairingCode}
+                  </div>
+                  <p className="text-xs mt-4 text-center" style={{ color: colors.wineTextMuted }}>
+                    {t('pages.whatsapp.qrCode.waiting')}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setPairingCode(null)}
+                    className="mt-3 text-xs underline"
+                    style={{ color: colors.wine }}
+                  >
+                    {t('pages.whatsapp.addChipModal.codeRegenerate', 'Gerar outro código')}
+                  </button>
                 </div>
-                <Progress
-                  value={(countdown / COUNTDOWN_SECONDS) * 100}
-                  className="h-2"
-                  style={{ backgroundColor: 'rgba(141,45,83,0.1)' }}
-                />
-              </div>
+              ) : (
+                <div className="flex w-full flex-col gap-3">
+                  <p className="text-sm" style={{ color: colors.wineTextMuted }}>
+                    {t(
+                      'pages.whatsapp.addChipModal.codePrompt',
+                      'Digite o número do WhatsApp que você quer conectar (com DDI e DDD):'
+                    )}
+                  </p>
+                  <Input
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="55 31 99999-8888"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    disabled={requestingCode}
+                  />
+                  {codeError && (
+                    <p className="text-xs" style={{ color: '#dc2626' }}>
+                      {codeError}
+                    </p>
+                  )}
+                  <Button
+                    onClick={handleRequestCode}
+                    disabled={requestingCode}
+                    style={{ backgroundColor: colors.wine }}
+                  >
+                    {requestingCode ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      t('pages.whatsapp.addChipModal.codeGenerate', 'Gerar código')
+                    )}
+                  </Button>
+                </div>
+              )}
 
-              <p className="text-xs mt-4 text-center" style={{ color: colors.wineTextMuted }}>
-                {t('pages.whatsapp.qrCode.waiting')}
-              </p>
-            </div>
-          )}
-
-          {phase === 'awaiting_qr' && !qrCode && (
-            <div className="flex flex-col items-center py-8">
-              <Loader2 className="h-12 w-12 animate-spin mb-3" style={{ color: colors.wine }} />
-              <p className="text-sm" style={{ color: colors.wineTextMuted }}>
-                {t('pages.whatsapp.qrCode.generating')}
-              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  // Clear any issued code on switch: it belongs to the session
+                  // state we're leaving and would be stale on return (a recycle in
+                  // QR mode can replace the session under it).
+                  setCodeError(null);
+                  setPairingCode(null);
+                  setAuthMode((m) => (m === 'qr' ? 'code' : 'qr'));
+                }}
+                className="mt-5 flex items-center gap-1.5 text-xs underline"
+                style={{ color: colors.wine }}
+              >
+                {authMode === 'qr' ? (
+                  <>
+                    <KeyRound className="h-3.5 w-3.5" />
+                    {t(
+                      'pages.whatsapp.addChipModal.switchToCode',
+                      'Conectar com código em vez do QR'
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <QrCode className="h-3.5 w-3.5" />
+                    {t('pages.whatsapp.addChipModal.switchToQr', 'Usar o QR code')}
+                  </>
+                )}
+              </button>
             </div>
           )}
 

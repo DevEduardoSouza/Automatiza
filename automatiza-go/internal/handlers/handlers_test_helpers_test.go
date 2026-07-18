@@ -788,6 +788,10 @@ func (m *mockWhatsAppProvider) GetQRCode(ctx context.Context, name string) (*wha
 	}
 	return &whatsapp.QRCodeData{Base64Image: "base64qr"}, nil
 }
+
+func (m *mockWhatsAppProvider) RequestPairingCode(_ context.Context, _, _ string) (string, error) {
+	return "", nil
+}
 func (m *mockWhatsAppProvider) RestartSession(ctx context.Context, name string) error {
 	if m.RestartSessionFunc != nil {
 		return m.RestartSessionFunc(ctx, name)

@@ -232,6 +232,9 @@ func (m *mockWahaProvider) UnpairSession(context.Context, string) error { return
 func (m *mockWahaProvider) GetQRCode(context.Context, string) (*whatsapp.QRCodeData, error) {
 	return nil, nil
 }
+func (m *mockWahaProvider) RequestPairingCode(context.Context, string, string) (string, error) {
+	return "", nil
+}
 func (m *mockWahaProvider) RestartSession(context.Context, string) error { return nil }
 func (m *mockWahaProvider) LogoutSession(context.Context, string) error  { return nil }
 func (m *mockWahaProvider) GetGroups(context.Context, string) ([]whatsapp.GroupInfo, error) {

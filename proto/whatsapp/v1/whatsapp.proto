@@ -136,9 +136,32 @@ message ReconnectInstanceResponse {
   optional string error = 3;
 }
 
+message RequestPairingCodeRequest {
+  // Instance name already created and waiting to pair (SCAN_QR state).
+  string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Phone number to pair, international format, digits only (e.g. "5531999998888").
+  string phone_number = 2 [(buf.validate.field).string.min_len = 8];
+}
+
+message RequestPairingCodeResponse {
+  // Whether the operation succeeded
+  bool success = 1;
+
+  // Pairing code to type into WhatsApp > Linked devices (format "XXXX-XXXX").
+  optional string code = 2;
+
+  // Error message if failed
+  optional string error = 3;
+}
+
 message CheckStatusRequest {
   // Instance name to check
   string instance_name = 1 [(buf.validate.field).string.min_len = 1];
+
+  // Skip fetching the QR image (used by the pairing-code flow, which only needs
+  // the connection state and must not disturb the session with QR reads).
+  optional bool skip_qr = 2;
 }
 
 message CheckStatusResponse {
@@ -473,6 +496,9 @@ service WhatsAppService {
 
   // Checks the current status of a WhatsApp instance.
   rpc CheckStatus(CheckStatusRequest) returns (CheckStatusResponse);
+
+  // Requests a phone pairing code (alternative to QR) for an instance waiting to pair.
+  rpc RequestPairingCode(RequestPairingCodeRequest) returns (RequestPairingCodeResponse);
 
   // Group Management
 

@@ -674,17 +674,137 @@ func (x *ReconnectInstanceResponse) GetError() string {
 	return ""
 }
 
+type RequestPairingCodeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Instance name already created and waiting to pair (SCAN_QR state).
+	InstanceName string `protobuf:"bytes,1,opt,name=instance_name,json=instanceName,proto3" json:"instance_name,omitempty"`
+	// Phone number to pair, international format, digits only (e.g. "5531999998888").
+	PhoneNumber   string `protobuf:"bytes,2,opt,name=phone_number,json=phoneNumber,proto3" json:"phone_number,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestPairingCodeRequest) Reset() {
+	*x = RequestPairingCodeRequest{}
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestPairingCodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestPairingCodeRequest) ProtoMessage() {}
+
+func (x *RequestPairingCodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestPairingCodeRequest.ProtoReflect.Descriptor instead.
+func (*RequestPairingCodeRequest) Descriptor() ([]byte, []int) {
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RequestPairingCodeRequest) GetInstanceName() string {
+	if x != nil {
+		return x.InstanceName
+	}
+	return ""
+}
+
+func (x *RequestPairingCodeRequest) GetPhoneNumber() string {
+	if x != nil {
+		return x.PhoneNumber
+	}
+	return ""
+}
+
+type RequestPairingCodeResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the operation succeeded
+	Success bool `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	// Pairing code to type into WhatsApp > Linked devices (format "XXXX-XXXX").
+	Code *string `protobuf:"bytes,2,opt,name=code,proto3,oneof" json:"code,omitempty"`
+	// Error message if failed
+	Error         *string `protobuf:"bytes,3,opt,name=error,proto3,oneof" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestPairingCodeResponse) Reset() {
+	*x = RequestPairingCodeResponse{}
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestPairingCodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestPairingCodeResponse) ProtoMessage() {}
+
+func (x *RequestPairingCodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestPairingCodeResponse.ProtoReflect.Descriptor instead.
+func (*RequestPairingCodeResponse) Descriptor() ([]byte, []int) {
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *RequestPairingCodeResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *RequestPairingCodeResponse) GetCode() string {
+	if x != nil && x.Code != nil {
+		return *x.Code
+	}
+	return ""
+}
+
+func (x *RequestPairingCodeResponse) GetError() string {
+	if x != nil && x.Error != nil {
+		return *x.Error
+	}
+	return ""
+}
+
 type CheckStatusRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Instance name to check
-	InstanceName  string `protobuf:"bytes,1,opt,name=instance_name,json=instanceName,proto3" json:"instance_name,omitempty"`
+	InstanceName string `protobuf:"bytes,1,opt,name=instance_name,json=instanceName,proto3" json:"instance_name,omitempty"`
+	// Skip fetching the QR image (used by the pairing-code flow, which only needs
+	// the connection state and must not disturb the session with QR reads).
+	SkipQr        *bool `protobuf:"varint,2,opt,name=skip_qr,json=skipQr,proto3,oneof" json:"skip_qr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CheckStatusRequest) Reset() {
 	*x = CheckStatusRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[8]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -696,7 +816,7 @@ func (x *CheckStatusRequest) String() string {
 func (*CheckStatusRequest) ProtoMessage() {}
 
 func (x *CheckStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[8]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -709,7 +829,7 @@ func (x *CheckStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckStatusRequest.ProtoReflect.Descriptor instead.
 func (*CheckStatusRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{8}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CheckStatusRequest) GetInstanceName() string {
@@ -717,6 +837,13 @@ func (x *CheckStatusRequest) GetInstanceName() string {
 		return x.InstanceName
 	}
 	return ""
+}
+
+func (x *CheckStatusRequest) GetSkipQr() bool {
+	if x != nil && x.SkipQr != nil {
+		return *x.SkipQr
+	}
+	return false
 }
 
 type CheckStatusResponse struct {
@@ -733,7 +860,7 @@ type CheckStatusResponse struct {
 
 func (x *CheckStatusResponse) Reset() {
 	*x = CheckStatusResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[9]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -745,7 +872,7 @@ func (x *CheckStatusResponse) String() string {
 func (*CheckStatusResponse) ProtoMessage() {}
 
 func (x *CheckStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[9]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -758,7 +885,7 @@ func (x *CheckStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckStatusResponse.ProtoReflect.Descriptor instead.
 func (*CheckStatusResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{9}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CheckStatusResponse) GetSuccess() bool {
@@ -792,7 +919,7 @@ type FetchGroupsRequest struct {
 
 func (x *FetchGroupsRequest) Reset() {
 	*x = FetchGroupsRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[10]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -804,7 +931,7 @@ func (x *FetchGroupsRequest) String() string {
 func (*FetchGroupsRequest) ProtoMessage() {}
 
 func (x *FetchGroupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[10]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -817,7 +944,7 @@ func (x *FetchGroupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchGroupsRequest.ProtoReflect.Descriptor instead.
 func (*FetchGroupsRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{10}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *FetchGroupsRequest) GetInstanceName() string {
@@ -839,7 +966,7 @@ type FetchGroupsResponse struct {
 
 func (x *FetchGroupsResponse) Reset() {
 	*x = FetchGroupsResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[11]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -851,7 +978,7 @@ func (x *FetchGroupsResponse) String() string {
 func (*FetchGroupsResponse) ProtoMessage() {}
 
 func (x *FetchGroupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[11]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -864,7 +991,7 @@ func (x *FetchGroupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchGroupsResponse.ProtoReflect.Descriptor instead.
 func (*FetchGroupsResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{11}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *FetchGroupsResponse) GetSuccess() bool {
@@ -893,7 +1020,7 @@ type FetchGroupParticipantsRequest struct {
 
 func (x *FetchGroupParticipantsRequest) Reset() {
 	*x = FetchGroupParticipantsRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[12]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -905,7 +1032,7 @@ func (x *FetchGroupParticipantsRequest) String() string {
 func (*FetchGroupParticipantsRequest) ProtoMessage() {}
 
 func (x *FetchGroupParticipantsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[12]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -918,7 +1045,7 @@ func (x *FetchGroupParticipantsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchGroupParticipantsRequest.ProtoReflect.Descriptor instead.
 func (*FetchGroupParticipantsRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{12}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *FetchGroupParticipantsRequest) GetInstanceName() string {
@@ -947,7 +1074,7 @@ type FetchGroupParticipantsResponse struct {
 
 func (x *FetchGroupParticipantsResponse) Reset() {
 	*x = FetchGroupParticipantsResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[13]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -959,7 +1086,7 @@ func (x *FetchGroupParticipantsResponse) String() string {
 func (*FetchGroupParticipantsResponse) ProtoMessage() {}
 
 func (x *FetchGroupParticipantsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[13]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -972,7 +1099,7 @@ func (x *FetchGroupParticipantsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchGroupParticipantsResponse.ProtoReflect.Descriptor instead.
 func (*FetchGroupParticipantsResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{13}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *FetchGroupParticipantsResponse) GetSuccess() bool {
@@ -999,7 +1126,7 @@ type SyncGroupsRequest struct {
 
 func (x *SyncGroupsRequest) Reset() {
 	*x = SyncGroupsRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[14]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1011,7 +1138,7 @@ func (x *SyncGroupsRequest) String() string {
 func (*SyncGroupsRequest) ProtoMessage() {}
 
 func (x *SyncGroupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[14]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1024,7 +1151,7 @@ func (x *SyncGroupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncGroupsRequest.ProtoReflect.Descriptor instead.
 func (*SyncGroupsRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{14}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SyncGroupsRequest) GetInstanceName() string {
@@ -1046,7 +1173,7 @@ type SyncGroupsResponse struct {
 
 func (x *SyncGroupsResponse) Reset() {
 	*x = SyncGroupsResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[15]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1058,7 +1185,7 @@ func (x *SyncGroupsResponse) String() string {
 func (*SyncGroupsResponse) ProtoMessage() {}
 
 func (x *SyncGroupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[15]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1071,7 +1198,7 @@ func (x *SyncGroupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncGroupsResponse.ProtoReflect.Descriptor instead.
 func (*SyncGroupsResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{15}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SyncGroupsResponse) GetSuccess() bool {
@@ -1098,7 +1225,7 @@ type SyncGroupsStatusRequest struct {
 
 func (x *SyncGroupsStatusRequest) Reset() {
 	*x = SyncGroupsStatusRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[16]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1110,7 +1237,7 @@ func (x *SyncGroupsStatusRequest) String() string {
 func (*SyncGroupsStatusRequest) ProtoMessage() {}
 
 func (x *SyncGroupsStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[16]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1123,7 +1250,7 @@ func (x *SyncGroupsStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncGroupsStatusRequest.ProtoReflect.Descriptor instead.
 func (*SyncGroupsStatusRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{16}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SyncGroupsStatusRequest) GetJobId() string {
@@ -1147,7 +1274,7 @@ type SyncGroupsStatusResponse struct {
 
 func (x *SyncGroupsStatusResponse) Reset() {
 	*x = SyncGroupsStatusResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[17]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1159,7 +1286,7 @@ func (x *SyncGroupsStatusResponse) String() string {
 func (*SyncGroupsStatusResponse) ProtoMessage() {}
 
 func (x *SyncGroupsStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[17]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1172,7 +1299,7 @@ func (x *SyncGroupsStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncGroupsStatusResponse.ProtoReflect.Descriptor instead.
 func (*SyncGroupsStatusResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{17}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SyncGroupsStatusResponse) GetState() SyncJobState {
@@ -1214,7 +1341,7 @@ type SendMessageRequest struct {
 
 func (x *SendMessageRequest) Reset() {
 	*x = SendMessageRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[18]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1226,7 +1353,7 @@ func (x *SendMessageRequest) String() string {
 func (*SendMessageRequest) ProtoMessage() {}
 
 func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[18]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1239,7 +1366,7 @@ func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageRequest.ProtoReflect.Descriptor instead.
 func (*SendMessageRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{18}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SendMessageRequest) GetInstanceName() string {
@@ -1291,7 +1418,7 @@ type SendMessageResponse struct {
 
 func (x *SendMessageResponse) Reset() {
 	*x = SendMessageResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[19]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1303,7 +1430,7 @@ func (x *SendMessageResponse) String() string {
 func (*SendMessageResponse) ProtoMessage() {}
 
 func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[19]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1316,7 +1443,7 @@ func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageResponse.ProtoReflect.Descriptor instead.
 func (*SendMessageResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{19}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *SendMessageResponse) GetSuccess() bool {
@@ -1360,7 +1487,7 @@ type SendAudioRequest struct {
 
 func (x *SendAudioRequest) Reset() {
 	*x = SendAudioRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[20]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1372,7 +1499,7 @@ func (x *SendAudioRequest) String() string {
 func (*SendAudioRequest) ProtoMessage() {}
 
 func (x *SendAudioRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[20]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1385,7 +1512,7 @@ func (x *SendAudioRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendAudioRequest.ProtoReflect.Descriptor instead.
 func (*SendAudioRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{20}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *SendAudioRequest) GetInstanceName() string {
@@ -1444,7 +1571,7 @@ type SendAudioResponse struct {
 
 func (x *SendAudioResponse) Reset() {
 	*x = SendAudioResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[21]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1456,7 +1583,7 @@ func (x *SendAudioResponse) String() string {
 func (*SendAudioResponse) ProtoMessage() {}
 
 func (x *SendAudioResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[21]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1469,7 +1596,7 @@ func (x *SendAudioResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendAudioResponse.ProtoReflect.Descriptor instead.
 func (*SendAudioResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{21}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *SendAudioResponse) GetSuccess() bool {
@@ -1511,7 +1638,7 @@ type SendPollRequest struct {
 
 func (x *SendPollRequest) Reset() {
 	*x = SendPollRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[22]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1523,7 +1650,7 @@ func (x *SendPollRequest) String() string {
 func (*SendPollRequest) ProtoMessage() {}
 
 func (x *SendPollRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[22]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1536,7 +1663,7 @@ func (x *SendPollRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendPollRequest.ProtoReflect.Descriptor instead.
 func (*SendPollRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{22}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SendPollRequest) GetInstanceName() string {
@@ -1588,7 +1715,7 @@ type SendPollResponse struct {
 
 func (x *SendPollResponse) Reset() {
 	*x = SendPollResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[23]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1600,7 +1727,7 @@ func (x *SendPollResponse) String() string {
 func (*SendPollResponse) ProtoMessage() {}
 
 func (x *SendPollResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[23]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1613,7 +1740,7 @@ func (x *SendPollResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendPollResponse.ProtoReflect.Descriptor instead.
 func (*SendPollResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{23}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *SendPollResponse) GetSuccess() bool {
@@ -1651,7 +1778,7 @@ type UpdateGroupSubjectRequest struct {
 
 func (x *UpdateGroupSubjectRequest) Reset() {
 	*x = UpdateGroupSubjectRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[24]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1663,7 +1790,7 @@ func (x *UpdateGroupSubjectRequest) String() string {
 func (*UpdateGroupSubjectRequest) ProtoMessage() {}
 
 func (x *UpdateGroupSubjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[24]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1676,7 +1803,7 @@ func (x *UpdateGroupSubjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGroupSubjectRequest.ProtoReflect.Descriptor instead.
 func (*UpdateGroupSubjectRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{24}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *UpdateGroupSubjectRequest) GetInstanceName() string {
@@ -1712,7 +1839,7 @@ type UpdateGroupSubjectResponse struct {
 
 func (x *UpdateGroupSubjectResponse) Reset() {
 	*x = UpdateGroupSubjectResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[25]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1724,7 +1851,7 @@ func (x *UpdateGroupSubjectResponse) String() string {
 func (*UpdateGroupSubjectResponse) ProtoMessage() {}
 
 func (x *UpdateGroupSubjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[25]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1737,7 +1864,7 @@ func (x *UpdateGroupSubjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGroupSubjectResponse.ProtoReflect.Descriptor instead.
 func (*UpdateGroupSubjectResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{25}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *UpdateGroupSubjectResponse) GetSuccess() bool {
@@ -1768,7 +1895,7 @@ type UpdateGroupDescriptionRequest struct {
 
 func (x *UpdateGroupDescriptionRequest) Reset() {
 	*x = UpdateGroupDescriptionRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[26]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1780,7 +1907,7 @@ func (x *UpdateGroupDescriptionRequest) String() string {
 func (*UpdateGroupDescriptionRequest) ProtoMessage() {}
 
 func (x *UpdateGroupDescriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[26]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1793,7 +1920,7 @@ func (x *UpdateGroupDescriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGroupDescriptionRequest.ProtoReflect.Descriptor instead.
 func (*UpdateGroupDescriptionRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{26}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *UpdateGroupDescriptionRequest) GetInstanceName() string {
@@ -1829,7 +1956,7 @@ type UpdateGroupDescriptionResponse struct {
 
 func (x *UpdateGroupDescriptionResponse) Reset() {
 	*x = UpdateGroupDescriptionResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[27]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1841,7 +1968,7 @@ func (x *UpdateGroupDescriptionResponse) String() string {
 func (*UpdateGroupDescriptionResponse) ProtoMessage() {}
 
 func (x *UpdateGroupDescriptionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[27]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1854,7 +1981,7 @@ func (x *UpdateGroupDescriptionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGroupDescriptionResponse.ProtoReflect.Descriptor instead.
 func (*UpdateGroupDescriptionResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{27}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *UpdateGroupDescriptionResponse) GetSuccess() bool {
@@ -1885,7 +2012,7 @@ type UpdateGroupPictureRequest struct {
 
 func (x *UpdateGroupPictureRequest) Reset() {
 	*x = UpdateGroupPictureRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[28]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1897,7 +2024,7 @@ func (x *UpdateGroupPictureRequest) String() string {
 func (*UpdateGroupPictureRequest) ProtoMessage() {}
 
 func (x *UpdateGroupPictureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[28]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1910,7 +2037,7 @@ func (x *UpdateGroupPictureRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGroupPictureRequest.ProtoReflect.Descriptor instead.
 func (*UpdateGroupPictureRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{28}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *UpdateGroupPictureRequest) GetInstanceName() string {
@@ -1946,7 +2073,7 @@ type UpdateGroupPictureResponse struct {
 
 func (x *UpdateGroupPictureResponse) Reset() {
 	*x = UpdateGroupPictureResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[29]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1958,7 +2085,7 @@ func (x *UpdateGroupPictureResponse) String() string {
 func (*UpdateGroupPictureResponse) ProtoMessage() {}
 
 func (x *UpdateGroupPictureResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[29]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1971,7 +2098,7 @@ func (x *UpdateGroupPictureResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGroupPictureResponse.ProtoReflect.Descriptor instead.
 func (*UpdateGroupPictureResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{29}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *UpdateGroupPictureResponse) GetSuccess() bool {
@@ -2002,7 +2129,7 @@ type UpdateGroupSettingsRequest struct {
 
 func (x *UpdateGroupSettingsRequest) Reset() {
 	*x = UpdateGroupSettingsRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[30]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2014,7 +2141,7 @@ func (x *UpdateGroupSettingsRequest) String() string {
 func (*UpdateGroupSettingsRequest) ProtoMessage() {}
 
 func (x *UpdateGroupSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[30]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2027,7 +2154,7 @@ func (x *UpdateGroupSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGroupSettingsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateGroupSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{30}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *UpdateGroupSettingsRequest) GetInstanceName() string {
@@ -2063,7 +2190,7 @@ type UpdateGroupSettingsResponse struct {
 
 func (x *UpdateGroupSettingsResponse) Reset() {
 	*x = UpdateGroupSettingsResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[31]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2075,7 +2202,7 @@ func (x *UpdateGroupSettingsResponse) String() string {
 func (*UpdateGroupSettingsResponse) ProtoMessage() {}
 
 func (x *UpdateGroupSettingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[31]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2088,7 +2215,7 @@ func (x *UpdateGroupSettingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGroupSettingsResponse.ProtoReflect.Descriptor instead.
 func (*UpdateGroupSettingsResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{31}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *UpdateGroupSettingsResponse) GetSuccess() bool {
@@ -2117,7 +2244,7 @@ type GetGroupInviteCodeRequest struct {
 
 func (x *GetGroupInviteCodeRequest) Reset() {
 	*x = GetGroupInviteCodeRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[32]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2129,7 +2256,7 @@ func (x *GetGroupInviteCodeRequest) String() string {
 func (*GetGroupInviteCodeRequest) ProtoMessage() {}
 
 func (x *GetGroupInviteCodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[32]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2142,7 +2269,7 @@ func (x *GetGroupInviteCodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGroupInviteCodeRequest.ProtoReflect.Descriptor instead.
 func (*GetGroupInviteCodeRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{32}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetGroupInviteCodeRequest) GetInstanceName() string {
@@ -2171,7 +2298,7 @@ type GetGroupInviteCodeResponse struct {
 
 func (x *GetGroupInviteCodeResponse) Reset() {
 	*x = GetGroupInviteCodeResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[33]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2183,7 +2310,7 @@ func (x *GetGroupInviteCodeResponse) String() string {
 func (*GetGroupInviteCodeResponse) ProtoMessage() {}
 
 func (x *GetGroupInviteCodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[33]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2196,7 +2323,7 @@ func (x *GetGroupInviteCodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGroupInviteCodeResponse.ProtoReflect.Descriptor instead.
 func (*GetGroupInviteCodeResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{33}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *GetGroupInviteCodeResponse) GetInviteCode() string {
@@ -2225,7 +2352,7 @@ type DownloadMediaRequest struct {
 
 func (x *DownloadMediaRequest) Reset() {
 	*x = DownloadMediaRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[34]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2237,7 +2364,7 @@ func (x *DownloadMediaRequest) String() string {
 func (*DownloadMediaRequest) ProtoMessage() {}
 
 func (x *DownloadMediaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[34]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2250,7 +2377,7 @@ func (x *DownloadMediaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadMediaRequest.ProtoReflect.Descriptor instead.
 func (*DownloadMediaRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{34}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *DownloadMediaRequest) GetInstanceName() string {
@@ -2281,7 +2408,7 @@ type DownloadMediaResponse struct {
 
 func (x *DownloadMediaResponse) Reset() {
 	*x = DownloadMediaResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[35]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2293,7 +2420,7 @@ func (x *DownloadMediaResponse) String() string {
 func (*DownloadMediaResponse) ProtoMessage() {}
 
 func (x *DownloadMediaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[35]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2306,7 +2433,7 @@ func (x *DownloadMediaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadMediaResponse.ProtoReflect.Descriptor instead.
 func (*DownloadMediaResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{35}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *DownloadMediaResponse) GetData() []byte {
@@ -2346,7 +2473,7 @@ type SetWebhookRequest struct {
 
 func (x *SetWebhookRequest) Reset() {
 	*x = SetWebhookRequest{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[36]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2358,7 +2485,7 @@ func (x *SetWebhookRequest) String() string {
 func (*SetWebhookRequest) ProtoMessage() {}
 
 func (x *SetWebhookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[36]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2371,7 +2498,7 @@ func (x *SetWebhookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWebhookRequest.ProtoReflect.Descriptor instead.
 func (*SetWebhookRequest) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{36}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *SetWebhookRequest) GetInstanceName() string {
@@ -2412,7 +2539,7 @@ type SetWebhookResponse struct {
 
 func (x *SetWebhookResponse) Reset() {
 	*x = SetWebhookResponse{}
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[37]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2424,7 +2551,7 @@ func (x *SetWebhookResponse) String() string {
 func (*SetWebhookResponse) ProtoMessage() {}
 
 func (x *SetWebhookResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[37]
+	mi := &file_whatsapp_v1_whatsapp_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2437,7 +2564,7 @@ func (x *SetWebhookResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWebhookResponse.ProtoReflect.Descriptor instead.
 func (*SetWebhookResponse) Descriptor() ([]byte, []int) {
-	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{37}
+	return file_whatsapp_v1_whatsapp_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *SetWebhookResponse) GetSuccess() bool {
@@ -2498,9 +2625,21 @@ const file_whatsapp_v1_whatsapp_proto_rawDesc = "" +
 	"\rqrcode_base64\x18\x02 \x01(\tH\x00R\fqrcodeBase64\x88\x01\x01\x12\x19\n" +
 	"\x05error\x18\x03 \x01(\tH\x01R\x05error\x88\x01\x01B\x10\n" +
 	"\x0e_qrcode_base64B\b\n" +
-	"\x06_error\"B\n" +
+	"\x06_error\"u\n" +
+	"\x19RequestPairingCodeRequest\x12,\n" +
+	"\rinstance_name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\finstanceName\x12*\n" +
+	"\fphone_number\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\bR\vphoneNumber\"}\n" +
+	"\x1aRequestPairingCodeResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x17\n" +
+	"\x04code\x18\x02 \x01(\tH\x00R\x04code\x88\x01\x01\x12\x19\n" +
+	"\x05error\x18\x03 \x01(\tH\x01R\x05error\x88\x01\x01B\a\n" +
+	"\x05_codeB\b\n" +
+	"\x06_error\"l\n" +
 	"\x12CheckStatusRequest\x12,\n" +
-	"\rinstance_name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\finstanceName\"\x9d\x01\n" +
+	"\rinstance_name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\finstanceName\x12\x1c\n" +
+	"\askip_qr\x18\x02 \x01(\bH\x00R\x06skipQr\x88\x01\x01B\n" +
+	"\n" +
+	"\b_skip_qr\"\x9d\x01\n" +
 	"\x13CheckStatusResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x120\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x1a.whatsapp.v1.InstanceStateR\x05state\x12(\n" +
@@ -2644,12 +2783,13 @@ const file_whatsapp_v1_whatsapp_proto_rawDesc = "" +
 	"\x16SYNC_JOB_STATE_PENDING\x10\x01\x12\x1e\n" +
 	"\x1aSYNC_JOB_STATE_IN_PROGRESS\x10\x02\x12\x1c\n" +
 	"\x18SYNC_JOB_STATE_COMPLETED\x10\x03\x12\x19\n" +
-	"\x15SYNC_JOB_STATE_FAILED\x10\x042\x92\r\n" +
+	"\x15SYNC_JOB_STATE_FAILED\x10\x042\xf9\r\n" +
 	"\x0fWhatsAppService\x12Y\n" +
 	"\x0eCreateInstance\x12\".whatsapp.v1.CreateInstanceRequest\x1a#.whatsapp.v1.CreateInstanceResponse\x12Y\n" +
 	"\x0eDeleteInstance\x12\".whatsapp.v1.DeleteInstanceRequest\x1a#.whatsapp.v1.DeleteInstanceResponse\x12b\n" +
 	"\x11ReconnectInstance\x12%.whatsapp.v1.ReconnectInstanceRequest\x1a&.whatsapp.v1.ReconnectInstanceResponse\x12P\n" +
-	"\vCheckStatus\x12\x1f.whatsapp.v1.CheckStatusRequest\x1a .whatsapp.v1.CheckStatusResponse\x12P\n" +
+	"\vCheckStatus\x12\x1f.whatsapp.v1.CheckStatusRequest\x1a .whatsapp.v1.CheckStatusResponse\x12e\n" +
+	"\x12RequestPairingCode\x12&.whatsapp.v1.RequestPairingCodeRequest\x1a'.whatsapp.v1.RequestPairingCodeResponse\x12P\n" +
 	"\vFetchGroups\x12\x1f.whatsapp.v1.FetchGroupsRequest\x1a .whatsapp.v1.FetchGroupsResponse\x12q\n" +
 	"\x16FetchGroupParticipants\x12*.whatsapp.v1.FetchGroupParticipantsRequest\x1a+.whatsapp.v1.FetchGroupParticipantsResponse\x12M\n" +
 	"\n" +
@@ -2681,7 +2821,7 @@ func file_whatsapp_v1_whatsapp_proto_rawDescGZIP() []byte {
 }
 
 var file_whatsapp_v1_whatsapp_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_whatsapp_v1_whatsapp_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
+var file_whatsapp_v1_whatsapp_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
 var file_whatsapp_v1_whatsapp_proto_goTypes = []any{
 	(InstanceState)(0),                     // 0: whatsapp.v1.InstanceState
 	(GroupSettingsAction)(0),               // 1: whatsapp.v1.GroupSettingsAction
@@ -2694,36 +2834,38 @@ var file_whatsapp_v1_whatsapp_proto_goTypes = []any{
 	(*DeleteInstanceResponse)(nil),         // 8: whatsapp.v1.DeleteInstanceResponse
 	(*ReconnectInstanceRequest)(nil),       // 9: whatsapp.v1.ReconnectInstanceRequest
 	(*ReconnectInstanceResponse)(nil),      // 10: whatsapp.v1.ReconnectInstanceResponse
-	(*CheckStatusRequest)(nil),             // 11: whatsapp.v1.CheckStatusRequest
-	(*CheckStatusResponse)(nil),            // 12: whatsapp.v1.CheckStatusResponse
-	(*FetchGroupsRequest)(nil),             // 13: whatsapp.v1.FetchGroupsRequest
-	(*FetchGroupsResponse)(nil),            // 14: whatsapp.v1.FetchGroupsResponse
-	(*FetchGroupParticipantsRequest)(nil),  // 15: whatsapp.v1.FetchGroupParticipantsRequest
-	(*FetchGroupParticipantsResponse)(nil), // 16: whatsapp.v1.FetchGroupParticipantsResponse
-	(*SyncGroupsRequest)(nil),              // 17: whatsapp.v1.SyncGroupsRequest
-	(*SyncGroupsResponse)(nil),             // 18: whatsapp.v1.SyncGroupsResponse
-	(*SyncGroupsStatusRequest)(nil),        // 19: whatsapp.v1.SyncGroupsStatusRequest
-	(*SyncGroupsStatusResponse)(nil),       // 20: whatsapp.v1.SyncGroupsStatusResponse
-	(*SendMessageRequest)(nil),             // 21: whatsapp.v1.SendMessageRequest
-	(*SendMessageResponse)(nil),            // 22: whatsapp.v1.SendMessageResponse
-	(*SendAudioRequest)(nil),               // 23: whatsapp.v1.SendAudioRequest
-	(*SendAudioResponse)(nil),              // 24: whatsapp.v1.SendAudioResponse
-	(*SendPollRequest)(nil),                // 25: whatsapp.v1.SendPollRequest
-	(*SendPollResponse)(nil),               // 26: whatsapp.v1.SendPollResponse
-	(*UpdateGroupSubjectRequest)(nil),      // 27: whatsapp.v1.UpdateGroupSubjectRequest
-	(*UpdateGroupSubjectResponse)(nil),     // 28: whatsapp.v1.UpdateGroupSubjectResponse
-	(*UpdateGroupDescriptionRequest)(nil),  // 29: whatsapp.v1.UpdateGroupDescriptionRequest
-	(*UpdateGroupDescriptionResponse)(nil), // 30: whatsapp.v1.UpdateGroupDescriptionResponse
-	(*UpdateGroupPictureRequest)(nil),      // 31: whatsapp.v1.UpdateGroupPictureRequest
-	(*UpdateGroupPictureResponse)(nil),     // 32: whatsapp.v1.UpdateGroupPictureResponse
-	(*UpdateGroupSettingsRequest)(nil),     // 33: whatsapp.v1.UpdateGroupSettingsRequest
-	(*UpdateGroupSettingsResponse)(nil),    // 34: whatsapp.v1.UpdateGroupSettingsResponse
-	(*GetGroupInviteCodeRequest)(nil),      // 35: whatsapp.v1.GetGroupInviteCodeRequest
-	(*GetGroupInviteCodeResponse)(nil),     // 36: whatsapp.v1.GetGroupInviteCodeResponse
-	(*DownloadMediaRequest)(nil),           // 37: whatsapp.v1.DownloadMediaRequest
-	(*DownloadMediaResponse)(nil),          // 38: whatsapp.v1.DownloadMediaResponse
-	(*SetWebhookRequest)(nil),              // 39: whatsapp.v1.SetWebhookRequest
-	(*SetWebhookResponse)(nil),             // 40: whatsapp.v1.SetWebhookResponse
+	(*RequestPairingCodeRequest)(nil),      // 11: whatsapp.v1.RequestPairingCodeRequest
+	(*RequestPairingCodeResponse)(nil),     // 12: whatsapp.v1.RequestPairingCodeResponse
+	(*CheckStatusRequest)(nil),             // 13: whatsapp.v1.CheckStatusRequest
+	(*CheckStatusResponse)(nil),            // 14: whatsapp.v1.CheckStatusResponse
+	(*FetchGroupsRequest)(nil),             // 15: whatsapp.v1.FetchGroupsRequest
+	(*FetchGroupsResponse)(nil),            // 16: whatsapp.v1.FetchGroupsResponse
+	(*FetchGroupParticipantsRequest)(nil),  // 17: whatsapp.v1.FetchGroupParticipantsRequest
+	(*FetchGroupParticipantsResponse)(nil), // 18: whatsapp.v1.FetchGroupParticipantsResponse
+	(*SyncGroupsRequest)(nil),              // 19: whatsapp.v1.SyncGroupsRequest
+	(*SyncGroupsResponse)(nil),             // 20: whatsapp.v1.SyncGroupsResponse
+	(*SyncGroupsStatusRequest)(nil),        // 21: whatsapp.v1.SyncGroupsStatusRequest
+	(*SyncGroupsStatusResponse)(nil),       // 22: whatsapp.v1.SyncGroupsStatusResponse
+	(*SendMessageRequest)(nil),             // 23: whatsapp.v1.SendMessageRequest
+	(*SendMessageResponse)(nil),            // 24: whatsapp.v1.SendMessageResponse
+	(*SendAudioRequest)(nil),               // 25: whatsapp.v1.SendAudioRequest
+	(*SendAudioResponse)(nil),              // 26: whatsapp.v1.SendAudioResponse
+	(*SendPollRequest)(nil),                // 27: whatsapp.v1.SendPollRequest
+	(*SendPollResponse)(nil),               // 28: whatsapp.v1.SendPollResponse
+	(*UpdateGroupSubjectRequest)(nil),      // 29: whatsapp.v1.UpdateGroupSubjectRequest
+	(*UpdateGroupSubjectResponse)(nil),     // 30: whatsapp.v1.UpdateGroupSubjectResponse
+	(*UpdateGroupDescriptionRequest)(nil),  // 31: whatsapp.v1.UpdateGroupDescriptionRequest
+	(*UpdateGroupDescriptionResponse)(nil), // 32: whatsapp.v1.UpdateGroupDescriptionResponse
+	(*UpdateGroupPictureRequest)(nil),      // 33: whatsapp.v1.UpdateGroupPictureRequest
+	(*UpdateGroupPictureResponse)(nil),     // 34: whatsapp.v1.UpdateGroupPictureResponse
+	(*UpdateGroupSettingsRequest)(nil),     // 35: whatsapp.v1.UpdateGroupSettingsRequest
+	(*UpdateGroupSettingsResponse)(nil),    // 36: whatsapp.v1.UpdateGroupSettingsResponse
+	(*GetGroupInviteCodeRequest)(nil),      // 37: whatsapp.v1.GetGroupInviteCodeRequest
+	(*GetGroupInviteCodeResponse)(nil),     // 38: whatsapp.v1.GetGroupInviteCodeResponse
+	(*DownloadMediaRequest)(nil),           // 39: whatsapp.v1.DownloadMediaRequest
+	(*DownloadMediaResponse)(nil),          // 40: whatsapp.v1.DownloadMediaResponse
+	(*SetWebhookRequest)(nil),              // 41: whatsapp.v1.SetWebhookRequest
+	(*SetWebhookResponse)(nil),             // 42: whatsapp.v1.SetWebhookResponse
 }
 var file_whatsapp_v1_whatsapp_proto_depIdxs = []int32{
 	0,  // 0: whatsapp.v1.CheckStatusResponse.state:type_name -> whatsapp.v1.InstanceState
@@ -2734,41 +2876,43 @@ var file_whatsapp_v1_whatsapp_proto_depIdxs = []int32{
 	5,  // 5: whatsapp.v1.WhatsAppService.CreateInstance:input_type -> whatsapp.v1.CreateInstanceRequest
 	7,  // 6: whatsapp.v1.WhatsAppService.DeleteInstance:input_type -> whatsapp.v1.DeleteInstanceRequest
 	9,  // 7: whatsapp.v1.WhatsAppService.ReconnectInstance:input_type -> whatsapp.v1.ReconnectInstanceRequest
-	11, // 8: whatsapp.v1.WhatsAppService.CheckStatus:input_type -> whatsapp.v1.CheckStatusRequest
-	13, // 9: whatsapp.v1.WhatsAppService.FetchGroups:input_type -> whatsapp.v1.FetchGroupsRequest
-	15, // 10: whatsapp.v1.WhatsAppService.FetchGroupParticipants:input_type -> whatsapp.v1.FetchGroupParticipantsRequest
-	17, // 11: whatsapp.v1.WhatsAppService.SyncGroups:input_type -> whatsapp.v1.SyncGroupsRequest
-	19, // 12: whatsapp.v1.WhatsAppService.SyncGroupsStatus:input_type -> whatsapp.v1.SyncGroupsStatusRequest
-	21, // 13: whatsapp.v1.WhatsAppService.SendMessage:input_type -> whatsapp.v1.SendMessageRequest
-	23, // 14: whatsapp.v1.WhatsAppService.SendAudio:input_type -> whatsapp.v1.SendAudioRequest
-	25, // 15: whatsapp.v1.WhatsAppService.SendPoll:input_type -> whatsapp.v1.SendPollRequest
-	27, // 16: whatsapp.v1.WhatsAppService.UpdateGroupSubject:input_type -> whatsapp.v1.UpdateGroupSubjectRequest
-	29, // 17: whatsapp.v1.WhatsAppService.UpdateGroupDescription:input_type -> whatsapp.v1.UpdateGroupDescriptionRequest
-	31, // 18: whatsapp.v1.WhatsAppService.UpdateGroupPicture:input_type -> whatsapp.v1.UpdateGroupPictureRequest
-	33, // 19: whatsapp.v1.WhatsAppService.UpdateGroupSettings:input_type -> whatsapp.v1.UpdateGroupSettingsRequest
-	35, // 20: whatsapp.v1.WhatsAppService.GetGroupInviteCode:input_type -> whatsapp.v1.GetGroupInviteCodeRequest
-	37, // 21: whatsapp.v1.WhatsAppService.DownloadMedia:input_type -> whatsapp.v1.DownloadMediaRequest
-	39, // 22: whatsapp.v1.WhatsAppService.SetWebhook:input_type -> whatsapp.v1.SetWebhookRequest
-	6,  // 23: whatsapp.v1.WhatsAppService.CreateInstance:output_type -> whatsapp.v1.CreateInstanceResponse
-	8,  // 24: whatsapp.v1.WhatsAppService.DeleteInstance:output_type -> whatsapp.v1.DeleteInstanceResponse
-	10, // 25: whatsapp.v1.WhatsAppService.ReconnectInstance:output_type -> whatsapp.v1.ReconnectInstanceResponse
-	12, // 26: whatsapp.v1.WhatsAppService.CheckStatus:output_type -> whatsapp.v1.CheckStatusResponse
-	14, // 27: whatsapp.v1.WhatsAppService.FetchGroups:output_type -> whatsapp.v1.FetchGroupsResponse
-	16, // 28: whatsapp.v1.WhatsAppService.FetchGroupParticipants:output_type -> whatsapp.v1.FetchGroupParticipantsResponse
-	18, // 29: whatsapp.v1.WhatsAppService.SyncGroups:output_type -> whatsapp.v1.SyncGroupsResponse
-	20, // 30: whatsapp.v1.WhatsAppService.SyncGroupsStatus:output_type -> whatsapp.v1.SyncGroupsStatusResponse
-	22, // 31: whatsapp.v1.WhatsAppService.SendMessage:output_type -> whatsapp.v1.SendMessageResponse
-	24, // 32: whatsapp.v1.WhatsAppService.SendAudio:output_type -> whatsapp.v1.SendAudioResponse
-	26, // 33: whatsapp.v1.WhatsAppService.SendPoll:output_type -> whatsapp.v1.SendPollResponse
-	28, // 34: whatsapp.v1.WhatsAppService.UpdateGroupSubject:output_type -> whatsapp.v1.UpdateGroupSubjectResponse
-	30, // 35: whatsapp.v1.WhatsAppService.UpdateGroupDescription:output_type -> whatsapp.v1.UpdateGroupDescriptionResponse
-	32, // 36: whatsapp.v1.WhatsAppService.UpdateGroupPicture:output_type -> whatsapp.v1.UpdateGroupPictureResponse
-	34, // 37: whatsapp.v1.WhatsAppService.UpdateGroupSettings:output_type -> whatsapp.v1.UpdateGroupSettingsResponse
-	36, // 38: whatsapp.v1.WhatsAppService.GetGroupInviteCode:output_type -> whatsapp.v1.GetGroupInviteCodeResponse
-	38, // 39: whatsapp.v1.WhatsAppService.DownloadMedia:output_type -> whatsapp.v1.DownloadMediaResponse
-	40, // 40: whatsapp.v1.WhatsAppService.SetWebhook:output_type -> whatsapp.v1.SetWebhookResponse
-	23, // [23:41] is the sub-list for method output_type
-	5,  // [5:23] is the sub-list for method input_type
+	13, // 8: whatsapp.v1.WhatsAppService.CheckStatus:input_type -> whatsapp.v1.CheckStatusRequest
+	11, // 9: whatsapp.v1.WhatsAppService.RequestPairingCode:input_type -> whatsapp.v1.RequestPairingCodeRequest
+	15, // 10: whatsapp.v1.WhatsAppService.FetchGroups:input_type -> whatsapp.v1.FetchGroupsRequest
+	17, // 11: whatsapp.v1.WhatsAppService.FetchGroupParticipants:input_type -> whatsapp.v1.FetchGroupParticipantsRequest
+	19, // 12: whatsapp.v1.WhatsAppService.SyncGroups:input_type -> whatsapp.v1.SyncGroupsRequest
+	21, // 13: whatsapp.v1.WhatsAppService.SyncGroupsStatus:input_type -> whatsapp.v1.SyncGroupsStatusRequest
+	23, // 14: whatsapp.v1.WhatsAppService.SendMessage:input_type -> whatsapp.v1.SendMessageRequest
+	25, // 15: whatsapp.v1.WhatsAppService.SendAudio:input_type -> whatsapp.v1.SendAudioRequest
+	27, // 16: whatsapp.v1.WhatsAppService.SendPoll:input_type -> whatsapp.v1.SendPollRequest
+	29, // 17: whatsapp.v1.WhatsAppService.UpdateGroupSubject:input_type -> whatsapp.v1.UpdateGroupSubjectRequest
+	31, // 18: whatsapp.v1.WhatsAppService.UpdateGroupDescription:input_type -> whatsapp.v1.UpdateGroupDescriptionRequest
+	33, // 19: whatsapp.v1.WhatsAppService.UpdateGroupPicture:input_type -> whatsapp.v1.UpdateGroupPictureRequest
+	35, // 20: whatsapp.v1.WhatsAppService.UpdateGroupSettings:input_type -> whatsapp.v1.UpdateGroupSettingsRequest
+	37, // 21: whatsapp.v1.WhatsAppService.GetGroupInviteCode:input_type -> whatsapp.v1.GetGroupInviteCodeRequest
+	39, // 22: whatsapp.v1.WhatsAppService.DownloadMedia:input_type -> whatsapp.v1.DownloadMediaRequest
+	41, // 23: whatsapp.v1.WhatsAppService.SetWebhook:input_type -> whatsapp.v1.SetWebhookRequest
+	6,  // 24: whatsapp.v1.WhatsAppService.CreateInstance:output_type -> whatsapp.v1.CreateInstanceResponse
+	8,  // 25: whatsapp.v1.WhatsAppService.DeleteInstance:output_type -> whatsapp.v1.DeleteInstanceResponse
+	10, // 26: whatsapp.v1.WhatsAppService.ReconnectInstance:output_type -> whatsapp.v1.ReconnectInstanceResponse
+	14, // 27: whatsapp.v1.WhatsAppService.CheckStatus:output_type -> whatsapp.v1.CheckStatusResponse
+	12, // 28: whatsapp.v1.WhatsAppService.RequestPairingCode:output_type -> whatsapp.v1.RequestPairingCodeResponse
+	16, // 29: whatsapp.v1.WhatsAppService.FetchGroups:output_type -> whatsapp.v1.FetchGroupsResponse
+	18, // 30: whatsapp.v1.WhatsAppService.FetchGroupParticipants:output_type -> whatsapp.v1.FetchGroupParticipantsResponse
+	20, // 31: whatsapp.v1.WhatsAppService.SyncGroups:output_type -> whatsapp.v1.SyncGroupsResponse
+	22, // 32: whatsapp.v1.WhatsAppService.SyncGroupsStatus:output_type -> whatsapp.v1.SyncGroupsStatusResponse
+	24, // 33: whatsapp.v1.WhatsAppService.SendMessage:output_type -> whatsapp.v1.SendMessageResponse
+	26, // 34: whatsapp.v1.WhatsAppService.SendAudio:output_type -> whatsapp.v1.SendAudioResponse
+	28, // 35: whatsapp.v1.WhatsAppService.SendPoll:output_type -> whatsapp.v1.SendPollResponse
+	30, // 36: whatsapp.v1.WhatsAppService.UpdateGroupSubject:output_type -> whatsapp.v1.UpdateGroupSubjectResponse
+	32, // 37: whatsapp.v1.WhatsAppService.UpdateGroupDescription:output_type -> whatsapp.v1.UpdateGroupDescriptionResponse
+	34, // 38: whatsapp.v1.WhatsAppService.UpdateGroupPicture:output_type -> whatsapp.v1.UpdateGroupPictureResponse
+	36, // 39: whatsapp.v1.WhatsAppService.UpdateGroupSettings:output_type -> whatsapp.v1.UpdateGroupSettingsResponse
+	38, // 40: whatsapp.v1.WhatsAppService.GetGroupInviteCode:output_type -> whatsapp.v1.GetGroupInviteCodeResponse
+	40, // 41: whatsapp.v1.WhatsAppService.DownloadMedia:output_type -> whatsapp.v1.DownloadMediaResponse
+	42, // 42: whatsapp.v1.WhatsAppService.SetWebhook:output_type -> whatsapp.v1.SetWebhookResponse
+	24, // [24:43] is the sub-list for method output_type
+	5,  // [5:24] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name
@@ -2786,24 +2930,26 @@ func file_whatsapp_v1_whatsapp_proto_init() {
 	file_whatsapp_v1_whatsapp_proto_msgTypes[5].OneofWrappers = []any{}
 	file_whatsapp_v1_whatsapp_proto_msgTypes[7].OneofWrappers = []any{}
 	file_whatsapp_v1_whatsapp_proto_msgTypes[9].OneofWrappers = []any{}
-	file_whatsapp_v1_whatsapp_proto_msgTypes[17].OneofWrappers = []any{}
+	file_whatsapp_v1_whatsapp_proto_msgTypes[10].OneofWrappers = []any{}
+	file_whatsapp_v1_whatsapp_proto_msgTypes[11].OneofWrappers = []any{}
 	file_whatsapp_v1_whatsapp_proto_msgTypes[19].OneofWrappers = []any{}
-	file_whatsapp_v1_whatsapp_proto_msgTypes[20].OneofWrappers = []any{}
 	file_whatsapp_v1_whatsapp_proto_msgTypes[21].OneofWrappers = []any{}
 	file_whatsapp_v1_whatsapp_proto_msgTypes[22].OneofWrappers = []any{}
 	file_whatsapp_v1_whatsapp_proto_msgTypes[23].OneofWrappers = []any{}
+	file_whatsapp_v1_whatsapp_proto_msgTypes[24].OneofWrappers = []any{}
 	file_whatsapp_v1_whatsapp_proto_msgTypes[25].OneofWrappers = []any{}
 	file_whatsapp_v1_whatsapp_proto_msgTypes[27].OneofWrappers = []any{}
 	file_whatsapp_v1_whatsapp_proto_msgTypes[29].OneofWrappers = []any{}
 	file_whatsapp_v1_whatsapp_proto_msgTypes[31].OneofWrappers = []any{}
-	file_whatsapp_v1_whatsapp_proto_msgTypes[35].OneofWrappers = []any{}
+	file_whatsapp_v1_whatsapp_proto_msgTypes[33].OneofWrappers = []any{}
+	file_whatsapp_v1_whatsapp_proto_msgTypes[37].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_whatsapp_v1_whatsapp_proto_rawDesc), len(file_whatsapp_v1_whatsapp_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   38,
+			NumMessages:   40,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

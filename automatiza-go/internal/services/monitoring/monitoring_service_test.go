@@ -420,6 +420,9 @@ func (m *mockWAProvider) GetSessionStatus(_ context.Context, _ string) (*whatsap
 func (m *mockWAProvider) GetQRCode(_ context.Context, _ string) (*whatsapp.QRCodeData, error) {
 	return nil, nil
 }
+func (m *mockWAProvider) RequestPairingCode(_ context.Context, _, _ string) (string, error) {
+	return "", nil
+}
 func (m *mockWAProvider) RestartSession(_ context.Context, _ string) error { return nil }
 func (m *mockWAProvider) LogoutSession(_ context.Context, _ string) error  { return nil }
 func (m *mockWAProvider) ClearStatusCache(_ string)                        {}

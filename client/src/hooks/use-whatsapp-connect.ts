@@ -15,6 +15,8 @@ import {
   InstanceState,
   ReconnectInstanceRequestSchema,
   type ReconnectInstanceResponse,
+  RequestPairingCodeRequestSchema,
+  type RequestPairingCodeResponse,
   SendAudioRequestSchema,
   type SendAudioResponse,
   SendMessageRequestSchema,
@@ -90,6 +92,15 @@ export interface LocalCheckStatusResult {
   success: boolean;
   state: LocalInstanceState;
   qrcodeBase64?: string;
+}
+
+/**
+ * Result of requesting a phone pairing code (alternative to QR).
+ */
+export interface LocalRequestPairingCodeResult {
+  success: boolean;
+  code?: string;
+  error?: string;
 }
 
 // ============================================================
@@ -282,7 +293,11 @@ interface UseWhatsAppConnectReturn {
   createInstance: (instanceName?: string) => Promise<LocalCreateInstanceResult>;
   deleteInstance: (instanceName: string) => Promise<LocalDeleteInstanceResult>;
   reconnectInstance: (instanceName: string) => Promise<LocalReconnectInstanceResult>;
-  checkStatus: (instanceName: string) => Promise<LocalCheckStatusResult>;
+  checkStatus: (instanceName: string, skipQr?: boolean) => Promise<LocalCheckStatusResult>;
+  requestPairingCode: (params: {
+    instanceName: string;
+    phoneNumber: string;
+  }) => Promise<LocalRequestPairingCodeResult>;
 
   // Group Management
   fetchGroups: (instanceName: string) => Promise<LocalFetchGroupsResult>;
@@ -606,7 +621,13 @@ export function useWhatsAppConnect(): UseWhatsAppConnectReturn {
   });
 
   const checkStatusMutation = useMutation({
-    mutationFn: async (instanceName: string): Promise<LocalCheckStatusResult> => {
+    mutationFn: async ({
+      instanceName,
+      skipQr,
+    }: {
+      instanceName: string;
+      skipQr?: boolean;
+    }): Promise<LocalCheckStatusResult> => {
       if (!user?.id) {
         throw new Error(t('common.errors.notAuthenticated'));
       }
@@ -615,6 +636,7 @@ export function useWhatsAppConnect(): UseWhatsAppConnectReturn {
       const response: CheckStatusResponse = await client.checkStatus(
         create(CheckStatusRequestSchema, {
           instanceName,
+          skipQr,
         })
       );
 
@@ -624,6 +646,31 @@ export function useWhatsAppConnect(): UseWhatsAppConnectReturn {
     // handle errors silently. Showing a toast here causes spurious error
     // notifications when the session is temporarily unavailable during
     // disconnect or QR refresh.
+  });
+
+  const requestPairingCodeMutation = useMutation({
+    mutationFn: async ({
+      instanceName,
+      phoneNumber,
+    }: {
+      instanceName: string;
+      phoneNumber: string;
+    }): Promise<LocalRequestPairingCodeResult> => {
+      if (!user?.id) {
+        throw new Error(t('common.errors.notAuthenticated'));
+      }
+
+      const client = createClient(WhatsAppService, transport);
+      const response: RequestPairingCodeResponse = await client.requestPairingCode(
+        create(RequestPairingCodeRequestSchema, {
+          instanceName,
+          phoneNumber,
+        })
+      );
+
+      return { success: response.success, code: response.code, error: response.error };
+    },
+    // No onError toast — the AddChipModal surfaces errors inline in the code panel.
   });
 
   // ============================================================
@@ -964,10 +1011,20 @@ export function useWhatsAppConnect(): UseWhatsAppConnectReturn {
   );
 
   const checkStatus = useCallback(
-    async (instanceName: string): Promise<LocalCheckStatusResult> => {
-      return checkStatusMutation.mutateAsync(instanceName);
+    async (instanceName: string, skipQr?: boolean): Promise<LocalCheckStatusResult> => {
+      return checkStatusMutation.mutateAsync({ instanceName, skipQr });
     },
     [checkStatusMutation]
+  );
+
+  const requestPairingCode = useCallback(
+    async (params: {
+      instanceName: string;
+      phoneNumber: string;
+    }): Promise<LocalRequestPairingCodeResult> => {
+      return requestPairingCodeMutation.mutateAsync(params);
+    },
+    [requestPairingCodeMutation]
   );
 
   const fetchGroups = useCallback(
@@ -1053,6 +1110,7 @@ export function useWhatsAppConnect(): UseWhatsAppConnectReturn {
     deleteInstance,
     reconnectInstance,
     checkStatus,
+    requestPairingCode,
 
     // Group Management
     fetchGroups,
