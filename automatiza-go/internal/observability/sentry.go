@@ -63,6 +63,65 @@ var globalRateLimiter = &rateLimiter{
 	window:       60 * time.Second,
 }
 
+// eventBudget bounds ALL events leaving this process, regardless of capture path
+// (LogAndCapture, CaptureWithTags, SafeGo, sentrygin, asynq interceptor). The org
+// quota is 5k errors/month and was burned within hours of each monthly reset,
+// leaving Sentry deaf for the rest of the cycle. Enforced in BeforeSend — the one
+// choke point every path crosses.
+// ponytail: fixed 6/h ceiling (~4.3k/month worst case) with 10min per-signature
+// dedup; genuinely distinct errors beyond the budget are dropped. Upgrade path:
+// raise the org quota and delete this guard (or lift budgetMax).
+type eventBudget struct {
+	mu                sync.Mutex
+	windowStart       time.Time
+	used              int
+	lastByFingerprint map[string]time.Time
+}
+
+const (
+	budgetWindow     = time.Hour
+	budgetMax        = 6
+	fingerprintDedup = 10 * time.Minute
+)
+
+var globalEventBudget = &eventBudget{lastByFingerprint: make(map[string]time.Time)}
+
+// allow reports whether an event with the given fingerprint fits the budget.
+func (b *eventBudget) allow(fp string, now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if last, ok := b.lastByFingerprint[fp]; ok && now.Sub(last) < fingerprintDedup {
+		return false
+	}
+	if now.Sub(b.windowStart) > budgetWindow {
+		b.windowStart = now
+		b.used = 0
+	}
+	if b.used >= budgetMax {
+		return false
+	}
+	b.used++
+	b.lastByFingerprint[fp] = now
+	if len(b.lastByFingerprint) > 512 {
+		for k, t := range b.lastByFingerprint {
+			if now.Sub(t) > fingerprintDedup {
+				delete(b.lastByFingerprint, k)
+			}
+		}
+	}
+	return true
+}
+
+// eventFingerprint derives a stable identity for dedup: first exception
+// type+value when present, else the message.
+func eventFingerprint(event *sentry.Event) string {
+	if len(event.Exception) > 0 {
+		return event.Exception[0].Type + ":" + event.Exception[0].Value
+	}
+	return event.Message
+}
+
 // shouldSend returns true if the event should be sent to Sentry.
 // Returns (shouldSend, suppressedCount).
 func (rl *rateLimiter) shouldSend(key string) (bool, int) {
@@ -120,6 +179,11 @@ func InitSentry(cfg SentryConfig) error {
 			// (CaptureWithTags, CaptureMessage, interceptors): erro de estado do
 			// usuário não entra no Sentry — ver userStateErrorMarkers.
 			if isUserStateEvent(event) {
+				return nil
+			}
+			// Orçamento global ANTES do envio: ruído já filtrado acima não consome
+			// o teto; o que sobra respeita 6/h + dedup 10min por assinatura.
+			if !globalEventBudget.allow(eventFingerprint(event), time.Now()) {
 				return nil
 			}
 			return redactPII(event)
