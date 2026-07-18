@@ -491,6 +491,19 @@ func (s *Service) ReconcileChat(ctx context.Context, sessionName, chatID string)
 			break
 		}
 
+		// Sessão inexistente (chip despareado/órfão): GetMessages devolve
+		// ErrCodeSessionNotFound. Retentar é inútil — a sessão não volta sozinha
+		// (o watchdog re-pareia e o próximo tick reconcilia). Sem este break, o
+		// backoff de RetryBackoff*N (30s+60s = ~90s) segurava a goroutine do
+		// worker + o slot de semáforo por reconcile morto; com ~99% dos fetches
+		// batendo em sessões mortas, isso ocupava o pool de goroutines (active~37/40)
+		// e starvava o consumo de webhooks → eventos de espelho descartados por
+		// stale-TTL. Sai na hora e libera o pool.
+		var provErr *whatsapp.ProviderError
+		if errors.As(reconcileErr, &provErr) && provErr.Code == whatsapp.ErrCodeSessionNotFound {
+			break
+		}
+
 		s.logger.Warn("Reconciliation attempt failed",
 			zap.String("session", sessionName),
 			zap.String("chat", chatID),
