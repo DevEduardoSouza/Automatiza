@@ -4,7 +4,10 @@ import { useJobs } from '@/hooks/use-jobs';
 import { AlertCircle, HelpCircle, List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-const SchedulesIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+const SchedulesIcon = ({
+  className,
+  style,
+}: { className?: string; style?: React.CSSProperties }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
@@ -87,7 +90,6 @@ export default function JobsPage() {
                   editingJobId={jobs.editingJobId}
                   actionType={jobs.actionType}
                   scheduledDate={jobs.scheduledDate}
-                  scheduledTime={jobs.scheduledTime}
                   payload={jobs.payload}
                   mediaFile={jobs.mediaFile}
                   isEnhancing={jobs.isEnhancing}
@@ -100,10 +102,14 @@ export default function JobsPage() {
                   isPending={jobs.isPending}
                   groups={jobs.groups}
                   loadingGroups={jobs.loadingGroups}
+                  recurrence={jobs.recurrence}
+                  weekdays={jobs.weekdays}
+                  intervalDays={jobs.intervalDays}
+                  times={jobs.times}
+                  repeatUntil={jobs.repeatUntil}
                   onDialogOpenChange={jobs.setDialogOpen}
                   onActionTypeChange={jobs.setActionType}
                   onScheduledDateChange={jobs.setScheduledDate}
-                  onScheduledTimeChange={jobs.setScheduledTime}
                   onPayloadChange={jobs.setPayload}
                   onMediaFileChange={jobs.setMediaFile}
                   onMentionOpenChange={jobs.setMentionOpen}
@@ -113,11 +119,19 @@ export default function JobsPage() {
                   onToggleGroup={jobs.toggleGroup}
                   onSelectAllGroups={jobs.selectAllGroups}
                   onClearGroups={jobs.clearGroups}
+                  onToggleGroups={jobs.toggleGroups}
+                  onToggleFavorite={jobs.toggleFavorite}
                   onInsertMention={jobs.insertMention}
                   onAddPollOption={jobs.addPollOption}
                   onRemovePollOption={jobs.removePollOption}
                   onUpdatePollOption={jobs.updatePollOption}
                   onEnhanceMessage={jobs.handleEnhanceMessage}
+                  onRecurrenceChange={jobs.setRecurrence}
+                  onToggleWeekday={jobs.toggleWeekday}
+                  onIntervalChange={jobs.setIntervalDays}
+                  onAddTime={jobs.addTime}
+                  onRemoveTime={jobs.removeTime}
+                  onRepeatUntilChange={jobs.setRepeatUntil}
                   onSubmit={jobs.handleScheduleJob}
                 />
 
@@ -192,61 +206,61 @@ export default function JobsPage() {
               </div>
 
               <ErrorBoundary>
-              {jobs.loadingJobs ? (
-                <div className="flex items-center justify-center py-8">
-                  <div
-                    className="h-8 w-8 animate-spin rounded-full border-4 border-t-transparent"
-                    style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
-                  />
-                </div>
-              ) : jobs.jobs.length === 0 ? (
-                <div className="text-center py-8">
-                  <p style={{ color: colors.wineTextMuted }}>{t('pages.jobs.empty')}</p>
-                </div>
-              ) : (
-                <>
-                  <div className="hidden md:block">
-                    <JobsTable
-                      jobs={jobs.jobs}
-                      onEditJob={jobs.handleEditJob}
-                      onDeleteJob={jobs.handleDeleteJob}
-                      getStatusBadgeConfig={jobs.getStatusBadgeConfig}
-                      getActionLabel={jobs.getActionLabel}
+                {jobs.loadingJobs ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div
+                      className="h-8 w-8 animate-spin rounded-full border-4 border-t-transparent"
+                      style={{ borderColor: `${colors.wine} transparent transparent transparent` }}
                     />
                   </div>
-
-                  <div className="md:hidden">
-                    <JobsMobileList
-                      jobs={jobs.jobs}
-                      onEditJob={jobs.handleEditJob}
-                      onDeleteJob={jobs.handleDeleteJob}
-                      getStatusBadgeConfig={jobs.getStatusBadgeConfig}
-                      getActionLabel={jobs.getActionLabel}
-                    />
+                ) : jobs.jobs.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p style={{ color: colors.wineTextMuted }}>{t('pages.jobs.empty')}</p>
                   </div>
+                ) : (
+                  <>
+                    <div className="hidden md:block">
+                      <JobsTable
+                        jobs={jobs.jobs}
+                        onEditJob={jobs.handleEditJob}
+                        onDeleteJob={jobs.handleDeleteJob}
+                        getStatusBadgeConfig={jobs.getStatusBadgeConfig}
+                        getActionLabel={jobs.getActionLabel}
+                      />
+                    </div>
 
-                  <div
-                    className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3 xs:gap-0 mt-4 pt-4 border-t"
-                    style={{ borderColor: colors.wineBorder }}
-                  >
-                    <p className="text-sm" style={{ color: colors.wineTextMuted }}>
-                      {t('pages.jobs.table.showing', {
-                        count: jobs.jobs.length,
-                        total: jobs.totalCount,
-                      })}
-                    </p>
-                    {jobs.hasNextPage && (
-                      <button
-                        type="button"
-                        onClick={jobs.loadNextPage}
-                        className="inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
-                      >
-                        {t('pages.jobs.table.loadMore')}
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
+                    <div className="md:hidden">
+                      <JobsMobileList
+                        jobs={jobs.jobs}
+                        onEditJob={jobs.handleEditJob}
+                        onDeleteJob={jobs.handleDeleteJob}
+                        getStatusBadgeConfig={jobs.getStatusBadgeConfig}
+                        getActionLabel={jobs.getActionLabel}
+                      />
+                    </div>
+
+                    <div
+                      className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3 xs:gap-0 mt-4 pt-4 border-t"
+                      style={{ borderColor: colors.wineBorder }}
+                    >
+                      <p className="text-sm" style={{ color: colors.wineTextMuted }}>
+                        {t('pages.jobs.table.showing', {
+                          count: jobs.jobs.length,
+                          total: jobs.totalCount,
+                        })}
+                      </p>
+                      {jobs.hasNextPage && (
+                        <button
+                          type="button"
+                          onClick={jobs.loadNextPage}
+                          className="inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full px-4 py-2 text-xs xs:px-5 xs:py-2.5 xs:text-sm font-semibold transition-all border border-gray-300 bg-white text-[#520B27] shadow-sm hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md"
+                        >
+                          {t('pages.jobs.table.loadMore')}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
               </ErrorBoundary>
             </div>
 
