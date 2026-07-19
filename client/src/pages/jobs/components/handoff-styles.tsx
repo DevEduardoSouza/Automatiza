@@ -19,6 +19,7 @@ export function HandoffStyles() {
       .hf-yeartitle:hover { background:#FBF5F7; }
       .hf-cta:not(:disabled):hover { background:#6B1C3D; }
       .hf-search:focus-within { border-color:#7D2248; }
+      .hf-input:focus { border-color:#7D2248; }
     `}</style>
   );
 }

@@ -21,6 +21,9 @@ interface GroupPickerProps {
   onClearAll: () => void;
   onToggleGroups: (ids: string[], selected: boolean) => void;
   onToggleFavorite?: (id: string, next: boolean) => void;
+  // Quando fornecido, mostra o badge "→ #N" (ordem de seleção) nas linhas
+  // marcadas — usado pelo modal de múltiplos grupos para a numeração do rename.
+  orderOf?: (id: string) => number | null;
 }
 
 interface PickerGroup {
@@ -105,6 +108,7 @@ export function GroupPicker({
   onClearAll,
   onToggleGroups,
   onToggleFavorite,
+  orderOf,
 }: GroupPickerProps) {
   const { t } = useTranslation();
   const debounced = useDebouncedValue(searchTerm, 250).trim().toLowerCase();
@@ -479,6 +483,14 @@ export function GroupPicker({
                           >
                             {g.name}
                           </span>
+                          {on && orderOf?.(g.id) != null && (
+                            <span
+                              className="ml-auto whitespace-nowrap"
+                              style={{ fontSize: 11, fontWeight: 700, color: T.ink, opacity: 0.45 }}
+                            >
+                              → #{orderOf(g.id)}
+                            </span>
+                          )}
                         </button>
                         <button
                           type="button"

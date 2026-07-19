@@ -1339,6 +1339,37 @@
           "description": "Os participantes de cada grupo serão buscados dinamicamente no momento do envio. Certifique-se de que você tem permissão para visualizar os membros dos grupos."
         },
         "scheduleCount": "Agendar Ações para {{count}} Grupo(s)",
+        "handoff": {
+          "descriptionFull": "Configure múltiplas ações para vários grupos e agende para uma data/hora específica.",
+          "orderHelper": "Os grupos receberão numeração na ordem: #1, #2, #3…",
+          "actionsTitle": "Ações nos grupos",
+          "actionsHint": "(preencha só o que deseja alterar)",
+          "baseNameLabel": "Nome base dos grupos",
+          "statusLabel": "Status dos grupos",
+          "descriptionLabel": "Descrição dos grupos",
+          "photoLabel": "Foto dos grupos",
+          "messageLabel": "Mensagem",
+          "statusOpenAction": "Abrir grupos (todos enviam)",
+          "statusClosedAction": "Fechar grupos (só admins enviam)",
+          "namePreview": "Ficará: {{name}} #1, {{name}} #2…",
+          "namePreviewDefault": "Os grupos serão renomeados com numeração sequencial.",
+          "descriptionPlaceholder": "Ex: Grupo exclusivo para ofertas e descontos diários da Shopee",
+          "chooseFile": "Escolher arquivo",
+          "noFile": "Nenhum arquivo escolhido — PNG ou JPG",
+          "messageHint": "Use @todos para mencionar todos os membros.",
+          "charCount": "{{count}} caracteres",
+          "summary": {
+            "prefix": "Resumo:",
+            "noAction": "nenhuma ação configurada ainda",
+            "groups": "{{count}} grupo(s)",
+            "rename": "renomear para \"{{name}} #1, #2…\"",
+            "description": "atualizar descrição",
+            "open": "abrir grupos",
+            "close": "fechar grupos",
+            "photo": "trocar foto",
+            "message": "enviar mensagem"
+          }
+        },
         "photoSelected": "Foto selecionada",
         "success": {
           "scheduled": "Ações agendadas!",

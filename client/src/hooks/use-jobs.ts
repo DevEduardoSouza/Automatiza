@@ -41,7 +41,7 @@ const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.
  * "repetir até" (ou o horizonte), pulando horários já passados e limitando o
  * total. Retorna Dates locais prontos para virar jobs single-shot.
  */
-function buildOccurrences(opts: {
+export function buildOccurrences(opts: {
   recurrence: RecurrenceType;
   scheduledDate: string;
   timeList: string[];
