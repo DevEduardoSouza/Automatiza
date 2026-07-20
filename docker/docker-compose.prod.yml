@@ -243,7 +243,11 @@ services:
     environment:
       WAHA_UPSTREAMS: "waha-1=http://waha:3000,waha-2=http://waha-2:3000"
       WAHA_API_KEY: ${WAHA_API_KEY}
-      WAHA_CAP: "367"
+      # 450: patamar já demonstrado em produção (waha-1 rodou 438 sessões a
+      # ~64% do mem_limit de 28g). Guarda de saturação por memória (90%) segue
+      # ativa via push da sentinela. Acima de ~500/shard a margem de pico
+      # encolhe — a resposta certa passa a ser o 3º shard, não subir isto.
+      WAHA_CAP: "450"
       # ---- Intelligent new-session routing (health-score based) ----------------
       # New sessions go to the HEALTHIEST non-saturated shard by a multi-factor
       # score (memory, CPU, connected sessions, errors, churn, latency, activity,
