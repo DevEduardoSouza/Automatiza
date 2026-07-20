@@ -8,6 +8,7 @@ package whatsapp
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -866,6 +867,11 @@ const (
 	// ErrCodeCircuitBreakerOpen indicates the circuit breaker is open and blocking requests.
 	ErrCodeCircuitBreakerOpen ErrorCode = "CIRCUIT_BREAKER_OPEN"
 
+	// ErrCodeChipRestricted indicates the per-chip send breaker is open after
+	// consecutive WhatsApp 420 refusals; the send was blocked before reaching
+	// WAHA (retrying a restricted number deepens the restriction).
+	ErrCodeChipRestricted ErrorCode = "CHIP_RESTRICTED"
+
 	// ErrCodeProviderError indicates a provider-specific error.
 	ErrCodeProviderError ErrorCode = "PROVIDER_ERROR"
 
@@ -883,6 +889,13 @@ func NewProviderError(code ErrorCode, message string, cause error) *ProviderErro
 		Message: message,
 		Cause:   cause,
 	}
+}
+
+// IsChipRestricted reports whether err is a ProviderError with
+// ErrCodeChipRestricted (send blocked by the per-chip 420 breaker).
+func IsChipRestricted(err error) bool {
+	var pe *ProviderError
+	return errors.As(err, &pe) && pe.Code == ErrCodeChipRestricted
 }
 
 // WithDetails adds details to the error.

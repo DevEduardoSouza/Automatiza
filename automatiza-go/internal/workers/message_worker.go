@@ -300,7 +300,7 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 		// Desfecho ambíguo (timeout/cancelamento) fica de fora — o WAHA pode ter
 		// entregue imagem+legenda mesmo assim, e reenviar por texto duplica a
 		// promoção no grupo (mesmo guard do ramo link-preview acima).
-		if sendErr != nil && !whatsapp.IsAmbiguousOutcome(sendErr) {
+		if sendErr != nil && !whatsapp.IsAmbiguousOutcome(sendErr) && !whatsapp.IsChipRestricted(sendErr) {
 			w.logger.Warn("Image send failed, falling back to text-only",
 				zap.String("automationID", data.AutomationID),
 				zap.String("imageURL", *data.ImageURL),
@@ -368,6 +368,21 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 				w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
 					"status": "failed",
 					"error":  "Instancia nao encontrada",
+				})
+				return nil // Don't retry
+
+			case whatsapp.ErrCodeChipRestricted:
+				// Per-chip 420 breaker open: WhatsApp is actively refusing this
+				// number and every extra attempt deepens the restriction. Skip
+				// terminally (no retry) — the breaker half-opens by itself.
+				w.logger.Warn("Chip restricted by WhatsApp (420 circuit open), skipping send",
+					zap.String("automationID", data.AutomationID),
+					zap.String("instanceName", data.InstanceName),
+					zap.String("groupId", data.GroupID))
+				w.updateHistoryStatus(ctx, data.HistoryID, "skipped")
+				w.updateDispatchLog(ctx, data.DispatchLogID, map[string]interface{}{
+					"status": "skipped",
+					"error":  "Chip restrito pelo WhatsApp (circuito 420 aberto)",
 				})
 				return nil // Don't retry
 

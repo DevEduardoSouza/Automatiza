@@ -26,6 +26,12 @@ const (
 // aqui, no momento do erro, com a sessão em mãos.
 const restrictedChipMarker = "server returned error 420"
 
+// IsRestrictedChipErr reports whether err carries the WhatsApp 420 restriction
+// signature (chip actively refused by the media/message server).
+func IsRestrictedChipErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), restrictedChipMarker)
+}
+
 // RestrictedChipRecorder anota, por sessão, envios recusados com erro 420 —
 // alimenta o card "Chips restritos" do painel de suporte. Nil-safe e
 // fail-open como o UploadPacer: QUALQUER erro de Redis é engolido (log debug);

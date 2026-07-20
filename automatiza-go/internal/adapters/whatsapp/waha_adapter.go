@@ -258,6 +258,15 @@ type WahaAdapter struct {
 	cbThreshold     int
 	cbBackoffTime   time.Duration
 
+	// Per-session send breakers for WhatsApp 420 refusals (restricted chip).
+	// Separate map from circuitBreakers: that one gates GetSessionStatus with
+	// its own thresholds. Insisting on a restricted number deepens the block,
+	// so after sendBreakerThreshold consecutive 420s the send is short-circuited
+	// for sendBreakerBackoff. Kill-switch: SEND_420_BREAKER=off.
+	sendBreakers  map[string]*circuitBreaker
+	sbMu          sync.RWMutex
+	sendBreakerOn bool
+
 	// retryEnabled controls whether network retries with backoff are enabled.
 	// Controlled by WAHA_RETRY_ENABLED env var (default: true).
 	retryEnabled bool
@@ -377,6 +386,66 @@ func (a *WahaAdapter) ClearAllCircuitBreakers() {
 	a.circuitBreakers = make(map[string]*circuitBreaker)
 }
 
+// Send breaker tuning: 3 consecutive 420s open the circuit for 15min. Half-open
+// after backoff allows up to threshold probes per cycle (~12 attempts/h/chip vs
+// the ~40/h observed on a restricted chip), so recovery is automatic once
+// WhatsApp lifts the restriction.
+const (
+	sendBreakerThreshold = 3
+	sendBreakerBackoff   = 15 * time.Minute
+)
+
+// getOrCreateSendBreaker returns the per-session 420 send breaker, creating one
+// lazily (double-checked locking, mirrors getOrCreateCircuitBreaker).
+func (a *WahaAdapter) getOrCreateSendBreaker(sessionName string) *circuitBreaker {
+	a.sbMu.RLock()
+	cb, ok := a.sendBreakers[sessionName]
+	a.sbMu.RUnlock()
+	if ok {
+		return cb
+	}
+
+	a.sbMu.Lock()
+	defer a.sbMu.Unlock()
+	cb, ok = a.sendBreakers[sessionName]
+	if ok {
+		return cb
+	}
+	cb = newCircuitBreaker(sendBreakerThreshold, sendBreakerBackoff)
+	a.sendBreakers[sessionName] = cb
+	return cb
+}
+
+// blockIfChipRestricted short-circuits a send when the session's 420 breaker is
+// open, before any WAHA/status call is spent on it.
+func (a *WahaAdapter) blockIfChipRestricted(sessionName string) error {
+	if !a.sendBreakerOn {
+		return nil
+	}
+	if a.getOrCreateSendBreaker(sessionName).canRequest() {
+		return nil
+	}
+	a.logger.Warn("send blocked: chip restricted by WhatsApp (420 circuit open)",
+		zap.String("session", sessionName))
+	return NewProviderError(ErrCodeChipRestricted,
+		fmt.Sprintf("session '%s' is being refused by WhatsApp (error 420); send circuit open", sessionName),
+		nil)
+}
+
+// noteSendOutcome feeds the session's 420 breaker: a 420-signature error counts
+// as a failure, any success resets the streak, other errors are neutral.
+func (a *WahaAdapter) noteSendOutcome(sessionName string, err error) {
+	if !a.sendBreakerOn {
+		return
+	}
+	switch {
+	case err == nil:
+		a.getOrCreateSendBreaker(sessionName).recordSuccess()
+	case IsRestrictedChipErr(err):
+		a.getOrCreateSendBreaker(sessionName).recordFailure()
+	}
+}
+
 // statusCacheEntry holds cached session status with expiration.
 type statusCacheEntry struct {
 	info      *SessionInfo
@@ -487,6 +556,13 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 		mediaJitter = false
 	}
 
+	// Per-chip 420 send breaker. Default ON; kill-switch SEND_420_BREAKER=off/0.
+	sendBreakerOn := true
+	if v := os.Getenv("SEND_420_BREAKER"); v == "off" || v == "false" || v == "0" {
+		sendBreakerOn = false
+		namedLogger.Info("per-chip 420 send breaker is DISABLED via SEND_420_BREAKER env var")
+	}
+
 	return &WahaAdapter{
 		mediaJitter:    mediaJitter,
 		apiURL:         cfg.APIURL,
@@ -504,6 +580,8 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 		circuitBreakers: make(map[string]*circuitBreaker),
 		cbThreshold:     3,                // 3 failures before opening circuit
 		cbBackoffTime:   60 * time.Second, // 60s backoff (aligned with watchdog CheckInterval)
+		sendBreakers:    make(map[string]*circuitBreaker),
+		sendBreakerOn:   sendBreakerOn,
 		retryEnabled:    retryEnabled,
 		retryCfg:        defaultRetryConfig(),
 	}, nil
@@ -1407,6 +1485,11 @@ func (a *WahaAdapter) requireWorkingSession(ctx context.Context, sessionName str
 
 // SendText sends a text message to a chat.
 func (a *WahaAdapter) SendText(ctx context.Context, input SendTextInput) (*MessageResult, error) {
+	// Chip being refused by WhatsApp (420 circuit open): stop hammering it.
+	if err := a.blockIfChipRestricted(input.SessionName); err != nil {
+		return nil, err
+	}
+
 	// Check session is working before sending
 	if err := a.requireWorkingSession(ctx, input.SessionName); err != nil {
 		return nil, err
@@ -1423,8 +1506,10 @@ func (a *WahaAdapter) SendText(ctx context.Context, input SendTextInput) (*Messa
 	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sendText", payload)
 	if err != nil {
 		a.restrictedRecorder.Note(ctx, input.SessionName, err)
+		a.noteSendOutcome(input.SessionName, err)
 		return nil, fmt.Errorf("failed to send text message: %w", err)
 	}
+	a.noteSendOutcome(input.SessionName, nil)
 
 	result, err := a.parseMessageResult(resp)
 	if err != nil {
@@ -1441,6 +1526,11 @@ func (a *WahaAdapter) SendText(ctx context.Context, input SendTextInput) (*Messa
 
 // SendImage sends an image message with optional caption.
 func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*MessageResult, error) {
+	// Chip being refused by WhatsApp (420 circuit open): stop hammering it.
+	if err := a.blockIfChipRestricted(input.SessionName); err != nil {
+		return nil, err
+	}
+
 	// Check session is working before sending
 	if err := a.requireWorkingSession(ctx, input.SessionName); err != nil {
 		return nil, err
@@ -1510,8 +1600,10 @@ func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*Mes
 	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sendImage", payload)
 	if err != nil {
 		a.restrictedRecorder.Note(ctx, input.SessionName, err)
+		a.noteSendOutcome(input.SessionName, err)
 		return nil, fmt.Errorf("failed to send image message: %w", err)
 	}
+	a.noteSendOutcome(input.SessionName, nil)
 
 	result, err := a.parseMessageResult(resp)
 	if err != nil {
