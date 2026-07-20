@@ -2022,11 +2022,41 @@ func TestProcessMonitorMode_ValidMonitorInvalidTarget(t *testing.T) {
 	}
 
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Config permanente → auto-pause (ver TestProcessListMode_NoMlLinkListID).
+	deps.automationRepo.On("UpdateAutomation", mock.Anything, "auto-1", mock.MatchedBy(func(u map[string]interface{}) bool {
+		return u["status"] == models.AutomationStatusPaused && u["last_error"] != nil
+	})).Return(nil).Once()
 
 	result, err := svc.processMonitorMode(context.Background(), automation)
 	require.NoError(t, err)
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Message, "grupo de destino valido")
+	deps.automationRepo.AssertExpectations(t)
+}
+
+func TestProcessOfferGenerateMode_NoMonitorGroupsPauses(t *testing.T) {
+	t.Parallel()
+	svc, deps := newInternalTestService(t)
+
+	automation := &models.Automation{
+		ID:              "auto-1",
+		UserID:          "user-1",
+		Name:            "Offer Test",
+		MonitorGroupIDs: []string{}, // No monitor groups
+		GroupIDs:        []string{"target@g.us"},
+	}
+
+	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Config permanente → auto-pause (ver TestProcessListMode_NoMlLinkListID).
+	deps.automationRepo.On("UpdateAutomation", mock.Anything, "auto-1", mock.MatchedBy(func(u map[string]interface{}) bool {
+		return u["status"] == models.AutomationStatusPaused && u["last_error"] != nil
+	})).Return(nil).Once()
+
+	result, err := svc.processOfferGenerateMode(context.Background(), automation)
+	require.NoError(t, err)
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Message, "grupo de monitoramento")
+	deps.automationRepo.AssertExpectations(t)
 }
 
 func TestProcessMonitorMode_NoConnectedInstance(t *testing.T) {

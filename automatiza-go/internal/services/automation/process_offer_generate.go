@@ -40,9 +40,7 @@ func (s *automationService) processOfferGenerateMode(ctx context.Context, automa
 	// 1. Validate monitor groups are configured
 	monitorGroupIDs := automation.MonitorGroupIDs
 	if len(monitorGroupIDs) == 0 {
-		result.Message = "Nenhum grupo de monitoramento configurado. Configure pelo menos um grupo para monitorar."
-		s.logDispatch(ctx, automation, "system", "config:monitor_groups", "error", result.Message)
-		return result, nil
+		return s.pauseForConfigError(ctx, automation, "Nenhum grupo de monitoramento configurado. Configure pelo menos um grupo para monitorar."), nil
 	}
 
 	validMonitorGroups := make([]string, 0, len(monitorGroupIDs))
@@ -53,17 +51,13 @@ func (s *automationService) processOfferGenerateMode(ctx context.Context, automa
 	}
 
 	if len(validMonitorGroups) == 0 {
-		result.Message = "Nenhum grupo de monitoramento valido. Os grupos devem ser grupos do WhatsApp (@g.us)."
-		s.logDispatch(ctx, automation, "system", "config:monitor_groups", "error", result.Message)
-		return result, nil
+		return s.pauseForConfigError(ctx, automation, "Nenhum grupo de monitoramento valido. Os grupos devem ser grupos do WhatsApp (@g.us)."), nil
 	}
 
 	// 2. Validate target/destination groups
 	targetGroups := automation.GetTargetGroups()
 	if len(targetGroups) == 0 {
-		result.Message = "Nenhum grupo de destino configurado. Configure pelo menos um grupo para enviar as ofertas."
-		s.logDispatch(ctx, automation, "system", "config:target_groups", "error", result.Message)
-		return result, nil
+		return s.pauseForConfigError(ctx, automation, "Nenhum grupo de destino configurado. Configure pelo menos um grupo para enviar as ofertas."), nil
 	}
 
 	validTargetGroups := make([]string, 0, len(targetGroups))
@@ -74,16 +68,12 @@ func (s *automationService) processOfferGenerateMode(ctx context.Context, automa
 	}
 
 	if len(validTargetGroups) == 0 {
-		result.Message = "Nenhum grupo de destino valido. Os grupos devem ser grupos do WhatsApp (@g.us)."
-		s.logDispatch(ctx, automation, "system", "config:target_groups", "error", result.Message)
-		return result, nil
+		return s.pauseForConfigError(ctx, automation, "Nenhum grupo de destino valido. Os grupos devem ser grupos do WhatsApp (@g.us)."), nil
 	}
 
 	// 3. Validate dispatch_text_id is configured (required for offer_generate)
 	if automation.DispatchTextID == nil || *automation.DispatchTextID == "" {
-		result.Message = "Template de texto obrigatorio para o modo Gerar Oferta. Configure um template de despacho."
-		s.logDispatch(ctx, automation, "system", "config:dispatch_text", "error", result.Message)
-		return result, nil
+		return s.pauseForConfigError(ctx, automation, "Template de texto obrigatorio para o modo Gerar Oferta. Configure um template de despacho."), nil
 	}
 
 	// 4. Verify WhatsApp instance is connected

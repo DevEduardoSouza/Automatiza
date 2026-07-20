@@ -46,9 +46,7 @@ func (s *automationService) processMonitorMode(ctx context.Context, automation *
 	// 1. Validate monitor groups are configured
 	monitorGroupIDs := automation.MonitorGroupIDs
 	if len(monitorGroupIDs) == 0 {
-		result.Message = "Nenhum grupo de monitoramento configurado. Configure pelo menos um grupo para monitorar."
-		s.logDispatch(ctx, automation, "system", "config:monitor_groups", "error", result.Message)
-		return result, nil
+		return s.pauseForConfigError(ctx, automation, "Nenhum grupo de monitoramento configurado. Configure pelo menos um grupo para monitorar."), nil
 	}
 
 	// Validate monitor group JIDs
@@ -60,17 +58,13 @@ func (s *automationService) processMonitorMode(ctx context.Context, automation *
 	}
 
 	if len(validMonitorGroups) == 0 {
-		result.Message = "Nenhum grupo de monitoramento valido. Os grupos devem ser grupos do WhatsApp (@g.us)."
-		s.logDispatch(ctx, automation, "system", "config:monitor_groups", "error", result.Message)
-		return result, nil
+		return s.pauseForConfigError(ctx, automation, "Nenhum grupo de monitoramento valido. Os grupos devem ser grupos do WhatsApp (@g.us)."), nil
 	}
 
 	// 2. Validate target/destination groups are configured
 	targetGroups := automation.GetTargetGroups()
 	if len(targetGroups) == 0 {
-		result.Message = "Nenhum grupo de destino configurado. Configure pelo menos um grupo para enviar as mensagens."
-		s.logDispatch(ctx, automation, "system", "config:target_groups", "error", result.Message)
-		return result, nil
+		return s.pauseForConfigError(ctx, automation, "Nenhum grupo de destino configurado. Configure pelo menos um grupo para enviar as mensagens."), nil
 	}
 
 	// Validate target group JIDs
@@ -82,9 +76,7 @@ func (s *automationService) processMonitorMode(ctx context.Context, automation *
 	}
 
 	if len(validTargetGroups) == 0 {
-		result.Message = "Nenhum grupo de destino valido. Os grupos devem ser grupos do WhatsApp (@g.us)."
-		s.logDispatch(ctx, automation, "system", "config:target_groups", "error", result.Message)
-		return result, nil
+		return s.pauseForConfigError(ctx, automation, "Nenhum grupo de destino valido. Os grupos devem ser grupos do WhatsApp (@g.us)."), nil
 	}
 
 	// 3. Verify WhatsApp instance is connected
