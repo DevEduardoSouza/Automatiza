@@ -21,7 +21,15 @@ else
     DB_PORT="${2:-${DB_PORT:-5432}}"
     DB_USER="${3:-${DB_USER:-automatiza}}"
     DB_NAME="${4:-${DB_NAME:-automatiza}}"
-    PSQL_CMD="psql -v ON_ERROR_STOP=0 -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
+    # ON_ERROR_STOP=1 (produção): erro de SQL aborta o psql com exit != 0, o
+    # arquivo NÃO entra no ledger e o deploy FALHA ruidosamente (o CI não
+    # mascara mais — deploy.yml). Antes (=0) a migração quebrada saía com
+    # exit 0, era gravada como aplicada e o drift ficava invisível até virar
+    # incidente (precedente: constraint 23514 / migração 071). Migração deve
+    # ser idempotente (IF NOT EXISTS etc.) — regra do repo, agora mecânica.
+    # NÃO adicionar -1/single-transaction: CREATE INDEX CONCURRENTLY não roda
+    # em transação.
+    PSQL_CMD="psql -v ON_ERROR_STOP=1 -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
 fi
 
 echo "=== Running database migrations ==="
@@ -56,11 +64,12 @@ if [ "${#MIGRATION_FILES[@]}" -eq 0 ]; then
 fi
 
 # Applied-migrations ledger: with 135+ files, re-running every one on every
-# deploy cost ~60s of the pipeline. A file is recorded only when psql exits 0
-# (ON_ERROR_STOP=0 keeps exit 0 on ignorable SQL errors — same tolerance as
-# the old always-rerun behavior; a connection failure exits non-zero, is NOT
-# recorded, and gets retried next run). If the ledger itself is unreachable,
-# APPLIED stays empty and we fall back to running everything, exactly as before.
+# deploy cost ~60s of the pipeline. A file is recorded only when psql exits 0.
+# Em produção (ON_ERROR_STOP=1) qualquer erro — de SQL ou de conexão — sai
+# non-zero, NÃO é gravado e ABORTA o script (migrações seguintes podem
+# depender da que falhou); o deploy fica vermelho e a migração é re-tentada
+# no próximo run. If the ledger itself is unreachable, APPLIED stays empty
+# and we fall back to running everything, exactly as before.
 TRACK_TABLE="_deploy_migrations"
 $PSQL_CMD -q -c "CREATE TABLE IF NOT EXISTS ${TRACK_TABLE} (filename text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())" >/dev/null 2>&1 || true
 APPLIED=$($PSQL_CMD -tA -c "SELECT filename FROM ${TRACK_TABLE}" 2>/dev/null || true)
@@ -75,6 +84,12 @@ for migration in "${MIGRATION_FILES[@]}"; do
     echo "  Applying: ${migration}"
     if $PSQL_CMD -f "$filepath" 2>&1; then
         $PSQL_CMD -q -c "INSERT INTO ${TRACK_TABLE} (filename) VALUES ('${migration}') ON CONFLICT (filename) DO NOTHING" >/dev/null 2>&1 || true
+    else
+        # A condição do if é imune ao set -e: sem este else, uma migração
+        # quebrada seguiria para as próximas e o script sairia 0 (falha
+        # silenciosa de novo). Aborta aqui — o CI trata como deploy vermelho.
+        echo "  ERROR: migration failed: ${migration}" >&2
+        exit 1
     fi
 done
 

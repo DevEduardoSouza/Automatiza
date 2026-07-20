@@ -513,7 +513,21 @@ jobs:
 
           echo "=== Running migrations ==="
           # -T + </dev/null: belt and suspenders against stdin/TTY capture.
-          docker compose run --rm -T migrate </dev/null || echo "WARNING: Migrations returned non-zero exit code (may be OK if idempotent)"
+          # Migração quebrada = deploy ABORTA (run-migrations.sh agora roda com
+          # ON_ERROR_STOP=1 e sai non-zero). Antes o erro era mascarado e o
+          # código novo subia sem o schema que esperava (precedente: 23514/071).
+          # O .env já aponta para as imagens NOVAS neste ponto — restaura os
+          # pins antigos de .env.prev antes de sair, para o trap religar o
+          # worker com a imagem ANTIGA (consistente com o schema não migrado).
+          if ! docker compose run --rm -T migrate </dev/null; then
+            echo "ERROR: migrations failed — restoring previous image pins and aborting deploy"
+            wait "$WORKER_STOP" || true
+            if [ -f .env.prev ]; then
+              cp .env.prev .env
+              export $(grep -E '^(BACKEND_IMAGE|FRONTEND_IMAGE)=' .env | xargs)
+            fi
+            exit 1
+          fi
 
           wait "$WORKER_STOP" || true
           echo "Worker drained."

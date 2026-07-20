@@ -919,3 +919,40 @@ func TestDispatchLogRepository_ConcurrentDedup(t *testing.T) {
 		assert.Equal(t, 1, createdCount, "expected exactly one log to be created")
 	})
 }
+
+// =============================================================================
+// DeleteOldLogsByStatus (batched) Tests
+// =============================================================================
+
+// TestDispatchLogRepository_DeleteOldLogsByStatus_Batched prova que o delete em
+// lotes (ctid + LIMIT 50000) atravessa mais de um lote, respeita o corte de
+// idade e não toca em outros status — a checagem executável da lógica de loop.
+func TestDispatchLogRepository_DeleteOldLogsByStatus_Batched(t *testing.T) {
+	tdb := setupDispatchLogTestDB(t)
+	defer tdb.cleanup(t)
+
+	repo := NewDispatchLogRepository(tdb.db, zap.NewNop())
+	ctx := context.Background()
+
+	// 120.001 linhas 'skipped' velhas (3 lotes: 50k + 50k + 20.001), mais
+	// linhas que DEVEM sobrar: 'skipped' recente e 'sent' velha.
+	_, err := tdb.pool.Exec(ctx, `
+		INSERT INTO dispatch_logs (user_id, group_id, status, error, created_at)
+		SELECT 'user-batch', 'group-1', 'skipped', 'dedupe', NOW() - INTERVAL '10 days'
+		FROM generate_series(1, 120001)`)
+	require.NoError(t, err)
+	_, err = tdb.pool.Exec(ctx, `
+		INSERT INTO dispatch_logs (user_id, group_id, status, error, created_at) VALUES
+		('user-batch', 'group-1', 'skipped', 'dedupe', NOW() - INTERVAL '1 hour'),
+		('user-batch', 'group-1', 'sent', NULL, NOW() - INTERVAL '10 days')`)
+	require.NoError(t, err)
+
+	deleted, err := repo.DeleteOldLogsByStatus(ctx, "skipped", 3*24*time.Hour)
+	require.NoError(t, err)
+	assert.Equal(t, int64(120001), deleted, "deve deletar exatamente as skipped velhas, em 3 lotes")
+
+	var remaining int
+	require.NoError(t, tdb.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM dispatch_logs WHERE user_id = 'user-batch'`).Scan(&remaining))
+	assert.Equal(t, 2, remaining, "skipped recente e sent velha devem sobrar")
+}

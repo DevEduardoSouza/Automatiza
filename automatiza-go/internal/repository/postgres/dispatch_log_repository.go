@@ -385,17 +385,39 @@ func (r *dispatchLogRepository) DeleteOldLogs(ctx context.Context, olderThan tim
 	return result.RowsAffected(), nil
 }
 
-// DeleteOldLogsByStatus deletes dispatch logs with a specific status older than the given duration.
+// DeleteOldLogsByStatus deletes dispatch logs with a specific status older than
+// the given duration. Apaga em lotes (ctid + LIMIT, mesmo padrão de
+// CleanupUnrecoverable em webhook_events) em vez de um DELETE único: com
+// milhões de linhas expirando de uma vez, o single-shot segurava lock/WAL/IO
+// e, se estourasse o ctx de 5min do cron, dava rollback de TUDO — o lote
+// commita a cada iteração, então progresso parcial sobrevive ao timeout e o
+// restante sai na próxima rodada diária.
 func (r *dispatchLogRepository) DeleteOldLogsByStatus(ctx context.Context, status string, olderThan time.Duration) (int64, error) {
-	query := `DELETE FROM dispatch_logs WHERE status = $1 AND created_at < $2`
 	cutoff := time.Now().Add(-olderThan)
+	const batch = 50000
+	query := `
+		DELETE FROM dispatch_logs WHERE ctid IN (
+			SELECT ctid FROM dispatch_logs
+			WHERE status = $1 AND created_at < $2
+			LIMIT $3
+		)`
 
-	result, err := r.db.pool.Exec(ctx, query, status, cutoff)
-	if err != nil {
-		return 0, err
+	var total int64
+	for i := 0; i < 120; i++ { // teto de 6M linhas por execução (roda diariamente)
+		result, err := r.db.pool.Exec(ctx, query, status, cutoff, batch)
+		if err != nil {
+			// Devolve o progresso já commitado junto com o erro: o caller loga
+			// e a próxima rodada diária continua de onde parou.
+			return total, err
+		}
+		n := result.RowsAffected()
+		total += n
+		if n < batch {
+			break
+		}
 	}
 
-	return result.RowsAffected(), nil
+	return total, nil
 }
 
 // DeleteRecentByAutomation deletes dispatch logs for an automation within the last N days
