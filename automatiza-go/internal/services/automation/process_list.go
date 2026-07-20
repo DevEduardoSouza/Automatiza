@@ -84,12 +84,8 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 
 	// Validate ml_link_list_id is configured
 	if automation.MlLinkListID == nil || strings.TrimSpace(*automation.MlLinkListID) == "" {
-		errMsg := "Selecione uma Lista de Links para usar no modo Lista."
-		s.logDispatch(ctx, automation, "system", "https://error.log", "error", errMsg)
-		return &models.RunAutomationResult{
-			Success: false,
-			Message: errMsg,
-		}, nil
+		return s.pauseForConfigError(ctx, automation,
+			"Selecione uma Lista de Links para usar no modo Lista."), nil
 	}
 
 	listID := strings.TrimSpace(*automation.MlLinkListID)
@@ -97,12 +93,8 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 	// Validate target groups are configured
 	targetGroups := automation.GetTargetGroups()
 	if len(targetGroups) == 0 {
-		errMsg := "Nenhum grupo de envio configurado. Configure pelo menos um grupo na automacao."
-		s.logDispatch(ctx, automation, "system", "https://error.log", "error", errMsg)
-		return &models.RunAutomationResult{
-			Success: false,
-			Message: errMsg,
-		}, nil
+		return s.pauseForConfigError(ctx, automation,
+			"Nenhum grupo de envio configurado. Configure pelo menos um grupo na automacao."), nil
 	}
 
 	// Filter to only valid WhatsApp group JIDs
@@ -114,12 +106,8 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 	}
 
 	if len(validGroups) == 0 {
-		errMsg := "Nenhum grupo valido configurado. Os grupos devem terminar com @g.us."
-		s.logDispatch(ctx, automation, "system", "https://error.log", "error", errMsg)
-		return &models.RunAutomationResult{
-			Success: false,
-			Message: errMsg,
-		}, nil
+		return s.pauseForConfigError(ctx, automation,
+			"Nenhum grupo valido configurado. Os grupos devem terminar com @g.us."), nil
 	}
 
 	// Get connected WhatsApp instance
@@ -1124,4 +1112,35 @@ func (s *automationService) buildListModeMessage(
 	}
 
 	return text.NormalizeOutgoingWhatsAppText(message)
+}
+
+// pauseForConfigError pausa a automação por erro de CONFIGURAÇÃO permanente
+// (sem lista selecionada, sem grupo válido): o erro re-dispara idêntico a cada
+// ciclo do cron para sempre — deixar ativa só acumula dispatch_logs de erro
+// (21/h medidos em 20/07). MESMO contrato da pausa por credencial (acima,
+// isShopeeCredentialEnrichError): logDispatch failed + status paused +
+// last_error acionável. A reativação limpa last_error automaticamente quando
+// o usuário corrige e religa o toggle (automations_handler, paused→active).
+func (s *automationService) pauseForConfigError(ctx context.Context, automation *models.Automation, errMsg string) *models.RunAutomationResult {
+	pausedMsg := errMsg + " Automacao pausada; corrija a configuracao e reative."
+	s.logger.Warn("Config error in LIST automation — pausing",
+		zap.String("automationID", automation.ID),
+		zap.String("reason", errMsg))
+	s.logDispatch(ctx, automation, "system", "https://error.log", "failed", pausedMsg)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	if upErr := s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
+		"status":        models.AutomationStatusPaused,
+		"last_error":    pausedMsg,
+		"last_error_at": nowStr,
+	}); upErr != nil {
+		// Fail-open: a pausa falhar não pode derrubar o run — no pior caso a
+		// automação tenta de novo no próximo ciclo, comportamento antigo.
+		s.logger.Error("Failed to pause automation on config error",
+			zap.String("automationID", automation.ID),
+			zap.Error(upErr))
+	}
+	return &models.RunAutomationResult{
+		Success: false,
+		Message: pausedMsg,
+	}
 }

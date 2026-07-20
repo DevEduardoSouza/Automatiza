@@ -1445,11 +1445,17 @@ func TestProcessListMode_NoMlLinkListID(t *testing.T) {
 	}
 
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Config permanente → auto-pause (pauseForConfigError): status paused +
+	// last_error acionável, mesmo contrato da pausa por credencial.
+	deps.automationRepo.On("UpdateAutomation", mock.Anything, "auto-1", mock.MatchedBy(func(u map[string]interface{}) bool {
+		return u["status"] == models.AutomationStatusPaused && u["last_error"] != nil
+	})).Return(nil).Once()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Message, "Lista de Links")
+	deps.automationRepo.AssertExpectations(t)
 }
 
 func TestProcessListMode_NoValidGroups(t *testing.T) {
@@ -1466,11 +1472,16 @@ func TestProcessListMode_NoValidGroups(t *testing.T) {
 	}
 
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Config permanente → auto-pause (ver TestProcessListMode_NoMlLinkListID).
+	deps.automationRepo.On("UpdateAutomation", mock.Anything, "auto-1", mock.MatchedBy(func(u map[string]interface{}) bool {
+		return u["status"] == models.AutomationStatusPaused && u["last_error"] != nil
+	})).Return(nil).Once()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Message, "@g.us")
+	deps.automationRepo.AssertExpectations(t)
 }
 
 func TestProcessListMode_InstanceError(t *testing.T) {
@@ -1686,11 +1697,16 @@ func TestProcessListMode_WhitespaceListID(t *testing.T) {
 	}
 
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	// Config permanente → auto-pause (ver TestProcessListMode_NoMlLinkListID).
+	deps.automationRepo.On("UpdateAutomation", mock.Anything, "auto-1", mock.MatchedBy(func(u map[string]interface{}) bool {
+		return u["status"] == models.AutomationStatusPaused && u["last_error"] != nil
+	})).Return(nil).Once()
 
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Message, "Lista de Links")
+	deps.automationRepo.AssertExpectations(t)
 }
 
 func TestProcessListMode_GetItemsError(t *testing.T) {
