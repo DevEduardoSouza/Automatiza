@@ -89,14 +89,24 @@ func (h *WhatsAppHandler) CreateInstance(
 		}
 	}
 
-	sessionInfo, err := h.waProvider.CreateSession(ctx, whatsapp.CreateSessionInput{
-		SessionName: req.Msg.GetInstanceName(),
-	})
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create instance: %w", err))
-	}
+	// Reuso de tentativa de pareamento pendente: cliques repetidos em
+	// "Adicionar novo número" criavam uma sessão WAHA nova (session_<ulid>)
+	// a cada tentativa, acumulando linhas órfãs que consomem a quota do
+	// plano. Se o usuário já tem uma instância sem telefone cuja sessão
+	// ainda está em QR/STARTING na WAHA, devolvemos o QR dela. Fail-open:
+	// qualquer erro aqui cai no caminho de criação normal.
+	sessionInfo := h.findReusablePendingSession(ctx, user.ID, req.Msg.GetInstanceName())
 	if sessionInfo == nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create instance: unexpected nil session info"))
+		created, err := h.waProvider.CreateSession(ctx, whatsapp.CreateSessionInput{
+			SessionName: req.Msg.GetInstanceName(),
+		})
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create instance: %w", err))
+		}
+		if created == nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create instance: unexpected nil session info"))
+		}
+		sessionInfo = created
 	}
 
 	resp := &whatsappv1.CreateInstanceResponse{
@@ -177,6 +187,48 @@ func (h *WhatsAppHandler) CreateInstance(
 	}
 
 	return connect.NewResponse(resp), nil
+}
+
+// findReusablePendingSession returns a still-live SCAN_QR/STARTING session of
+// an unpaired instance owned by userID, or nil when there is nothing to reuse
+// (including when the caller asked for an explicit session name). Any error is
+// swallowed on purpose — reuse is an optimization, never a gate.
+func (h *WhatsAppHandler) findReusablePendingSession(ctx context.Context, userID, requestedName string) *whatsapp.SessionInfo {
+	if requestedName != "" || h.instanceRepo == nil {
+		return nil
+	}
+	instances, err := h.instanceRepo.GetUserInstances(ctx, userID)
+	if err != nil {
+		return nil
+	}
+	// ponytail: 1 GET por candidata, teto de 3 — usuário normal tem 0-1
+	// tentativa pendente; varrer tudo custaria N round-trips ao router.
+	checked := 0
+	for i := range instances {
+		inst := &instances[i]
+		if inst.PhoneNumber != nil && *inst.PhoneNumber != "" {
+			continue
+		}
+		if inst.Status == models.InstanceStatusConnected {
+			continue
+		}
+		if checked >= 3 {
+			break
+		}
+		checked++
+		info, err := h.waProvider.GetSessionStatus(ctx, inst.InstanceID)
+		if err != nil || info == nil {
+			continue
+		}
+		if info.AuthenticatedUser != nil {
+			continue
+		}
+		if info.Status == whatsapp.SessionStatusScanQR || info.Status == whatsapp.SessionStatusStarting {
+			info.Name = inst.InstanceID
+			return info
+		}
+	}
+	return nil
 }
 
 // DeleteInstance deletes an existing WhatsApp instance.

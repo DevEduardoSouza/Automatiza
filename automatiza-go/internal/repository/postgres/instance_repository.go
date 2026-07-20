@@ -408,6 +408,37 @@ func (r *instanceRepository) SupersedePriorInstances(ctx context.Context, userID
 	return int(res.RowsAffected()), nil
 }
 
+// ListAbandonedUnpairedInstances returns rows of "add chip" attempts that
+// never paired (no phone_number, never connected) and are older than
+// olderThan — the leftovers that eat the user's chip quota. Deliberately NOT
+// part of repository.InstanceRepository: only the GC cron needs it, and the
+// interface has ~10 test mocks that would all have to grow a stub.
+func (r *instanceRepository) ListAbandonedUnpairedInstances(ctx context.Context, olderThan time.Duration, limit int) ([]models.Instance, error) {
+	query := `SELECT ` + instanceColumns + `
+		FROM instances
+		WHERE (phone_number IS NULL OR phone_number = '')
+		  AND status IN ('pending', 'disconnected')
+		  AND created_at < $1
+		ORDER BY created_at ASC
+		LIMIT $2`
+
+	rows, err := r.db.Query(ctx, query, time.Now().UTC().Add(-olderThan), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var instances []models.Instance
+	for rows.Next() {
+		var i models.Instance
+		if err := scanInstance(rows, &i); err != nil {
+			return nil, err
+		}
+		instances = append(instances, i)
+	}
+	return instances, rows.Err()
+}
+
 func (r *instanceRepository) UpdateInstanceLabel(ctx context.Context, userID string, instanceID int, friendlyName string) error {
 	// Treat empty/whitespace input as "clear" — store NULL so reads fall back
 	// to instance_id at the UI layer instead of showing an empty label.

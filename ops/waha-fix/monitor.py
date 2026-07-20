@@ -32,6 +32,12 @@ ZOMBIE_RESTARTS_PER_CYCLE = 5   # circuit-breaker
 # (B1 da consolidacao dos watchdogs) a populacao elegivel saltou de ~0 para
 # ~48 de uma vez — sem cap o primeiro ciclo dispararia todas juntas (herd).
 FAILED_RESTARTS_PER_CYCLE = 10
+# Park de sessao irrecuperavel (pos-B1, 20/07): sessao que apos PARK_AT
+# restarts segue FAILED e cujo GET individual confirma me=null perdeu o
+# pareamento de verdade — restart nao recupera (so re-pair do cliente).
+# Estaciona 24h em vez de insistir para sempre (attempt# so crescia).
+PARK_AT = 8
+PARK_SECONDS = 24 * 3600
 CAP = 450                        # teto do router (WAHA_CAP), atualizado 20/07
 AUTOSCALE_AT = 330
 DISK_ALERT_PCT = 85
@@ -334,8 +340,26 @@ def main():
                         live[name] = state[name]
                     continue
                 prev = state.get(name, {"attempts": 0, "last": 0})
+                if prev.get("park_until", 0) > now:
+                    live[name] = prev
+                    continue
                 cyc = (now - prev["last"]) / 300.0 if prev["last"] else 999
                 if due(prev.get("attempts", 0), cyc):
+                    # Ja insistiu PARK_AT vezes: confere no GET individual (a
+                    # lista nao devolve 'me' p/ FAILED) se ainda ha pareamento.
+                    # me=null -> irrecuperavel por restart: estaciona 24h.
+                    # Incerteza (erro no GET) -> segue o fluxo normal.
+                    if prev.get("attempts", 0) >= PARK_AT:
+                        try:
+                            _, bb = req("GET", base, f"/api/sessions/{name}", timeout=20)
+                            if not json.loads(bb).get("me"):
+                                prev["park_until"] = now + PARK_SECONDS
+                                prev["attempts"] = 0
+                                log(f"PARK {name}@{iname} unpaired (me=null) after {PARK_AT} restarts; needs client re-pair; cooldown 24h")
+                                live[name] = prev
+                                continue
+                        except Exception:
+                            pass
                     if acted >= FAILED_RESTARTS_PER_CYCLE:
                         # Circuit-breaker: carrega o estado sem gastar attempt;
                         # a fila drena nos proximos ciclos.

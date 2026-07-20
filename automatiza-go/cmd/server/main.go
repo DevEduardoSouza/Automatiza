@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -588,6 +589,55 @@ func main() {
 			}
 			return nil
 		})
+
+		// GC das tentativas de pareamento abandonadas: cada clique em
+		// "Adicionar novo número" que não termina em QR lido deixa uma linha
+		// 'pending'/'disconnected' sem telefone no banco (consumindo a quota
+		// de chips do plano) e um stub de sessão na WAHA. O
+		// cleanup_waha_failed_sessions cobre só o lado WAHA (e só FAILED);
+		// aqui removemos a linha órfã e o stub que sobrou. Segurança em
+		// camadas: linha nunca pareada (sem phone, não-connected, >24h) + GET
+		// individual na WAHA confirmando me==null antes de qualquer delete —
+		// sessão pareada é intocável (e o waha-router ainda bloquearia o
+		// unpair). Reconcile_instance_statuses roda a cada 2min, então uma
+		// linha 'disconnected' de chip realmente vivo não sobrevive 24h.
+		if lister, ok := instanceRepo.(interface {
+			ListAbandonedUnpairedInstances(ctx context.Context, olderThan time.Duration, limit int) ([]models.Instance, error)
+		}); ok {
+			cronService.RegisterTask("cleanup_abandoned_pairing_attempts", 24*time.Hour, func(ctx context.Context) error {
+				abandoned, err := lister.ListAbandonedUnpairedInstances(ctx, 24*time.Hour, 200)
+				if err != nil {
+					return err
+				}
+				removed := 0
+				for i := range abandoned {
+					inst := &abandoned[i]
+					info, serr := wahaAdapter.GetSessionStatus(ctx, inst.InstanceID)
+					if serr != nil {
+						var pErr *whatsapp.ProviderError
+						if !errors.As(serr, &pErr) || pErr.Code != whatsapp.ErrCodeSessionNotFound {
+							continue // WAHA indisponível/incerta → protege a sessão
+						}
+						// Sessão já não existe na WAHA — só a linha sobrou.
+					} else {
+						if info == nil || info.AuthenticatedUser != nil || info.Status == whatsapp.SessionStatusConnected {
+							continue // pareada (ou incerta) → intocável
+						}
+						if derr := wahaAdapter.DeleteSession(ctx, inst.InstanceID); derr != nil {
+							continue
+						}
+					}
+					if derr := instanceRepo.DeleteInstance(ctx, inst.ID); derr == nil {
+						removed++
+					}
+				}
+				if removed > 0 {
+					logger.Info("Tentativas de pareamento abandonadas removidas",
+						zap.Int("removed", removed))
+				}
+				return nil
+			})
+		}
 
 		// Reconciliação de status de instância: corrige instâncias travadas em
 		// 'pending'/'disconnected' no banco quando a sessão está WORKING no WAHA
