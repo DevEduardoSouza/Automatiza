@@ -208,6 +208,45 @@ def orphan_alert(paired):
         log(f"orphan check fail: {e}")
 
 
+def reconcile_connected_dead(seen, all_ok):
+    """Cura o desync connected->morto: instancia 'connected' no DB cuja sessao
+    sumiu de TODAS as shards vira 'disconnected'. Guardas contra falso-positivo:
+    - so age se TODAS as shards responderam (all_ok) -> shard fora nao vira mass-disconnect;
+    - so instancias com updated_at > 1h (nao corre com connect recente);
+    - VALVULA: >30 candidatos/ciclo = provavel WAHA down, NAO age, so alerta;
+    - seta updated_at=NOW() (protege do prune-instances)."""
+    if not all_ok:
+        log("reconcile connected-dead: shard(s) fora, pulando (fail-safe)"); return
+    if not seen:
+        log("reconcile connected-dead: nenhuma sessao vista, pulando (fail-safe)"); return
+    try:
+        out = subprocess.run(
+            ["docker","exec","automatiza-postgres","psql","-U","automatiza","-d","automatiza","-t","-A","-c",
+             "SELECT instance_id FROM instances WHERE status='connected' AND updated_at < NOW()-INTERVAL '1 hour'"],
+            capture_output=True, text=True, timeout=30)
+        if out.returncode != 0:
+            log(f"reconcile connected-dead: psql read failed rc={out.returncode}"); return
+        conn = {l.strip() for l in out.stdout.splitlines() if l.strip()}
+        stale = sorted(n for n in conn if n not in seen)
+        if not stale:
+            return
+        if len(stale) > 30:
+            log(f"reconcile connected-dead: {len(stale)} candidatos (>30) — NAO agindo (possivel WAHA down)")
+            if lib_alert:
+                lib_alert.send(f"{len(stale)} instancias connected sem sessao WAHA",
+                               "Muitas instancias 'connected' sem sessao num ciclo — provavel problema de WAHA, nao disconnect real. Reconciliador NAO agiu (valvula). Investigar.",
+                               dedup_key="mon_recon_mass", min_interval=3600)
+            return
+        vals = ",".join("'" + n.replace("'", "") + "'" for n in stale)
+        subprocess.run(
+            ["docker","exec","automatiza-postgres","psql","-U","automatiza","-d","automatiza","-t","-A","-c",
+             f"UPDATE instances SET status='disconnected', updated_at=NOW() WHERE status='connected' AND instance_id IN ({vals})"],
+            capture_output=True, text=True, timeout=30)
+        log(f"reconcile connected-dead: {len(stale)} instancia(s) connected->disconnected (sessao sumida de todas as shards)")
+    except Exception as e:
+        log(f"reconcile connected-dead fail: {e}")
+
+
 def main():
     if not KEY:
         log("ERROR no api key"); return
@@ -221,6 +260,8 @@ def main():
     all_names = []           # (name, base) for zombie scan
     per_instance = {}
     paired_now = {}          # session name -> phone, for the orphan check
+    seen_sessions = set()     # todas as sessoes vistas (qualquer status), p/ reconciliar
+    all_shards_ok = True      # False se alguma shard nao respondeu -> nao reconciliar
 
     for iname, base in INSTANCES.items():
         try:
@@ -230,8 +271,11 @@ def main():
             log(f"ERROR fetch {iname}: {e}")
             if lib_alert:
                 lib_alert.send(f"monitor cannot reach {iname}", str(e), dedup_key=f"mon_api_{iname}", min_interval=1800)
+            all_shards_ok = False
             continue
         per_instance[iname] = len(sessions)
+        for _s in sessions:
+            seen_sessions.add(_s.get("name"))
         for s in sessions:
             name = s.get("name"); status = s.get("status"); paired = bool(s.get("me"))
             if not paired:
@@ -320,6 +364,7 @@ def main():
     infra_alerts()
     router_block_alert()
     orphan_alert(paired_now)
+    reconcile_connected_dead(seen_sessions, all_shards_ok)
     log(f"cycle: instances={per_instance} restarts={acted} zombies={zrestarts} "
         f"established={sum(1 for v in est.values() if v.get('count',0)>=ESTABLISHED_MIN_CYCLES)} locked={len(locked)}")
 
