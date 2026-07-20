@@ -28,7 +28,11 @@ LOG = "/var/log/waha-monitor.log"
 ESTABLISHED_MIN_CYCLES = 3
 ZOMBIE_SCAN_PER_CYCLE = 60      # detail-GETs per cycle (rotating) to bound cost
 ZOMBIE_RESTARTS_PER_CYCLE = 5   # circuit-breaker
-CAP = 367
+# Circuit-breaker dos restarts de FAILED/STOPPED: com o criterio paired_db
+# (B1 da consolidacao dos watchdogs) a populacao elegivel saltou de ~0 para
+# ~48 de uma vez — sem cap o primeiro ciclo dispararia todas juntas (herd).
+FAILED_RESTARTS_PER_CYCLE = 10
+CAP = 450                        # teto do router (WAHA_CAP), atualizado 20/07
 AUTOSCALE_AT = 330
 DISK_ALERT_PCT = 85
 LOAD_ALERT = 15.0
@@ -160,6 +164,31 @@ def router_block_alert():
         log(f"router block check fail: {e}")
 
 
+def paired_db_set():
+    """Conjunto de sessoes 'ja pareadas' pelo sinal DURAVEL do banco
+    (instances.phone_number preenchido) — mesmo criterio do
+    session-watchdog.sh. Necessario porque a lista /api/sessions?all=true NAO
+    devolve 'me' para sessoes FAILED: o criterio antigo (bool(s.get('me')))
+    zerava a cobertura de restart delas e deixava o trabalho todo para o
+    watchdog shell (B1 da consolidacao, 20/07).
+
+    Retorna None se o psql falhar/expirar — o caller DEGRADA para o criterio
+    antigo (so 'me'); nunca restarta em massa com o banco cego."""
+    try:
+        out = subprocess.run(
+            ["docker", "exec", "automatiza-postgres", "psql", "-U", "automatiza",
+             "-d", "automatiza", "-t", "-A", "-c",
+             "SELECT instance_id FROM instances WHERE coalesce(phone_number,'') <> '';"],
+            capture_output=True, text=True, timeout=30)
+        if out.returncode != 0:
+            log(f"paired_db: psql failed rc={out.returncode} (degradando p/ criterio 'me')")
+            return None
+        return {l.strip() for l in out.stdout.splitlines() if l.strip()}
+    except Exception as e:
+        log(f"paired_db: {e} (degradando p/ criterio 'me')")
+        return None
+
+
 def orphan_alert(paired):
     """Alert when a number that is ALIVE and paired in WAHA has no row in the app DB.
 
@@ -263,6 +292,10 @@ def main():
     seen_sessions = set()     # todas as sessoes vistas (qualquer status), p/ reconciliar
     all_shards_ok = True      # False se alguma shard nao respondeu -> nao reconciliar
 
+    # B1 (consolidacao dos watchdogs): pareamento DURAVEL via banco, uma
+    # query por ciclo. None = DB indisponivel -> so o criterio antigo age.
+    paired_db = paired_db_set()
+
     for iname, base in INSTANCES.items():
         try:
             _, b = req("GET", base, "/api/sessions?all=true", timeout=60)
@@ -277,17 +310,25 @@ def main():
         for _s in sessions:
             seen_sessions.add(_s.get("name"))
         for s in sessions:
-            name = s.get("name"); status = s.get("status"); paired = bool(s.get("me"))
-            if not paired:
-                continue
-            paired_now[name] = (s.get("me") or {}).get("id", "").split("@")[0]
-            ent = est.get(name, {"count": 0, "last": 0})
-            ent["count"] = min(ent.get("count", 0) + 1, 100000); ent["last"] = now
-            est[name] = ent
+            name = s.get("name"); status = s.get("status"); paired_api = bool(s.get("me"))
+            # Efeitos que dependem do 'me' AO VIVO (telefone p/ orphan_alert,
+            # historico established) seguem exigindo paired_api — semantica
+            # original intacta.
+            if paired_api:
+                paired_now[name] = (s.get("me") or {}).get("id", "").split("@")[0]
+                ent = est.get(name, {"count": 0, "last": 0})
+                ent["count"] = min(ent.get("count", 0) + 1, 100000); ent["last"] = now
+                est[name] = ent
             if status == "WORKING":
-                all_names.append((name, base))
+                if paired_api:
+                    all_names.append((name, base))
                 continue
             if status in ("FAILED", "STOPPED"):
+                # Gate de restart: 'me' ao vivo OU pareamento duravel do DB
+                # (a lista nao devolve 'me' para FAILED — bug que deixava o
+                # restart delas exclusivamente com o session-watchdog.sh).
+                if not (paired_api or (paired_db is not None and name in paired_db)):
+                    continue
                 if name in locked:
                     if name in state:
                         live[name] = state[name]
@@ -295,6 +336,11 @@ def main():
                 prev = state.get(name, {"attempts": 0, "last": 0})
                 cyc = (now - prev["last"]) / 300.0 if prev["last"] else 999
                 if due(prev.get("attempts", 0), cyc):
+                    if acted >= FAILED_RESTARTS_PER_CYCLE:
+                        # Circuit-breaker: carrega o estado sem gastar attempt;
+                        # a fila drena nos proximos ciclos.
+                        live[name] = prev
+                        continue
                     try:
                         st, _ = req("POST", base, f"/api/sessions/{name}/restart", timeout=45)
                         prev["attempts"] = prev.get("attempts", 0) + 1; prev["last"] = now
