@@ -2209,6 +2209,86 @@ func (x *DispatchErrorSignature) GetUsers() int32 {
 	return 0
 }
 
+// RestrictedChip e um chip que o WhatsApp esta recusando (erro 420 no envio):
+// restricao/rate do proprio WhatsApp ao numero, invisivel em dispatch_logs
+// (o fallback imagem->texto fecha 'sent'). Detectado no adapter no momento do
+// erro e acumulado no Redis com TTL 24h deslizante.
+type RestrictedChip struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionName   string                 `protobuf:"bytes,1,opt,name=session_name,json=sessionName,proto3" json:"session_name,omitempty"`
+	UserEmail     string                 `protobuf:"bytes,2,opt,name=user_email,json=userEmail,proto3" json:"user_email,omitempty"`       // dono resolvido via instances (vazio se orfa)
+	PhoneNumber   string                 `protobuf:"bytes,3,opt,name=phone_number,json=phoneNumber,proto3" json:"phone_number,omitempty"` // idem
+	ErrorCount    int32                  `protobuf:"varint,4,opt,name=error_count,json=errorCount,proto3" json:"error_count,omitempty"`   // erros 420 na janela de 24h
+	LastSeenUnix  int64                  `protobuf:"varint,5,opt,name=last_seen_unix,json=lastSeenUnix,proto3" json:"last_seen_unix,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestrictedChip) Reset() {
+	*x = RestrictedChip{}
+	mi := &file_support_v1_support_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestrictedChip) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestrictedChip) ProtoMessage() {}
+
+func (x *RestrictedChip) ProtoReflect() protoreflect.Message {
+	mi := &file_support_v1_support_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestrictedChip.ProtoReflect.Descriptor instead.
+func (*RestrictedChip) Descriptor() ([]byte, []int) {
+	return file_support_v1_support_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *RestrictedChip) GetSessionName() string {
+	if x != nil {
+		return x.SessionName
+	}
+	return ""
+}
+
+func (x *RestrictedChip) GetUserEmail() string {
+	if x != nil {
+		return x.UserEmail
+	}
+	return ""
+}
+
+func (x *RestrictedChip) GetPhoneNumber() string {
+	if x != nil {
+		return x.PhoneNumber
+	}
+	return ""
+}
+
+func (x *RestrictedChip) GetErrorCount() int32 {
+	if x != nil {
+		return x.ErrorCount
+	}
+	return 0
+}
+
+func (x *RestrictedChip) GetLastSeenUnix() int64 {
+	if x != nil {
+		return x.LastSeenUnix
+	}
+	return 0
+}
+
 type GetSystemHealthResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Semaforo geral, calculado no servidor a partir dos limiares: ok | atencao |
@@ -2223,13 +2303,15 @@ type GetSystemHealthResponse struct {
 	// Top assinaturas de ERRO de disparo (24h) para o card de erros do painel.
 	// Exclui skips (chip desconectado aparece em waha.sessions_disconnected).
 	DispatchErrors []*DispatchErrorSignature `protobuf:"bytes,8,rep,name=dispatch_errors,json=dispatchErrors,proto3" json:"dispatch_errors,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Chips restritos pelo WhatsApp (erro 420), 24h, ordenados por contagem.
+	RestrictedChips []*RestrictedChip `protobuf:"bytes,9,rep,name=restricted_chips,json=restrictedChips,proto3" json:"restricted_chips,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *GetSystemHealthResponse) Reset() {
 	*x = GetSystemHealthResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[25]
+	mi := &file_support_v1_support_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2241,7 +2323,7 @@ func (x *GetSystemHealthResponse) String() string {
 func (*GetSystemHealthResponse) ProtoMessage() {}
 
 func (x *GetSystemHealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[25]
+	mi := &file_support_v1_support_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2254,7 +2336,7 @@ func (x *GetSystemHealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSystemHealthResponse.ProtoReflect.Descriptor instead.
 func (*GetSystemHealthResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{25}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetSystemHealthResponse) GetOverall() string {
@@ -2313,6 +2395,13 @@ func (x *GetSystemHealthResponse) GetDispatchErrors() []*DispatchErrorSignature 
 	return nil
 }
 
+func (x *GetSystemHealthResponse) GetRestrictedChips() []*RestrictedChip {
+	if x != nil {
+		return x.RestrictedChips
+	}
+	return nil
+}
+
 type ResumePausedAutomationsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Quando true, apenas CONTA quantas seriam religadas, sem religar nada.
@@ -2324,7 +2413,7 @@ type ResumePausedAutomationsRequest struct {
 
 func (x *ResumePausedAutomationsRequest) Reset() {
 	*x = ResumePausedAutomationsRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[26]
+	mi := &file_support_v1_support_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2336,7 +2425,7 @@ func (x *ResumePausedAutomationsRequest) String() string {
 func (*ResumePausedAutomationsRequest) ProtoMessage() {}
 
 func (x *ResumePausedAutomationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[26]
+	mi := &file_support_v1_support_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2349,7 +2438,7 @@ func (x *ResumePausedAutomationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumePausedAutomationsRequest.ProtoReflect.Descriptor instead.
 func (*ResumePausedAutomationsRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{26}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ResumePausedAutomationsRequest) GetDryRun() bool {
@@ -2375,7 +2464,7 @@ type ResumePausedAutomationsResponse struct {
 
 func (x *ResumePausedAutomationsResponse) Reset() {
 	*x = ResumePausedAutomationsResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[27]
+	mi := &file_support_v1_support_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2387,7 +2476,7 @@ func (x *ResumePausedAutomationsResponse) String() string {
 func (*ResumePausedAutomationsResponse) ProtoMessage() {}
 
 func (x *ResumePausedAutomationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[27]
+	mi := &file_support_v1_support_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2400,7 +2489,7 @@ func (x *ResumePausedAutomationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumePausedAutomationsResponse.ProtoReflect.Descriptor instead.
 func (*ResumePausedAutomationsResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{27}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ResumePausedAutomationsResponse) GetResumed() int32 {
@@ -2443,7 +2532,7 @@ type FinanceEntry struct {
 
 func (x *FinanceEntry) Reset() {
 	*x = FinanceEntry{}
-	mi := &file_support_v1_support_proto_msgTypes[28]
+	mi := &file_support_v1_support_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2455,7 +2544,7 @@ func (x *FinanceEntry) String() string {
 func (*FinanceEntry) ProtoMessage() {}
 
 func (x *FinanceEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[28]
+	mi := &file_support_v1_support_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2468,7 +2557,7 @@ func (x *FinanceEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinanceEntry.ProtoReflect.Descriptor instead.
 func (*FinanceEntry) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{28}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *FinanceEntry) GetId() string {
@@ -2577,7 +2666,7 @@ type FinanceKpis struct {
 
 func (x *FinanceKpis) Reset() {
 	*x = FinanceKpis{}
-	mi := &file_support_v1_support_proto_msgTypes[29]
+	mi := &file_support_v1_support_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2589,7 +2678,7 @@ func (x *FinanceKpis) String() string {
 func (*FinanceKpis) ProtoMessage() {}
 
 func (x *FinanceKpis) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[29]
+	mi := &file_support_v1_support_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2602,7 +2691,7 @@ func (x *FinanceKpis) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinanceKpis.ProtoReflect.Descriptor instead.
 func (*FinanceKpis) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{29}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *FinanceKpis) GetMrrEstimated() float64 {
@@ -2779,7 +2868,7 @@ type PlanRevenue struct {
 
 func (x *PlanRevenue) Reset() {
 	*x = PlanRevenue{}
-	mi := &file_support_v1_support_proto_msgTypes[30]
+	mi := &file_support_v1_support_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2791,7 +2880,7 @@ func (x *PlanRevenue) String() string {
 func (*PlanRevenue) ProtoMessage() {}
 
 func (x *PlanRevenue) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[30]
+	mi := &file_support_v1_support_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2804,7 +2893,7 @@ func (x *PlanRevenue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanRevenue.ProtoReflect.Descriptor instead.
 func (*PlanRevenue) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{30}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *PlanRevenue) GetPlan() string {
@@ -2849,7 +2938,7 @@ type FinanceProjectionPoint struct {
 
 func (x *FinanceProjectionPoint) Reset() {
 	*x = FinanceProjectionPoint{}
-	mi := &file_support_v1_support_proto_msgTypes[31]
+	mi := &file_support_v1_support_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2861,7 +2950,7 @@ func (x *FinanceProjectionPoint) String() string {
 func (*FinanceProjectionPoint) ProtoMessage() {}
 
 func (x *FinanceProjectionPoint) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[31]
+	mi := &file_support_v1_support_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2874,7 +2963,7 @@ func (x *FinanceProjectionPoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinanceProjectionPoint.ProtoReflect.Descriptor instead.
 func (*FinanceProjectionPoint) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{31}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *FinanceProjectionPoint) GetPeriodStart() string {
@@ -2923,7 +3012,7 @@ type GetFinanceOverviewRequest struct {
 
 func (x *GetFinanceOverviewRequest) Reset() {
 	*x = GetFinanceOverviewRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[32]
+	mi := &file_support_v1_support_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2935,7 +3024,7 @@ func (x *GetFinanceOverviewRequest) String() string {
 func (*GetFinanceOverviewRequest) ProtoMessage() {}
 
 func (x *GetFinanceOverviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[32]
+	mi := &file_support_v1_support_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2948,7 +3037,7 @@ func (x *GetFinanceOverviewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFinanceOverviewRequest.ProtoReflect.Descriptor instead.
 func (*GetFinanceOverviewRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{32}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetFinanceOverviewRequest) GetFrom() string {
@@ -2979,7 +3068,7 @@ type GetFinanceOverviewResponse struct {
 
 func (x *GetFinanceOverviewResponse) Reset() {
 	*x = GetFinanceOverviewResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[33]
+	mi := &file_support_v1_support_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2991,7 +3080,7 @@ func (x *GetFinanceOverviewResponse) String() string {
 func (*GetFinanceOverviewResponse) ProtoMessage() {}
 
 func (x *GetFinanceOverviewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[33]
+	mi := &file_support_v1_support_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3004,7 +3093,7 @@ func (x *GetFinanceOverviewResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFinanceOverviewResponse.ProtoReflect.Descriptor instead.
 func (*GetFinanceOverviewResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{33}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetFinanceOverviewResponse) GetKpis() *FinanceKpis {
@@ -3057,7 +3146,7 @@ type CreateFinanceEntryRequest struct {
 
 func (x *CreateFinanceEntryRequest) Reset() {
 	*x = CreateFinanceEntryRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[34]
+	mi := &file_support_v1_support_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3069,7 +3158,7 @@ func (x *CreateFinanceEntryRequest) String() string {
 func (*CreateFinanceEntryRequest) ProtoMessage() {}
 
 func (x *CreateFinanceEntryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[34]
+	mi := &file_support_v1_support_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3082,7 +3171,7 @@ func (x *CreateFinanceEntryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateFinanceEntryRequest.ProtoReflect.Descriptor instead.
 func (*CreateFinanceEntryRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{34}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *CreateFinanceEntryRequest) GetKind() string {
@@ -3143,7 +3232,7 @@ type CreateFinanceEntryResponse struct {
 
 func (x *CreateFinanceEntryResponse) Reset() {
 	*x = CreateFinanceEntryResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[35]
+	mi := &file_support_v1_support_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3155,7 +3244,7 @@ func (x *CreateFinanceEntryResponse) String() string {
 func (*CreateFinanceEntryResponse) ProtoMessage() {}
 
 func (x *CreateFinanceEntryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[35]
+	mi := &file_support_v1_support_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3168,7 +3257,7 @@ func (x *CreateFinanceEntryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateFinanceEntryResponse.ProtoReflect.Descriptor instead.
 func (*CreateFinanceEntryResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{35}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *CreateFinanceEntryResponse) GetEntry() *FinanceEntry {
@@ -3187,7 +3276,7 @@ type DeleteFinanceEntryRequest struct {
 
 func (x *DeleteFinanceEntryRequest) Reset() {
 	*x = DeleteFinanceEntryRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[36]
+	mi := &file_support_v1_support_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3199,7 +3288,7 @@ func (x *DeleteFinanceEntryRequest) String() string {
 func (*DeleteFinanceEntryRequest) ProtoMessage() {}
 
 func (x *DeleteFinanceEntryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[36]
+	mi := &file_support_v1_support_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3212,7 +3301,7 @@ func (x *DeleteFinanceEntryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFinanceEntryRequest.ProtoReflect.Descriptor instead.
 func (*DeleteFinanceEntryRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{36}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *DeleteFinanceEntryRequest) GetId() string {
@@ -3231,7 +3320,7 @@ type DeleteFinanceEntryResponse struct {
 
 func (x *DeleteFinanceEntryResponse) Reset() {
 	*x = DeleteFinanceEntryResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[37]
+	mi := &file_support_v1_support_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3243,7 +3332,7 @@ func (x *DeleteFinanceEntryResponse) String() string {
 func (*DeleteFinanceEntryResponse) ProtoMessage() {}
 
 func (x *DeleteFinanceEntryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[37]
+	mi := &file_support_v1_support_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3256,7 +3345,7 @@ func (x *DeleteFinanceEntryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFinanceEntryResponse.ProtoReflect.Descriptor instead.
 func (*DeleteFinanceEntryResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{37}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *DeleteFinanceEntryResponse) GetDeleted() bool {
@@ -3290,7 +3379,7 @@ type KanbanCard struct {
 
 func (x *KanbanCard) Reset() {
 	*x = KanbanCard{}
-	mi := &file_support_v1_support_proto_msgTypes[38]
+	mi := &file_support_v1_support_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3302,7 +3391,7 @@ func (x *KanbanCard) String() string {
 func (*KanbanCard) ProtoMessage() {}
 
 func (x *KanbanCard) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[38]
+	mi := &file_support_v1_support_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3315,7 +3404,7 @@ func (x *KanbanCard) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KanbanCard.ProtoReflect.Descriptor instead.
 func (*KanbanCard) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{38}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *KanbanCard) GetId() string {
@@ -3397,7 +3486,7 @@ type KanbanAttachment struct {
 
 func (x *KanbanAttachment) Reset() {
 	*x = KanbanAttachment{}
-	mi := &file_support_v1_support_proto_msgTypes[39]
+	mi := &file_support_v1_support_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3409,7 +3498,7 @@ func (x *KanbanAttachment) String() string {
 func (*KanbanAttachment) ProtoMessage() {}
 
 func (x *KanbanAttachment) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[39]
+	mi := &file_support_v1_support_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3422,7 +3511,7 @@ func (x *KanbanAttachment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KanbanAttachment.ProtoReflect.Descriptor instead.
 func (*KanbanAttachment) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{39}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *KanbanAttachment) GetId() string {
@@ -3475,7 +3564,7 @@ type ListKanbanCardsRequest struct {
 
 func (x *ListKanbanCardsRequest) Reset() {
 	*x = ListKanbanCardsRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[40]
+	mi := &file_support_v1_support_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3487,7 +3576,7 @@ func (x *ListKanbanCardsRequest) String() string {
 func (*ListKanbanCardsRequest) ProtoMessage() {}
 
 func (x *ListKanbanCardsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[40]
+	mi := &file_support_v1_support_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3500,7 +3589,7 @@ func (x *ListKanbanCardsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListKanbanCardsRequest.ProtoReflect.Descriptor instead.
 func (*ListKanbanCardsRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{40}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{41}
 }
 
 type ListKanbanCardsResponse struct {
@@ -3512,7 +3601,7 @@ type ListKanbanCardsResponse struct {
 
 func (x *ListKanbanCardsResponse) Reset() {
 	*x = ListKanbanCardsResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[41]
+	mi := &file_support_v1_support_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3524,7 +3613,7 @@ func (x *ListKanbanCardsResponse) String() string {
 func (*ListKanbanCardsResponse) ProtoMessage() {}
 
 func (x *ListKanbanCardsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[41]
+	mi := &file_support_v1_support_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3537,7 +3626,7 @@ func (x *ListKanbanCardsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListKanbanCardsResponse.ProtoReflect.Descriptor instead.
 func (*ListKanbanCardsResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{41}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ListKanbanCardsResponse) GetCards() []*KanbanCard {
@@ -3561,7 +3650,7 @@ type CreateKanbanCardRequest struct {
 
 func (x *CreateKanbanCardRequest) Reset() {
 	*x = CreateKanbanCardRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[42]
+	mi := &file_support_v1_support_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3573,7 +3662,7 @@ func (x *CreateKanbanCardRequest) String() string {
 func (*CreateKanbanCardRequest) ProtoMessage() {}
 
 func (x *CreateKanbanCardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[42]
+	mi := &file_support_v1_support_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3586,7 +3675,7 @@ func (x *CreateKanbanCardRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateKanbanCardRequest.ProtoReflect.Descriptor instead.
 func (*CreateKanbanCardRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{42}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *CreateKanbanCardRequest) GetTitle() string {
@@ -3626,7 +3715,7 @@ type CreateKanbanCardResponse struct {
 
 func (x *CreateKanbanCardResponse) Reset() {
 	*x = CreateKanbanCardResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[43]
+	mi := &file_support_v1_support_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3638,7 +3727,7 @@ func (x *CreateKanbanCardResponse) String() string {
 func (*CreateKanbanCardResponse) ProtoMessage() {}
 
 func (x *CreateKanbanCardResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[43]
+	mi := &file_support_v1_support_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3651,7 +3740,7 @@ func (x *CreateKanbanCardResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateKanbanCardResponse.ProtoReflect.Descriptor instead.
 func (*CreateKanbanCardResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{43}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *CreateKanbanCardResponse) GetCard() *KanbanCard {
@@ -3674,7 +3763,7 @@ type UpdateKanbanCardRequest struct {
 
 func (x *UpdateKanbanCardRequest) Reset() {
 	*x = UpdateKanbanCardRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[44]
+	mi := &file_support_v1_support_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3686,7 +3775,7 @@ func (x *UpdateKanbanCardRequest) String() string {
 func (*UpdateKanbanCardRequest) ProtoMessage() {}
 
 func (x *UpdateKanbanCardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[44]
+	mi := &file_support_v1_support_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3699,7 +3788,7 @@ func (x *UpdateKanbanCardRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateKanbanCardRequest.ProtoReflect.Descriptor instead.
 func (*UpdateKanbanCardRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{44}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *UpdateKanbanCardRequest) GetId() string {
@@ -3739,7 +3828,7 @@ type UpdateKanbanCardResponse struct {
 
 func (x *UpdateKanbanCardResponse) Reset() {
 	*x = UpdateKanbanCardResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[45]
+	mi := &file_support_v1_support_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3751,7 +3840,7 @@ func (x *UpdateKanbanCardResponse) String() string {
 func (*UpdateKanbanCardResponse) ProtoMessage() {}
 
 func (x *UpdateKanbanCardResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[45]
+	mi := &file_support_v1_support_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3764,7 +3853,7 @@ func (x *UpdateKanbanCardResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateKanbanCardResponse.ProtoReflect.Descriptor instead.
 func (*UpdateKanbanCardResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{45}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *UpdateKanbanCardResponse) GetCard() *KanbanCard {
@@ -3787,7 +3876,7 @@ type MoveKanbanCardRequest struct {
 
 func (x *MoveKanbanCardRequest) Reset() {
 	*x = MoveKanbanCardRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[46]
+	mi := &file_support_v1_support_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3799,7 +3888,7 @@ func (x *MoveKanbanCardRequest) String() string {
 func (*MoveKanbanCardRequest) ProtoMessage() {}
 
 func (x *MoveKanbanCardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[46]
+	mi := &file_support_v1_support_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3812,7 +3901,7 @@ func (x *MoveKanbanCardRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveKanbanCardRequest.ProtoReflect.Descriptor instead.
 func (*MoveKanbanCardRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{46}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *MoveKanbanCardRequest) GetId() string {
@@ -3845,7 +3934,7 @@ type MoveKanbanCardResponse struct {
 
 func (x *MoveKanbanCardResponse) Reset() {
 	*x = MoveKanbanCardResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[47]
+	mi := &file_support_v1_support_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3857,7 +3946,7 @@ func (x *MoveKanbanCardResponse) String() string {
 func (*MoveKanbanCardResponse) ProtoMessage() {}
 
 func (x *MoveKanbanCardResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[47]
+	mi := &file_support_v1_support_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3870,7 +3959,7 @@ func (x *MoveKanbanCardResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveKanbanCardResponse.ProtoReflect.Descriptor instead.
 func (*MoveKanbanCardResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{47}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *MoveKanbanCardResponse) GetCard() *KanbanCard {
@@ -3889,7 +3978,7 @@ type DeleteKanbanCardRequest struct {
 
 func (x *DeleteKanbanCardRequest) Reset() {
 	*x = DeleteKanbanCardRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[48]
+	mi := &file_support_v1_support_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3901,7 +3990,7 @@ func (x *DeleteKanbanCardRequest) String() string {
 func (*DeleteKanbanCardRequest) ProtoMessage() {}
 
 func (x *DeleteKanbanCardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[48]
+	mi := &file_support_v1_support_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3914,7 +4003,7 @@ func (x *DeleteKanbanCardRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteKanbanCardRequest.ProtoReflect.Descriptor instead.
 func (*DeleteKanbanCardRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{48}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *DeleteKanbanCardRequest) GetId() string {
@@ -3933,7 +4022,7 @@ type DeleteKanbanCardResponse struct {
 
 func (x *DeleteKanbanCardResponse) Reset() {
 	*x = DeleteKanbanCardResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[49]
+	mi := &file_support_v1_support_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3945,7 +4034,7 @@ func (x *DeleteKanbanCardResponse) String() string {
 func (*DeleteKanbanCardResponse) ProtoMessage() {}
 
 func (x *DeleteKanbanCardResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[49]
+	mi := &file_support_v1_support_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3958,7 +4047,7 @@ func (x *DeleteKanbanCardResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteKanbanCardResponse.ProtoReflect.Descriptor instead.
 func (*DeleteKanbanCardResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{49}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *DeleteKanbanCardResponse) GetDeleted() bool {
@@ -3981,7 +4070,7 @@ type UploadKanbanAttachmentRequest struct {
 
 func (x *UploadKanbanAttachmentRequest) Reset() {
 	*x = UploadKanbanAttachmentRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[50]
+	mi := &file_support_v1_support_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3993,7 +4082,7 @@ func (x *UploadKanbanAttachmentRequest) String() string {
 func (*UploadKanbanAttachmentRequest) ProtoMessage() {}
 
 func (x *UploadKanbanAttachmentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[50]
+	mi := &file_support_v1_support_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4006,7 +4095,7 @@ func (x *UploadKanbanAttachmentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadKanbanAttachmentRequest.ProtoReflect.Descriptor instead.
 func (*UploadKanbanAttachmentRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{50}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *UploadKanbanAttachmentRequest) GetCardId() string {
@@ -4046,7 +4135,7 @@ type UploadKanbanAttachmentResponse struct {
 
 func (x *UploadKanbanAttachmentResponse) Reset() {
 	*x = UploadKanbanAttachmentResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[51]
+	mi := &file_support_v1_support_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4058,7 +4147,7 @@ func (x *UploadKanbanAttachmentResponse) String() string {
 func (*UploadKanbanAttachmentResponse) ProtoMessage() {}
 
 func (x *UploadKanbanAttachmentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[51]
+	mi := &file_support_v1_support_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4071,7 +4160,7 @@ func (x *UploadKanbanAttachmentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadKanbanAttachmentResponse.ProtoReflect.Descriptor instead.
 func (*UploadKanbanAttachmentResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{51}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *UploadKanbanAttachmentResponse) GetAttachment() *KanbanAttachment {
@@ -4090,7 +4179,7 @@ type DownloadKanbanAttachmentRequest struct {
 
 func (x *DownloadKanbanAttachmentRequest) Reset() {
 	*x = DownloadKanbanAttachmentRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[52]
+	mi := &file_support_v1_support_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4102,7 +4191,7 @@ func (x *DownloadKanbanAttachmentRequest) String() string {
 func (*DownloadKanbanAttachmentRequest) ProtoMessage() {}
 
 func (x *DownloadKanbanAttachmentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[52]
+	mi := &file_support_v1_support_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4115,7 +4204,7 @@ func (x *DownloadKanbanAttachmentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadKanbanAttachmentRequest.ProtoReflect.Descriptor instead.
 func (*DownloadKanbanAttachmentRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{52}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *DownloadKanbanAttachmentRequest) GetId() string {
@@ -4136,7 +4225,7 @@ type DownloadKanbanAttachmentResponse struct {
 
 func (x *DownloadKanbanAttachmentResponse) Reset() {
 	*x = DownloadKanbanAttachmentResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[53]
+	mi := &file_support_v1_support_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4148,7 +4237,7 @@ func (x *DownloadKanbanAttachmentResponse) String() string {
 func (*DownloadKanbanAttachmentResponse) ProtoMessage() {}
 
 func (x *DownloadKanbanAttachmentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[53]
+	mi := &file_support_v1_support_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4161,7 +4250,7 @@ func (x *DownloadKanbanAttachmentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadKanbanAttachmentResponse.ProtoReflect.Descriptor instead.
 func (*DownloadKanbanAttachmentResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{53}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *DownloadKanbanAttachmentResponse) GetFilename() string {
@@ -4194,7 +4283,7 @@ type DeleteKanbanAttachmentRequest struct {
 
 func (x *DeleteKanbanAttachmentRequest) Reset() {
 	*x = DeleteKanbanAttachmentRequest{}
-	mi := &file_support_v1_support_proto_msgTypes[54]
+	mi := &file_support_v1_support_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4206,7 +4295,7 @@ func (x *DeleteKanbanAttachmentRequest) String() string {
 func (*DeleteKanbanAttachmentRequest) ProtoMessage() {}
 
 func (x *DeleteKanbanAttachmentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[54]
+	mi := &file_support_v1_support_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4219,7 +4308,7 @@ func (x *DeleteKanbanAttachmentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteKanbanAttachmentRequest.ProtoReflect.Descriptor instead.
 func (*DeleteKanbanAttachmentRequest) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{54}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *DeleteKanbanAttachmentRequest) GetId() string {
@@ -4238,7 +4327,7 @@ type DeleteKanbanAttachmentResponse struct {
 
 func (x *DeleteKanbanAttachmentResponse) Reset() {
 	*x = DeleteKanbanAttachmentResponse{}
-	mi := &file_support_v1_support_proto_msgTypes[55]
+	mi := &file_support_v1_support_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4250,7 +4339,7 @@ func (x *DeleteKanbanAttachmentResponse) String() string {
 func (*DeleteKanbanAttachmentResponse) ProtoMessage() {}
 
 func (x *DeleteKanbanAttachmentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_support_v1_support_proto_msgTypes[55]
+	mi := &file_support_v1_support_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4263,7 +4352,7 @@ func (x *DeleteKanbanAttachmentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteKanbanAttachmentResponse.ProtoReflect.Descriptor instead.
 func (*DeleteKanbanAttachmentResponse) Descriptor() ([]byte, []int) {
-	return file_support_v1_support_proto_rawDescGZIP(), []int{55}
+	return file_support_v1_support_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *DeleteKanbanAttachmentResponse) GetDeleted() bool {
@@ -4512,7 +4601,15 @@ const file_support_v1_support_proto_rawDesc = "" +
 	"\x16DispatchErrorSignature\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x05R\x05count\x12\x14\n" +
-	"\x05users\x18\x03 \x01(\x05R\x05users\"\x88\x03\n" +
+	"\x05users\x18\x03 \x01(\x05R\x05users\"\xbc\x01\n" +
+	"\x0eRestrictedChip\x12!\n" +
+	"\fsession_name\x18\x01 \x01(\tR\vsessionName\x12\x1d\n" +
+	"\n" +
+	"user_email\x18\x02 \x01(\tR\tuserEmail\x12!\n" +
+	"\fphone_number\x18\x03 \x01(\tR\vphoneNumber\x12\x1f\n" +
+	"\verror_count\x18\x04 \x01(\x05R\n" +
+	"errorCount\x12$\n" +
+	"\x0elast_seen_unix\x18\x05 \x01(\x03R\flastSeenUnix\"\xcf\x03\n" +
 	"\x17GetSystemHealthResponse\x12\x18\n" +
 	"\aoverall\x18\x01 \x01(\tR\aoverall\x12\x1f\n" +
 	"\vmeasured_at\x18\x02 \x01(\tR\n" +
@@ -4522,7 +4619,8 @@ const file_support_v1_support_proto_rawDesc = "" +
 	"\x06queues\x18\x05 \x03(\v2\x1d.support.v1.SupportQueueDepthR\x06queues\x12'\n" +
 	"\x03app\x18\x06 \x01(\v2\x15.support.v1.AppHealthR\x03app\x12*\n" +
 	"\x04host\x18\a \x01(\v2\x16.support.v1.HostHealthR\x04host\x12K\n" +
-	"\x0fdispatch_errors\x18\b \x03(\v2\".support.v1.DispatchErrorSignatureR\x0edispatchErrors\"9\n" +
+	"\x0fdispatch_errors\x18\b \x03(\v2\".support.v1.DispatchErrorSignatureR\x0edispatchErrors\x12E\n" +
+	"\x10restricted_chips\x18\t \x03(\v2\x1a.support.v1.RestrictedChipR\x0frestrictedChips\"9\n" +
 	"\x1eResumePausedAutomationsRequest\x12\x17\n" +
 	"\adry_run\x18\x01 \x01(\bR\x06dryRun\"\x89\x01\n" +
 	"\x1fResumePausedAutomationsResponse\x12\x18\n" +
@@ -4726,7 +4824,7 @@ func file_support_v1_support_proto_rawDescGZIP() []byte {
 }
 
 var file_support_v1_support_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_support_v1_support_proto_msgTypes = make([]protoimpl.MessageInfo, 56)
+var file_support_v1_support_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
 var file_support_v1_support_proto_goTypes = []any{
 	(MatchField)(0),                          // 0: support.v1.MatchField
 	(*SearchUsersRequest)(nil),               // 1: support.v1.SearchUsersRequest
@@ -4754,37 +4852,38 @@ var file_support_v1_support_proto_goTypes = []any{
 	(*AppHealth)(nil),                        // 23: support.v1.AppHealth
 	(*HostHealth)(nil),                       // 24: support.v1.HostHealth
 	(*DispatchErrorSignature)(nil),           // 25: support.v1.DispatchErrorSignature
-	(*GetSystemHealthResponse)(nil),          // 26: support.v1.GetSystemHealthResponse
-	(*ResumePausedAutomationsRequest)(nil),   // 27: support.v1.ResumePausedAutomationsRequest
-	(*ResumePausedAutomationsResponse)(nil),  // 28: support.v1.ResumePausedAutomationsResponse
-	(*FinanceEntry)(nil),                     // 29: support.v1.FinanceEntry
-	(*FinanceKpis)(nil),                      // 30: support.v1.FinanceKpis
-	(*PlanRevenue)(nil),                      // 31: support.v1.PlanRevenue
-	(*FinanceProjectionPoint)(nil),           // 32: support.v1.FinanceProjectionPoint
-	(*GetFinanceOverviewRequest)(nil),        // 33: support.v1.GetFinanceOverviewRequest
-	(*GetFinanceOverviewResponse)(nil),       // 34: support.v1.GetFinanceOverviewResponse
-	(*CreateFinanceEntryRequest)(nil),        // 35: support.v1.CreateFinanceEntryRequest
-	(*CreateFinanceEntryResponse)(nil),       // 36: support.v1.CreateFinanceEntryResponse
-	(*DeleteFinanceEntryRequest)(nil),        // 37: support.v1.DeleteFinanceEntryRequest
-	(*DeleteFinanceEntryResponse)(nil),       // 38: support.v1.DeleteFinanceEntryResponse
-	(*KanbanCard)(nil),                       // 39: support.v1.KanbanCard
-	(*KanbanAttachment)(nil),                 // 40: support.v1.KanbanAttachment
-	(*ListKanbanCardsRequest)(nil),           // 41: support.v1.ListKanbanCardsRequest
-	(*ListKanbanCardsResponse)(nil),          // 42: support.v1.ListKanbanCardsResponse
-	(*CreateKanbanCardRequest)(nil),          // 43: support.v1.CreateKanbanCardRequest
-	(*CreateKanbanCardResponse)(nil),         // 44: support.v1.CreateKanbanCardResponse
-	(*UpdateKanbanCardRequest)(nil),          // 45: support.v1.UpdateKanbanCardRequest
-	(*UpdateKanbanCardResponse)(nil),         // 46: support.v1.UpdateKanbanCardResponse
-	(*MoveKanbanCardRequest)(nil),            // 47: support.v1.MoveKanbanCardRequest
-	(*MoveKanbanCardResponse)(nil),           // 48: support.v1.MoveKanbanCardResponse
-	(*DeleteKanbanCardRequest)(nil),          // 49: support.v1.DeleteKanbanCardRequest
-	(*DeleteKanbanCardResponse)(nil),         // 50: support.v1.DeleteKanbanCardResponse
-	(*UploadKanbanAttachmentRequest)(nil),    // 51: support.v1.UploadKanbanAttachmentRequest
-	(*UploadKanbanAttachmentResponse)(nil),   // 52: support.v1.UploadKanbanAttachmentResponse
-	(*DownloadKanbanAttachmentRequest)(nil),  // 53: support.v1.DownloadKanbanAttachmentRequest
-	(*DownloadKanbanAttachmentResponse)(nil), // 54: support.v1.DownloadKanbanAttachmentResponse
-	(*DeleteKanbanAttachmentRequest)(nil),    // 55: support.v1.DeleteKanbanAttachmentRequest
-	(*DeleteKanbanAttachmentResponse)(nil),   // 56: support.v1.DeleteKanbanAttachmentResponse
+	(*RestrictedChip)(nil),                   // 26: support.v1.RestrictedChip
+	(*GetSystemHealthResponse)(nil),          // 27: support.v1.GetSystemHealthResponse
+	(*ResumePausedAutomationsRequest)(nil),   // 28: support.v1.ResumePausedAutomationsRequest
+	(*ResumePausedAutomationsResponse)(nil),  // 29: support.v1.ResumePausedAutomationsResponse
+	(*FinanceEntry)(nil),                     // 30: support.v1.FinanceEntry
+	(*FinanceKpis)(nil),                      // 31: support.v1.FinanceKpis
+	(*PlanRevenue)(nil),                      // 32: support.v1.PlanRevenue
+	(*FinanceProjectionPoint)(nil),           // 33: support.v1.FinanceProjectionPoint
+	(*GetFinanceOverviewRequest)(nil),        // 34: support.v1.GetFinanceOverviewRequest
+	(*GetFinanceOverviewResponse)(nil),       // 35: support.v1.GetFinanceOverviewResponse
+	(*CreateFinanceEntryRequest)(nil),        // 36: support.v1.CreateFinanceEntryRequest
+	(*CreateFinanceEntryResponse)(nil),       // 37: support.v1.CreateFinanceEntryResponse
+	(*DeleteFinanceEntryRequest)(nil),        // 38: support.v1.DeleteFinanceEntryRequest
+	(*DeleteFinanceEntryResponse)(nil),       // 39: support.v1.DeleteFinanceEntryResponse
+	(*KanbanCard)(nil),                       // 40: support.v1.KanbanCard
+	(*KanbanAttachment)(nil),                 // 41: support.v1.KanbanAttachment
+	(*ListKanbanCardsRequest)(nil),           // 42: support.v1.ListKanbanCardsRequest
+	(*ListKanbanCardsResponse)(nil),          // 43: support.v1.ListKanbanCardsResponse
+	(*CreateKanbanCardRequest)(nil),          // 44: support.v1.CreateKanbanCardRequest
+	(*CreateKanbanCardResponse)(nil),         // 45: support.v1.CreateKanbanCardResponse
+	(*UpdateKanbanCardRequest)(nil),          // 46: support.v1.UpdateKanbanCardRequest
+	(*UpdateKanbanCardResponse)(nil),         // 47: support.v1.UpdateKanbanCardResponse
+	(*MoveKanbanCardRequest)(nil),            // 48: support.v1.MoveKanbanCardRequest
+	(*MoveKanbanCardResponse)(nil),           // 49: support.v1.MoveKanbanCardResponse
+	(*DeleteKanbanCardRequest)(nil),          // 50: support.v1.DeleteKanbanCardRequest
+	(*DeleteKanbanCardResponse)(nil),         // 51: support.v1.DeleteKanbanCardResponse
+	(*UploadKanbanAttachmentRequest)(nil),    // 52: support.v1.UploadKanbanAttachmentRequest
+	(*UploadKanbanAttachmentResponse)(nil),   // 53: support.v1.UploadKanbanAttachmentResponse
+	(*DownloadKanbanAttachmentRequest)(nil),  // 54: support.v1.DownloadKanbanAttachmentRequest
+	(*DownloadKanbanAttachmentResponse)(nil), // 55: support.v1.DownloadKanbanAttachmentResponse
+	(*DeleteKanbanAttachmentRequest)(nil),    // 56: support.v1.DeleteKanbanAttachmentRequest
+	(*DeleteKanbanAttachmentResponse)(nil),   // 57: support.v1.DeleteKanbanAttachmentResponse
 }
 var file_support_v1_support_proto_depIdxs = []int32{
 	0,  // 0: support.v1.SupportUserSummary.matched_on:type_name -> support.v1.MatchField
@@ -4806,56 +4905,57 @@ var file_support_v1_support_proto_depIdxs = []int32{
 	23, // 16: support.v1.GetSystemHealthResponse.app:type_name -> support.v1.AppHealth
 	24, // 17: support.v1.GetSystemHealthResponse.host:type_name -> support.v1.HostHealth
 	25, // 18: support.v1.GetSystemHealthResponse.dispatch_errors:type_name -> support.v1.DispatchErrorSignature
-	30, // 19: support.v1.GetFinanceOverviewResponse.kpis:type_name -> support.v1.FinanceKpis
-	31, // 20: support.v1.GetFinanceOverviewResponse.plan_revenue:type_name -> support.v1.PlanRevenue
-	32, // 21: support.v1.GetFinanceOverviewResponse.projection:type_name -> support.v1.FinanceProjectionPoint
-	29, // 22: support.v1.GetFinanceOverviewResponse.entries:type_name -> support.v1.FinanceEntry
-	29, // 23: support.v1.CreateFinanceEntryResponse.entry:type_name -> support.v1.FinanceEntry
-	40, // 24: support.v1.KanbanCard.attachments:type_name -> support.v1.KanbanAttachment
-	39, // 25: support.v1.ListKanbanCardsResponse.cards:type_name -> support.v1.KanbanCard
-	39, // 26: support.v1.CreateKanbanCardResponse.card:type_name -> support.v1.KanbanCard
-	39, // 27: support.v1.UpdateKanbanCardResponse.card:type_name -> support.v1.KanbanCard
-	39, // 28: support.v1.MoveKanbanCardResponse.card:type_name -> support.v1.KanbanCard
-	40, // 29: support.v1.UploadKanbanAttachmentResponse.attachment:type_name -> support.v1.KanbanAttachment
-	1,  // 30: support.v1.SupportService.SearchUsers:input_type -> support.v1.SearchUsersRequest
-	19, // 31: support.v1.SupportService.GetSystemHealth:input_type -> support.v1.GetSystemHealthRequest
-	27, // 32: support.v1.SupportService.ResumePausedAutomations:input_type -> support.v1.ResumePausedAutomationsRequest
-	4,  // 33: support.v1.SupportService.GetUserOverview:input_type -> support.v1.GetUserOverviewRequest
-	12, // 34: support.v1.SupportService.GetGroupMessages:input_type -> support.v1.GetGroupMessagesRequest
-	15, // 35: support.v1.SupportService.GetUserActivity:input_type -> support.v1.GetUserActivityRequest
-	33, // 36: support.v1.SupportService.GetFinanceOverview:input_type -> support.v1.GetFinanceOverviewRequest
-	35, // 37: support.v1.SupportService.CreateFinanceEntry:input_type -> support.v1.CreateFinanceEntryRequest
-	37, // 38: support.v1.SupportService.DeleteFinanceEntry:input_type -> support.v1.DeleteFinanceEntryRequest
-	41, // 39: support.v1.SupportService.ListKanbanCards:input_type -> support.v1.ListKanbanCardsRequest
-	43, // 40: support.v1.SupportService.CreateKanbanCard:input_type -> support.v1.CreateKanbanCardRequest
-	45, // 41: support.v1.SupportService.UpdateKanbanCard:input_type -> support.v1.UpdateKanbanCardRequest
-	47, // 42: support.v1.SupportService.MoveKanbanCard:input_type -> support.v1.MoveKanbanCardRequest
-	49, // 43: support.v1.SupportService.DeleteKanbanCard:input_type -> support.v1.DeleteKanbanCardRequest
-	51, // 44: support.v1.SupportService.UploadKanbanAttachment:input_type -> support.v1.UploadKanbanAttachmentRequest
-	53, // 45: support.v1.SupportService.DownloadKanbanAttachment:input_type -> support.v1.DownloadKanbanAttachmentRequest
-	55, // 46: support.v1.SupportService.DeleteKanbanAttachment:input_type -> support.v1.DeleteKanbanAttachmentRequest
-	3,  // 47: support.v1.SupportService.SearchUsers:output_type -> support.v1.SearchUsersResponse
-	26, // 48: support.v1.SupportService.GetSystemHealth:output_type -> support.v1.GetSystemHealthResponse
-	28, // 49: support.v1.SupportService.ResumePausedAutomations:output_type -> support.v1.ResumePausedAutomationsResponse
-	11, // 50: support.v1.SupportService.GetUserOverview:output_type -> support.v1.GetUserOverviewResponse
-	14, // 51: support.v1.SupportService.GetGroupMessages:output_type -> support.v1.GetGroupMessagesResponse
-	18, // 52: support.v1.SupportService.GetUserActivity:output_type -> support.v1.GetUserActivityResponse
-	34, // 53: support.v1.SupportService.GetFinanceOverview:output_type -> support.v1.GetFinanceOverviewResponse
-	36, // 54: support.v1.SupportService.CreateFinanceEntry:output_type -> support.v1.CreateFinanceEntryResponse
-	38, // 55: support.v1.SupportService.DeleteFinanceEntry:output_type -> support.v1.DeleteFinanceEntryResponse
-	42, // 56: support.v1.SupportService.ListKanbanCards:output_type -> support.v1.ListKanbanCardsResponse
-	44, // 57: support.v1.SupportService.CreateKanbanCard:output_type -> support.v1.CreateKanbanCardResponse
-	46, // 58: support.v1.SupportService.UpdateKanbanCard:output_type -> support.v1.UpdateKanbanCardResponse
-	48, // 59: support.v1.SupportService.MoveKanbanCard:output_type -> support.v1.MoveKanbanCardResponse
-	50, // 60: support.v1.SupportService.DeleteKanbanCard:output_type -> support.v1.DeleteKanbanCardResponse
-	52, // 61: support.v1.SupportService.UploadKanbanAttachment:output_type -> support.v1.UploadKanbanAttachmentResponse
-	54, // 62: support.v1.SupportService.DownloadKanbanAttachment:output_type -> support.v1.DownloadKanbanAttachmentResponse
-	56, // 63: support.v1.SupportService.DeleteKanbanAttachment:output_type -> support.v1.DeleteKanbanAttachmentResponse
-	47, // [47:64] is the sub-list for method output_type
-	30, // [30:47] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	26, // 19: support.v1.GetSystemHealthResponse.restricted_chips:type_name -> support.v1.RestrictedChip
+	31, // 20: support.v1.GetFinanceOverviewResponse.kpis:type_name -> support.v1.FinanceKpis
+	32, // 21: support.v1.GetFinanceOverviewResponse.plan_revenue:type_name -> support.v1.PlanRevenue
+	33, // 22: support.v1.GetFinanceOverviewResponse.projection:type_name -> support.v1.FinanceProjectionPoint
+	30, // 23: support.v1.GetFinanceOverviewResponse.entries:type_name -> support.v1.FinanceEntry
+	30, // 24: support.v1.CreateFinanceEntryResponse.entry:type_name -> support.v1.FinanceEntry
+	41, // 25: support.v1.KanbanCard.attachments:type_name -> support.v1.KanbanAttachment
+	40, // 26: support.v1.ListKanbanCardsResponse.cards:type_name -> support.v1.KanbanCard
+	40, // 27: support.v1.CreateKanbanCardResponse.card:type_name -> support.v1.KanbanCard
+	40, // 28: support.v1.UpdateKanbanCardResponse.card:type_name -> support.v1.KanbanCard
+	40, // 29: support.v1.MoveKanbanCardResponse.card:type_name -> support.v1.KanbanCard
+	41, // 30: support.v1.UploadKanbanAttachmentResponse.attachment:type_name -> support.v1.KanbanAttachment
+	1,  // 31: support.v1.SupportService.SearchUsers:input_type -> support.v1.SearchUsersRequest
+	19, // 32: support.v1.SupportService.GetSystemHealth:input_type -> support.v1.GetSystemHealthRequest
+	28, // 33: support.v1.SupportService.ResumePausedAutomations:input_type -> support.v1.ResumePausedAutomationsRequest
+	4,  // 34: support.v1.SupportService.GetUserOverview:input_type -> support.v1.GetUserOverviewRequest
+	12, // 35: support.v1.SupportService.GetGroupMessages:input_type -> support.v1.GetGroupMessagesRequest
+	15, // 36: support.v1.SupportService.GetUserActivity:input_type -> support.v1.GetUserActivityRequest
+	34, // 37: support.v1.SupportService.GetFinanceOverview:input_type -> support.v1.GetFinanceOverviewRequest
+	36, // 38: support.v1.SupportService.CreateFinanceEntry:input_type -> support.v1.CreateFinanceEntryRequest
+	38, // 39: support.v1.SupportService.DeleteFinanceEntry:input_type -> support.v1.DeleteFinanceEntryRequest
+	42, // 40: support.v1.SupportService.ListKanbanCards:input_type -> support.v1.ListKanbanCardsRequest
+	44, // 41: support.v1.SupportService.CreateKanbanCard:input_type -> support.v1.CreateKanbanCardRequest
+	46, // 42: support.v1.SupportService.UpdateKanbanCard:input_type -> support.v1.UpdateKanbanCardRequest
+	48, // 43: support.v1.SupportService.MoveKanbanCard:input_type -> support.v1.MoveKanbanCardRequest
+	50, // 44: support.v1.SupportService.DeleteKanbanCard:input_type -> support.v1.DeleteKanbanCardRequest
+	52, // 45: support.v1.SupportService.UploadKanbanAttachment:input_type -> support.v1.UploadKanbanAttachmentRequest
+	54, // 46: support.v1.SupportService.DownloadKanbanAttachment:input_type -> support.v1.DownloadKanbanAttachmentRequest
+	56, // 47: support.v1.SupportService.DeleteKanbanAttachment:input_type -> support.v1.DeleteKanbanAttachmentRequest
+	3,  // 48: support.v1.SupportService.SearchUsers:output_type -> support.v1.SearchUsersResponse
+	27, // 49: support.v1.SupportService.GetSystemHealth:output_type -> support.v1.GetSystemHealthResponse
+	29, // 50: support.v1.SupportService.ResumePausedAutomations:output_type -> support.v1.ResumePausedAutomationsResponse
+	11, // 51: support.v1.SupportService.GetUserOverview:output_type -> support.v1.GetUserOverviewResponse
+	14, // 52: support.v1.SupportService.GetGroupMessages:output_type -> support.v1.GetGroupMessagesResponse
+	18, // 53: support.v1.SupportService.GetUserActivity:output_type -> support.v1.GetUserActivityResponse
+	35, // 54: support.v1.SupportService.GetFinanceOverview:output_type -> support.v1.GetFinanceOverviewResponse
+	37, // 55: support.v1.SupportService.CreateFinanceEntry:output_type -> support.v1.CreateFinanceEntryResponse
+	39, // 56: support.v1.SupportService.DeleteFinanceEntry:output_type -> support.v1.DeleteFinanceEntryResponse
+	43, // 57: support.v1.SupportService.ListKanbanCards:output_type -> support.v1.ListKanbanCardsResponse
+	45, // 58: support.v1.SupportService.CreateKanbanCard:output_type -> support.v1.CreateKanbanCardResponse
+	47, // 59: support.v1.SupportService.UpdateKanbanCard:output_type -> support.v1.UpdateKanbanCardResponse
+	49, // 60: support.v1.SupportService.MoveKanbanCard:output_type -> support.v1.MoveKanbanCardResponse
+	51, // 61: support.v1.SupportService.DeleteKanbanCard:output_type -> support.v1.DeleteKanbanCardResponse
+	53, // 62: support.v1.SupportService.UploadKanbanAttachment:output_type -> support.v1.UploadKanbanAttachmentResponse
+	55, // 63: support.v1.SupportService.DownloadKanbanAttachment:output_type -> support.v1.DownloadKanbanAttachmentResponse
+	57, // 64: support.v1.SupportService.DeleteKanbanAttachment:output_type -> support.v1.DeleteKanbanAttachmentResponse
+	48, // [48:65] is the sub-list for method output_type
+	31, // [31:48] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_support_v1_support_proto_init() }
@@ -4875,16 +4975,16 @@ func file_support_v1_support_proto_init() {
 	file_support_v1_support_proto_msgTypes[12].OneofWrappers = []any{}
 	file_support_v1_support_proto_msgTypes[14].OneofWrappers = []any{}
 	file_support_v1_support_proto_msgTypes[16].OneofWrappers = []any{}
-	file_support_v1_support_proto_msgTypes[28].OneofWrappers = []any{}
-	file_support_v1_support_proto_msgTypes[32].OneofWrappers = []any{}
-	file_support_v1_support_proto_msgTypes[34].OneofWrappers = []any{}
+	file_support_v1_support_proto_msgTypes[29].OneofWrappers = []any{}
+	file_support_v1_support_proto_msgTypes[33].OneofWrappers = []any{}
+	file_support_v1_support_proto_msgTypes[35].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_support_v1_support_proto_rawDesc), len(file_support_v1_support_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   56,
+			NumMessages:   57,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

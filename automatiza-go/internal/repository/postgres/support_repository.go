@@ -758,3 +758,40 @@ func digitsOnly(s string) string {
 	}
 	return b.String()
 }
+
+// ChipOwnerRow resolve o dono de uma sessão WAHA (instances.instance_id =
+// nome da sessão) para o card de chips restritos do painel.
+type ChipOwnerRow struct {
+	SessionName string
+	Email       string
+	PhoneNumber string
+}
+
+// GetChipOwners resolve, em lote, sessão→dono (email/telefone) via instances.
+// Sessão sem linha (órfã) simplesmente não vem no mapa — o card mostra só o
+// nome da sessão nesse caso.
+func (r *SupportRepository) GetChipOwners(ctx context.Context, sessionNames []string) (map[string]ChipOwnerRow, error) {
+	out := make(map[string]ChipOwnerRow, len(sessionNames))
+	if len(sessionNames) == 0 {
+		return out, nil
+	}
+	sql := `
+		SELECT i.instance_id, COALESCE(p.email, ''), COALESCE(i.phone_number, '')
+		FROM instances i
+		LEFT JOIN profiles p ON p.id = i.user_id
+		WHERE i.instance_id = ANY($1)
+	`
+	rows, err := r.db.pool.Query(ctx, sql, sessionNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve chip owners: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var row ChipOwnerRow
+		if err := rows.Scan(&row.SessionName, &row.Email, &row.PhoneNumber); err != nil {
+			return nil, fmt.Errorf("failed to scan chip owner: %w", err)
+		}
+		out[row.SessionName] = row
+	}
+	return out, rows.Err()
+}

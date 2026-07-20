@@ -340,6 +340,38 @@ export function SystemDashboard() {
             {t('pages.support.dash.dispatchErrorsHint')}
           </p>
         </Card>
+
+        {/* Chips restritos pelo WhatsApp (erro 420, 24h) — invisível nos erros
+            de disparo: o fallback imagem→texto fecha 'sent'. Só renderiza
+            quando existe chip restrito. */}
+        {(h.restrictedChips ?? []).length > 0 && (
+          <Card icon={Smartphone} title={t('pages.support.dash.restrictedChips')} wide>
+            <div className="space-y-1.5">
+              {h.restrictedChips.map((c) => (
+                <div key={c.sessionName} className="flex items-start justify-between gap-3 text-sm">
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                    {c.userEmail || c.sessionName}
+                    {c.phoneNumber ? ` · ${c.phoneNumber}` : ''}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {c.lastSeenUnix
+                      ? new Date(Number(c.lastSeenUnix) * 1000).toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : ''}
+                  </span>
+                  <span className="shrink-0 font-medium text-amber-600">
+                    {t('pages.support.dash.restrictedChipsCount', { n: c.errorCount })}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {t('pages.support.dash.restrictedChipsHint')}
+            </p>
+          </Card>
+        )}
       </div>
     </div>
   );

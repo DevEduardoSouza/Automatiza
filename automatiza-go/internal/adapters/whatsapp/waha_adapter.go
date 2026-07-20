@@ -267,6 +267,10 @@ type WahaAdapter struct {
 	// WAHA, to keep them under WhatsApp's media-server rate limit. nil = off.
 	uploadPacer UploadPacer
 
+	// restrictedRecorder, when set, anota erros 420 (WhatsApp restringindo o
+	// chip) por sessão para o card do painel de suporte. nil = off; fail-open.
+	restrictedRecorder *RestrictedChipRecorder
+
 	// mediaJitter, when true, re-encodes URL-fetched product images with a tiny
 	// per-chat quality delta so the same photo isn't broadcast with a byte-
 	// identical hash to every group (anti-ban). Relayed/forwarded base64 media is
@@ -280,6 +284,13 @@ type WahaAdapter struct {
 // before the adapter starts serving.
 func (a *WahaAdapter) SetUploadPacer(p UploadPacer) {
 	a.uploadPacer = p
+}
+
+// SetRestrictedChipRecorder installs (or clears, with nil) the per-session
+// 420-error recorder that feeds the support panel's "restricted chips" card.
+// Nil recorder = no-op (Note is nil-safe). Safe to call once at startup.
+func (a *WahaAdapter) SetRestrictedChipRecorder(r *RestrictedChipRecorder) {
+	a.restrictedRecorder = r
 }
 
 // circuitBreaker implements circuit breaker pattern for status checks.
@@ -1411,6 +1422,7 @@ func (a *WahaAdapter) SendText(ctx context.Context, input SendTextInput) (*Messa
 
 	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sendText", payload)
 	if err != nil {
+		a.restrictedRecorder.Note(ctx, input.SessionName, err)
 		return nil, fmt.Errorf("failed to send text message: %w", err)
 	}
 
@@ -1497,6 +1509,7 @@ func (a *WahaAdapter) SendImage(ctx context.Context, input SendImageInput) (*Mes
 
 	resp, err := a.doRequest(ctx, http.MethodPost, "/api/sendImage", payload)
 	if err != nil {
+		a.restrictedRecorder.Note(ctx, input.SessionName, err)
 		return nil, fmt.Errorf("failed to send image message: %w", err)
 	}
 

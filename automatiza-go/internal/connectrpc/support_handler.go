@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -833,10 +834,62 @@ func (h *SupportHandler) GetSystemHealth(
 		h.logger.Warn("failed to load top dispatch errors for support panel", zap.Error(err))
 	}
 
+	// --- Chips restritos pelo WhatsApp (erro 420, 24h) ---
+	// Alimentado pelo RestrictedChipRecorder do adapter (Redis, TTL 24h).
+	// Fail-open: qualquer falha deixa o card vazio e o resto do painel segue.
+	resp.RestrictedChips = h.restrictedChips(ctx)
+
 	// --- Semaforo geral ---
 	resp.Overall = h.overallStatus(waha, resp.Redis, resp.Queues)
 
 	return connect.NewResponse(resp), nil
+}
+
+// restrictedChips le os hashes escritos pelo RestrictedChipRecorder
+// (support:restricted_chips = sessao->contagem de erros 420;
+// support:restricted_chips_seen = sessao->unix do ultimo), resolve os donos
+// via instances e devolve ordenado por contagem desc. Chave ausente (nenhum
+// chip restrito nas ultimas 24h) => lista vazia — nunca erro.
+func (h *SupportHandler) restrictedChips(ctx context.Context) []*supportv1.RestrictedChip {
+	if h.redisClient == nil {
+		return nil
+	}
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	counts, err := h.redisClient.HGetAll(cctx, whatsapp.RestrictedChipsCountKey).Result()
+	if err != nil || len(counts) == 0 {
+		return nil
+	}
+	seen, _ := h.redisClient.HGetAll(cctx, whatsapp.RestrictedChipsSeenKey).Result()
+
+	sessions := make([]string, 0, len(counts))
+	for s := range counts {
+		sessions = append(sessions, s)
+	}
+	owners, err := h.supportRepo.GetChipOwners(cctx, sessions)
+	if err != nil {
+		h.logger.Warn("restricted chips: failed to resolve owners", zap.Error(err))
+		owners = map[string]postgres.ChipOwnerRow{} // segue sem dono, nao sem card
+	}
+
+	out := make([]*supportv1.RestrictedChip, 0, len(counts))
+	for session, rawCount := range counts {
+		count, _ := strconv.Atoi(rawCount)
+		lastSeen, _ := strconv.ParseInt(seen[session], 10, 64)
+		chip := &supportv1.RestrictedChip{
+			SessionName:  session,
+			ErrorCount:   int32(count),
+			LastSeenUnix: lastSeen,
+		}
+		if o, ok := owners[session]; ok {
+			chip.UserEmail = o.Email
+			chip.PhoneNumber = o.PhoneNumber
+		}
+		out = append(out, chip)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ErrorCount > out[j].ErrorCount })
+	return out
 }
 
 // redisHealth roda INFO e extrai memoria/evictions/clientes. Timeout curto: o

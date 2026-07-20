@@ -331,6 +331,18 @@ message DispatchErrorSignature {
   int32 users = 3; // usuarios distintos afetados
 }
 
+// RestrictedChip e um chip que o WhatsApp esta recusando (erro 420 no envio):
+// restricao/rate do proprio WhatsApp ao numero, invisivel em dispatch_logs
+// (o fallback imagem->texto fecha 'sent'). Detectado no adapter no momento do
+// erro e acumulado no Redis com TTL 24h deslizante.
+message RestrictedChip {
+  string session_name = 1;
+  string user_email = 2;   // dono resolvido via instances (vazio se orfa)
+  string phone_number = 3; // idem
+  int32 error_count = 4;   // erros 420 na janela de 24h
+  int64 last_seen_unix = 5;
+}
+
 message GetSystemHealthResponse {
   // Semaforo geral, calculado no servidor a partir dos limiares: ok | atencao |
   // critico. A pior sinaleira entre os componentes vence.
@@ -344,6 +356,8 @@ message GetSystemHealthResponse {
   // Top assinaturas de ERRO de disparo (24h) para o card de erros do painel.
   // Exclui skips (chip desconectado aparece em waha.sessions_disconnected).
   repeated DispatchErrorSignature dispatch_errors = 8;
+  // Chips restritos pelo WhatsApp (erro 420), 24h, ordenados por contagem.
+  repeated RestrictedChip restricted_chips = 9;
 }
 
 // ============================================================

@@ -295,6 +295,16 @@ func main() {
 			))
 			logger.Info("media upload pacer enabled", zap.Int("spacingMs", ms))
 		}
+
+		// Recorder de chips restritos (erro 420 do WhatsApp por sessão) — alimenta
+		// o card do painel de suporte. Passivo e fail-open; liga sempre que há
+		// Redis (server e worker compartilham este wiring/binário).
+		if redisClient != nil {
+			adapter.SetRestrictedChipRecorder(whatsapp.NewRestrictedChipRecorder(
+				redisClient.Client,
+				config.NewModuleLogger(logger, "restricted-chips"),
+			))
+		}
 	} else {
 		logger.Warn("WAHA not configured, WhatsApp adapter disabled")
 	}

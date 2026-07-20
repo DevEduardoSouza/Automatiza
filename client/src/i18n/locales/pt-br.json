@@ -2867,7 +2867,10 @@
         "dispatchErrors": "Erros de disparo (24h)",
         "dispatchErrorsEmpty": "Nenhum erro de disparo nas últimas 24h.",
         "dispatchErrorsUsers": "{{n}} usuário(s)",
-        "dispatchErrorsHint": "Só erros reais — chip desconectado aparece nas Sessões, não aqui."
+        "dispatchErrorsHint": "Só erros reais — chip desconectado aparece nas Sessões, não aqui.",
+        "restrictedChips": "Chips restritos pelo WhatsApp (24h)",
+        "restrictedChipsCount": "{{n}} erro(s) 420",
+        "restrictedChipsHint": "O WhatsApp está recusando envios destes números (erro 420 — restrição/rate do próprio WhatsApp ao chip). Não é defeito da plataforma: oriente o cliente a reduzir o volume ou trocar o chip."
       },
       "resume": {
         "button": "Religar automações pausadas",
