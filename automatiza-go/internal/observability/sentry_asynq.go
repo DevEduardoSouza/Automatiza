@@ -112,7 +112,7 @@ func SentryAsynqMiddleware(handlerName string, handler asynq.Handler) asynq.Hand
 			// Determine retry info from task metadata
 			retried, _ := asynq.GetRetryCount(ctx)
 			maxRetry, _ := asynq.GetMaxRetry(ctx)
-			isLastRetry := retried >= maxRetry-1
+			isLastRetry := shouldCaptureAsynqError(retried, maxRetry)
 
 			queueName, _ := asynq.GetQueueName(ctx)
 
@@ -129,21 +129,37 @@ func SentryAsynqMiddleware(handlerName string, handler asynq.Handler) asynq.Hand
 				"queue":       queueName,
 			}
 
+			// Only report to Sentry on the TERMINAL attempt. Capturing every
+			// intermediate retry amplified transient floods (e.g. "mirror fan-out
+			// busy", MaxRetry(15)) by up to ~15× and exhausted the monthly error
+			// quota. An error that resolves on retry isn't actionable; one that
+			// fails for good is still captured here (as Fatal/dlq). The OTel span
+			// attributes below stay per-attempt — they don't consume the quota.
 			if isLastRetry {
 				level = sentry.LevelFatal
 				tags["dlq"] = "true"
 				span.SetAttributes(attribute.Bool("asynq.dlq", true))
-			}
 
-			hub.WithScope(func(scope *sentry.Scope) {
-				scope.SetLevel(level)
-				for k, v := range tags {
-					scope.SetTag(k, v)
-				}
-				hub.CaptureException(err)
-			})
+				hub.WithScope(func(scope *sentry.Scope) {
+					scope.SetLevel(level)
+					for k, v := range tags {
+						scope.SetTag(k, v)
+					}
+					hub.CaptureException(err)
+				})
+			}
 		}
 
 		return err
 	})
+}
+
+// shouldCaptureAsynqError reports whether an asynq handler error should be sent
+// to Sentry: only on the terminal attempt (retried >= maxRetry-1). This caps
+// per-retry amplification so a transient error retried N times costs at most one
+// Sentry event instead of N. With asynq's defaults (retried=0, maxRetry=0) the
+// task has no retries left, so it captures — a one-shot task failing once is
+// terminal.
+func shouldCaptureAsynqError(retried, maxRetry int) bool {
+	return retried >= maxRetry-1
 }

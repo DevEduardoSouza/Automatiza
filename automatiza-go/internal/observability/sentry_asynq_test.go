@@ -192,3 +192,27 @@ func TestSentryAsynqMiddleware_Success(t *testing.T) {
 		t.Errorf("expected no sentry events for successful task, got %d", len(events))
 	}
 }
+
+func TestShouldCaptureAsynqError(t *testing.T) {
+	cases := []struct {
+		name     string
+		retried  int
+		maxRetry int
+		want     bool
+	}{
+		{"intermediate retry is skipped", 0, 15, false},
+		{"mid retry is skipped", 7, 15, false},
+		{"penultimate retry is skipped", 13, 15, false},
+		{"last retry captures", 14, 15, true},
+		{"beyond last captures", 15, 15, true},
+		{"one-shot task (asynq defaults) captures", 0, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldCaptureAsynqError(tc.retried, tc.maxRetry); got != tc.want {
+				t.Errorf("shouldCaptureAsynqError(%d, %d) = %v, want %v",
+					tc.retried, tc.maxRetry, got, tc.want)
+			}
+		})
+	}
+}

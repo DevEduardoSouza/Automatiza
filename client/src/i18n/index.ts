@@ -1,4 +1,3 @@
-import * as Sentry from '@sentry/react';
 import i18n from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import { initReactI18next } from 'react-i18next';
@@ -21,11 +20,13 @@ i18n
     interpolation: {
       escapeValue: false,
     },
-    // FR11: Report missing i18n keys to Sentry in production
+    // Missing keys are a build-time signal, not a production error: reporting
+    // them to Sentry floods the monthly error quota (stale cached bundles
+    // re-report keys that already exist). Warn in DEV only.
     saveMissing: true,
     missingKeyHandler: (_lngs, _ns, key) => {
-      if (import.meta.env.PROD) {
-        Sentry.captureMessage(`Missing i18n key: ${key}`, 'warning');
+      if (import.meta.env.DEV) {
+        console.warn(`Missing i18n key: ${key}`);
       }
     },
   });
