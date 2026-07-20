@@ -1214,6 +1214,13 @@ func (s *offerGenerateService) logDispatch(ctx context.Context, auto *models.Aut
 		return
 	}
 
+	// Skips de dedupe eram 96% dos inserts em dispatch_logs (~63/s) e ninguém
+	// os consome (dedup lê só sent/queued/pending; suporte agrega sem skips).
+	// Kill-switch: LOG_DEDUPE_SKIPS=true restaura o comportamento antigo.
+	if status == "skipped" && strings.HasPrefix(errorMsg, "dedupe") && !config.LogDedupeSkips() {
+		return
+	}
+
 	featureFlags := config.GetFeatureFlags()
 	if !featureFlags.ShouldCreateDispatchLog() {
 		return

@@ -127,6 +127,21 @@ func (f *FeatureFlags) ShouldReconcile() bool {
 	return f.UseGoReconciliation
 }
 
+// logDedupeSkipsFlag: kill-switch do corte de dispatch_logs de dedupe.
+// Default FALSE = skips de dedupe NÃO viram linha (eram 96% dos inserts,
+// ~63/s; ninguém os consome além da listagem do usuário, e a informação é
+// derivável da linha 'sent' anterior). LOG_DEDUPE_SKIPS=true restaura o
+// comportamento antigo sem deploy (rollback: gh variable + bounce).
+var logDedupeSkipsFlag = sync.OnceValue(func() bool {
+	return getEnvBool("LOG_DEDUPE_SKIPS", false)
+})
+
+// LogDedupeSkips reports whether dedupe skips should still be written to
+// dispatch_logs. See logDedupeSkipsFlag.
+func LogDedupeSkips() bool {
+	return logDedupeSkipsFlag()
+}
+
 // getEnvBool reads a boolean value from an environment variable.
 // Returns the default value if the variable is not set or cannot be parsed.
 // Accepted values: "true", "false", "1", "0", "yes", "no" (case-insensitive)

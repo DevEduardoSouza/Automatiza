@@ -1381,6 +1381,14 @@ func withCoupon(cr *CouponResult) logDispatchOpt {
 }
 
 func (s *automationService) logDispatch(ctx context.Context, automation *models.Automation, groupID, productURL, status, errorMsg string, opts ...logDispatchOpt) {
+	// Skips de dedupe eram 96% dos inserts em dispatch_logs (~63/s) e ninguém
+	// os consome (dedup lê só sent/queued/pending; suporte agrega sem skips) —
+	// a informação é derivável da linha 'sent' anterior do mesmo produto.
+	// HasPrefix cobre também "dedupe (produto repetido na lista)".
+	// Kill-switch: LOG_DEDUPE_SKIPS=true restaura o comportamento antigo.
+	if status == "skipped" && strings.HasPrefix(errorMsg, "dedupe") && !config.LogDedupeSkips() {
+		return
+	}
 	s.createDispatchLog(ctx, automation, groupID, productURL, status, errorMsg, opts...)
 }
 
