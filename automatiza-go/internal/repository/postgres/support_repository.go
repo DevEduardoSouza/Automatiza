@@ -409,15 +409,19 @@ type DispatchErrorStat struct {
 // GetTopDispatchErrors agrega as assinaturas de ERRO REAL de disparo na janela,
 // para o card de erros do painel de suporte. Conta SOMENTE status 'error'/'failed'
 // — skips (dedupe, chip desconectado, sem-desconto, backpressure) NAO sao erro e
-// ficam de fora (chip desconectado vira a metrica sessions_disconnected). Agrupa
-// pela mensagem crua (assinaturas estaticas dominam o topo); janela e limite
-// parametrizados. Barato: status 'error'/'failed' e uma fracao minima da tabela.
+// ficam de fora (chip desconectado vira a metrica sessions_disconnected). Erros
+// 420 ("server returned error 420" = WhatsApp restringindo o chip) tambem ficam
+// de fora: tem card proprio ("Chips restritos") alimentado pelo adapter — conta-
+// -los aqui duplicava o mesmo fato em dois cards. Agrupa pela mensagem crua
+// (assinaturas estaticas dominam o topo); janela e limite parametrizados.
+// Barato: status 'error'/'failed' e uma fracao minima da tabela.
 func (r *SupportRepository) GetTopDispatchErrors(ctx context.Context, window time.Duration, limit int) ([]DispatchErrorStat, error) {
 	sql := `
 		SELECT error, COUNT(*), COUNT(DISTINCT user_id)
 		FROM dispatch_logs
 		WHERE status IN ('error', 'failed')
 		  AND error IS NOT NULL AND error <> ''
+		  AND error NOT LIKE '%server returned error 420%'
 		  AND created_at > NOW() - $1::interval
 		GROUP BY error
 		ORDER BY COUNT(*) DESC
@@ -505,11 +509,14 @@ func (r *SupportRepository) GetListStatusCounts(ctx context.Context) (*ListStatu
 
 // GetDispatchLastHour conta enviados e falhos na ultima hora (todo o sistema).
 // Usa idx_dispatch_logs_created_at para o range de 1h — barato mesmo com a
-// tabela grande.
+// tabela grande. Erros 420 (chip restrito pelo WhatsApp) ficam FORA do contador
+// de falhas: nao sao defeito da plataforma e ja aparecem nomeados no card
+// "Chips restritos" — conta-los aqui fazia o numero parecer incidente.
 func (r *SupportRepository) GetDispatchLastHour(ctx context.Context) (sent int, failed int, err error) {
 	sql := `
 		SELECT COUNT(*) FILTER (WHERE status = 'sent'),
-		       COUNT(*) FILTER (WHERE status IN ('failed','error'))
+		       COUNT(*) FILTER (WHERE status IN ('failed','error')
+		                        AND (error IS NULL OR error NOT LIKE '%server returned error 420%'))
 		FROM dispatch_logs
 		WHERE created_at > NOW() - INTERVAL '1 hour'
 	`
