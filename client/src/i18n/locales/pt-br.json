@@ -140,7 +140,9 @@
         "runFailed": "Falha ao executar automação."
       }
     },
-    "download": "Baixar"
+    "download": "Baixar",
+    "reconnect": "Reconectar",
+    "saving": "Salvando..."
   },
   "pages": {
     "index": {
@@ -392,7 +394,9 @@
         "phoneUpdated": "Telefone atualizado",
         "phoneUpdatedMessage": "Seu número foi salvo com sucesso.",
         "passwordUpdated": "Senha atualizada",
-        "passwordUpdatedMessage": "Sua senha foi alterada com sucesso."
+        "passwordUpdatedMessage": "Sua senha foi alterada com sucesso.",
+        "updated": "Perfil atualizado",
+        "updatedMessage": "Suas informações foram salvas com sucesso."
       },
       "errors": {
         "loadProfile": "Erro ao carregar perfil",
@@ -405,7 +409,10 @@
         "passwordMismatch": "As senhas não conferem",
         "passwordMismatchMessage": "Confirme a mesma senha nos dois campos.",
         "updatePassword": "Erro ao atualizar senha",
-        "updatePasswordMessage": "Tente novamente."
+        "updatePasswordMessage": "Tente novamente.",
+        "limitsNotFound": "Limites do plano não encontrados",
+        "notFound": "Perfil não encontrado",
+        "updateFailed": "Erro ao atualizar perfil"
       },
       "sessions": {
         "title": "Dispositivos e Sessões",
@@ -675,7 +682,9 @@
         "clean": "Erro ao limpar instâncias",
         "qrRefreshFailed": "QR Code expirado",
         "qrRefreshFailedMessage": "Não foi possível atualizar o QR Code após múltiplas tentativas. Reconecte sua instância.",
-        "instanceNotFound": "Instância não encontrada. Reconecte o WhatsApp para continuar."
+        "instanceNotFound": "Instância não encontrada. Reconecte o WhatsApp para continuar.",
+        "reconnect": "Falha ao reconectar",
+        "upsertFailed": "Não foi possível salvar o número. Tente novamente."
       },
       "errorBoundary": {
         "title": "Erro na conexão WhatsApp",
@@ -692,6 +701,68 @@
         "title": "Desconectando...",
         "description": "Removendo instância...",
         "message": "Desconectando..."
+      },
+      "instancesList": {
+        "addAnother": "Adicionar outro número",
+        "addAnotherCta": "Conectar novo número",
+        "addAnotherDescription": "Conecte mais um número escaneando o QR code com o WhatsApp.",
+        "addAnotherHint": "Você pode adicionar mais {{remaining}} (limite: {{max}})",
+        "atCapCta": "Limite de ${maxInstances} atingido",
+        "atCapHint": "Você atingiu o limite de {{max}} números",
+        "atCapTitle": "Limite atingido",
+        "atCapTooltip": "Limite de {{max}} números atingido",
+        "confirmDelete": "Remover o número \"{{name}}\"? Grupos vinculados a ele perderão o vínculo.",
+        "confirmDeleteConnected": "O número \"{{name}}\" está CONECTADO. Removê-lo vai DESCONECTAR o WhatsApp e você precisará escanear um novo QR Code para reconectar. Deseja continuar?",
+        "hideHistory": "Esconder histórico",
+        "phoneTooltip": "Número de telefone",
+        "reconnect": "Reconectar",
+        "remove": "Remover",
+        "removed": "Número removido",
+        "renameTooltip": "Renomear número",
+        "renamed": "Número renomeado",
+        "showHistory": "Mostrar histórico ({{count}} sessões antigas)",
+        "statusConnected": "Conectado",
+        "statusDisconnected": "Desconectado",
+        "statusPending": "Pendente",
+        "subtitle": "{{count}} de {{max}} conectados",
+        "title": "Meus números"
+      },
+      "recommendations": {
+        "archive": {
+          "b1": "Arquive todas as conversas do número para reduzir o volume de mensagens carregadas e melhorar o desempenho",
+          "b2": "Arquivar conversas não impede o recebimento de mensagens pelo sistema",
+          "title": "Organize suas conversas"
+        },
+        "banRisk": {
+          "b1": "O WhatsApp possui sistemas automáticos que analisam o comportamento das contas",
+          "b2": "Envios excessivos, repetitivos ou fora de padrão humano podem resultar em bloqueio temporário, limitação de envio ou banimento",
+          "b3": "Use número dedicado, não use seu número pessoal e respeite os limites recomendados",
+          "title": "Atenção ao risco de banimento"
+        },
+        "button": "Recomendações",
+        "noMultiSession": {
+          "b1": "Não use o mesmo número em outros sistemas ou navegadores",
+          "b2": "Conexões simultâneas podem causar desconexões e perda de sessão",
+          "title": "Evite múltiplas conexões"
+        },
+        "phoneActive": {
+          "b1": "Deixe o aparelho ligado e conectado à internet",
+          "title": "Mantenha o celular sincronizado sempre ativo"
+        },
+        "structure": {
+          "b1": "Limite de 10 números por conta. Distribua os grupos entre eles para evitar sobrecarga.",
+          "b2": "Até 20 grupos por número. Acima disso, o WhatsApp começa a interpretar como spam.",
+          "b3": "Use números dedicados para envio (não monitoramento) — números focados sofrem menos rate-limit",
+          "title": "Estrutura recomendada"
+        },
+        "subtitle": "Para evitar desconexões, sincronizações fora de hora e banimento dos números, siga as orientações abaixo.",
+        "title": "Recomendações para o melhor funcionamento",
+        "understood": "Entendi"
+      },
+      "reconnectChipModal": {
+        "description": "Escaneie o QR code com o WhatsApp deste número para voltar a conectá-lo. Os outros números seguem funcionando normalmente.",
+        "requesting": "Gerando QR code...",
+        "title": "Reconectar número"
       }
     },
     "history": {
@@ -1155,7 +1226,8 @@
         "pollPartiallySent": "Enquete parcialmente enviada",
         "pollSentWithErrors": "{{success}} grupo(s) receberam, {{errors}} falharam:",
         "audioSent": "Áudio enviado!",
-        "audioSentMessage": "{{success}} enviado(s) com sucesso, {{errors}} falharam"
+        "audioSentMessage": "{{success}} enviado(s) com sucesso, {{errors}} falharam",
+        "syncedAllInstances": "{{count}} números sincronizados"
       },
       "errors": {
         "load": "Erro ao carregar grupos",
@@ -1261,7 +1333,11 @@
         "closedAudioMessage": "{{count}} grupo(s) está(ão) fechado(s) e você não é admin. Áudio não pode ser enviado.",
         "invalidPttFormat": "Formato inválido para PTT",
         "pttFormatMessage": "Para enviar como áudio de voz (PTT), use arquivo .ogg (opus)",
-        "loadFailedRetry": "Erro ao carregar grupos. Tente novamente."
+        "loadFailedRetry": "Erro ao carregar grupos. Tente novamente.",
+        "syncPartial": "Sincronizado parcialmente: {{failed}} de {{total}} números falharam",
+        "createFailed": "Erro ao criar grupo",
+        "notFound": "Grupo não encontrado",
+        "updateFailed": "Erro ao atualizar grupo"
       },
       "empty": "Nenhum grupo encontrado",
       "emptyHint": "Conecte seu WhatsApp e importe seus grupos",
@@ -1384,6 +1460,9 @@
           "configureAtLeastOneAction": "Configure pelo menos uma ação (nome, descrição, mensagem, status ou foto)",
           "scheduleError": "Erro ao agendar"
         }
+      },
+      "chipFilter": {
+        "placeholder": "Filtrar por número"
       }
     },
     "dispatchTexts": {
@@ -2194,7 +2273,8 @@
         "connectedSuccess": "Mercado Livre conectado com sucesso!",
         "updatedSuccess": "Mercado Livre atualizado com sucesso!",
         "testSuccess": "Mercado Livre OK",
-        "linkGenerated": "Link gerado com sucesso."
+        "linkGenerated": "Link gerado com sucesso.",
+        "connected": "Conta do Mercado Livre conectada com sucesso."
       },
       "shein": {
         "linkHint": "Não é necessário configurar ID. Cole seu link direto no formato https://onelink.shein.com/",
@@ -2358,7 +2438,24 @@
         "fromPlaceholder": "De (ex: Achados da Ana)",
         "toPlaceholder": "Para (ex: PromoZap)",
         "affiliateCredentialsHint": "Configure suas credenciais em Programas de Afiliado para gerar links automaticamente.",
-        "createAndActivate": "Criar e Ativar"
+        "createAndActivate": "Criar e Ativar",
+        "chip": "Número",
+        "chipDefaultBadge": "padrão",
+        "chipHint": "Os grupos abaixo são deste número. Trocar limpa a seleção.",
+        "chipOverride": {
+          "auto": "Auto",
+          "onlyMember": "Só este número é membro deste grupo"
+        },
+        "chips": "Números",
+        "chipsListHint": "Marque um ou mais números. Os grupos abaixo são a união dos selecionados.",
+        "chipsRequired": "Selecione pelo menos 1 número.",
+        "clearSelection": "Limpar seleção",
+        "perChipBreakdownTitle": "Grupos por número nesta automação",
+        "selectAll": "Selecionar todos",
+        "selectAllCapped": "Limite atingido",
+        "selectAllCappedMessage": "{{count}} grupos selecionados. Alguns ficaram de fora pelos limites de {{max}} por automação ou {{chipMax}} por número.",
+        "selectAllNothingToAdd": "Nada para adicionar",
+        "selectAllNothingToAddMessage": "Todos os grupos já estão selecionados ou os limites por número/automação foram atingidos."
       },
       "priorities": {
         "discount": "Maior Desconto (%)",
@@ -2445,7 +2542,10 @@
         "maxMonitorGroups": "Limite de grupos atingido",
         "maxMonitorGroupsMessage": "Você pode monitorar no máximo 3 grupos por automação.",
         "shopeeOnly": "Apenas Shopee",
-        "shopeeOnlyMessage": "Visualização de ofertas disponível apenas para Shopee"
+        "shopeeOnlyMessage": "Visualização de ofertas disponível apenas para Shopee",
+        "chipFull": "Limite de grupos por número atingido",
+        "chipFullMessage": "Cada número aceita no máximo {{max}} grupos por automação. Distribua os grupos entre mais números.",
+        "chipFullTooltip": "Este número já tem {{max}} grupos selecionados nesta automação"
       },
       "limits": {
         "automationsReached": "Limite de automações atingido",
@@ -2520,7 +2620,14 @@
         "delay": "Delay entre envios",
         "timeWindow": "Horário de funcionamento",
         "name": "Nome da configuração",
-        "namePlaceholder": "Ex: Gerar Oferta - Shopee"
+        "namePlaceholder": "Ex: Gerar Oferta - Shopee",
+        "allChipsOffline": "Nenhum número está conectado no momento. A automação não vai disparar até reconectar.",
+        "chips": "Números",
+        "chipsEmpty": "Nenhum número WhatsApp configurado. Conecte um número para começar.",
+        "chipsHint": "Marque um ou mais números. Os grupos abaixo são a união dos selecionados.",
+        "chipsRequired": "Selecione pelo menos 1 número.",
+        "sourceGroupRelayInfoBody": "O grupo de origem aceita textos informativos, fotos, áudios e vídeos — não só links de produto. Quando um link Shopee ou Mercado Livre cair no grupo, ele segue o fluxo de oferta (link afiliado + cupom). Qualquer outra mensagem é repassada aos grupos de destino exatamente como veio.",
+        "sourceGroupRelayInfoTitle": "Aceita qualquer tipo de mensagem"
       },
       "status": {
         "active": "Ativo",
@@ -2884,6 +2991,30 @@
         "cancel": "Cancelar",
         "confirm": "Religar",
         "done": "{{n}} automação(ões) religada(s)."
+      }
+    },
+    "couponRules": {
+      "addRule": "Adicionar Regra",
+      "createTitle": "Nova Regra",
+      "dialogHelp": "A regra dispara quando o produto bate nos filtros (plataforma + valor mínimo + período) e injeta a mensagem na oferta.",
+      "editTitle": "Editar Regra",
+      "empty": "Nenhuma regra criada ainda.",
+      "errors": {
+        "create": "Falha ao criar regra",
+        "delete": "Falha ao remover regra",
+        "update": "Falha ao atualizar regra"
+      },
+      "subtitle": "Regras que aplicam um cupom automaticamente quando uma oferta encaixa nos filtros.",
+      "success": {
+        "created": "Regra criada",
+        "deleted": "Regra removida",
+        "updated": "Regra atualizada"
+      },
+      "title": "Cupons Avançados"
+    },
+    "settings": {
+      "success": {
+        "updated": "Configurações atualizadas com sucesso."
       }
     }
   },
@@ -3321,16 +3452,24 @@
         "createError": "Erro ao criar plano",
         "updateError": "Erro ao atualizar plano",
         "deleteError": "Erro ao excluir plano",
-        "serviceNotAvailable": "Serviço de planos não está disponível. Aguarde a implementação do backend."
+        "serviceNotAvailable": "Serviço de planos não está disponível. Aguarde a implementação do backend.",
+        "duplicateSlug": "Já existe um plano com esse slug",
+        "invalidData": "Dados inválidos. Verifique os campos e tente novamente.",
+        "notFound": "Plano não encontrado",
+        "permissionDenied": "Você não tem permissão para esta ação"
       },
       "success": {
         "updated": "Plano atualizado com sucesso!",
         "created": "Plano criado com sucesso!",
-        "deleted": "Plano excluído com sucesso!"
+        "deleted": "Plano excluído com sucesso!",
+        "createdDescription": "O plano já está disponível para os usuários.",
+        "deletedDescription": "O plano foi removido com sucesso.",
+        "updatedDescription": "As alterações do plano foram salvas."
       },
       "confirm": {
         "delete": "Tem certeza que deseja excluir este plano?"
-      }
+      },
+      "confirmDelete": "Tem certeza que deseja excluir este plano?"
     },
     "categories": {
       "title": "Gerenciamento de Categorias",
@@ -3603,6 +3742,19 @@
         "saved": "Configurações salvas com sucesso!",
         "updated": "Configuração atualizada com sucesso!"
       }
+    },
+    "errors": {
+      "blockFailed": "Não foi possível bloquear o usuário",
+      "unblockFailed": "Não foi possível desbloquear o usuário",
+      "updatePlanFailed": "Não foi possível atualizar o plano do usuário"
+    },
+    "success": {
+      "planUpdated": "Plano atualizado",
+      "planUpdatedMessage": "O plano do usuário foi atualizado com sucesso.",
+      "userBlocked": "Usuário bloqueado",
+      "userBlockedMessage": "O usuário foi bloqueado com sucesso.",
+      "userUnblocked": "Usuário desbloqueado",
+      "userUnblockedMessage": "O usuário foi desbloqueado com sucesso."
     }
   },
   "config": {
@@ -4108,6 +4260,16 @@
       "errors": {
         "providerMissing": "useAuth deve ser usado dentro de um AuthProvider"
       }
+    }
+  },
+  "components": {
+    "chipSelector": {
+      "all": "Todos os números",
+      "connectLink": "Conectar um número →",
+      "disconnected": "desconectado",
+      "empty": "Nenhum número WhatsApp configurado.",
+      "emptyConnected": "Nenhum número conectado no momento.",
+      "placeholder": "Selecione um número"
     }
   }
 }
