@@ -252,6 +252,14 @@ type WahaAdapter struct {
 	statusCacheMu  sync.RWMutex
 	statusCacheTTL time.Duration
 
+	// STARTING is a transient boot state. requireWorkingSession waits up to
+	// startingSettleAttempts×startingSettleInterval for a STARTING session to
+	// settle into CONNECTED before failing the send. Defaults ~3×2s (6s ceiling),
+	// env-tunable (WAHA_STARTING_SETTLE_ATTEMPTS / WAHA_STARTING_SETTLE_MS).
+	// Tests set the interval to 0 to run fast.
+	startingSettleAttempts int
+	startingSettleInterval time.Duration
+
 	// Per-session circuit breakers for status checks
 	circuitBreakers map[string]*circuitBreaker
 	cbMu            sync.RWMutex
@@ -573,17 +581,19 @@ func NewWahaAdapter(cfg WahaAdapterConfig, logger *zap.Logger) (*WahaAdapter, er
 			Timeout:   httpTimeout,
 			Transport: transport,
 		},
-		logger:          namedLogger,
-		mapper:          newMapperWithLogger(namedLogger),
-		statusCache:     make(map[string]*statusCacheEntry),
-		statusCacheTTL:  statusCacheTTL,
-		circuitBreakers: make(map[string]*circuitBreaker),
-		cbThreshold:     3,                // 3 failures before opening circuit
-		cbBackoffTime:   60 * time.Second, // 60s backoff (aligned with watchdog CheckInterval)
-		sendBreakers:    make(map[string]*circuitBreaker),
-		sendBreakerOn:   sendBreakerOn,
-		retryEnabled:    retryEnabled,
-		retryCfg:        defaultRetryConfig(),
+		logger:                 namedLogger,
+		mapper:                 newMapperWithLogger(namedLogger),
+		statusCache:            make(map[string]*statusCacheEntry),
+		statusCacheTTL:         statusCacheTTL,
+		startingSettleAttempts: envIntDefault("WAHA_STARTING_SETTLE_ATTEMPTS", 3),
+		startingSettleInterval: time.Duration(envIntDefault("WAHA_STARTING_SETTLE_MS", 2000)) * time.Millisecond,
+		circuitBreakers:        make(map[string]*circuitBreaker),
+		cbThreshold:            3,                // 3 failures before opening circuit
+		cbBackoffTime:          60 * time.Second, // 60s backoff (aligned with watchdog CheckInterval)
+		sendBreakers:           make(map[string]*circuitBreaker),
+		sendBreakerOn:          sendBreakerOn,
+		retryEnabled:           retryEnabled,
+		retryCfg:               defaultRetryConfig(),
 	}, nil
 }
 
@@ -1458,8 +1468,10 @@ func (a *WahaAdapter) parseMemberOperationResult(resp []byte, requestedNumbers [
 // =============================================================================
 
 // requireWorkingSession checks if the session is in WORKING/CONNECTED state before send operations.
-// This prevents sending messages to sessions that are disconnected, starting, or in QR scan mode.
-// Uses cached status to avoid excessive API calls (default 5s TTL, configurable via StatusCacheTTL).
+// This prevents sending messages to sessions that are disconnected, stopped, or in QR scan mode.
+// Uses cached status to avoid excessive API calls (configurable via StatusCacheTTL). A STARTING
+// session is treated as transient: it waits briefly (bounded) for it to settle into CONNECTED
+// instead of failing the send outright.
 func (a *WahaAdapter) requireWorkingSession(ctx context.Context, sessionName string) error {
 	info, err := a.GetSessionStatus(ctx, sessionName)
 	if err != nil {
@@ -1469,18 +1481,52 @@ func (a *WahaAdapter) requireWorkingSession(ctx context.Context, sessionName str
 		return NewProviderError(ErrCodeProviderError, "unexpected nil session status", nil)
 	}
 
-	if info.Status != SessionStatusConnected {
-		a.logger.Warn("session not in working state",
-			zap.String("session", sessionName),
-			zap.String("status", string(info.Status)))
-		return NewProviderError(
-			ErrCodeSessionNotConnected,
-			fmt.Sprintf("session '%s' is not working: current status is %s", sessionName, info.Status),
-			nil,
-		)
+	if info.Status == SessionStatusConnected {
+		return nil
 	}
 
-	return nil
+	// STARTING is a transient boot state (session rebooting/reconnecting) that
+	// settles into CONNECTED within seconds. Failing the send here drops it:
+	// the mirror/offer_generate path sends synchronously with NO retry, so a
+	// STARTING at send-time = permanent loss. Wait briefly for it to settle
+	// before failing. Only STARTING triggers this; every other status fails fast.
+	//
+	// ponytail: bounded wait (~6s default) held INSIDE the mirror fan-out
+	// semaphore — keep the ceiling small; if "mirror fan-out busy" rises, dial
+	// down WAHA_STARTING_SETTLE_ATTEMPTS/_MS.
+	if info.Status == SessionStatusStarting {
+		for i := 0; i < a.startingSettleAttempts; i++ {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(a.startingSettleInterval):
+			}
+			// Bypass the status cache so we observe the live transition.
+			a.ClearStatusCache(sessionName)
+			fresh, ferr := a.GetSessionStatus(ctx, sessionName)
+			if ferr != nil || fresh == nil {
+				// Fail-open: keep the last known status and fall through to the
+				// not-connected error below. Never propagate into the send path.
+				break
+			}
+			info = fresh
+			if info.Status == SessionStatusConnected {
+				return nil
+			}
+			if info.Status != SessionStatusStarting {
+				break // moved to a terminal non-connected state; stop waiting
+			}
+		}
+	}
+
+	a.logger.Warn("session not in working state",
+		zap.String("session", sessionName),
+		zap.String("status", string(info.Status)))
+	return NewProviderError(
+		ErrCodeSessionNotConnected,
+		fmt.Sprintf("session '%s' is not working: current status is %s", sessionName, info.Status),
+		nil,
+	)
 }
 
 // SendText sends a text message to a chat.

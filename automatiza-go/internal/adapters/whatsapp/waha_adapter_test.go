@@ -1854,7 +1854,43 @@ func TestWahaAdapter_RequireWorkingSession(t *testing.T) {
 		}
 	})
 
-	t.Run("blocks sending when session is STARTING", func(t *testing.T) {
+	t.Run("sends when STARTING settles into CONNECTED", func(t *testing.T) {
+		statusCalls := 0
+		adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/api/sessions/") && r.Method == http.MethodGet {
+				statusCalls++
+				status := "STARTING"
+				if statusCalls >= 2 {
+					status = "WORKING" // settles into CONNECTED on the 2nd read
+				}
+				jsonResponse(t, http.StatusOK, map[string]interface{}{
+					"name":   "test-session",
+					"status": status,
+				})(w, r)
+				return
+			}
+			if strings.Contains(r.URL.Path, "/sendText") {
+				jsonResponse(t, http.StatusOK, map[string]interface{}{
+					"id":        "msg-123",
+					"timestamp": 1234567890,
+				})(w, r)
+				return
+			}
+		})
+		adapter.startingSettleInterval = 0 // no real sleep in tests
+
+		result, err := adapter.SendText(ctx, SendTextInput{
+			SessionName: "test-session",
+			ChatID:      "group@g.us",
+			Text:        "Hello",
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, "msg-123", result.ID)
+		assert.GreaterOrEqual(t, statusCalls, 2) // re-read the live status after STARTING
+	})
+
+	t.Run("blocks sending when session stays STARTING", func(t *testing.T) {
 		adapter, _ := newTestAdapter(t, func(w http.ResponseWriter, r *http.Request) {
 			if strings.Contains(r.URL.Path, "/api/sessions/") && r.Method == http.MethodGet {
 				jsonResponse(t, http.StatusOK, map[string]interface{}{
@@ -1863,8 +1899,9 @@ func TestWahaAdapter_RequireWorkingSession(t *testing.T) {
 				})(w, r)
 				return
 			}
-			t.Fatal("Send should not be called when session is starting")
+			t.Fatal("Send should not be called when session never settles")
 		})
+		adapter.startingSettleInterval = 0 // exhaust the settle window instantly
 
 		_, err := adapter.SendText(ctx, SendTextInput{
 			SessionName: "test-session",
@@ -1874,6 +1911,12 @@ func TestWahaAdapter_RequireWorkingSession(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not working")
+		assert.Contains(t, err.Error(), "STARTING")
+
+		var providerErr *ProviderError
+		if assert.ErrorAs(t, err, &providerErr) {
+			assert.Equal(t, ErrCodeSessionNotConnected, providerErr.Code)
+		}
 	})
 
 	t.Run("blocks sending when session is DISCONNECTED", func(t *testing.T) {
