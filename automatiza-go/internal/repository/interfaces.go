@@ -437,6 +437,9 @@ type WebhookEventsRepository interface {
 	Exists(ctx context.Context, eventID string) (bool, error)
 	MarkProcessing(ctx context.Context, eventID string) error
 	MarkProcessed(ctx context.Context, eventID string) error
+	// MarkProcessedEnsure finaliza em 1 upsert cobrindo linha ausente —
+	// caminho feliz do modo lean-persist (WEBHOOK_LEAN_PERSIST).
+	MarkProcessedEnsure(ctx context.Context, eventID, sessionName, eventType string) error
 	MarkFailed(ctx context.Context, eventID, errorMessage string) error
 	MarkDLQ(ctx context.Context, eventID, errorMessage string) error
 	IncrementRetryCount(ctx context.Context, eventID string) error

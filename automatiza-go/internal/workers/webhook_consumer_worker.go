@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
+	appconfig "automatiza-go/internal/config"
 	"automatiza-go/internal/metrics"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
@@ -253,54 +254,83 @@ func (w *WebhookConsumerWorker) ProcessTask(ctx context.Context, task *asynq.Tas
 		w.reconcileSvc.RecordEvent(data.Session)
 	}
 
-	// 3. Verify event exists and get current status
-	exists, err := w.webhookEventsRepo.Exists(ctx, data.EventID)
-	if err != nil {
-		logger.Error("Failed to check event existence",
-			zap.String("eventID", data.EventID),
-			zap.Error(err))
-		return fmt.Errorf("check event existence: %w", err)
-	}
-
-	if !exists {
-		// Event was not recorded - this shouldn't happen but handle gracefully
-		// Try to insert it now
-		inserted, err := w.webhookEventsRepo.InsertIfNotExists(ctx, data.EventID, data.Session, data.Event)
-		if err != nil {
-			logger.Error("Failed to insert missing event",
+	// Lean-persist (WEBHOOK_LEAN_PERSIST): caminho feliz em 1 statement do
+	// consumer. Exists era redundante com o ON CONFLICT do handler;
+	// MarkProcessing era UPDATE incondicional sem nenhum leitor (não é lock —
+	// a anti-concorrência real é o asynq.TaskID + lease); a garantia de
+	// existência da linha funde-se com a finalização no MarkProcessedEnsure
+	// (upsert). Medido antes do corte: Exists+MarkProcessing = ~2,87M
+	// statements/dia. O caminho de ERRO preserva a forense: garante a linha
+	// via InsertIfNotExists antes do handleProcessingError.
+	if appconfig.WebhookLeanPersist() {
+		processErr := w.routeEvent(ctx, &data)
+		if processErr != nil {
+			if _, insErr := w.webhookEventsRepo.InsertIfNotExists(ctx, data.EventID, data.Session, data.Event); insErr != nil {
+				logger.Error("Failed to ensure event row before failure handling",
+					zap.String("eventID", data.EventID),
+					zap.Error(insErr))
+				// Segue para o handleProcessingError mesmo assim — a decisão
+				// de retry/DLQ não depende da linha existir.
+			}
+			return w.handleProcessingError(ctx, task, &data, processErr)
+		}
+		if err := w.webhookEventsRepo.MarkProcessedEnsure(ctx, data.EventID, data.Session, data.Event); err != nil {
+			logger.Error("Failed to mark event as processed (ensure)",
 				zap.String("eventID", data.EventID),
 				zap.Error(err))
-			return fmt.Errorf("insert missing event: %w", err)
+			// Don't fail the task - processing was successful (paridade com o
+			// caminho clássico).
 		}
-		if !inserted {
-			// Race condition - event exists now, continue processing
-			logger.Debug("Event inserted by concurrent process",
-				zap.String("eventID", data.EventID))
+	} else {
+		// 3. Verify event exists and get current status
+		exists, err := w.webhookEventsRepo.Exists(ctx, data.EventID)
+		if err != nil {
+			logger.Error("Failed to check event existence",
+				zap.String("eventID", data.EventID),
+				zap.Error(err))
+			return fmt.Errorf("check event existence: %w", err)
 		}
-	}
 
-	// 4. Mark as processing
-	if err := w.webhookEventsRepo.MarkProcessing(ctx, data.EventID); err != nil {
-		logger.Error("Failed to mark event as processing",
-			zap.String("eventID", data.EventID),
-			zap.Error(err))
-		// Continue anyway - this is not critical
-	}
+		if !exists {
+			// Event was not recorded - this shouldn't happen but handle gracefully
+			// Try to insert it now
+			inserted, err := w.webhookEventsRepo.InsertIfNotExists(ctx, data.EventID, data.Session, data.Event)
+			if err != nil {
+				logger.Error("Failed to insert missing event",
+					zap.String("eventID", data.EventID),
+					zap.Error(err))
+				return fmt.Errorf("insert missing event: %w", err)
+			}
+			if !inserted {
+				// Race condition - event exists now, continue processing
+				logger.Debug("Event inserted by concurrent process",
+					zap.String("eventID", data.EventID))
+			}
+		}
 
-	// 5. Route to appropriate processor
-	processErr := w.routeEvent(ctx, &data)
+		// 4. Mark as processing
+		if err := w.webhookEventsRepo.MarkProcessing(ctx, data.EventID); err != nil {
+			logger.Error("Failed to mark event as processing",
+				zap.String("eventID", data.EventID),
+				zap.Error(err))
+			// Continue anyway - this is not critical
+		}
 
-	// 6. Handle result
-	if processErr != nil {
-		return w.handleProcessingError(ctx, task, &data, processErr)
-	}
+		// 5. Route to appropriate processor
+		processErr := w.routeEvent(ctx, &data)
 
-	// 7. Mark as processed on success
-	if err := w.webhookEventsRepo.MarkProcessed(ctx, data.EventID); err != nil {
-		logger.Error("Failed to mark event as processed",
-			zap.String("eventID", data.EventID),
-			zap.Error(err))
-		// Don't fail the task - processing was successful
+		// 6. Handle result
+		if processErr != nil {
+			return w.handleProcessingError(ctx, task, &data, processErr)
+		}
+
+		// 7. Mark as processed on success
+		if err := w.webhookEventsRepo.MarkProcessed(ctx, data.EventID); err != nil {
+			logger.Error("Failed to mark event as processed",
+				zap.String("eventID", data.EventID),
+				zap.Error(err))
+			// Don't fail the task - processing was successful
+		}
 	}
 
 	logger.Debug("Webhook event processed successfully",

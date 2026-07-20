@@ -115,6 +115,34 @@ func (r *webhookEventsRepository) MarkProcessed(ctx context.Context, eventID str
 	return nil
 }
 
+// MarkProcessedEnsure finaliza o evento em UM statement, cobrindo também o
+// caso de linha ausente (handler falhou ao inserir e forçou o enqueue): upsert
+// que insere já como 'processed' ou atualiza a linha existente. É o único
+// roundtrip do consumer no caminho feliz do modo lean-persist
+// (WEBHOOK_LEAN_PERSIST) — substitui Exists + InsertIfNotExists +
+// MarkProcessing + MarkProcessed. Roda com contexto DESACOPLADO
+// (WithoutCancel): sucesso do processamento não pode virar linha órfã porque
+// o ctx da task morreu na hora de persistir (regra go-backend.md).
+func (r *webhookEventsRepository) MarkProcessedEnsure(ctx context.Context, eventID, sessionName, eventType string) error {
+	query := `
+		INSERT INTO webhook_events (event_id, session_name, event_type, received_at, status, retry_count, processed_at)
+		VALUES ($1, $2, $3, NOW(), $4, 0, $5)
+		ON CONFLICT (event_id) DO UPDATE SET status = $4, processed_at = EXCLUDED.processed_at`
+
+	opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	now := time.Now().UTC()
+	if _, err := r.db.pool.Exec(opCtx, query, eventID, sessionName, eventType,
+		models.WebhookEventRecordStatusProcessed, now); err != nil {
+		r.logger.Error("Failed to mark webhook event processed (ensure)",
+			zap.String("eventID", eventID),
+			zap.Error(err))
+		return fmt.Errorf("mark webhook event processed (ensure): %w", err)
+	}
+	return nil
+}
+
 // MarkFailed marks an event as failed with error message and increments retry count
 func (r *webhookEventsRepository) MarkFailed(ctx context.Context, eventID, errorMessage string) error {
 	query := `

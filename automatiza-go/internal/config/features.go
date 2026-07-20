@@ -142,6 +142,26 @@ func LogDedupeSkips() bool {
 	return logDedupeSkipsFlag()
 }
 
+// webhookLeanPersistFlag: caminho enxuto de persistência do consumer de
+// webhooks. Default FALSE = comportamento clássico (Exists + InsertIfNotExists
+// + MarkProcessing + MarkProcessed, 4 statements/evento no caminho feliz —
+// ~5,3M calls/3,7d cada no pg_stat_statements). TRUE = 2 statements: o INSERT
+// do handler + MarkProcessedEnsure (upsert que finaliza e cobre linha
+// ausente); MarkProcessing morre (provado não-lock e sem leitores). Rollout
+// sem deploy: gh variable set WEBHOOK_LEAN_PERSIST + bounce (a var precisa
+// existir no heredoc do deploy.yml — o .env de produção é allowlist).
+var webhookLeanPersistFlag = sync.OnceValue(loadWebhookLeanPersist)
+
+func loadWebhookLeanPersist() bool {
+	return getEnvBool("WEBHOOK_LEAN_PERSIST", false)
+}
+
+// WebhookLeanPersist reports whether the webhook consumer should use the
+// 2-statement lean persistence path. See webhookLeanPersistFlag.
+func WebhookLeanPersist() bool {
+	return webhookLeanPersistFlag()
+}
+
 // getEnvBool reads a boolean value from an environment variable.
 // Returns the default value if the variable is not set or cannot be parsed.
 // Accepted values: "true", "false", "1", "0", "yes", "no" (case-insensitive)
@@ -171,4 +191,7 @@ func getEnvBool(key string, defaultVal bool) bool {
 func ResetFeatureFlags() {
 	globalFeatureFlags = nil
 	featureFlagsOnce = sync.Once{}
+	// Flags standalone (sync.OnceValue) também re-leem o ambiente no próximo
+	// acesso — necessário para testes cobrirem os dois lados da flag.
+	webhookLeanPersistFlag = sync.OnceValue(loadWebhookLeanPersist)
 }

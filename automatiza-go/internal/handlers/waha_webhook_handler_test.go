@@ -73,6 +73,10 @@ func (m *MockWebhookEventsRepository) MarkProcessed(ctx context.Context, eventID
 	return nil
 }
 
+func (m *MockWebhookEventsRepository) MarkProcessedEnsure(ctx context.Context, eventID, sessionName, eventType string) error {
+	return nil
+}
+
 func (m *MockWebhookEventsRepository) MarkFailed(ctx context.Context, eventID, errorMessage string) error {
 	m.MarkFailedCalls = append(m.MarkFailedCalls, struct {
 		EventID      string

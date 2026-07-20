@@ -420,6 +420,11 @@ jobs:
           # "id1,id2" = allowlist de user_ids (canário). Rollout sem novo deploy:
           # gh variable set COUPON_RULES_ROLLOUT_USERS --body <valor>.
           COUPON_RULES_ROLLOUT_USERS=${{ vars.COUPON_RULES_ROLLOUT_USERS }}
+          # Lean-persist do consumer de webhooks (4→2 statements PG/evento).
+          # ""/ausente/"false" = caminho clássico (default seguro). "true" =
+          # caminho enxuto (MarkProcessedEnsure). Rollout/rollback sem deploy:
+          # gh variable set WEBHOOK_LEAN_PERSIST --body true|false + bounce.
+          WEBHOOK_LEAN_PERSIST=${{ vars.WEBHOOK_LEAN_PERSIST }}
           # Image pins: o compose usa ${BACKEND_IMAGE:-...latest}. Sem estes pins no
           # .env, qualquer `docker compose up` MANUAL no box (fora do CI) derruba a
           # build pra :latest. O CI ja passa os tags inline; isto protege ops manuais.

@@ -472,3 +472,91 @@ func TestWebhookEventsRepository_ConcurrentInserts(t *testing.T) {
 		assert.Equal(t, 1, count)
 	})
 }
+
+// TestWebhookEventsRepository_MarkProcessedEnsure cobre o upsert do modo
+// lean-persist: finaliza linha existente (qualquer status prévio), insere
+// quando ausente, e é idempotente sob concorrência.
+func TestWebhookEventsRepository_MarkProcessedEnsure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tdb := setupTestDB(t)
+	defer tdb.cleanup(t)
+
+	repo := NewWebhookEventsRepository(tdb.db, zap.NewNop())
+	ctx := context.Background()
+
+	status := func(eventID string) string {
+		var s string
+		err := tdb.pool.QueryRow(ctx,
+			`SELECT status FROM webhook_events WHERE event_id = $1`, eventID).Scan(&s)
+		if err != nil {
+			t.Fatalf("status(%s): %v", eventID, err)
+		}
+		return s
+	}
+
+	t.Run("linha existente received vira processed", func(t *testing.T) {
+		_, err := repo.InsertIfNotExists(ctx, "ens-1", "sess", "message")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.MarkProcessedEnsure(ctx, "ens-1", "sess", "message"); err != nil {
+			t.Fatal(err)
+		}
+		if got := status("ens-1"); got != "processed" {
+			t.Fatalf("esperava processed, veio %s", got)
+		}
+	})
+
+	t.Run("linha AUSENTE e inserida ja como processed", func(t *testing.T) {
+		if err := repo.MarkProcessedEnsure(ctx, "ens-2", "sess", "message"); err != nil {
+			t.Fatal(err)
+		}
+		if got := status("ens-2"); got != "processed" {
+			t.Fatalf("esperava processed, veio %s", got)
+		}
+	})
+
+	t.Run("linha failed vira processed (retry que deu certo)", func(t *testing.T) {
+		if _, err := repo.InsertIfNotExists(ctx, "ens-3", "sess", "message"); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.MarkFailed(ctx, "ens-3", "boom"); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.MarkProcessedEnsure(ctx, "ens-3", "sess", "message"); err != nil {
+			t.Fatal(err)
+		}
+		if got := status("ens-3"); got != "processed" {
+			t.Fatalf("esperava processed, veio %s", got)
+		}
+	})
+
+	t.Run("concorrencia: 10 goroutines mesmo event_id = 1 linha processed", func(t *testing.T) {
+		const n = 10
+		errs := make(chan error, n)
+		for i := 0; i < n; i++ {
+			go func() {
+				errs <- repo.MarkProcessedEnsure(ctx, "ens-conc", "sess", "message")
+			}()
+		}
+		for i := 0; i < n; i++ {
+			if err := <-errs; err != nil {
+				t.Fatalf("goroutine %d: %v", i, err)
+			}
+		}
+		var count int
+		if err := tdb.pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM webhook_events WHERE event_id = 'ens-conc'`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("esperava 1 linha, veio %d", count)
+		}
+		if got := status("ens-conc"); got != "processed" {
+			t.Fatalf("esperava processed, veio %s", got)
+		}
+	})
+}

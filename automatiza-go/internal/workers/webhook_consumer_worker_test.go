@@ -49,6 +49,11 @@ func (m *mockWebhookEventsRepo) MarkProcessed(ctx context.Context, eventID strin
 	return args.Error(0)
 }
 
+func (m *mockWebhookEventsRepo) MarkProcessedEnsure(ctx context.Context, eventID, sessionName, eventType string) error {
+	args := m.Called(ctx, eventID, sessionName, eventType)
+	return args.Error(0)
+}
+
 func (m *mockWebhookEventsRepo) MarkFailed(ctx context.Context, eventID, errorMsg string) error {
 	args := m.Called(ctx, eventID, errorMsg)
 	return args.Error(0)
