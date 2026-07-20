@@ -24,13 +24,31 @@ func NewDashboardRepository(db *DB, logger *zap.Logger) repository.DashboardRepo
 
 // GetGroupsStats retrieves aggregated group statistics for a user's dashboard
 func (r *dashboardRepository) GetGroupsStats(ctx context.Context, userID string) (*repository.DashboardStats, error) {
+	// Counts only groups that are connected (a participating chip is online)
+	// AND in use (referenced by an active automation as send target or mirror source).
 	query := `
 		SELECT
 			COUNT(*)::int as total_groups,
-			COUNT(*) FILTER (WHERE status = 'full')::int as full_groups,
-			COALESCE(SUM(members_count), 0)::int as total_members
-		FROM groups
-		WHERE user_id = $1 AND is_admin = true
+			COUNT(*) FILTER (WHERE g.status = 'full')::int as full_groups,
+			COALESCE(SUM(g.members_count), 0)::int as total_members
+		FROM groups g
+		WHERE g.user_id = $1
+		  AND EXISTS (
+		      SELECT 1 FROM instances i
+		      WHERE (i.id = g.instance_id OR i.id = ANY(g.participating_instance_ids))
+		        AND i.status IN ('connected', 'open')
+		  )
+		  AND EXISTS (
+		      SELECT 1 FROM automations a
+		      WHERE a.user_id = g.user_id
+		        AND a.status = 'active'
+		        AND (
+		             a.send_groups        @> to_jsonb(g.wa_group_id::text)
+		          OR a.group_ids          @> to_jsonb(g.wa_group_id::text)
+		          OR a.monitor_group_ids  @> to_jsonb(g.wa_group_id::text)
+		          OR a.group_ids          @> to_jsonb(g.id::text)
+		        )
+		  )
 	`
 
 	r.logger.Info("Executing GetGroupsStats query",

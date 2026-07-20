@@ -311,7 +311,7 @@
         "members": "Membros",
         "full": "Cheio",
         "active": "Ativo",
-        "totalGroupsDesc": "Grupos gerenciados na plataforma",
+        "totalGroupsDesc": "Grupos conectados e em uso por automações",
         "fullGroupsDesc": "Grupos que atingiram a capacidade",
         "totalMembersDesc": "Membros em todos os grupos",
         "activeLinksDesc": "Links de redirecionamento ativos"
