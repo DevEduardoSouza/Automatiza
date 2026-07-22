@@ -503,26 +503,18 @@ export function AppSidebar() {
             </button>
           )}
 
-          {installState === 'installed' ? (
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              className={`sidebar-nav-item w-full opacity-60 ${collapsed ? '!size-10 justify-center' : ''}`}
-            >
-              <Download className="sidebar-nav-icon" />
-              {!collapsed && <span className="sidebar-nav-text">{t('pwa.install.installed')}</span>}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={`sidebar-nav-item w-full ${collapsed ? '!size-10 justify-center' : ''}`}
-              onClick={handleInstallClick}
-            >
-              <Download className="sidebar-nav-icon" />
-              {!collapsed && <span className="sidebar-nav-text">{t('sidebar.install')}</span>}
-            </button>
-          )}
+          <button
+            type="button"
+            className={`sidebar-nav-item w-full ${collapsed ? '!size-10 justify-center' : ''}`}
+            onClick={handleInstallClick}
+          >
+            <Download className="sidebar-nav-icon" />
+            {!collapsed && (
+              <span className="sidebar-nav-text">
+                {installState === 'installed' ? t('pwa.install.appMenu') : t('sidebar.install')}
+              </span>
+            )}
+          </button>
 
           <button
             type="button"

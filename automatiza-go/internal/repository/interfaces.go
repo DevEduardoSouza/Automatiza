@@ -423,6 +423,19 @@ type InstagramStoryPostRepository interface {
 	CountPublishedSince(ctx context.Context, userID string, since time.Time) (int, error)
 }
 
+// WebPushSubscriptionRepository handles browser push subscriptions (PWA).
+type WebPushSubscriptionRepository interface {
+	// Upsert stores or refreshes a subscription (unique by endpoint). An endpoint
+	// that changes owner follows the latest login.
+	Upsert(ctx context.Context, sub *models.WebPushSubscription) error
+	ListByUser(ctx context.Context, userID string) ([]models.WebPushSubscription, error)
+	ListAll(ctx context.Context) ([]models.WebPushSubscription, error)
+	DeleteByEndpoint(ctx context.Context, endpoint string) error
+	// DeleteFailedBefore removes subscriptions marked failed before `before`.
+	DeleteFailedBefore(ctx context.Context, before time.Time) (int64, error)
+	CountByUser(ctx context.Context, userID string) (int, error)
+}
+
 // MLLinkRepository handles ML link entries
 type MLLinkRepository interface {
 	GetByOriginalURL(ctx context.Context, userID, originalURL string) (*models.MLLinkEntry, error)

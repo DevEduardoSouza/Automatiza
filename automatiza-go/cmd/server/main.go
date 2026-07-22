@@ -40,6 +40,7 @@ import (
 	"automatiza-go/internal/gen/settings/v1/settingsv1connect"
 	"automatiza-go/internal/gen/support/v1/supportv1connect"
 	"automatiza-go/internal/gen/webhooks/v1/webhooksv1connect"
+	"automatiza-go/internal/gen/webpush/v1/webpushv1connect"
 	"automatiza-go/internal/gen/whatsapp/v1/whatsappv1connect"
 	"automatiza-go/internal/handlers"
 	"automatiza-go/internal/lib/backpressure"
@@ -72,6 +73,7 @@ import (
 	"automatiza-go/internal/services/redirect"
 	"automatiza-go/internal/services/shopee"
 	"automatiza-go/internal/services/user"
+	"automatiza-go/internal/services/webpush"
 	"automatiza-go/internal/startup"
 	"automatiza-go/internal/workers"
 
@@ -241,6 +243,10 @@ func main() {
 
 	// Create repositories (PostgreSQL)
 	repos := postgres.NewRepositories(db, logger)
+
+	// Web Push (PWA) service — shared by the ConnectRPC handler (server) and the
+	// event hooks (worker). Disabled (no-op) when VAPID keys are absent.
+	webpushSvc := webpush.NewService(repos.WebPushSubscription, cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.WebPushSubscriber, logger)
 
 	// Create Waha config provider (using PostgreSQL settings repo)
 	wahaConfigProvider := config.NewWahaConfigProvider(cfg, repos.Settings)
@@ -1192,6 +1198,14 @@ func main() {
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
 	)
 	connectServer.RegisterService(supportPath, supportHTTPHandler)
+
+	// Register Web Push service handler (PWA notifications; requires auth)
+	webpushHandler := connectrpc.NewWebPushHandler(webpushSvc, repos.WebPushSubscription)
+	webpushPath, webpushHTTPHandler := webpushv1connect.NewWebPushServiceHandler(
+		webpushHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(webpushPath, webpushHTTPHandler)
 
 	// Register load balancer service handler (requires auth + admin role)
 	loadBalancerHandler := connectrpc.NewLoadBalancerHandler(

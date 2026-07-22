@@ -4296,12 +4296,26 @@
       "title": "Instalar o aplicativo",
       "subtitle": "Tenha o Automatisa na tela inicial, como um app.",
       "installed": "App instalado",
+      "appMenu": "App e notificações",
       "success": "App instalado com sucesso!",
       "iosStep1": "Toque no botão Compartilhar (o quadrado com a seta para cima) na barra do Safari.",
       "iosStep2": "Escolha \"Adicionar à Tela de Início\".",
       "iosStep3": "Abra o app pela tela inicial e faça login uma vez — pronto.",
       "chromiumHint": "No menu do navegador (⋮), toque em \"Instalar app\" ou \"Adicionar à tela inicial\".",
       "unsupported": "Seu navegador não permite instalar o app. Use o Chrome ou Edge no computador e no Android, ou o Safari no iPhone."
+    },
+    "push": {
+      "title": "Notificações",
+      "pitch": "Receba avisos quando um chip cair ou uma automação for pausada, mesmo com o app fechado.",
+      "enable": "Ativar notificações",
+      "enabled": "Notificações ativadas!",
+      "active": "Notificações ativadas neste dispositivo.",
+      "test": "Enviar teste",
+      "testSent": "Notificação de teste enviada.",
+      "disable": "Desativar",
+      "failed": "Não foi possível ativar as notificações.",
+      "denied": "As notificações estão bloqueadas. Reative nas configurações do navegador (cadeado ao lado do endereço) e tente de novo.",
+      "needsInstall": "Instale o app primeiro (botão acima) para receber notificações no iPhone."
     }
   },
   "billing": {

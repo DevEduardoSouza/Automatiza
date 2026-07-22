@@ -43,6 +43,7 @@ type Repositories struct {
 	KiwifyEvent              repository.KiwifyEventRepository
 	InstagramCredentials     repository.InstagramCredentialsRepository
 	InstagramStoryPost       repository.InstagramStoryPostRepository
+	WebPushSubscription      repository.WebPushSubscriptionRepository
 }
 
 // NewRepositories creates all PostgreSQL repositories
@@ -83,5 +84,6 @@ func NewRepositories(db *DB, logger *zap.Logger) *Repositories {
 		KiwifyEvent:              NewKiwifyEventRepository(db, logger),
 		InstagramCredentials:     NewInstagramCredentialsRepository(db, logger),
 		InstagramStoryPost:       NewInstagramStoryPostRepository(db, logger),
+		WebPushSubscription:      NewWebPushSubscriptionRepository(db, logger),
 	}
 }

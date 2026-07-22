@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package webpush.v1;
+
+option go_package = "github.com/automatiza/proto/webpush/v1;webpushv1";
+
+// ============================================================
+// Messages
+// ============================================================
+
+message GetConfigRequest {}
+
+message GetConfigResponse {
+  // Whether Web Push is configured on the server (VAPID keys present).
+  // When false the UI hides the notifications opt-in entirely.
+  bool enabled = 1;
+  // VAPID public key (safe to expose). Empty when disabled.
+  string vapid_public_key = 2;
+}
+
+message SubscribeRequest {
+  string endpoint = 1;
+  string p256dh = 2;
+  string auth = 3;
+  string user_agent = 4;
+}
+
+message SubscribeResponse {}
+
+message UnsubscribeRequest {
+  string endpoint = 1;
+}
+
+message UnsubscribeResponse {}
+
+message SendTestRequest {}
+
+message SendTestResponse {
+  // How many of this user's devices the test notification reached.
+  int32 delivered = 1;
+}
+
+// ============================================================
+// Service
+// ============================================================
+
+// WebPushService manages browser push subscriptions for the PWA.
+service WebPushService {
+  // GetConfig returns whether push is enabled + the VAPID public key.
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  // Subscribe stores (or refreshes) a browser push subscription for this user.
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse);
+  // Unsubscribe removes a subscription by endpoint.
+  rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+  // SendTest delivers a test notification to this user's own devices.
+  rpc SendTest(SendTestRequest) returns (SendTestResponse);
+}

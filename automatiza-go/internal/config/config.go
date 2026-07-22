@@ -88,6 +88,13 @@ type Config struct {
 	InstagramAppSecret   string `mapstructure:"INSTAGRAM_APP_SECRET"`
 	InstagramRedirectURI string `mapstructure:"INSTAGRAM_REDIRECT_URI"`
 
+	// Web Push (PWA). Vazio => feature desligada: o service responde
+	// enabled=false, a UI esconde o opt-in e os ganchos de evento viram no-op.
+	// A chave privada NUNCA vai ao frontend (só a pública, via RPC GetConfig).
+	VAPIDPublicKey    string `mapstructure:"VAPID_PUBLIC_KEY"`
+	VAPIDPrivateKey   string `mapstructure:"VAPID_PRIVATE_KEY"`
+	WebPushSubscriber string `mapstructure:"WEBPUSH_SUBSCRIBER"`
+
 	// Log
 	LogLevel string `mapstructure:"LOG_LEVEL"`
 

@@ -30,7 +30,7 @@ function setEnv(o: {
   (window.navigator as unknown as { standalone?: boolean }).standalone = !!o.navStandalone;
   if (o.hasBIP)
     (window as unknown as { onbeforeinstallprompt?: unknown }).onbeforeinstallprompt = null;
-  else delete (window as unknown as { onbeforeinstallprompt?: unknown }).onbeforeinstallprompt;
+  else Reflect.deleteProperty(window, 'onbeforeinstallprompt');
 }
 
 describe('getState (derivação de instalabilidade)', () => {
