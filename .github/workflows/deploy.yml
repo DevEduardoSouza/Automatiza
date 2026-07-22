@@ -197,6 +197,10 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_SENTRY_ENVIRONMENT: production
           VITE_SENTRY_RELEASE: ${{ steps.version.outputs.version }}
+          # KILL SWITCH do PWA: setar a variável PWA_SELF_DESTROY (gh variable set
+          # PWA_SELF_DESTROY -b 1) + redeploy gera um sw.js no-op auto-destrutivo.
+          # Ausente/vazia = service worker normal.
+          PWA_SELF_DESTROY: ${{ vars.PWA_SELF_DESTROY }}
         run: npm run build
 
       - name: Stage dist for image packaging

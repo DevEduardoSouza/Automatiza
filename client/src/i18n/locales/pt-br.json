@@ -2188,6 +2188,44 @@
         "updateFailed": "Falha ao atualizar agendamento"
       }
     },
+    "instagram": {
+      "title": "Instagram",
+      "subtitle": "Publique automaticamente no Story do seu Instagram a partir do grupo monitor",
+      "comingSoon": {
+        "title": "Em breve",
+        "description": "A integração com o Instagram ainda não está disponível nesta conta."
+      },
+      "connection": {
+        "title": "Conta do Instagram",
+        "connected": "Conectada",
+        "disconnected": "Desconectada",
+        "connectedAs": "Conectada como @{{username}}",
+        "notConnected": "Conecte sua conta profissional do Instagram para publicar Stories automaticamente.",
+        "connect": "Conectar Instagram",
+        "disconnect": "Desconectar"
+      },
+      "howItWorks": {
+        "title": "Como funciona",
+        "description": "Escreva {story} no início da mensagem em um grupo monitorado. A mensagem é espelhada normalmente no WhatsApp e também vira um Story no seu Instagram (imagem, ou o texto transformado em imagem)."
+      },
+      "recent": {
+        "title": "Últimos stories",
+        "status": {
+          "published": "Publicado",
+          "failed": "Falhou",
+          "pending": "Processando"
+        }
+      },
+      "success": {
+        "connected": "Instagram conectado com sucesso",
+        "disconnected": "Instagram desconectado"
+      },
+      "errors": {
+        "connectFailed": "Não foi possível iniciar a conexão com o Instagram",
+        "disconnectFailed": "Não foi possível desconectar o Instagram",
+        "oauth": "Não foi possível conectar sua conta do Instagram"
+      }
+    },
     "affiliatePrograms": {
       "title": "Programas de Afiliado",
       "subtitle": "Configure suas credenciais para gerar links de afiliado automaticamente",
@@ -4235,6 +4273,7 @@
     "linkLists": "Listas de links",
     "dispatchTexts": "Textos de Disparo",
     "affiliatePrograms": "Programas de Afiliado",
+    "instagram": "Instagram",
     "ctas": "CTAs",
     "coupons": "Cupons",
     "couponRules": "Cupons Avançados",
@@ -4248,6 +4287,10 @@
     "darkTheme": "Tema Escuro",
     "logout": "Sair",
     "menu": "Menu"
+  },
+  "pwa": {
+    "updateAvailable": "Nova versão disponível",
+    "reload": "Recarregar"
   },
   "billing": {
     "suspended": {

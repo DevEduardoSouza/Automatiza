@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "lib": ["ES2020", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/pwa/sw.ts"],
+  "exclude": []
+}

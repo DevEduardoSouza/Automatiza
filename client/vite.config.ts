@@ -2,13 +2,21 @@ import path from 'node:path';
 import react from '@vitejs/plugin-react';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 const ReactCompilerConfig = {
   target: '19',
 };
 
+// ID único por build (GITHUB_SHA no CI; timestamp local). Vai na URL do SW
+// (/sw.js?v=BUILD_ID) para forçar MISS no edge Cloudflare a cada deploy.
+const BUILD_ID = process.env.GITHUB_SHA?.slice(0, 12) ?? `dev-${Date.now()}`;
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  define: {
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   server: {
     host: '::',
     port: 3003,
@@ -34,6 +42,24 @@ export default defineConfig(({ mode }) => ({
       babel: {
         plugins: [['babel-plugin-react-compiler', ReactCompilerConfig]],
       },
+    }),
+    // PWA: service worker custom (injectManifest) + kill switch (selfDestroying).
+    // manifest:false → mantém o manifest.webmanifest estático (identidade intocada).
+    // injectRegister:false → registro manual com URL versionada (src/pwa/register.ts).
+    VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src/pwa',
+      filename: 'sw.ts',
+      injectRegister: false,
+      registerType: 'prompt',
+      selfDestroying: !!process.env.PWA_SELF_DESTROY,
+      manifest: false,
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,woff2,png,svg,ico}'],
+        globIgnores: ['templates/**'],
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+      },
+      devOptions: { enabled: false },
     }),
     // Sentry source map upload (production builds only)
     mode === 'production' &&
