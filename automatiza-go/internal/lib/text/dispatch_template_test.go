@@ -5,6 +5,26 @@ import (
 	"testing"
 )
 
+func TestRenderMLCouponNotice(t *testing.T) {
+	t.Parallel()
+
+	body := "R$50 OFF acima de R$300\nhttps://mercadolivre.com.br/sec/ABC"
+	got := RenderMLCouponNotice(body)
+
+	if !strings.HasPrefix(got, "🎟️ *CUPOM MERCADO LIVRE* 🎟️\n\n") {
+		t.Errorf("faltou o cabeçalho de cupom no início.\n got: %q", got)
+	}
+	if !strings.Contains(got, body) {
+		t.Errorf("o corpo original deveria seguir verbatim.\n got: %q", got)
+	}
+	if RenderMLCouponNotice("") != "" {
+		t.Errorf("corpo vazio deveria render \"\", got: %q", RenderMLCouponNotice(""))
+	}
+	if RenderMLCouponNotice("   ") != "" {
+		t.Errorf("corpo só-espaços deveria render \"\", got: %q", RenderMLCouponNotice("   "))
+	}
+}
+
 func TestRenderTemplate(t *testing.T) {
 	t.Parallel()
 

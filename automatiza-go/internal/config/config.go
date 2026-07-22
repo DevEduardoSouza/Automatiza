@@ -79,6 +79,15 @@ type Config struct {
 	// ML Encryption
 	MLCredentialsEncryptionKey string `mapstructure:"ML_CREDENTIALS_ENCRYPTION_KEY"`
 
+	// Instagram (Stories via tag {story}). Vazio => feature desligada:
+	// APIClient.Enabled()==false, a UI mostra indisponível e o trigger vira
+	// no-op. O token dos usuários é cifrado com ML_CREDENTIALS_ENCRYPTION_KEY
+	// (mesma classe de segredo, já provisionada). RedirectURI vazio =>
+	// BACKEND_PUBLIC_URL + "/api/v1/instagram/oauth/callback".
+	InstagramAppID       string `mapstructure:"INSTAGRAM_APP_ID"`
+	InstagramAppSecret   string `mapstructure:"INSTAGRAM_APP_SECRET"`
+	InstagramRedirectURI string `mapstructure:"INSTAGRAM_REDIRECT_URI"`
+
 	// Log
 	LogLevel string `mapstructure:"LOG_LEVEL"`
 

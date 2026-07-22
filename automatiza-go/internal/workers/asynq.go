@@ -18,12 +18,29 @@ import (
 
 // Task types
 const (
-	TypeSendMessage      = "whatsapp:send_message"
-	TypeSyncGroups       = "whatsapp:sync_groups"
-	TypeWAHAWebhook      = "whatsapp:waha_webhook"
-	TypeReconcileChat    = "whatsapp:reconcile:chat"
-	TypeReconcileSession = "whatsapp:reconcile:session"
+	TypeSendMessage           = "whatsapp:send_message"
+	TypeSyncGroups            = "whatsapp:sync_groups"
+	TypeWAHAWebhook           = "whatsapp:waha_webhook"
+	TypeReconcileChat         = "whatsapp:reconcile:chat"
+	TypeReconcileSession      = "whatsapp:reconcile:session"
+	TypeInstagramPublishStory = "instagram:publish_story"
 )
+
+// InstagramStoryJobData is the payload for publishing one Instagram story on
+// behalf of a user. Exactly one of MediaKey / Text is set: MediaKey points to a
+// JPEG already stored in the ephemeral media store (mirrored image); Text is
+// the source message body to be rendered into an image by the worker. LedgerID
+// is the instagram_story_posts row to update with the result.
+type InstagramStoryJobData struct {
+	UserID      string    `json:"userId"`
+	MediaKey    string    `json:"mediaKey,omitempty"`
+	Text        string    `json:"text,omitempty"`
+	SourceGroup string    `json:"sourceGroup"`
+	MessageID   string    `json:"messageId"`
+	LedgerID    string    `json:"ledgerId"`
+	TraceID     string    `json:"trace_id,omitempty"`
+	EnqueuedAt  time.Time `json:"enqueuedAt"`
+}
 
 // MessageJobData represents data for a send message job
 type MessageJobData struct {
@@ -239,6 +256,40 @@ func (q *QueueClient) EnqueueMessage(ctx context.Context, data *MessageJobData, 
 		zap.String("automationID", data.AutomationID),
 		zap.Bool("hasImage", data.ImageURL != nil && *data.ImageURL != ""))
 
+	return info, nil
+}
+
+// EnqueueInstagramStory enqueues a story-publish job on the "default" queue.
+// Story publishing has no ≤1min SLA, so it must not compete with webhooks(4)
+// or the mirror's own message sends(3). Failures retry a few times; permanent
+// auth/permission errors are turned into asynq.SkipRetry by the worker.
+func (q *QueueClient) EnqueueInstagramStory(ctx context.Context, data *InstagramStoryJobData) (*asynq.TaskInfo, error) {
+	if data.TraceID == "" {
+		if span := trace.SpanFromContext(ctx); span.SpanContext().HasTraceID() {
+			data.TraceID = span.SpanContext().TraceID().String()
+		}
+	}
+	data.EnqueuedAt = time.Now()
+
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	task := asynq.NewTask(TypeInstagramPublishStory, payload,
+		asynq.Queue("default"),
+		asynq.MaxRetry(4),
+		asynq.Timeout(90*time.Second),
+	)
+	info, err := q.client.EnqueueContext(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	q.logger.Info("Instagram story enqueued",
+		zap.String("taskID", info.ID),
+		zap.String("userID", data.UserID),
+		zap.String("sourceGroup", data.SourceGroup),
+		zap.Bool("rendered", data.MediaKey == ""))
 	return info, nil
 }
 

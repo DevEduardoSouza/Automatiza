@@ -4286,11 +4286,23 @@
     "lightTheme": "Tema Claro",
     "darkTheme": "Tema Escuro",
     "logout": "Sair",
-    "menu": "Menu"
+    "menu": "Menu",
+    "install": "Instalar app"
   },
   "pwa": {
     "updateAvailable": "Nova versão disponível",
-    "reload": "Recarregar"
+    "reload": "Recarregar",
+    "install": {
+      "title": "Instalar o aplicativo",
+      "subtitle": "Tenha o Automatisa na tela inicial, como um app.",
+      "installed": "App instalado",
+      "success": "App instalado com sucesso!",
+      "iosStep1": "Toque no botão Compartilhar (o quadrado com a seta para cima) na barra do Safari.",
+      "iosStep2": "Escolha \"Adicionar à Tela de Início\".",
+      "iosStep3": "Abra o app pela tela inicial e faça login uma vez — pronto.",
+      "chromiumHint": "No menu do navegador (⋮), toque em \"Instalar app\" ou \"Adicionar à tela inicial\".",
+      "unsupported": "Seu navegador não permite instalar o app. Use o Chrome ou Edge no computador e no Android, ou o Safari no iPhone."
+    }
   },
   "billing": {
     "suspended": {

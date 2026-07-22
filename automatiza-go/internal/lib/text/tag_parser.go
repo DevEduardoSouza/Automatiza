@@ -27,6 +27,13 @@ var infoTagRegex = regexp.MustCompile(`info\[([^\]]*)\]`)
 // forbidden since it closes the tag.
 var ctaTagRegex = regexp.MustCompile(`cta\[([^\]]*)\]`)
 
+// storyTagRegex matches a leading {story} marker (case-insensitive), tolerating
+// leading whitespace and consuming the trailing spaces/tabs so the stripped body
+// starts clean. Anchored to the START of the message: only a message that BEGINS
+// with {story} opts into the Instagram-story side-effect. A {story} elsewhere in
+// the text is left untouched (it is not the opt-in and must not be mangled).
+var storyTagRegex = regexp.MustCompile(`(?i)^\s*\{story\}[ \t]*`)
+
 // ParseInfoTag extracts the contents of an info[...] tag from the message
 // body and returns the trimmed text. Returns "" when no tag is present or
 // when the tag is empty.
@@ -71,6 +78,22 @@ func ParseCTATag(body string) string {
 // mistaken for product links.
 func StripCTATag(body string) string {
 	return strings.TrimSpace(ctaTagRegex.ReplaceAllString(body, ""))
+}
+
+// HasStoryTag reports whether the message body begins with the {story} marker
+// (case-insensitive, ignoring leading whitespace). This is the opt-in for
+// mirroring the message as an Instagram story on top of the normal WhatsApp
+// relay — see the monitoring message processor.
+func HasStoryTag(body string) bool {
+	return storyTagRegex.MatchString(body)
+}
+
+// StripStoryTag removes a leading {story} marker so the mirrored WhatsApp
+// message goes out clean (users who don't use the tag are unaffected — the
+// regex only matches at the very start). Only the leading marker is removed;
+// a literal "{story}" appearing later in the text is left intact.
+func StripStoryTag(body string) string {
+	return strings.TrimSpace(storyTagRegex.ReplaceAllString(body, ""))
 }
 
 // ParseDiscountTag extracts a discount tag from the message body.

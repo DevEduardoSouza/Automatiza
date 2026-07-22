@@ -405,6 +405,24 @@ type MLCredentialsRepository interface {
 	Save(ctx context.Context, userID, encryptedData string) error
 }
 
+// InstagramCredentialsRepository handles per-user Instagram tokens (encrypted).
+type InstagramCredentialsRepository interface {
+	Get(ctx context.Context, userID string) (*models.InstagramCredentialsDB, error)
+	Save(ctx context.Context, userID, encryptedData, igUserID, username string, expiresAt time.Time) error
+	Delete(ctx context.Context, userID string) error
+	// ListExpiring returns credentials whose token expires before `before`
+	// (used by the refresh cron to renew ~30d ahead).
+	ListExpiring(ctx context.Context, before time.Time) ([]models.InstagramCredentialsDB, error)
+}
+
+// InstagramStoryPostRepository handles the story-publish ledger.
+type InstagramStoryPostRepository interface {
+	Create(ctx context.Context, p *models.InstagramStoryPost) (string, error)
+	MarkResult(ctx context.Context, id, status, igMediaID, errMsg string) error
+	ListRecentByUser(ctx context.Context, userID string, limit int) ([]models.InstagramStoryPost, error)
+	CountPublishedSince(ctx context.Context, userID string, since time.Time) (int, error)
+}
+
 // MLLinkRepository handles ML link entries
 type MLLinkRepository interface {
 	GetByOriginalURL(ctx context.Context, userID, originalURL string) (*models.MLLinkEntry, error)

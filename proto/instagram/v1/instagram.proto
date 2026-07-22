@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package instagram.v1;
+
+option go_package = "github.com/automatiza/proto/instagram/v1;instagramv1";
+
+// ============================================================
+// Messages
+// ============================================================
+
+// A published (or attempted) Instagram story, for the recent-activity list.
+message StoryPost {
+  string id = 1;
+  // pending | published | failed
+  string status = 2;
+  // image | rendered_text
+  string media_source = 3;
+  string source_group = 4;
+  string ig_media_id = 5;
+  string error = 6;
+  // Creation timestamp (ISO 8601)
+  string created_at = 7;
+}
+
+message GetStatusRequest {}
+
+message GetStatusResponse {
+  // Whether the Instagram integration is configured on the server at all
+  // (INSTAGRAM_APP_ID present). When false the UI shows "coming soon".
+  bool feature_enabled = 1;
+  // Whether THIS user has connected an Instagram account.
+  bool connected = 2;
+  string username = 3;
+  string ig_user_id = 4;
+  // Token expiry (ISO 8601), empty when not connected.
+  string token_expires_at = 5;
+  repeated StoryPost recent_stories = 6;
+}
+
+message GetAuthorizeUrlRequest {}
+
+message GetAuthorizeUrlResponse {
+  string url = 1;
+}
+
+message DisconnectRequest {}
+
+message DisconnectResponse {}
+
+// ============================================================
+// Service
+// ============================================================
+
+// InstagramService manages per-user Instagram Story publishing connections.
+service InstagramService {
+  // GetStatus returns feature availability plus this user's connection state.
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  // GetAuthorizeUrl returns the Instagram OAuth URL to start the connect flow.
+  rpc GetAuthorizeUrl(GetAuthorizeUrlRequest) returns (GetAuthorizeUrlResponse);
+  // Disconnect removes this user's stored Instagram credentials.
+  rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
+}

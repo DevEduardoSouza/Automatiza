@@ -326,3 +326,51 @@ func TestApplyDiscountTag(t *testing.T) {
 		})
 	}
 }
+
+func TestHasStoryTag(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"início simples", "{story} promo do dia", true},
+		{"caixa mista", "{Story} promo", true},
+		{"maiúsculas", "{STORY} promo", true},
+		{"espaço antes", "  {story} promo", true},
+		{"só a tag", "{story}", true},
+		{"tag no meio não casa", "veja {story} aqui", false},
+		{"sem tag", "promoção normal", false},
+		{"corpo vazio", "", false},
+		{"palavra story sem chaves", "story do dia", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasStoryTag(tt.body); got != tt.want {
+				t.Errorf("HasStoryTag(%q) = %v, want %v", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripStoryTag(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"início simples", "{story} promo do dia", "promo do dia"},
+		{"caixa mista", "{Story}   promo", "promo"},
+		{"espaço antes", "  {story} legenda", "legenda"},
+		{"só a tag", "{story}", ""},
+		{"tag no meio preservada", "veja {story} aqui", "veja {story} aqui"},
+		{"sem tag intocado", "promoção normal", "promoção normal"},
+		{"multilinha", "{story}\nlinha 1\nlinha 2", "linha 1\nlinha 2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := StripStoryTag(tt.body); got != tt.want {
+				t.Errorf("StripStoryTag(%q) = %q, want %q", tt.body, got, tt.want)
+			}
+		})
+	}
+}

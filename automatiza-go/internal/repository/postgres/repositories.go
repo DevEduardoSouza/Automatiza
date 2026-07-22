@@ -41,6 +41,8 @@ type Repositories struct {
 	ReconciliationCheckpoint repository.ReconciliationCheckpointRepository
 	SyncJob                  repository.SyncJobRepository
 	KiwifyEvent              repository.KiwifyEventRepository
+	InstagramCredentials     repository.InstagramCredentialsRepository
+	InstagramStoryPost       repository.InstagramStoryPostRepository
 }
 
 // NewRepositories creates all PostgreSQL repositories
@@ -79,5 +81,7 @@ func NewRepositories(db *DB, logger *zap.Logger) *Repositories {
 		ReconciliationCheckpoint: NewReconciliationCheckpointRepository(db, logger),
 		SyncJob:                  NewSyncJobRepository(db, logger),
 		KiwifyEvent:              NewKiwifyEventRepository(db, logger),
+		InstagramCredentials:     NewInstagramCredentialsRepository(db, logger),
+		InstagramStoryPost:       NewInstagramStoryPostRepository(db, logger),
 	}
 }

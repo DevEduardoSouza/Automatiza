@@ -13,6 +13,7 @@ import (
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/automation"
 	"automatiza-go/internal/services/coupons"
+	"automatiza-go/internal/services/instagram"
 	"automatiza-go/internal/services/jobs"
 	"automatiza-go/internal/services/kiwify"
 	"automatiza-go/internal/services/loadbalancer"
@@ -62,6 +63,11 @@ type Dependencies struct {
 	LBService         loadbalancer.Service
 	RedirectService   redirect.Service
 	KiwifyService     kiwify.Service
+
+	// Instagram (Stories via {story}). Optional — nil / disabled service means
+	// the public OAuth + media routes are still registered but answer "off".
+	InstagramService    *instagram.Service
+	InstagramMediaStore *instagram.MediaStore
 
 	// Repositories
 	ProfileRepo       repository.ProfileRepository
@@ -244,6 +250,18 @@ func SetupRoutes(r *gin.Engine, deps *Dependencies) {
 		// Fallback to old stub handler if service not configured
 		redirectHandler := NewRedirectHandler(deps)
 		api.POST("/redirect", redirectHandler.Process)
+	}
+
+	// Instagram (public) — OAuth callback (no session; state is signed),
+	// ephemeral story-media fetch (unguessable id) and Meta deauthorize /
+	// data-deletion stubs. Registered even when the feature is off so Meta's
+	// configured callbacks never 404.
+	{
+		igPublic := NewInstagramPublicHandler(deps.InstagramService, deps.InstagramMediaStore, deps.Config.PublicBaseURL, deps.Logger)
+		api.GET("/instagram/oauth/callback", igPublic.OAuthCallback)
+		api.GET("/public/story-media/:id", igPublic.ServeStoryMedia)
+		api.POST("/instagram/deauthorize", igPublic.Deauthorize)
+		api.POST("/instagram/data-deletion", igPublic.DataDeletion)
 	}
 
 	// Instances (internal)

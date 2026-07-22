@@ -106,3 +106,58 @@ func TestRenderMonitorDispatchText_ShopeeEnrichFails_StillRenders(t *testing.T) 
 		t.Fatalf("deveria manter o corpo do template; got:\n%s", out)
 	}
 }
+
+// Fix (bug do cupom ML 20/07): quando o link ML é de cupom/campanha (preview sem
+// produto — Title/Price vazios), o template de OFERTA saía com "Por: R$ " vazio.
+// Agora devolve Body vazio → o caller (usingTemplate=false) cai no repasse
+// histórico, que preserva o texto-fonte e troca o link pelo afiliado do dono.
+func TestRenderMonitorDispatchText_MLNonProductPreview_FallsBackToSourceRelay(t *testing.T) {
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{
+			dt: &models.DispatchText{Body: "🛍️ {nome_produto}\n💸 Por {preco_formatado}"},
+		}
+		s.mlService = &mockMLService{
+			GetProductPreviewFn: func(_ context.Context, _, _ string) (*models.MLProductPreview, error) {
+				// Página de cupom/campanha: preview vazio não-nil, sem produto.
+				return &models.MLProductPreview{Permalink: "https://mercadolivre.com.br/sec/ABC", Currency: "BRL"}, nil
+			},
+		}
+	})
+	automation := &models.Automation{ID: "auto-ml", UserID: "user-1", DispatchTextID: strPtr("dt-1")}
+
+	rendered := svc.renderMonitorDispatchText(context.Background(), automation, nil,
+		"", "https://mercadolivre.com.br/sec/ABC", "https://mercadolivre.com.br/sec/ABC", "")
+
+	if rendered.Body != "" {
+		t.Fatalf("preview sem produto deveria devolver Body vazio (repasse histórico); got: %q", rendered.Body)
+	}
+}
+
+// Produto ML real: o template continua renderizando com título e preço — o fix
+// não pode degradar oferta legítima.
+func TestRenderMonitorDispatchText_MLProductPreview_StillRenders(t *testing.T) {
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{
+			dt: &models.DispatchText{Body: "🛍️ {nome_produto}\n💸 Por {preco_formatado}\n🛒 {link_afiliado}"},
+		}
+		s.mlService = &mockMLService{
+			GetProductPreviewFn: func(_ context.Context, _, _ string) (*models.MLProductPreview, error) {
+				return &models.MLProductPreview{
+					Title: "Cafeteira ML", Price: 210.50,
+					Permalink: "https://mercadolivre.com.br/p/MLB1", Image: "https://img/x.jpg",
+				}, nil
+			},
+		}
+	})
+	automation := &models.Automation{ID: "auto-ml", UserID: "user-1", DispatchTextID: strPtr("dt-1")}
+
+	rendered := svc.renderMonitorDispatchText(context.Background(), automation, nil,
+		"", "https://mercadolivre.com.br/p/MLB1", "https://mercadolivre.com.br/sec/OWN", "")
+
+	if !strings.Contains(rendered.Body, "Cafeteira ML") {
+		t.Fatalf("preview de produto deveria renderizar o template com o título; got: %q", rendered.Body)
+	}
+	if !strings.Contains(rendered.Body, "210,50") {
+		t.Fatalf("template ML deveria conter o preço; got: %q", rendered.Body)
+	}
+}

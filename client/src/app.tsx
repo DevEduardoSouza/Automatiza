@@ -45,6 +45,7 @@ function lazyWithRetry<T extends React.ComponentType>(loader: () => Promise<{ de
 // Lazy-loaded page components with ChunkLoadError retry
 const Admin = lazyWithRetry(() => import('./pages/admin'));
 const AffiliatePrograms = lazyWithRetry(() => import('./pages/affiliate-programs'));
+const Instagram = lazyWithRetry(() => import('./pages/instagram'));
 const Auth = lazyWithRetry(() => import('./pages/auth'));
 const AuthMagic = lazyWithRetry(() => import('./pages/auth-magic'));
 const AutomationLogs = lazyWithRetry(() => import('./pages/automation-logs'));
@@ -252,6 +253,17 @@ const App = () => (
                         <ProtectedRoute>
                           <AppLayout>
                             <AffiliatePrograms />
+                          </AppLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    <Route
+                      path="/instagram"
+                      element={
+                        <ProtectedRoute>
+                          <AppLayout>
+                            <Instagram />
                           </AppLayout>
                         </ProtectedRoute>
                       }

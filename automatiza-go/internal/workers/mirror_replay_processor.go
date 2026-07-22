@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
+	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/services/monitoring"
 	"automatiza-go/internal/services/offer_generate"
@@ -75,11 +76,15 @@ func (p *MirrorReplayProcessor) ProcessMessage(ctx context.Context, sessionName 
 		RemoteJID:    msg.ChatID,
 		FromMe:       msg.FromMe,
 		SenderJID:    msg.Sender,
-		Body:         msg.Body,
-		Timestamp:    msg.Timestamp.Unix(),
-		HasMedia:     msg.HasMedia,
-		MediaType:    msg.MediaType,
-		MediaURL:     msg.MediaURL,
+		// Strip do {story} no re-espelho: a tag não pode vazar no texto
+		// espelhado. Replay é mensagem VELHA (reconciliação), então NÃO dispara
+		// story — só limpa o corpo. Incondicional é seguro (o regex só casa a
+		// tag no início).
+		Body:      text.StripStoryTag(msg.Body),
+		Timestamp: msg.Timestamp.Unix(),
+		HasMedia:  msg.HasMedia,
+		MediaType: msg.MediaType,
+		MediaURL:  msg.MediaURL,
 	}
 
 	p.logger.Info("Replaying reconciled message through mirror pipeline",

@@ -402,6 +402,21 @@ De {preco_original_formatado}
 ⚠ Promoção sujeita a alteração a qualquer momento.`
 }
 
+// RenderMLCouponNotice formats a mirrored Mercado Livre coupon/campaign notice:
+// a fixed header plus the original message body untouched (the caller has
+// already swapped any ML links for the owner's affiliate links). Hardcoded on
+// purpose — a coupon notice is not an offer, so it needs no template entity,
+// no config, and no product preview. The header sits on its own line so the
+// send-time SeparateURLEmojiGlue normalization never diverges from the
+// selfsend loop-guard mark (both see the same body).
+func RenderMLCouponNotice(originalBody string) string {
+	body := strings.TrimSpace(originalBody)
+	if body == "" {
+		return ""
+	}
+	return "🎟️ *CUPOM MERCADO LIVRE* 🎟️\n\n" + body
+}
+
 // ExtractTemplateVariables extracts variable names from a template
 func ExtractTemplateVariables(template string) []string {
 	varRegex := regexp.MustCompile(`\{\{([^}]+)\}\}|\{([^}]+)\}`)

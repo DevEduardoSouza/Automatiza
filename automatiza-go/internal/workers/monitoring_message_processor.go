@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/services/monitoring"
 	"automatiza-go/internal/services/offer_generate"
@@ -30,6 +31,14 @@ import (
 // checkpoint para trás e o backfill recupere a mensagem.
 type MessageCheckpointRecorder interface {
 	RecordMessage(sessionName, chatID string, ts time.Time, messageID string)
+}
+
+// StoryMessageTrigger dispara o efeito colateral de publicar um Story no
+// Instagram quando a mensagem-fonte começou com {story}. Implementado por
+// *StoryTrigger; opcional (nil = feature desligada). Roda dentro do fan-out,
+// fail-open — nunca afeta o espelho no WhatsApp.
+type StoryMessageTrigger interface {
+	HandleStoryMessage(ctx context.Context, msg *models.IncomingMessage)
 }
 
 // MonitoringMessageProcessor processes incoming WhatsApp messages for MONITOR mode automations.
@@ -66,6 +75,10 @@ type MonitoringMessageProcessor struct {
 	// fan-out concluir. Opcional (nil = desligado).
 	checkpointRecorder MessageCheckpointRecorder
 
+	// storyTrigger publica no Story do Instagram quando a mensagem-fonte
+	// começou com {story}. Opcional (nil = feature desligada).
+	storyTrigger StoryMessageTrigger
+
 	// syncForTests força processamento inline (sem goroutine) para os
 	// testes poderem assertar deterministicamente logo após ProcessMessage.
 	syncForTests bool
@@ -75,6 +88,12 @@ type MonitoringMessageProcessor struct {
 // service). Chamar uma vez no wiring, antes de o consumidor começar a servir.
 func (p *MonitoringMessageProcessor) SetCheckpointRecorder(r MessageCheckpointRecorder) {
 	p.checkpointRecorder = r
+}
+
+// SetStoryTrigger instala o disparador de Story do Instagram. Chamar uma vez no
+// wiring do worker; nil mantém a feature desligada.
+func (p *MonitoringMessageProcessor) SetStoryTrigger(t StoryMessageTrigger) {
+	p.storyTrigger = t
 }
 
 // lockChat devolve o mutex do grupo-fonte, criando-o na primeira mensagem.
@@ -168,6 +187,18 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 		return nil
 	}
 
+	// {story} opt-in: strip the leading marker BEFORE anything else so both the
+	// monitoring and offer_generate relays go out clean and the per-body dedup
+	// hashes are computed on the same stripped text across every chip. The
+	// Instagram-story side-effect (storyTrigger) fires inside the fan-out below;
+	// with no trigger wired this is a pure no-op for anyone not using the tag. A
+	// message that was only "{story}" with no media becomes empty here and is
+	// skipped just below.
+	hasStory := text.HasStoryTag(msg.Body)
+	if hasStory {
+		msg.Body = text.StripStoryTag(msg.Body)
+	}
+
 	// Skip empty messages (nothing for either service to act on)
 	if msg.Body == "" && !msg.HasMedia {
 		p.logger.Debug("Skipping empty message",
@@ -210,6 +241,22 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 				zap.String("messageID", msg.MessageID),
 				zap.Duration("age", time.Since(ts)))
 			return
+		}
+
+		// {story}: publica no Instagram ANTES do relay, isolado e fail-open. O
+		// recover próprio garante que um panic aqui nunca derruba o espelho.
+		if hasStory && p.storyTrigger != nil {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						p.logger.Error("Panic in Instagram story trigger",
+							zap.String("session", sessionName),
+							zap.String("messageID", msg.MessageID),
+							zap.Any("panic", r))
+					}
+				}()
+				p.storyTrigger.HandleStoryMessage(procCtx, msg)
+			}()
 		}
 
 		if !msg.FromMe {

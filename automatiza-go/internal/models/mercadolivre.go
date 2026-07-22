@@ -59,6 +59,15 @@ type MLProductPreview struct {
 	Installments    *string  `json:"installments,omitempty"`
 }
 
+// HasProductData reports whether the preview carries the minimum needed to
+// render an offer card (title AND price). A preview scraped from an ML
+// coupon/campaign page (meli.la/sec link that is not a real product) fails
+// here: it comes back empty or with a bogus title/price. Used to route those
+// messages to the coupon-notice relay instead of the offer pipeline.
+func (p *MLProductPreview) HasProductData() bool {
+	return p != nil && p.Title != "" && p.Price > 0
+}
+
 // MLAffiliateLink represents a generated ML affiliate link
 type MLAffiliateLink struct {
 	OriginalURL   string `json:"originalUrl"`

@@ -30,6 +30,7 @@ import (
 	dispatchtextsv1connect "automatiza-go/internal/gen/dispatch_texts/v1/dispatch_textsv1connect"
 	"automatiza-go/internal/gen/groups/v1/groupsv1connect"
 	"automatiza-go/internal/gen/history/v1/historyv1connect"
+	"automatiza-go/internal/gen/instagram/v1/instagramv1connect"
 	"automatiza-go/internal/gen/instances/v1/instancesv1connect"
 	"automatiza-go/internal/gen/jobs/v1/jobsv1connect"
 	mllinksv1connect "automatiza-go/internal/gen/ml_links/v1/ml_linksv1connect"
@@ -59,6 +60,7 @@ import (
 	"automatiza-go/internal/services/ctas"
 	"automatiza-go/internal/services/dashboard"
 	"automatiza-go/internal/services/email"
+	"automatiza-go/internal/services/instagram"
 	"automatiza-go/internal/services/jobs"
 	"automatiza-go/internal/services/kiwify"
 	"automatiza-go/internal/services/loadbalancer"
@@ -404,6 +406,24 @@ func main() {
 		config.NewModuleLogger(logger, "ml"),
 	)
 
+	// Instagram Stories ({story} tag). Nasce desligado sem INSTAGRAM_APP_ID:
+	// APIClient.Enabled()==false → tudo vira no-op. Token cifrado com a mesma
+	// chave do ML; state OAuth assinado com a chave HMAC de tokens.
+	instagramRedirectURI := cfg.InstagramRedirectURI
+	if instagramRedirectURI == "" {
+		instagramRedirectURI = cfg.BackendPublicURL + "/api/v1/instagram/oauth/callback"
+	}
+	instagramService := instagram.NewService(
+		instagram.NewAPIClient(cfg.InstagramAppID, cfg.InstagramAppSecret, instagramRedirectURI, config.NewModuleLogger(logger, "instagram")),
+		repos.InstagramCredentials,
+		repos.InstagramStoryPost,
+		cfg.MLCredentialsEncryptionKey,
+		string(cfg.GetTokenHMACKey()),
+		cacheClient,
+		config.NewModuleLogger(logger, "instagram"),
+	)
+	instagramMediaStore := instagram.NewMediaStore(redisClient.Client, config.NewModuleLogger(logger, "instagram-media"))
+
 	aiService := ai.NewAIService(
 		cfg.AIApiURL,
 		cfg.AIApiKey,
@@ -531,6 +551,13 @@ func main() {
 	// "item queimado sem envio" (chip caiu entre enfileirar e enviar).
 	cronService.RegisterTask("reconcile_list_deliveries", 10*time.Minute, func(ctx context.Context) error {
 		return automationService.ReconcileListDeliveries(ctx)
+	})
+
+	// Renova os tokens de longa duração do Instagram (~60d) que expiram nos
+	// próximos 30d. No-op quando a feature está desligada. Só roda no server
+	// (cronService.Start()).
+	cronService.RegisterTask("instagram_token_refresh", 24*time.Hour, func(ctx context.Context) error {
+		return instagramService.RefreshExpiring(ctx)
 	})
 
 	// Reconciliador de 'queued' órfão (não-LIST-item): fecha o gap deixado pelo
@@ -765,7 +792,7 @@ func main() {
 		if redisClient != nil {
 			redisClientForWorker = redisClient.Client
 		}
-		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, offerGenerateService, cacheClient, logger)
+		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, offerGenerateService, cacheClient, automationRepo, instagramService, instagramMediaStore, repos.InstagramStoryPost, logger)
 		return
 	}
 
@@ -823,6 +850,9 @@ func main() {
 		LBService:         lbService,
 		RedirectService:   redirectService,
 		KiwifyService:     kiwifyService,
+
+		InstagramService:    instagramService,
+		InstagramMediaStore: instagramMediaStore,
 
 		// Repositories
 		ProfileRepo:       profileRepo,
@@ -943,6 +973,15 @@ func main() {
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
 	)
 	connectServer.RegisterService(automationsPath, automationsHTTPHandler)
+
+	// Register Instagram service handler (requires auth). Dead-but-registered
+	// when the feature is off: GetStatus returns feature_enabled=false.
+	instagramHandler := connectrpc.NewInstagramHandler(instagramService)
+	instagramPath, instagramHTTPHandler := instagramv1connect.NewInstagramServiceHandler(
+		instagramHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(instagramPath, instagramHTTPHandler)
 
 	// Register WhatsApp service handler (canonical service, requires auth)
 	whatsappHandler := connectrpc.NewWhatsAppHandler(wahaAdapter, instanceRepo, repos.SyncJob, profileRepo, queueClient, cfg.WebhookSecret)
@@ -1403,6 +1442,10 @@ func runWorker(
 	monitoringService monitoring.Service,
 	offerGenerateService offer_generate.Service,
 	cacheClient *cache.Cache,
+	automationRepo repository.AutomationRepository,
+	instagramService *instagram.Service,
+	instagramMediaStore *instagram.MediaStore,
+	instagramStoryRepo repository.InstagramStoryPostRepository,
 	logger *zap.Logger,
 ) {
 	logger.Info("Starting worker mode",
@@ -1477,6 +1520,24 @@ func runWorker(
 			config.NewModuleLogger(logger, "monitoring-processor"),
 		)
 		messageProcessor = monitoringProcessor
+
+		// {story}: liga o disparo de Story do Instagram no fan-out. Só quando a
+		// feature está configurada (INSTAGRAM_APP_ID presente) — sem isso o
+		// trigger nem é instalado e o strip da tag segue sendo um no-op.
+		if instagramService.FeatureEnabled() {
+			storyTrigger := workers.NewStoryTrigger(
+				automationRepo,
+				instagramService,
+				instagramStoryRepo,
+				wahaAdapter,
+				instagramMediaStore,
+				queueClient,
+				cacheClient,
+				config.NewModuleLogger(logger, "instagram-story-trigger"),
+			)
+			monitoringProcessor.SetStoryTrigger(storyTrigger)
+			logger.Info("Instagram story trigger enabled")
+		}
 	}
 
 	// Create dispatch log processor for reconciliation
@@ -1637,6 +1698,19 @@ func runWorker(
 	queueServer.RegisterHandler(workers.TypeMessageImage, observability.SentryAsynqMiddleware("message_queue", messageQueueWorker))
 	queueServer.RegisterHandler(workers.TypeMessagePoll, observability.SentryAsynqMiddleware("message_queue", messageQueueWorker))
 	logger.Info("Message queue worker registered for typed message handling")
+
+	// Instagram story publisher. Registrado SEMPRE (evita "handler not found"
+	// se um job sobrar na fila após a feature ser desligada); com a feature off
+	// nenhum job é enfileirado, e o worker fail-open marca 'failed' se ocorrer.
+	instagramStoryWorker := workers.NewInstagramStoryWorker(
+		instagramService,
+		instagramMediaStore,
+		instagramStoryRepo,
+		cfg.BackendPublicURL,
+		config.NewModuleLogger(logger, "instagram-story-worker"),
+	)
+	queueServer.RegisterHandler(workers.TypeInstagramPublishStory,
+		observability.SentryAsynqMiddleware("instagram_story", asynq.HandlerFunc(instagramStoryWorker.ProcessTask)))
 
 	// Register reconciliation handlers if service is available
 	if reconciliationWorker != nil {

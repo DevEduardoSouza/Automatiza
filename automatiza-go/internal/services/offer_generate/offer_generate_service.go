@@ -644,10 +644,18 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 
 		// Get product preview
 		preview, prevErr := s.mlService.GetProductPreview(ctx, link, auto.UserID)
-		if prevErr != nil || preview == nil {
-			s.logger.Warn("Failed to get ML product preview",
-				zap.String("link", link), zap.Error(prevErr))
-			return nil
+		if prevErr != nil || !preview.HasProductData() {
+			// Não é um produto: link de cupom/campanha ML (meli.la/sec sem
+			// item real) ou preview indisponível. Não há oferta a montar —
+			// desvia para o relay de aviso de cupom, que PRESERVA o texto
+			// original e só troca os links pelo afiliado do dono. Antes, este
+			// caminho ou renderizava um card com título/preço errados (preview
+			// vazio não-nil) ou fazia `return nil` e a mensagem SUMIA.
+			s.logger.Info("ML link is coupon/campaign or preview unusable — relaying as coupon notice",
+				zap.String("automationID", auto.ID),
+				zap.String("link", link),
+				zap.Error(prevErr))
+			return s.relayMLCouponNotice(ctx, auto, msg, mlLinks)
 		}
 
 		// ML is passthrough: the user posts their OWN affiliate link (meli.la/sec
@@ -1479,6 +1487,39 @@ func (s *offerGenerateService) relayWithConvertedShopeeLinks(ctx context.Context
 	// compartilhada — cada um repassa com o próprio link.
 	relayMsg := *msg
 	relayMsg.Body = body
+	return s.processAutomationRelay(ctx, auto, &relayMsg)
+}
+
+// relayMLCouponNotice repassa um aviso de cupom/campanha do Mercado Livre.
+// Diferente do ramo de oferta, NÃO monta card de produto (o preview de uma
+// página de cupom não tem produto): converte cada link ML para o afiliado do
+// dono e reenvia o texto ORIGINAL sob um cabeçalho de cupom, via o mesmo relay
+// batido do Shopee. Espelha a mecânica de relayWithConvertedShopeeLinks (ordena
+// do link mais longo para o mais curto p/ o ReplaceAll não solar prefixo, e usa
+// cópia rasa para o body convertido não vazar entre donos).
+func (s *offerGenerateService) relayMLCouponNotice(ctx context.Context, auto *models.Automation, msg *models.IncomingMessage, mlLinks []string) error {
+	body := msg.Body
+
+	ordered := append([]string(nil), mlLinks...)
+	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
+
+	for _, orig := range ordered {
+		aff, err := s.mlService.CreateAffiliateLink(ctx, orig, auto.UserID)
+		if err != nil || aff == nil || aff.AffiliateLink == "" {
+			// Sem conversão possível (URL sem item ID, falha transitória):
+			// nunca reter — o link segue original. Reter só apagaria o aviso;
+			// um shortlink de terceiro já passaria igual hoje no ramo de oferta.
+			s.logger.Warn("ML coupon link not convertible — relaying original link",
+				zap.String("automationID", auto.ID),
+				zap.String("link", orig),
+				zap.Error(err))
+			continue
+		}
+		body = strings.ReplaceAll(body, orig, aff.AffiliateLink)
+	}
+
+	relayMsg := *msg
+	relayMsg.Body = text.RenderMLCouponNotice(body)
 	return s.processAutomationRelay(ctx, auto, &relayMsg)
 }
 

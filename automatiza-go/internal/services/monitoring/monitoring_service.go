@@ -1255,15 +1255,21 @@ func (s *monitoringService) renderMLDispatchTemplate(
 		Image:         fallbackImageURL,
 		CTA:           cta,
 	}
-	if preview, prevErr := s.mlService.GetProductPreview(ctx, mlOriginalLink, automation.UserID); prevErr == nil && preview != nil {
-		vars.Title = preview.Title
-		vars.Price = preview.Price
-		if preview.Image != "" {
-			vars.Image = preview.Image
-		}
-		if preview.OriginalPrice != nil && *preview.OriginalPrice > preview.Price {
-			vars.OriginalPrice = *preview.OriginalPrice
-		}
+	preview, prevErr := s.mlService.GetProductPreview(ctx, mlOriginalLink, automation.UserID)
+	if prevErr != nil || !preview.HasProductData() {
+		// Não é produto: cupom/campanha ML ou preview bloqueado (anti-bot).
+		// Body vazio faz o caller (usingTemplate=false) cair no repasse
+		// histórico, que preserva o texto-fonte e troca o link ML pelo
+		// afiliado do dono — em vez de um card de oferta com dados vazios.
+		return monitorDispatchRender{}
+	}
+	vars.Title = preview.Title
+	vars.Price = preview.Price
+	if preview.Image != "" {
+		vars.Image = preview.Image
+	}
+	if preview.OriginalPrice != nil && *preview.OriginalPrice > preview.Price {
+		vars.OriginalPrice = *preview.OriginalPrice
 	}
 
 	// ML não expõe flag Mall-style → productIsOfficial=false; store "ml" é

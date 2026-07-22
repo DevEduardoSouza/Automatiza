@@ -9,7 +9,15 @@ import {
 } from '@/components/ui/sidebar';
 import { useAuth } from '@/contexts';
 import { useSettingsConnect } from '@/hooks/use-settings-connect';
-import { BookOpen, type LucideIcon, MessageSquare, Type, Zap } from 'lucide-react';
+import {
+  BookOpen,
+  Download,
+  Instagram,
+  type LucideIcon,
+  MessageSquare,
+  Type,
+  Zap,
+} from 'lucide-react';
 
 const DashboardIcon: LucideIcon = ({ className, ...props }) => (
   <svg
@@ -338,8 +346,12 @@ export const ToggleSidebarIcon: LucideIcon = ({ className, ...props }) => (
   </svg>
 );
 
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, useLocation } from 'react-router';
+import { toast } from 'sonner';
+import { InstallModal } from '@/components/pwa/install-modal';
+import { usePwaInstall } from '@/pwa/use-pwa-install';
 
 export interface MenuItem {
   titleKey: string;
@@ -359,6 +371,7 @@ export const menuItems: MenuItem[] = [
   { titleKey: 'sidebar.linkLists', url: '/ml-link-lists', icon: LinkListsIcon },
   { titleKey: 'sidebar.dispatchTexts', url: '/dispatch-texts', icon: Type },
   { titleKey: 'sidebar.affiliatePrograms', url: '/affiliate-programs', icon: AffiliateIcon },
+  { titleKey: 'sidebar.instagram', url: '/instagram', icon: Instagram },
   { titleKey: 'sidebar.ctas', url: '/ctas', icon: MessageSquare },
   { titleKey: 'sidebar.coupons', url: '/coupons', icon: CouponsIcon },
   { titleKey: 'sidebar.automationLogs', url: '/automation-logs', icon: AutomationLogsIcon },
@@ -387,6 +400,19 @@ export function AppSidebar() {
   const { getSetting } = useSettingsConnect(['support_whatsapp', 'tutorial_link']);
   const supportWhatsapp = getSetting<string>('support_whatsapp', '5511999999999');
   const tutorialLink = getSetting<string>('tutorial_link', '');
+
+  // PWA: instalação do app (ação direta — prompt nativo no Chromium, modal com
+  // instruções por plataforma no resto). Feature detection embutida no hook.
+  const { state: installState, promptInstall } = usePwaInstall();
+  const [showInstallModal, setShowInstallModal] = useState(false);
+  const handleInstallClick = async () => {
+    if (installState === 'native-prompt') {
+      const outcome = await promptInstall();
+      if (outcome === 'accepted') toast.success(t('pwa.install.success'));
+      return;
+    }
+    setShowInstallModal(true);
+  };
 
   const handleLinkClick = () => {
     if (isMobile) {
@@ -477,6 +503,27 @@ export function AppSidebar() {
             </button>
           )}
 
+          {installState === 'installed' ? (
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              className={`sidebar-nav-item w-full opacity-60 ${collapsed ? '!size-10 justify-center' : ''}`}
+            >
+              <Download className="sidebar-nav-icon" />
+              {!collapsed && <span className="sidebar-nav-text">{t('pwa.install.installed')}</span>}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`sidebar-nav-item w-full ${collapsed ? '!size-10 justify-center' : ''}`}
+              onClick={handleInstallClick}
+            >
+              <Download className="sidebar-nav-icon" />
+              {!collapsed && <span className="sidebar-nav-text">{t('sidebar.install')}</span>}
+            </button>
+          )}
+
           <button
             type="button"
             className={`sidebar-nav-item w-full ${collapsed ? '!size-10 justify-center' : ''}`}
@@ -487,6 +534,12 @@ export function AppSidebar() {
           </button>
         </div>
       </SidebarContent>
+
+      <InstallModal
+        open={showInstallModal}
+        onOpenChange={setShowInstallModal}
+        state={installState}
+      />
     </Sidebar>
   );
 }

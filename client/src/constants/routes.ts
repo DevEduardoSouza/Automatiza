@@ -19,6 +19,7 @@ export const ROUTES = {
   ML_LINK_LISTS: '/ml-link-lists',
   DISPATCH_TEXTS: '/dispatch-texts',
   AFFILIATE_PROGRAMS: '/affiliate-programs',
+  INSTAGRAM: '/instagram',
   CTAS: '/ctas',
   COUPONS: '/coupons',
   AUTOMATION_LOGS: '/automation-logs',

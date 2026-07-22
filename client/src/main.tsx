@@ -6,6 +6,7 @@ import i18n from './i18n';
 import './index.css';
 import { installDomSafetyNet } from './lib/dom-safety';
 import { initSentry } from './lib/sentry';
+import './pwa/install-prompt';
 import { registerPwa } from './pwa/register';
 
 // Blinda removeChild/insertBefore contra DOM alterado por tradutores e
