@@ -1,10 +1,13 @@
+import { InstallModal } from '@/components/pwa/install-modal';
 import { useAuth } from '@/contexts';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useSettingsConnect } from '@/hooks/use-settings-connect';
-import { BookOpen } from 'lucide-react';
+import { usePwaInstall } from '@/pwa/use-pwa-install';
+import { BookOpen, Download } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, useLocation } from 'react-router';
+import { toast } from 'sonner';
 import { type MenuItem, menuItems } from './app-sidebar';
 
 /**
@@ -32,6 +35,19 @@ export function MobileHeader() {
   });
 
   const closeMenu = useCallback(() => setIsOpen(false), []);
+
+  // PWA: mesmo botão de instalar/notificações da sidebar desktop.
+  const { state: installState, promptInstall } = usePwaInstall();
+  const [showInstallModal, setShowInstallModal] = useState(false);
+  const handleInstallClick = async () => {
+    closeMenu();
+    if (installState === 'native-prompt') {
+      const outcome = await promptInstall();
+      if (outcome === 'accepted') toast.success(t('pwa.install.success'));
+      return;
+    }
+    setShowInstallModal(true);
+  };
 
   // Close on route change (e.g., browser back/forward)
   useEffect(() => {
@@ -147,6 +163,13 @@ export function MobileHeader() {
             </button>
           )}
 
+          <button type="button" className="mobile-header-item" onClick={handleInstallClick}>
+            <Download className="mobile-header-icon" aria-hidden="true" />
+            <span className="mobile-header-text">
+              {installState === 'installed' ? t('pwa.install.appMenu') : t('sidebar.install')}
+            </span>
+          </button>
+
           <button
             type="button"
             className="mobile-header-item"
@@ -160,6 +183,12 @@ export function MobileHeader() {
           </button>
         </nav>
       </div>
+
+      <InstallModal
+        open={showInstallModal}
+        onOpenChange={setShowInstallModal}
+        state={installState}
+      />
     </>
   );
 }
