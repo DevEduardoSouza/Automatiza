@@ -44,6 +44,7 @@ type Repositories struct {
 	InstagramCredentials     repository.InstagramCredentialsRepository
 	InstagramStoryPost       repository.InstagramStoryPostRepository
 	InstagramDataDeletion    repository.InstagramDataDeletionRepository
+	InstagramApp             repository.InstagramAppRepository
 	WebPushSubscription      repository.WebPushSubscriptionRepository
 	GroupMember              repository.GroupMemberRepository
 }
@@ -87,6 +88,7 @@ func NewRepositories(db *DB, logger *zap.Logger) *Repositories {
 		InstagramCredentials:     NewInstagramCredentialsRepository(db, logger),
 		InstagramStoryPost:       NewInstagramStoryPostRepository(db, logger),
 		InstagramDataDeletion:    NewInstagramDataDeletionRepository(db, logger),
+		InstagramApp:             NewInstagramAppRepository(db, logger),
 		WebPushSubscription:      NewWebPushSubscriptionRepository(db, logger),
 		GroupMember:              NewGroupMemberRepository(db, logger),
 	}

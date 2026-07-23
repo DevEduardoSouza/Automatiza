@@ -2190,7 +2190,7 @@
     },
     "instagram": {
       "title": "Instagram",
-      "subtitle": "Publique automaticamente no Story do seu Instagram a partir do grupo monitor",
+      "subtitle": "Conecte seu Instagram, publique Stories a partir do grupo monitor e configure a IA",
       "comingSoon": {
         "title": "Em breve",
         "description": "A integração com o Instagram ainda não está disponível nesta conta."
@@ -2224,6 +2224,48 @@
         "connectFailed": "Não foi possível iniciar a conexão com o Instagram",
         "disconnectFailed": "Não foi possível desconectar o Instagram",
         "oauth": "Não foi possível conectar sua conta do Instagram"
+      },
+      "tabs": {
+        "app": "Aplicativo",
+        "account": "Conta",
+        "activity": "Histórico"
+      },
+      "app": {
+        "title": "Aplicativo da Meta",
+        "description": "Para automatizar seu Instagram, a Meta exige um aplicativo. Criando o seu próprio, você não passa pela análise da Meta e já pode usar hoje.",
+        "registered": "Cadastrado",
+        "notRegistered": "Não cadastrado",
+        "appIdLabel": "ID do aplicativo",
+        "appIdPlaceholder": "Ex.: 1234567890123456",
+        "appSecretLabel": "Chave secreta do aplicativo",
+        "appSecretPlaceholder": "Cole a chave secreta",
+        "appSecretStored": "Chave já salva — deixe em branco para manter",
+        "appSecretHelp": "A chave é guardada criptografada e nunca é exibida de volta. Deixe em branco se quiser trocar só o ID.",
+        "save": "Salvar aplicativo",
+        "remove": "Remover aplicativo",
+        "saved": "Aplicativo salvo",
+        "saveFailed": "Não foi possível salvar o aplicativo. Confira o ID e a chave secreta.",
+        "removed": "Aplicativo removido",
+        "removeFailed": "Não foi possível remover o aplicativo",
+        "copyFailed": "Não foi possível copiar. Selecione o texto e copie manualmente.",
+        "redirectUriLabel": "URL de redirecionamento (cole na Meta)",
+        "webhookUrlLabel": "URL de retorno / webhook (cole na Meta)",
+        "verifyTokenLabel": "Token de verificação (cole na Meta)",
+        "pasteBack": {
+          "title": "Cole estes valores no seu aplicativo",
+          "description": "Estes três valores são seus e ninguém mais os tem. Cole cada um no campo correspondente no painel da Meta."
+        },
+        "steps": {
+          "title": "Passo a passo",
+          "description": "Leva cerca de 10 minutos e só precisa ser feito uma vez.",
+          "s1": "No painel de desenvolvedores da Meta, crie um aplicativo do tipo Empresa.",
+          "s2": "Adicione o produto Instagram e escolha a opção de login pelo Instagram.",
+          "s3": "Copie o ID e a chave secreta do aplicativo e cole nos campos acima; depois salve.",
+          "s4": "Volte à Meta e cole a URL de redirecionamento, a URL de retorno e o token de verificação nos campos correspondentes.",
+          "s5": "Adicione sua conta profissional do Instagram ao aplicativo e volte aqui na aba Conta para conectar.",
+          "openMeta": "Abrir o painel da Meta"
+        },
+        "requiredFirst": "Cadastre seu aplicativo da Meta na aba Aplicativo antes de conectar a conta."
       }
     },
     "affiliatePrograms": {

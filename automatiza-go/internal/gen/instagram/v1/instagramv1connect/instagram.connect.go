@@ -42,6 +42,15 @@ const (
 	// InstagramServiceDisconnectProcedure is the fully-qualified name of the InstagramService's
 	// Disconnect RPC.
 	InstagramServiceDisconnectProcedure = "/instagram.v1.InstagramService/Disconnect"
+	// InstagramServiceGetMetaAppProcedure is the fully-qualified name of the InstagramService's
+	// GetMetaApp RPC.
+	InstagramServiceGetMetaAppProcedure = "/instagram.v1.InstagramService/GetMetaApp"
+	// InstagramServiceSaveMetaAppProcedure is the fully-qualified name of the InstagramService's
+	// SaveMetaApp RPC.
+	InstagramServiceSaveMetaAppProcedure = "/instagram.v1.InstagramService/SaveMetaApp"
+	// InstagramServiceDeleteMetaAppProcedure is the fully-qualified name of the InstagramService's
+	// DeleteMetaApp RPC.
+	InstagramServiceDeleteMetaAppProcedure = "/instagram.v1.InstagramService/DeleteMetaApp"
 )
 
 // InstagramServiceClient is a client for the instagram.v1.InstagramService service.
@@ -52,6 +61,12 @@ type InstagramServiceClient interface {
 	GetAuthorizeUrl(context.Context, *connect.Request[v1.GetAuthorizeUrlRequest]) (*connect.Response[v1.GetAuthorizeUrlResponse], error)
 	// Disconnect removes this user's stored Instagram credentials.
 	Disconnect(context.Context, *connect.Request[v1.DisconnectRequest]) (*connect.Response[v1.DisconnectResponse], error)
+	// GetMetaApp returns this user's registered Meta app (never the secret).
+	GetMetaApp(context.Context, *connect.Request[v1.GetMetaAppRequest]) (*connect.Response[v1.GetMetaAppResponse], error)
+	// SaveMetaApp stores/updates the client's own Meta app credentials.
+	SaveMetaApp(context.Context, *connect.Request[v1.SaveMetaAppRequest]) (*connect.Response[v1.SaveMetaAppResponse], error)
+	// DeleteMetaApp removes the client's Meta app registration.
+	DeleteMetaApp(context.Context, *connect.Request[v1.DeleteMetaAppRequest]) (*connect.Response[v1.DeleteMetaAppResponse], error)
 }
 
 // NewInstagramServiceClient constructs a client for the instagram.v1.InstagramService service. By
@@ -83,6 +98,24 @@ func NewInstagramServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(instagramServiceMethods.ByName("Disconnect")),
 			connect.WithClientOptions(opts...),
 		),
+		getMetaApp: connect.NewClient[v1.GetMetaAppRequest, v1.GetMetaAppResponse](
+			httpClient,
+			baseURL+InstagramServiceGetMetaAppProcedure,
+			connect.WithSchema(instagramServiceMethods.ByName("GetMetaApp")),
+			connect.WithClientOptions(opts...),
+		),
+		saveMetaApp: connect.NewClient[v1.SaveMetaAppRequest, v1.SaveMetaAppResponse](
+			httpClient,
+			baseURL+InstagramServiceSaveMetaAppProcedure,
+			connect.WithSchema(instagramServiceMethods.ByName("SaveMetaApp")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteMetaApp: connect.NewClient[v1.DeleteMetaAppRequest, v1.DeleteMetaAppResponse](
+			httpClient,
+			baseURL+InstagramServiceDeleteMetaAppProcedure,
+			connect.WithSchema(instagramServiceMethods.ByName("DeleteMetaApp")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -91,6 +124,9 @@ type instagramServiceClient struct {
 	getStatus       *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
 	getAuthorizeUrl *connect.Client[v1.GetAuthorizeUrlRequest, v1.GetAuthorizeUrlResponse]
 	disconnect      *connect.Client[v1.DisconnectRequest, v1.DisconnectResponse]
+	getMetaApp      *connect.Client[v1.GetMetaAppRequest, v1.GetMetaAppResponse]
+	saveMetaApp     *connect.Client[v1.SaveMetaAppRequest, v1.SaveMetaAppResponse]
+	deleteMetaApp   *connect.Client[v1.DeleteMetaAppRequest, v1.DeleteMetaAppResponse]
 }
 
 // GetStatus calls instagram.v1.InstagramService.GetStatus.
@@ -108,6 +144,21 @@ func (c *instagramServiceClient) Disconnect(ctx context.Context, req *connect.Re
 	return c.disconnect.CallUnary(ctx, req)
 }
 
+// GetMetaApp calls instagram.v1.InstagramService.GetMetaApp.
+func (c *instagramServiceClient) GetMetaApp(ctx context.Context, req *connect.Request[v1.GetMetaAppRequest]) (*connect.Response[v1.GetMetaAppResponse], error) {
+	return c.getMetaApp.CallUnary(ctx, req)
+}
+
+// SaveMetaApp calls instagram.v1.InstagramService.SaveMetaApp.
+func (c *instagramServiceClient) SaveMetaApp(ctx context.Context, req *connect.Request[v1.SaveMetaAppRequest]) (*connect.Response[v1.SaveMetaAppResponse], error) {
+	return c.saveMetaApp.CallUnary(ctx, req)
+}
+
+// DeleteMetaApp calls instagram.v1.InstagramService.DeleteMetaApp.
+func (c *instagramServiceClient) DeleteMetaApp(ctx context.Context, req *connect.Request[v1.DeleteMetaAppRequest]) (*connect.Response[v1.DeleteMetaAppResponse], error) {
+	return c.deleteMetaApp.CallUnary(ctx, req)
+}
+
 // InstagramServiceHandler is an implementation of the instagram.v1.InstagramService service.
 type InstagramServiceHandler interface {
 	// GetStatus returns feature availability plus this user's connection state.
@@ -116,6 +167,12 @@ type InstagramServiceHandler interface {
 	GetAuthorizeUrl(context.Context, *connect.Request[v1.GetAuthorizeUrlRequest]) (*connect.Response[v1.GetAuthorizeUrlResponse], error)
 	// Disconnect removes this user's stored Instagram credentials.
 	Disconnect(context.Context, *connect.Request[v1.DisconnectRequest]) (*connect.Response[v1.DisconnectResponse], error)
+	// GetMetaApp returns this user's registered Meta app (never the secret).
+	GetMetaApp(context.Context, *connect.Request[v1.GetMetaAppRequest]) (*connect.Response[v1.GetMetaAppResponse], error)
+	// SaveMetaApp stores/updates the client's own Meta app credentials.
+	SaveMetaApp(context.Context, *connect.Request[v1.SaveMetaAppRequest]) (*connect.Response[v1.SaveMetaAppResponse], error)
+	// DeleteMetaApp removes the client's Meta app registration.
+	DeleteMetaApp(context.Context, *connect.Request[v1.DeleteMetaAppRequest]) (*connect.Response[v1.DeleteMetaAppResponse], error)
 }
 
 // NewInstagramServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -143,6 +200,24 @@ func NewInstagramServiceHandler(svc InstagramServiceHandler, opts ...connect.Han
 		connect.WithSchema(instagramServiceMethods.ByName("Disconnect")),
 		connect.WithHandlerOptions(opts...),
 	)
+	instagramServiceGetMetaAppHandler := connect.NewUnaryHandler(
+		InstagramServiceGetMetaAppProcedure,
+		svc.GetMetaApp,
+		connect.WithSchema(instagramServiceMethods.ByName("GetMetaApp")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instagramServiceSaveMetaAppHandler := connect.NewUnaryHandler(
+		InstagramServiceSaveMetaAppProcedure,
+		svc.SaveMetaApp,
+		connect.WithSchema(instagramServiceMethods.ByName("SaveMetaApp")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instagramServiceDeleteMetaAppHandler := connect.NewUnaryHandler(
+		InstagramServiceDeleteMetaAppProcedure,
+		svc.DeleteMetaApp,
+		connect.WithSchema(instagramServiceMethods.ByName("DeleteMetaApp")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/instagram.v1.InstagramService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case InstagramServiceGetStatusProcedure:
@@ -151,6 +226,12 @@ func NewInstagramServiceHandler(svc InstagramServiceHandler, opts ...connect.Han
 			instagramServiceGetAuthorizeUrlHandler.ServeHTTP(w, r)
 		case InstagramServiceDisconnectProcedure:
 			instagramServiceDisconnectHandler.ServeHTTP(w, r)
+		case InstagramServiceGetMetaAppProcedure:
+			instagramServiceGetMetaAppHandler.ServeHTTP(w, r)
+		case InstagramServiceSaveMetaAppProcedure:
+			instagramServiceSaveMetaAppHandler.ServeHTTP(w, r)
+		case InstagramServiceDeleteMetaAppProcedure:
+			instagramServiceDeleteMetaAppHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -170,4 +251,16 @@ func (UnimplementedInstagramServiceHandler) GetAuthorizeUrl(context.Context, *co
 
 func (UnimplementedInstagramServiceHandler) Disconnect(context.Context, *connect.Request[v1.DisconnectRequest]) (*connect.Response[v1.DisconnectResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instagram.v1.InstagramService.Disconnect is not implemented"))
+}
+
+func (UnimplementedInstagramServiceHandler) GetMetaApp(context.Context, *connect.Request[v1.GetMetaAppRequest]) (*connect.Response[v1.GetMetaAppResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instagram.v1.InstagramService.GetMetaApp is not implemented"))
+}
+
+func (UnimplementedInstagramServiceHandler) SaveMetaApp(context.Context, *connect.Request[v1.SaveMetaAppRequest]) (*connect.Response[v1.SaveMetaAppResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instagram.v1.InstagramService.SaveMetaApp is not implemented"))
+}
+
+func (UnimplementedInstagramServiceHandler) DeleteMetaApp(context.Context, *connect.Request[v1.DeleteMetaAppRequest]) (*connect.Response[v1.DeleteMetaAppResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instagram.v1.InstagramService.DeleteMetaApp is not implemented"))
 }

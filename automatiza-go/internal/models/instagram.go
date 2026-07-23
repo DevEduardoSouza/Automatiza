@@ -132,3 +132,36 @@ type InstagramDataDeletionRequest struct {
 	CompletedAt      time.Time `json:"-" db:"completed_at"`
 	ExpiresAt        time.Time `json:"-" db:"expires_at"`
 }
+
+// InstagramAppSecret é o payload cifrado dentro de
+// instagram_apps.encrypted_app_secret (EncryptedBlobV1, mesmo cofre AES usado
+// para o token do usuário).
+type InstagramAppSecret struct {
+	AppSecret string `json:"appSecret"`
+}
+
+// InstagramApp é o app da Meta que o PRÓPRIO cliente registrou.
+//
+// Existe porque a Meta isenta de App Review o app criado para o negócio do
+// próprio dono (Standard Access). Com um app nosso atendendo conta de terceiro
+// seria Advanced Access + análise da Meta — semanas, e sujeito a recusa.
+//
+// EncryptedAppSecret nunca é serializado e nunca volta ao frontend: depois de
+// salvo, a UI só informa que existe.
+type InstagramApp struct {
+	ID     string `json:"id" db:"id"`
+	UserID string `json:"user_id" db:"user_id"`
+	AppID  string `json:"app_id" db:"app_id"`
+	// EncryptedAppSecret guarda o blob AES; o valor em claro só existe em
+	// memória, no momento da chamada à Meta.
+	EncryptedAppSecret string `json:"-" db:"encrypted_app_secret"`
+	// WebhookToken identifica o cliente pela URL, ANTES de ler o corpo do
+	// webhook — é o que resolve "qual app secret valida esta assinatura".
+	WebhookToken string `json:"-" db:"webhook_token"`
+	// VerifyToken é o segredo do handshake GET (hub.verify_token) da Meta.
+	VerifyToken string     `json:"-" db:"verify_token"`
+	IsVerified  bool       `json:"is_verified" db:"is_verified"`
+	VerifiedAt  *time.Time `json:"verified_at,omitempty" db:"verified_at"`
+	CreatedAt   string     `json:"created_at" db:"created_at"`
+	UpdatedAt   string     `json:"updated_at" db:"updated_at"`
+}

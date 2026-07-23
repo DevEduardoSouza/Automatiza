@@ -449,11 +449,15 @@ func main() {
 			// aquela chave faria um vazamento do state virar comprometimento
 			// de sessão.
 			StateSigningKey: cfg.InstagramStateSigningKey,
+			// URL de callback NOSSA, igual para todos os clientes; cada um a
+			// cola no painel do próprio app da Meta.
+			RedirectURI: instagramRedirectURI,
 		},
 		instagram.NewAPIClient(cfg.InstagramAppID, cfg.InstagramAppSecret, instagramRedirectURI, config.NewModuleLogger(logger, "instagram")),
 		repos.InstagramCredentials,
 		repos.InstagramStoryPost,
 		repos.InstagramDataDeletion,
+		repos.InstagramApp,
 		cacheClient,
 		config.NewModuleLogger(logger, "instagram"),
 	)

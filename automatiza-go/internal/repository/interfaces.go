@@ -457,6 +457,23 @@ type InstagramStoryPostRepository interface {
 	DeleteOlderThan(ctx context.Context, before time.Time, limit int) (int64, error)
 }
 
+// InstagramAppRepository guarda o app da Meta que cada cliente registrou.
+//
+// GetByWebhookToken é o método que destrava o webhook multi-tenant: a Meta
+// assina o corpo com o app secret do cliente, mas quem identifica o cliente
+// está DENTRO do corpo. Dando a cada um uma URL própria com este token, o
+// servidor resolve o segredo antes de ler qualquer byte do corpo.
+type InstagramAppRepository interface {
+	Get(ctx context.Context, userID string) (*models.InstagramApp, error)
+	GetByWebhookToken(ctx context.Context, webhookToken string) (*models.InstagramApp, error)
+	// Upsert grava/atualiza o app do usuário. webhookToken e verifyToken só são
+	// gerados na PRIMEIRA gravação: trocá-los depois quebraria a URL que o
+	// cliente já configurou no painel da Meta.
+	Upsert(ctx context.Context, userID, appID, encryptedAppSecret string) (*models.InstagramApp, error)
+	MarkVerified(ctx context.Context, userID string) error
+	Delete(ctx context.Context, userID string) error
+}
+
 // InstagramDataDeletionRepository grava os comprovantes de exclusão exigidos
 // pela Meta e executa a exclusão em si.
 type InstagramDataDeletionRepository interface {

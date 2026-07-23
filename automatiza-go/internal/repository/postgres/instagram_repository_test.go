@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -65,10 +66,45 @@ func setupInstagramTestDB(t *testing.T) (*DB, func()) {
 func applyMigration(t *testing.T, ctx context.Context, pool *pgxpool.Pool, name string) {
 	t.Helper()
 	path := filepath.Join("..", "..", "..", "scripts", "db", "migrations", name)
-	sql, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path)
 	require.NoError(t, err, "migração %s ilegível", name)
-	_, err = pool.Exec(ctx, string(sql))
+	sql := string(raw)
+
+	// Migração nontransactional precisa ir instrução a instrução: mandar o
+	// arquivo inteiro num Exec faz o pgx abrir transação implícita, e
+	// CREATE INDEX CONCURRENTLY não roda dentro de transação. O runner de
+	// produção (run-migrations.sh) usa psql em autocommit — isto reproduz
+	// aquele contexto, em vez de testar um caminho que produção não usa.
+	if strings.Contains(sql, "automatiza:migration-mode=nontransactional") {
+		for _, stmt := range splitSQLStatements(sql) {
+			_, err := pool.Exec(ctx, stmt)
+			require.NoError(t, err, "migração %s falhou em: %s", name, stmt)
+		}
+		return
+	}
+
+	_, err = pool.Exec(ctx, sql)
 	require.NoError(t, err, "migração %s falhou", name)
+}
+
+// splitSQLStatements remove comentários de linha e separa por ';'. Basta para
+// as migrações do Instagram, que não têm corpo de função nem dollar-quoting.
+func splitSQLStatements(sql string) []string {
+	var clean strings.Builder
+	for _, line := range strings.Split(sql, "\n") {
+		if idx := strings.Index(line, "--"); idx >= 0 {
+			line = line[:idx]
+		}
+		clean.WriteString(line)
+		clean.WriteString("\n")
+	}
+	var out []string
+	for _, stmt := range strings.Split(clean.String(), ";") {
+		if s := strings.TrimSpace(stmt); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 const (
@@ -594,4 +630,100 @@ func setupInstagram073OnlyDB(t *testing.T) (*DB, func()) {
 		pool.Close()
 		require.NoError(t, pgContainer.Terminate(ctx))
 	}
+}
+
+// --- app da Meta por cliente (078) ---
+
+// setupInstagramAppsDB aplica 073 + 077 + 078.
+//
+// A 078 acrescenta a cota de IA em `plans`, tabela que nasce na migração
+// inicial (000) e não faz parte deste banco mínimo. Criar só o esqueleto dela
+// aqui é o suficiente e mantém o teste focado no Instagram — aplicar a 000
+// inteira traria dezenas de tabelas sem relação nenhuma com o que se testa.
+func setupInstagramAppsDB(t *testing.T) (*DB, func()) {
+	t.Helper()
+	ctx := context.Background()
+	db, cleanup := setupInstagramTestDB(t)
+	_, err := db.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS plans (
+			id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			slug VARCHAR(100) NOT NULL UNIQUE
+		)`)
+	require.NoError(t, err)
+	applyMigration(t, ctx, db.pool, "078_instagram_inbound_ai.up.sql")
+	return db, cleanup
+}
+
+func TestInstagramApps_UpsertKeepsWebhookTokenStable(t *testing.T) {
+	skipIfShort(t)
+	db, cleanup := setupInstagramAppsDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	repo := NewInstagramAppRepository(db, zap.NewNop())
+
+	first, err := repo.Upsert(ctx, igUserA, "APP-1", "{cifrado-1}")
+	require.NoError(t, err)
+	require.Len(t, first.WebhookToken, 64)
+	require.Len(t, first.VerifyToken, 64)
+
+	// Regravar (trocar o app id) NÃO pode mudar os tokens: o cliente já colou a
+	// URL no painel da Meta, e trocá-la faria o canal parar de receber sem
+	// nenhum erro visível.
+	second, err := repo.Upsert(ctx, igUserA, "APP-2", "{cifrado-2}")
+	require.NoError(t, err)
+	require.Equal(t, first.WebhookToken, second.WebhookToken, "webhook_token mudou e quebraria a URL já configurada")
+	require.Equal(t, first.VerifyToken, second.VerifyToken)
+	require.Equal(t, "APP-2", second.AppID)
+	require.False(t, second.IsVerified, "trocar credencial exige reverificar o webhook")
+}
+
+func TestInstagramApps_TokensAreUniquePerUser(t *testing.T) {
+	skipIfShort(t)
+	db, cleanup := setupInstagramAppsDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	repo := NewInstagramAppRepository(db, zap.NewNop())
+
+	a, err := repo.Upsert(ctx, igUserA, "APP-A", "{a}")
+	require.NoError(t, err)
+	b, err := repo.Upsert(ctx, igUserB, "APP-B", "{b}")
+	require.NoError(t, err)
+	require.NotEqual(t, a.WebhookToken, b.WebhookToken, "token de webhook precisa ser imprevisivel e unico")
+
+	// Resolver por token entrega o dono certo — é o que valida a assinatura do
+	// webhook multi-tenant.
+	got, err := repo.GetByWebhookToken(ctx, a.WebhookToken)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, igUserA, got.UserID)
+
+	// Token vazio nunca casa: é o default de linha malformada.
+	empty, err := repo.GetByWebhookToken(ctx, "")
+	require.NoError(t, err)
+	require.Nil(t, empty)
+
+	unknown, err := repo.GetByWebhookToken(ctx, "token-que-nao-existe")
+	require.NoError(t, err)
+	require.Nil(t, unknown)
+}
+
+func TestInstagramApps_DeleteRemovesOnlyThatUser(t *testing.T) {
+	skipIfShort(t)
+	db, cleanup := setupInstagramAppsDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	repo := NewInstagramAppRepository(db, zap.NewNop())
+
+	_, err := repo.Upsert(ctx, igUserA, "APP-A", "{a}")
+	require.NoError(t, err)
+	_, err = repo.Upsert(ctx, igUserB, "APP-B", "{b}")
+	require.NoError(t, err)
+
+	require.NoError(t, repo.Delete(ctx, igUserA))
+	gone, err := repo.Get(ctx, igUserA)
+	require.NoError(t, err)
+	require.Nil(t, gone)
+	kept, err := repo.Get(ctx, igUserB)
+	require.NoError(t, err)
+	require.NotNil(t, kept, "app de outro cliente nao pode ser afetado")
 }

@@ -46,6 +46,10 @@ type ServiceConfig struct {
 	BackendBaseURL  string
 	EncryptionKey   string
 	StateSigningKey string
+	// RedirectURI é a URL de callback do OAuth. É NOSSA e idêntica para todos
+	// os clientes — cada um só a cola no painel do próprio app da Meta. Quem
+	// diz de qual usuário é o callback é o `state` assinado, não a URL.
+	RedirectURI string
 }
 
 // DataDeletionResponse é o corpo que a Meta espera do callback de exclusão.
@@ -63,8 +67,12 @@ type Service struct {
 	credsRepo    repository.InstagramCredentialsRepository
 	storyRepo    repository.InstagramStoryPostRepository
 	deletionRepo repository.InstagramDataDeletionRepository
-	cache        *cache.Cache
-	logger       *zap.Logger
+	// appsRepo guarda o app da Meta de CADA cliente. Quando nil (ou sem linha
+	// para o usuário), o service cai no app global de `api` — o modo antigo,
+	// mantido para não quebrar quem já conectou por ele.
+	appsRepo repository.InstagramAppRepository
+	cache    *cache.Cache
+	logger   *zap.Logger
 }
 
 // NewService builds the Instagram service.
@@ -74,6 +82,7 @@ func NewService(
 	credsRepo repository.InstagramCredentialsRepository,
 	storyRepo repository.InstagramStoryPostRepository,
 	deletionRepo repository.InstagramDataDeletionRepository,
+	appsRepo repository.InstagramAppRepository,
 	c *cache.Cache,
 	logger *zap.Logger,
 ) *Service {
@@ -83,9 +92,77 @@ func NewService(
 		credsRepo:    credsRepo,
 		storyRepo:    storyRepo,
 		deletionRepo: deletionRepo,
+		appsRepo:     appsRepo,
 		cache:        c,
 		logger:       logger,
 	}
+}
+
+// --- resolução do app da Meta por cliente ---
+
+// ErrInstagramAppNotConfigured: o usuário ainda não cadastrou o app dele (e não
+// há app global de fallback).
+var ErrInstagramAppNotConfigured = errors.New("instagram: meta app not configured for user")
+
+// apiClientFor devolve o client do app DAQUELE usuário.
+//
+// Não há cache aqui de propósito: decriptar o segredo é uma operação AES de
+// microssegundos, irrelevante ao lado da chamada HTTP à Meta que vem logo
+// depois. Um cache traria invalidação para gerenciar em troca de nada.
+func (s *Service) apiClientFor(ctx context.Context, userID string) (*APIClient, error) {
+	if s.appsRepo != nil {
+		app, err := s.appsRepo.Get(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		if app != nil {
+			return s.clientFromApp(app)
+		}
+	}
+	// Fallback: app global (modo antigo). Sem ele, o usuário precisa cadastrar.
+	if s.api.Enabled() {
+		return s.api, nil
+	}
+	return nil, ErrInstagramAppNotConfigured
+}
+
+// ClientByWebhookToken resolve o app a partir do token da URL do webhook —
+// ANTES de ler o corpo da requisição, que é justamente o que permite validar a
+// assinatura de um webhook multi-tenant.
+func (s *Service) ClientByWebhookToken(ctx context.Context, webhookToken string) (*APIClient, *models.InstagramApp, error) {
+	if s.appsRepo == nil {
+		return nil, nil, ErrInstagramAppNotConfigured
+	}
+	app, err := s.appsRepo.GetByWebhookToken(ctx, webhookToken)
+	if err != nil {
+		return nil, nil, err
+	}
+	if app == nil {
+		return nil, nil, ErrInstagramAppNotConfigured
+	}
+	client, err := s.clientFromApp(app)
+	if err != nil {
+		return nil, nil, err
+	}
+	return client, app, nil
+}
+
+// clientFromApp decripta o segredo e monta o client. O redirect URI é NOSSO e
+// idêntico para todos os clientes — cada um apenas o cola no painel do próprio
+// app; é o `state` assinado que diz de quem é o callback.
+func (s *Service) clientFromApp(app *models.InstagramApp) (*APIClient, error) {
+	var blob crypto.EncryptedBlobV1
+	if err := json.Unmarshal([]byte(app.EncryptedAppSecret), &blob); err != nil {
+		return nil, err
+	}
+	var secret models.InstagramAppSecret
+	if err := crypto.DecryptJSONV1(&blob, s.cfg.EncryptionKey, &secret); err != nil {
+		return nil, err
+	}
+	if app.AppID == "" || secret.AppSecret == "" {
+		return nil, ErrInstagramAppNotConfigured
+	}
+	return NewAPIClient(app.AppID, secret.AppSecret, s.cfg.RedirectURI, s.logger), nil
 }
 
 // --- prontidão e kill switch ---
@@ -108,17 +185,29 @@ func isHTTPSURL(raw string) bool {
 // Configured diz se TODA a configuração necessária para o fluxo OAuth+publicação
 // está presente e segura. Separado do kill switch: assim uma configuração
 // incompleta nunca é confundida com "alguém desligou de propósito".
+// Configured diz se a PLATAFORMA está pronta — não se um usuário específico
+// está. Com app por cliente, exigir um app global aqui deixaria a feature
+// desligada para todo mundo mesmo com clientes perfeitamente configurados.
+// A prontidão do usuário é resolvida em apiClientFor.
 func (s *Service) Configured() bool {
 	return s != nil &&
-		s.api.Enabled() &&
 		s.cfg.EncryptionKey != "" &&
 		len(s.cfg.StateSigningKey) >= minStateKeyBytes &&
 		s.redisReady() &&
-		isHTTPSURL(s.api.RedirectURI()) &&
+		isHTTPSURL(s.redirectURI()) &&
 		isHTTPSURL(s.cfg.BackendBaseURL) &&
 		isHTTPSURL(s.cfg.FrontendBaseURL) &&
 		s.credsRepo != nil &&
 		s.storyRepo != nil
+}
+
+// redirectURI prefere o valor da config; cai no do app global apenas no modo
+// antigo, em que o client global carregava essa informação.
+func (s *Service) redirectURI() string {
+	if s.cfg.RedirectURI != "" {
+		return s.cfg.RedirectURI
+	}
+	return s.api.RedirectURI()
 }
 
 // TokenMaintenanceConfigured é deliberadamente mais frouxo que Configured: o
@@ -126,7 +215,7 @@ func (s *Service) Configured() bool {
 // kill switch de publicação desligado — senão desligar a feature por uma semana
 // venceria silenciosamente a credencial de todo mundo.
 func (s *Service) TokenMaintenanceConfigured() bool {
-	return s != nil && s.api.Enabled() && s.cfg.EncryptionKey != "" && s.credsRepo != nil
+	return s != nil && s.cfg.EncryptionKey != "" && s.credsRepo != nil
 }
 
 // DeauthorizeConfigured é mais frouxo que DataDeletionConfigured de propósito:
@@ -159,6 +248,9 @@ type Status struct {
 	IGUserID       string
 	TokenExpiresAt string
 	Recent         []models.InstagramStoryPost
+	// HasMetaApp: sem app próprio registrado, conectar a conta é impossível —
+	// a tela usa isto para guiar o cliente ao passo certo.
+	HasMetaApp bool
 }
 
 // Status returns feature availability and this user's connection state.
@@ -167,6 +259,7 @@ func (s *Service) Status(ctx context.Context, userID string) (*Status, error) {
 	if !out.FeatureEnabled {
 		return out, nil
 	}
+	out.HasMetaApp = s.HasMetaApp(ctx, userID)
 	cred, err := s.credsRepo.Get(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -217,8 +310,12 @@ func (s *Service) BuildAuthorizeURL(ctx context.Context, userID string) (string,
 	if err := s.cache.Set(ctx, nonceKey(nonce), userID, stateTTL); err != nil {
 		return "", err
 	}
+	client, err := s.apiClientFor(ctx, userID)
+	if err != nil {
+		return "", err
+	}
 	exp := time.Now().Add(stateTTL).Unix()
-	return s.api.AuthorizeURL(s.signState(nonce, exp)), nil
+	return client.AuthorizeURL(s.signState(nonce, exp)), nil
 }
 
 // Códigos de redirect do callback. Fixos e sem detalhe técnico: a página de
@@ -261,12 +358,20 @@ func (s *Service) HandleCallback(ctx context.Context, code, state, providerError
 		return redirectNoCode, errors.New("instagram: empty code")
 	}
 
-	shortToken, appScopedUserID, err := s.api.ExchangeCode(ctx, code)
+	// Só aqui sabemos de quem é o callback (o state foi consumido acima), e
+	// portanto qual app da Meta usar para trocar o code.
+	client, err := s.apiClientFor(ctx, userID)
+	if err != nil {
+		s.logCallbackErr("resolve_app", userID, err)
+		return redirectExchangeFailed, err
+	}
+
+	shortToken, appScopedUserID, err := client.ExchangeCode(ctx, code)
 	if err != nil {
 		s.logCallbackErr("exchange_code", userID, err)
 		return redirectExchangeFailed, err
 	}
-	longToken, expiresIn, err := s.api.ExchangeLongLived(ctx, shortToken)
+	longToken, expiresIn, err := client.ExchangeLongLived(ctx, shortToken)
 	if err != nil {
 		s.logCallbackErr("exchange_long_lived", userID, err)
 		return redirectExchangeFailed, err
@@ -277,7 +382,7 @@ func (s *Service) HandleCallback(ctx context.Context, code, state, providerError
 
 	// /me é OBRIGATÓRIO: só ele devolve o id PROFISSIONAL. Antes havia fallback
 	// para o id da troca (app-scoped) — publicar com ele erra o objeto.
-	igUserID, username, _, err := s.api.GetMe(ctx, longToken)
+	igUserID, username, _, err := client.GetMe(ctx, longToken)
 	if err != nil || igUserID == "" {
 		s.logCallbackErr("get_me", userID, err)
 		return redirectProfileFailed, errors.New("instagram: profile lookup failed")
@@ -386,11 +491,11 @@ func (s *Service) HasCredentials(ctx context.Context, userID string) bool {
 // GetPublishingLimit devolve quantas publicações a conta já gastou na janela
 // móvel de 24h, segundo a própria Meta.
 func (s *Service) GetPublishingLimit(ctx context.Context, userID string) (int, error) {
-	token, igUserID, err := s.resolveCredential(ctx, userID)
+	client, token, igUserID, err := s.resolveCredential(ctx, userID)
 	if err != nil {
 		return 0, err
 	}
-	return s.api.GetPublishingLimit(ctx, igUserID, token)
+	return client.GetPublishingLimit(ctx, igUserID, token)
 }
 
 // EnsureStoryContainer devolve o container existente SEM chamar a Meta quando
@@ -400,45 +505,49 @@ func (s *Service) EnsureStoryContainer(ctx context.Context, userID, publicImageU
 	if existingContainerID != "" {
 		return existingContainerID, nil
 	}
-	token, igUserID, err := s.resolveCredential(ctx, userID)
+	client, token, igUserID, err := s.resolveCredential(ctx, userID)
 	if err != nil {
 		return "", err
 	}
-	return s.api.CreateStoryContainer(ctx, igUserID, token, publicImageURL)
+	return client.CreateStoryContainer(ctx, igUserID, token, publicImageURL)
 }
 
 // GetStoryContainerStatus consulta o status_code do container.
 func (s *Service) GetStoryContainerStatus(ctx context.Context, userID, containerID string) (string, error) {
-	token, _, err := s.resolveCredential(ctx, userID)
+	client, token, _, err := s.resolveCredential(ctx, userID)
 	if err != nil {
 		return "", err
 	}
-	return s.api.GetContainerStatus(ctx, containerID, token)
+	return client.GetContainerStatus(ctx, containerID, token)
 }
 
 // PublishStoryContainer publica um container pronto e devolve o media id.
 func (s *Service) PublishStoryContainer(ctx context.Context, userID, containerID string) (string, error) {
-	token, igUserID, err := s.resolveCredential(ctx, userID)
+	client, token, igUserID, err := s.resolveCredential(ctx, userID)
 	if err != nil {
 		return "", err
 	}
-	return s.api.PublishContainer(ctx, igUserID, token, containerID)
+	return client.PublishContainer(ctx, igUserID, token, containerID)
 }
 
 // resolveCredential centraliza "kill switch ligado + credencial válida". O
 // pacote workers nunca vê um token: ele passa userID e recebe resultado.
-func (s *Service) resolveCredential(ctx context.Context, userID string) (token, igUserID string, err error) {
+func (s *Service) resolveCredential(ctx context.Context, userID string) (client *APIClient, token, igUserID string, err error) {
 	if !s.FeatureEnabled() {
-		return "", "", ErrInstagramFeatureDisabled
+		return nil, "", "", ErrInstagramFeatureDisabled
 	}
 	token, igUserID, err = s.AccessToken(ctx, userID)
 	if err != nil {
-		return "", "", err
+		return nil, "", "", err
 	}
 	if token == "" || igUserID == "" {
-		return "", "", ErrInstagramTokenExpired
+		return nil, "", "", ErrInstagramTokenExpired
 	}
-	return token, igUserID, nil
+	client, err = s.apiClientFor(ctx, userID)
+	if err != nil {
+		return nil, "", "", err
+	}
+	return client, token, igUserID, nil
 }
 
 // --- refresh ---
@@ -463,7 +572,13 @@ func (s *Service) RefreshExpiring(ctx context.Context) error {
 				zap.String("userID", cred.UserID), zap.String("class", errorClass(err)))
 			continue
 		}
-		newToken, expiresIn, err := s.api.RefreshLongLived(ctx, token)
+		client, err := s.apiClientFor(ctx, cred.UserID)
+		if err != nil {
+			s.logger.Warn("instagram refresh: cannot resolve meta app",
+				zap.String("userID", cred.UserID), zap.String("class", errorClass(err)))
+			continue
+		}
+		newToken, expiresIn, err := client.RefreshLongLived(ctx, token)
 		if err != nil {
 			s.logger.Warn("instagram refresh failed",
 				zap.String("userID", cred.UserID), zap.String("class", errorClass(err)))
@@ -707,4 +822,120 @@ func isHex64(s string) bool {
 		}
 	}
 	return true
+}
+
+// --- app da Meta do cliente (CRUD) ---
+
+// MetaAppView é o que a UI pode ver do app do cliente. O segredo NÃO está aqui
+// — depois de salvo, o frontend só aprende que existe um.
+type MetaAppView struct {
+	AppID       string
+	HasSecret   bool
+	WebhookURL  string
+	VerifyToken string
+	RedirectURI string
+	IsVerified  bool
+	UpdatedAt   string
+}
+
+// ErrInstagramInvalidAppInput sinaliza entrada malformada vinda da tela.
+var ErrInstagramInvalidAppInput = errors.New("instagram: invalid meta app input")
+
+// maxAppFieldLen evita que um campo colado errado (uma página inteira, por
+// exemplo) vire uma linha gigante no banco.
+const maxAppFieldLen = 512
+
+// GetMetaApp devolve o app registrado pelo usuário, ou nil se ainda não houver.
+func (s *Service) GetMetaApp(ctx context.Context, userID string) (*MetaAppView, error) {
+	if s.appsRepo == nil {
+		return nil, nil
+	}
+	app, err := s.appsRepo.Get(ctx, userID)
+	if err != nil || app == nil {
+		return nil, err
+	}
+	return s.viewOf(app), nil
+}
+
+// SaveMetaApp grava as credenciais do app da Meta do cliente.
+//
+// appSecret vazio numa atualização significa "mantém o que está guardado" — a
+// tela nunca recebe o segredo de volta, então exigir que ele fosse reenviado a
+// cada edição obrigaria o cliente a buscá-lo na Meta só para trocar o app id.
+func (s *Service) SaveMetaApp(ctx context.Context, userID, appID, appSecret string) (*MetaAppView, error) {
+	if s.appsRepo == nil {
+		return nil, errors.New("instagram: app repository not configured")
+	}
+	if s.cfg.EncryptionKey == "" {
+		return nil, errors.New("instagram: encryption key not configured")
+	}
+	appID = strings.TrimSpace(appID)
+	appSecret = strings.TrimSpace(appSecret)
+	if appID == "" || len(appID) > maxAppFieldLen || len(appSecret) > maxAppFieldLen {
+		return nil, ErrInstagramInvalidAppInput
+	}
+
+	existing, err := s.appsRepo.Get(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	encrypted := ""
+	switch {
+	case appSecret != "":
+		blob, err := crypto.EncryptJSONV1(models.InstagramAppSecret{AppSecret: appSecret}, s.cfg.EncryptionKey)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(blob)
+		if err != nil {
+			return nil, err
+		}
+		encrypted = string(raw)
+	case existing != nil:
+		encrypted = existing.EncryptedAppSecret // mantém o segredo já guardado
+	default:
+		// Primeiro cadastro sem segredo não serve para nada: o OAuth falharia
+		// depois, longe daqui, com um erro difícil de ligar à causa.
+		return nil, ErrInstagramInvalidAppInput
+	}
+
+	app, err := s.appsRepo.Upsert(ctx, userID, appID, encrypted)
+	if err != nil {
+		return nil, err
+	}
+	// Nem app id entra no log: identifica o negócio do cliente na Meta.
+	s.logger.Info("instagram: meta app saved", zap.String("userID", userID))
+	return s.viewOf(app), nil
+}
+
+// DeleteMetaApp remove o registro do app. As credenciais da conta conectada
+// continuam — desconectar a conta é outra ação, deliberadamente separada.
+func (s *Service) DeleteMetaApp(ctx context.Context, userID string) error {
+	if s.appsRepo == nil {
+		return nil
+	}
+	return s.appsRepo.Delete(ctx, userID)
+}
+
+// HasMetaApp informa se o usuário já registrou o app dele.
+func (s *Service) HasMetaApp(ctx context.Context, userID string) bool {
+	if s.appsRepo == nil {
+		return false
+	}
+	app, err := s.appsRepo.Get(ctx, userID)
+	return err == nil && app != nil
+}
+
+func (s *Service) viewOf(app *models.InstagramApp) *MetaAppView {
+	return &MetaAppView{
+		AppID:     app.AppID,
+		HasSecret: app.EncryptedAppSecret != "",
+		// A URL que o cliente cola no painel do próprio app. O token opaco no
+		// path é o que permite validar a assinatura de um webhook multi-tenant.
+		WebhookURL:  strings.TrimRight(s.cfg.BackendBaseURL, "/") + "/api/v1/instagram/webhook/" + app.WebhookToken,
+		VerifyToken: app.VerifyToken,
+		RedirectURI: s.redirectURI(),
+		IsVerified:  app.IsVerified,
+		UpdatedAt:   app.UpdatedAt,
+	}
 }

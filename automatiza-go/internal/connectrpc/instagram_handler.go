@@ -2,6 +2,7 @@ package connectrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	instagramv1 "automatiza-go/internal/gen/instagram/v1"
@@ -53,6 +54,7 @@ func (h *InstagramHandler) GetStatus(
 		IgUserId:       st.IGUserID,
 		TokenExpiresAt: st.TokenExpiresAt,
 		RecentStories:  recent,
+		HasMetaApp:     st.HasMetaApp,
 	}), nil
 }
 
@@ -85,4 +87,72 @@ func (h *InstagramHandler) Disconnect(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to disconnect: %w", err))
 	}
 	return connect.NewResponse(&instagramv1.DisconnectResponse{}), nil
+}
+
+// GetMetaApp returns the caller's registered Meta app. The app secret is never
+// included — the UI only learns that one exists.
+func (h *InstagramHandler) GetMetaApp(
+	ctx context.Context,
+	_ *connect.Request[instagramv1.GetMetaAppRequest],
+) (*connect.Response[instagramv1.GetMetaAppResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	view, err := h.svc.GetMetaApp(ctx, user.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to load meta app: %w", err))
+	}
+	return connect.NewResponse(&instagramv1.GetMetaAppResponse{App: metaAppToProto(view)}), nil
+}
+
+// SaveMetaApp stores the client's own Meta app credentials.
+func (h *InstagramHandler) SaveMetaApp(
+	ctx context.Context,
+	req *connect.Request[instagramv1.SaveMetaAppRequest],
+) (*connect.Response[instagramv1.SaveMetaAppResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	view, err := h.svc.SaveMetaApp(ctx, user.ID, req.Msg.GetAppId(), req.Msg.GetAppSecret())
+	if err != nil {
+		if errors.Is(err, instagram.ErrInstagramInvalidAppInput) {
+			// InvalidArgument (não Internal): é erro do preenchimento, e a tela
+			// precisa distinguir para mostrar a mensagem certa no campo.
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("dados do aplicativo inválidos"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to save meta app: %w", err))
+	}
+	return connect.NewResponse(&instagramv1.SaveMetaAppResponse{App: metaAppToProto(view)}), nil
+}
+
+// DeleteMetaApp removes the client's Meta app registration.
+func (h *InstagramHandler) DeleteMetaApp(
+	ctx context.Context,
+	_ *connect.Request[instagramv1.DeleteMetaAppRequest],
+) (*connect.Response[instagramv1.DeleteMetaAppResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.svc.DeleteMetaApp(ctx, user.ID); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to delete meta app: %w", err))
+	}
+	return connect.NewResponse(&instagramv1.DeleteMetaAppResponse{}), nil
+}
+
+func metaAppToProto(v *instagram.MetaAppView) *instagramv1.MetaApp {
+	if v == nil {
+		return nil
+	}
+	return &instagramv1.MetaApp{
+		AppId:       v.AppID,
+		HasSecret:   v.HasSecret,
+		WebhookUrl:  v.WebhookURL,
+		VerifyToken: v.VerifyToken,
+		RedirectUri: v.RedirectURI,
+		IsVerified:  v.IsVerified,
+		UpdatedAt:   v.UpdatedAt,
+	}
 }

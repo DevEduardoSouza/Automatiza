@@ -117,6 +117,356 @@ func (x *StoryPost) GetCreatedAt() string {
 	return ""
 }
 
+// The Meta app the CLIENT registered. The app secret is never returned — once
+// saved, the UI only learns that one exists.
+type MetaApp struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	AppId string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	// Whether a secret is stored. The secret itself never leaves the server.
+	HasSecret bool `protobuf:"varint,2,opt,name=has_secret,json=hasSecret,proto3" json:"has_secret,omitempty"`
+	// Full webhook URL the client must paste into their own Meta app dashboard.
+	// Carries an opaque per-client token, which is how the server knows whose
+	// app signed an incoming webhook before reading the body.
+	WebhookUrl string `protobuf:"bytes,3,opt,name=webhook_url,json=webhookUrl,proto3" json:"webhook_url,omitempty"`
+	// Verify token for Meta's webhook handshake (hub.verify_token).
+	VerifyToken string `protobuf:"bytes,4,opt,name=verify_token,json=verifyToken,proto3" json:"verify_token,omitempty"`
+	// OAuth redirect URI to register in the client's Meta app. Same for everyone.
+	RedirectUri   string `protobuf:"bytes,5,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	IsVerified    bool   `protobuf:"varint,6,opt,name=is_verified,json=isVerified,proto3" json:"is_verified,omitempty"`
+	UpdatedAt     string `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetaApp) Reset() {
+	*x = MetaApp{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetaApp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetaApp) ProtoMessage() {}
+
+func (x *MetaApp) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetaApp.ProtoReflect.Descriptor instead.
+func (*MetaApp) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *MetaApp) GetAppId() string {
+	if x != nil {
+		return x.AppId
+	}
+	return ""
+}
+
+func (x *MetaApp) GetHasSecret() bool {
+	if x != nil {
+		return x.HasSecret
+	}
+	return false
+}
+
+func (x *MetaApp) GetWebhookUrl() string {
+	if x != nil {
+		return x.WebhookUrl
+	}
+	return ""
+}
+
+func (x *MetaApp) GetVerifyToken() string {
+	if x != nil {
+		return x.VerifyToken
+	}
+	return ""
+}
+
+func (x *MetaApp) GetRedirectUri() string {
+	if x != nil {
+		return x.RedirectUri
+	}
+	return ""
+}
+
+func (x *MetaApp) GetIsVerified() bool {
+	if x != nil {
+		return x.IsVerified
+	}
+	return false
+}
+
+func (x *MetaApp) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
+type GetMetaAppRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMetaAppRequest) Reset() {
+	*x = GetMetaAppRequest{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMetaAppRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMetaAppRequest) ProtoMessage() {}
+
+func (x *GetMetaAppRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMetaAppRequest.ProtoReflect.Descriptor instead.
+func (*GetMetaAppRequest) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{2}
+}
+
+type GetMetaAppResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Absent when the client has not registered an app yet.
+	App           *MetaApp `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMetaAppResponse) Reset() {
+	*x = GetMetaAppResponse{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMetaAppResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMetaAppResponse) ProtoMessage() {}
+
+func (x *GetMetaAppResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMetaAppResponse.ProtoReflect.Descriptor instead.
+func (*GetMetaAppResponse) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GetMetaAppResponse) GetApp() *MetaApp {
+	if x != nil {
+		return x.App
+	}
+	return nil
+}
+
+type SaveMetaAppRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	AppId string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	// Write-only. Empty on update means "keep the stored secret".
+	AppSecret     string `protobuf:"bytes,2,opt,name=app_secret,json=appSecret,proto3" json:"app_secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveMetaAppRequest) Reset() {
+	*x = SaveMetaAppRequest{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveMetaAppRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveMetaAppRequest) ProtoMessage() {}
+
+func (x *SaveMetaAppRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveMetaAppRequest.ProtoReflect.Descriptor instead.
+func (*SaveMetaAppRequest) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SaveMetaAppRequest) GetAppId() string {
+	if x != nil {
+		return x.AppId
+	}
+	return ""
+}
+
+func (x *SaveMetaAppRequest) GetAppSecret() string {
+	if x != nil {
+		return x.AppSecret
+	}
+	return ""
+}
+
+type SaveMetaAppResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	App           *MetaApp               `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveMetaAppResponse) Reset() {
+	*x = SaveMetaAppResponse{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveMetaAppResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveMetaAppResponse) ProtoMessage() {}
+
+func (x *SaveMetaAppResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveMetaAppResponse.ProtoReflect.Descriptor instead.
+func (*SaveMetaAppResponse) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SaveMetaAppResponse) GetApp() *MetaApp {
+	if x != nil {
+		return x.App
+	}
+	return nil
+}
+
+type DeleteMetaAppRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteMetaAppRequest) Reset() {
+	*x = DeleteMetaAppRequest{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteMetaAppRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMetaAppRequest) ProtoMessage() {}
+
+func (x *DeleteMetaAppRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMetaAppRequest.ProtoReflect.Descriptor instead.
+func (*DeleteMetaAppRequest) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{6}
+}
+
+type DeleteMetaAppResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteMetaAppResponse) Reset() {
+	*x = DeleteMetaAppResponse{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteMetaAppResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMetaAppResponse) ProtoMessage() {}
+
+func (x *DeleteMetaAppResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMetaAppResponse.ProtoReflect.Descriptor instead.
+func (*DeleteMetaAppResponse) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{7}
+}
+
 type GetStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -125,7 +475,7 @@ type GetStatusRequest struct {
 
 func (x *GetStatusRequest) Reset() {
 	*x = GetStatusRequest{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[1]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -137,7 +487,7 @@ func (x *GetStatusRequest) String() string {
 func (*GetStatusRequest) ProtoMessage() {}
 
 func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[1]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -150,7 +500,7 @@ func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetStatusRequest) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{1}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{8}
 }
 
 type GetStatusResponse struct {
@@ -165,13 +515,16 @@ type GetStatusResponse struct {
 	// Token expiry (ISO 8601), empty when not connected.
 	TokenExpiresAt string       `protobuf:"bytes,5,opt,name=token_expires_at,json=tokenExpiresAt,proto3" json:"token_expires_at,omitempty"`
 	RecentStories  []*StoryPost `protobuf:"bytes,6,rep,name=recent_stories,json=recentStories,proto3" json:"recent_stories,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Whether THIS user has registered their own Meta app. Connecting an account
+	// is impossible before that.
+	HasMetaApp    bool `protobuf:"varint,7,opt,name=has_meta_app,json=hasMetaApp,proto3" json:"has_meta_app,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetStatusResponse) Reset() {
 	*x = GetStatusResponse{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[2]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -183,7 +536,7 @@ func (x *GetStatusResponse) String() string {
 func (*GetStatusResponse) ProtoMessage() {}
 
 func (x *GetStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[2]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -196,7 +549,7 @@ func (x *GetStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetStatusResponse) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{2}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetStatusResponse) GetFeatureEnabled() bool {
@@ -241,6 +594,13 @@ func (x *GetStatusResponse) GetRecentStories() []*StoryPost {
 	return nil
 }
 
+func (x *GetStatusResponse) GetHasMetaApp() bool {
+	if x != nil {
+		return x.HasMetaApp
+	}
+	return false
+}
+
 type GetAuthorizeUrlRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -249,7 +609,7 @@ type GetAuthorizeUrlRequest struct {
 
 func (x *GetAuthorizeUrlRequest) Reset() {
 	*x = GetAuthorizeUrlRequest{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[3]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -261,7 +621,7 @@ func (x *GetAuthorizeUrlRequest) String() string {
 func (*GetAuthorizeUrlRequest) ProtoMessage() {}
 
 func (x *GetAuthorizeUrlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[3]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -274,7 +634,7 @@ func (x *GetAuthorizeUrlRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuthorizeUrlRequest.ProtoReflect.Descriptor instead.
 func (*GetAuthorizeUrlRequest) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{3}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{10}
 }
 
 type GetAuthorizeUrlResponse struct {
@@ -286,7 +646,7 @@ type GetAuthorizeUrlResponse struct {
 
 func (x *GetAuthorizeUrlResponse) Reset() {
 	*x = GetAuthorizeUrlResponse{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[4]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -298,7 +658,7 @@ func (x *GetAuthorizeUrlResponse) String() string {
 func (*GetAuthorizeUrlResponse) ProtoMessage() {}
 
 func (x *GetAuthorizeUrlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[4]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -311,7 +671,7 @@ func (x *GetAuthorizeUrlResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuthorizeUrlResponse.ProtoReflect.Descriptor instead.
 func (*GetAuthorizeUrlResponse) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{4}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetAuthorizeUrlResponse) GetUrl() string {
@@ -329,7 +689,7 @@ type DisconnectRequest struct {
 
 func (x *DisconnectRequest) Reset() {
 	*x = DisconnectRequest{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[5]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -341,7 +701,7 @@ func (x *DisconnectRequest) String() string {
 func (*DisconnectRequest) ProtoMessage() {}
 
 func (x *DisconnectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[5]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -354,7 +714,7 @@ func (x *DisconnectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectRequest.ProtoReflect.Descriptor instead.
 func (*DisconnectRequest) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{5}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{12}
 }
 
 type DisconnectResponse struct {
@@ -365,7 +725,7 @@ type DisconnectResponse struct {
 
 func (x *DisconnectResponse) Reset() {
 	*x = DisconnectResponse{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[6]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -377,7 +737,7 @@ func (x *DisconnectResponse) String() string {
 func (*DisconnectResponse) ProtoMessage() {}
 
 func (x *DisconnectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[6]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -390,7 +750,7 @@ func (x *DisconnectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectResponse.ProtoReflect.Descriptor instead.
 func (*DisconnectResponse) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{6}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{13}
 }
 
 var File_instagram_v1_instagram_proto protoreflect.FileDescriptor
@@ -406,8 +766,31 @@ const file_instagram_v1_instagram_proto_rawDesc = "" +
 	"\vig_media_id\x18\x05 \x01(\tR\tigMediaId\x12\x14\n" +
 	"\x05error\x18\x06 \x01(\tR\x05error\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\a \x01(\tR\tcreatedAt\"\x12\n" +
-	"\x10GetStatusRequest\"\xfe\x01\n" +
+	"created_at\x18\a \x01(\tR\tcreatedAt\"\xe6\x01\n" +
+	"\aMetaApp\x12\x15\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x1d\n" +
+	"\n" +
+	"has_secret\x18\x02 \x01(\bR\thasSecret\x12\x1f\n" +
+	"\vwebhook_url\x18\x03 \x01(\tR\n" +
+	"webhookUrl\x12!\n" +
+	"\fverify_token\x18\x04 \x01(\tR\vverifyToken\x12!\n" +
+	"\fredirect_uri\x18\x05 \x01(\tR\vredirectUri\x12\x1f\n" +
+	"\vis_verified\x18\x06 \x01(\bR\n" +
+	"isVerified\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\a \x01(\tR\tupdatedAt\"\x13\n" +
+	"\x11GetMetaAppRequest\"=\n" +
+	"\x12GetMetaAppResponse\x12'\n" +
+	"\x03app\x18\x01 \x01(\v2\x15.instagram.v1.MetaAppR\x03app\"J\n" +
+	"\x12SaveMetaAppRequest\x12\x15\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x1d\n" +
+	"\n" +
+	"app_secret\x18\x02 \x01(\tR\tappSecret\">\n" +
+	"\x13SaveMetaAppResponse\x12'\n" +
+	"\x03app\x18\x01 \x01(\v2\x15.instagram.v1.MetaAppR\x03app\"\x16\n" +
+	"\x14DeleteMetaAppRequest\"\x17\n" +
+	"\x15DeleteMetaAppResponse\"\x12\n" +
+	"\x10GetStatusRequest\"\xa0\x02\n" +
 	"\x11GetStatusResponse\x12'\n" +
 	"\x0ffeature_enabled\x18\x01 \x01(\bR\x0efeatureEnabled\x12\x1c\n" +
 	"\tconnected\x18\x02 \x01(\bR\tconnected\x12\x1a\n" +
@@ -415,17 +798,23 @@ const file_instagram_v1_instagram_proto_rawDesc = "" +
 	"\n" +
 	"ig_user_id\x18\x04 \x01(\tR\bigUserId\x12(\n" +
 	"\x10token_expires_at\x18\x05 \x01(\tR\x0etokenExpiresAt\x12>\n" +
-	"\x0erecent_stories\x18\x06 \x03(\v2\x17.instagram.v1.StoryPostR\rrecentStories\"\x18\n" +
+	"\x0erecent_stories\x18\x06 \x03(\v2\x17.instagram.v1.StoryPostR\rrecentStories\x12 \n" +
+	"\fhas_meta_app\x18\a \x01(\bR\n" +
+	"hasMetaApp\"\x18\n" +
 	"\x16GetAuthorizeUrlRequest\"+\n" +
 	"\x17GetAuthorizeUrlResponse\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\"\x13\n" +
 	"\x11DisconnectRequest\"\x14\n" +
-	"\x12DisconnectResponse2\x91\x02\n" +
+	"\x12DisconnectResponse2\x90\x04\n" +
 	"\x10InstagramService\x12L\n" +
 	"\tGetStatus\x12\x1e.instagram.v1.GetStatusRequest\x1a\x1f.instagram.v1.GetStatusResponse\x12^\n" +
 	"\x0fGetAuthorizeUrl\x12$.instagram.v1.GetAuthorizeUrlRequest\x1a%.instagram.v1.GetAuthorizeUrlResponse\x12O\n" +
 	"\n" +
-	"Disconnect\x12\x1f.instagram.v1.DisconnectRequest\x1a .instagram.v1.DisconnectResponseB\xa8\x01\n" +
+	"Disconnect\x12\x1f.instagram.v1.DisconnectRequest\x1a .instagram.v1.DisconnectResponse\x12O\n" +
+	"\n" +
+	"GetMetaApp\x12\x1f.instagram.v1.GetMetaAppRequest\x1a .instagram.v1.GetMetaAppResponse\x12R\n" +
+	"\vSaveMetaApp\x12 .instagram.v1.SaveMetaAppRequest\x1a!.instagram.v1.SaveMetaAppResponse\x12X\n" +
+	"\rDeleteMetaApp\x12\".instagram.v1.DeleteMetaAppRequest\x1a#.instagram.v1.DeleteMetaAppResponseB\xa8\x01\n" +
 	"\x10com.instagram.v1B\x0eInstagramProtoP\x01Z3automatiza-go/internal/gen/instagram/v1;instagramv1\xa2\x02\x03IXX\xaa\x02\fInstagram.V1\xca\x02\fInstagram\\V1\xe2\x02\x18Instagram\\V1\\GPBMetadata\xea\x02\rInstagram::V1b\x06proto3"
 
 var (
@@ -440,29 +829,44 @@ func file_instagram_v1_instagram_proto_rawDescGZIP() []byte {
 	return file_instagram_v1_instagram_proto_rawDescData
 }
 
-var file_instagram_v1_instagram_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_instagram_v1_instagram_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_instagram_v1_instagram_proto_goTypes = []any{
 	(*StoryPost)(nil),               // 0: instagram.v1.StoryPost
-	(*GetStatusRequest)(nil),        // 1: instagram.v1.GetStatusRequest
-	(*GetStatusResponse)(nil),       // 2: instagram.v1.GetStatusResponse
-	(*GetAuthorizeUrlRequest)(nil),  // 3: instagram.v1.GetAuthorizeUrlRequest
-	(*GetAuthorizeUrlResponse)(nil), // 4: instagram.v1.GetAuthorizeUrlResponse
-	(*DisconnectRequest)(nil),       // 5: instagram.v1.DisconnectRequest
-	(*DisconnectResponse)(nil),      // 6: instagram.v1.DisconnectResponse
+	(*MetaApp)(nil),                 // 1: instagram.v1.MetaApp
+	(*GetMetaAppRequest)(nil),       // 2: instagram.v1.GetMetaAppRequest
+	(*GetMetaAppResponse)(nil),      // 3: instagram.v1.GetMetaAppResponse
+	(*SaveMetaAppRequest)(nil),      // 4: instagram.v1.SaveMetaAppRequest
+	(*SaveMetaAppResponse)(nil),     // 5: instagram.v1.SaveMetaAppResponse
+	(*DeleteMetaAppRequest)(nil),    // 6: instagram.v1.DeleteMetaAppRequest
+	(*DeleteMetaAppResponse)(nil),   // 7: instagram.v1.DeleteMetaAppResponse
+	(*GetStatusRequest)(nil),        // 8: instagram.v1.GetStatusRequest
+	(*GetStatusResponse)(nil),       // 9: instagram.v1.GetStatusResponse
+	(*GetAuthorizeUrlRequest)(nil),  // 10: instagram.v1.GetAuthorizeUrlRequest
+	(*GetAuthorizeUrlResponse)(nil), // 11: instagram.v1.GetAuthorizeUrlResponse
+	(*DisconnectRequest)(nil),       // 12: instagram.v1.DisconnectRequest
+	(*DisconnectResponse)(nil),      // 13: instagram.v1.DisconnectResponse
 }
 var file_instagram_v1_instagram_proto_depIdxs = []int32{
-	0, // 0: instagram.v1.GetStatusResponse.recent_stories:type_name -> instagram.v1.StoryPost
-	1, // 1: instagram.v1.InstagramService.GetStatus:input_type -> instagram.v1.GetStatusRequest
-	3, // 2: instagram.v1.InstagramService.GetAuthorizeUrl:input_type -> instagram.v1.GetAuthorizeUrlRequest
-	5, // 3: instagram.v1.InstagramService.Disconnect:input_type -> instagram.v1.DisconnectRequest
-	2, // 4: instagram.v1.InstagramService.GetStatus:output_type -> instagram.v1.GetStatusResponse
-	4, // 5: instagram.v1.InstagramService.GetAuthorizeUrl:output_type -> instagram.v1.GetAuthorizeUrlResponse
-	6, // 6: instagram.v1.InstagramService.Disconnect:output_type -> instagram.v1.DisconnectResponse
-	4, // [4:7] is the sub-list for method output_type
-	1, // [1:4] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	1,  // 0: instagram.v1.GetMetaAppResponse.app:type_name -> instagram.v1.MetaApp
+	1,  // 1: instagram.v1.SaveMetaAppResponse.app:type_name -> instagram.v1.MetaApp
+	0,  // 2: instagram.v1.GetStatusResponse.recent_stories:type_name -> instagram.v1.StoryPost
+	8,  // 3: instagram.v1.InstagramService.GetStatus:input_type -> instagram.v1.GetStatusRequest
+	10, // 4: instagram.v1.InstagramService.GetAuthorizeUrl:input_type -> instagram.v1.GetAuthorizeUrlRequest
+	12, // 5: instagram.v1.InstagramService.Disconnect:input_type -> instagram.v1.DisconnectRequest
+	2,  // 6: instagram.v1.InstagramService.GetMetaApp:input_type -> instagram.v1.GetMetaAppRequest
+	4,  // 7: instagram.v1.InstagramService.SaveMetaApp:input_type -> instagram.v1.SaveMetaAppRequest
+	6,  // 8: instagram.v1.InstagramService.DeleteMetaApp:input_type -> instagram.v1.DeleteMetaAppRequest
+	9,  // 9: instagram.v1.InstagramService.GetStatus:output_type -> instagram.v1.GetStatusResponse
+	11, // 10: instagram.v1.InstagramService.GetAuthorizeUrl:output_type -> instagram.v1.GetAuthorizeUrlResponse
+	13, // 11: instagram.v1.InstagramService.Disconnect:output_type -> instagram.v1.DisconnectResponse
+	3,  // 12: instagram.v1.InstagramService.GetMetaApp:output_type -> instagram.v1.GetMetaAppResponse
+	5,  // 13: instagram.v1.InstagramService.SaveMetaApp:output_type -> instagram.v1.SaveMetaAppResponse
+	7,  // 14: instagram.v1.InstagramService.DeleteMetaApp:output_type -> instagram.v1.DeleteMetaAppResponse
+	9,  // [9:15] is the sub-list for method output_type
+	3,  // [3:9] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_instagram_v1_instagram_proto_init() }
@@ -476,7 +880,7 @@ func file_instagram_v1_instagram_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_instagram_v1_instagram_proto_rawDesc), len(file_instagram_v1_instagram_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

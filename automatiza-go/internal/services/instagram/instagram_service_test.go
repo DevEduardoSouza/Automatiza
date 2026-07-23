@@ -298,7 +298,7 @@ func newServiceTest(t *testing.T, o svcOpts) *svcHarness {
 		BackendBaseURL:  "https://api.example",
 		EncryptionKey:   testEncryptionKey,
 		StateSigningKey: stateKey,
-	}, api, creds, story, del, c, zap.NewNop())
+	}, api, creds, story, del, nil /* appsRepo: sem app por cliente, cai no app global */, c, zap.NewNop())
 
 	return &svcHarness{svc: svc, creds: creds, del: del, story: story, cache: c, mr: mr, apiHit: &hits}
 }
@@ -990,5 +990,164 @@ func TestService_CleanupIsBatchedAndBounded(t *testing.T) {
 	}
 	if len(h.story.deleted) > retentionMaxBatches {
 		t.Errorf("cleanup excedeu o teto de %d lotes: %d", retentionMaxBatches, len(h.story.deleted))
+	}
+}
+
+// --- app da Meta por cliente ---
+
+// fakeAppsRepo simula instagram_apps, incluindo o vínculo webhook_token -> app.
+type fakeAppsRepo struct {
+	mu     sync.Mutex
+	byUser map[string]*models.InstagramApp
+}
+
+func newFakeAppsRepo() *fakeAppsRepo {
+	return &fakeAppsRepo{byUser: map[string]*models.InstagramApp{}}
+}
+
+func (f *fakeAppsRepo) Get(_ context.Context, userID string) (*models.InstagramApp, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.byUser[userID], nil
+}
+
+func (f *fakeAppsRepo) GetByWebhookToken(_ context.Context, token string) (*models.InstagramApp, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if token == "" {
+		return nil, nil
+	}
+	for _, a := range f.byUser {
+		if a.WebhookToken == token {
+			return a, nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeAppsRepo) Upsert(_ context.Context, userID, appID, enc string) (*models.InstagramApp, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a := &models.InstagramApp{
+		UserID: userID, AppID: appID, EncryptedAppSecret: enc,
+		WebhookToken: "wt-" + userID, VerifyToken: "vt-" + userID,
+	}
+	f.byUser[userID] = a
+	return a, nil
+}
+
+func (f *fakeAppsRepo) MarkVerified(_ context.Context, userID string) error { return nil }
+func (f *fakeAppsRepo) Delete(_ context.Context, userID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.byUser, userID)
+	return nil
+}
+
+var _ repository.InstagramAppRepository = (*fakeAppsRepo)(nil)
+
+// encryptedAppSecret produz o blob que instagram_apps guarda.
+func encryptedAppSecret(t *testing.T, secret string) string {
+	t.Helper()
+	blob, err := crypto.EncryptJSONV1(models.InstagramAppSecret{AppSecret: secret}, testEncryptionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// O ponto central da Fase 1: dois clientes com apps DIFERENTES da Meta. Cada
+// URL de consentimento tem de sair com o client_id do app do respectivo dono —
+// se vazar o app de um para o outro, o consentimento é pedido em nome da
+// empresa errada.
+func TestService_AuthorizeURLUsesEachUsersOwnMetaApp(t *testing.T) {
+	h := newServiceTest(t, svcOpts{storiesEnabled: true})
+	apps := newFakeAppsRepo()
+	h.svc.appsRepo = apps
+	ctx := context.Background()
+
+	if _, err := apps.Upsert(ctx, userA, "APP-DO-USUARIO-A", encryptedAppSecret(t, "segredo-a")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apps.Upsert(ctx, userB, "APP-DO-USUARIO-B", encryptedAppSecret(t, "segredo-b")); err != nil {
+		t.Fatal(err)
+	}
+
+	urlA, err := h.svc.BuildAuthorizeURL(ctx, userA)
+	if err != nil {
+		t.Fatalf("authorize A: %v", err)
+	}
+	urlB, err := h.svc.BuildAuthorizeURL(ctx, userB)
+	if err != nil {
+		t.Fatalf("authorize B: %v", err)
+	}
+
+	if !strings.Contains(urlA, "client_id=APP-DO-USUARIO-A") {
+		t.Errorf("A deveria usar o app dele: %s", urlA)
+	}
+	if !strings.Contains(urlB, "client_id=APP-DO-USUARIO-B") {
+		t.Errorf("B deveria usar o app dele: %s", urlB)
+	}
+	if strings.Contains(urlA, "APP-DO-USUARIO-B") || strings.Contains(urlB, "APP-DO-USUARIO-A") {
+		t.Fatal("app de um cliente vazou para a URL do outro")
+	}
+}
+
+// Sem app cadastrado e sem app global, não há como pedir consentimento — e o
+// erro precisa ser tipado, para a UI dizer "cadastre seu app" em vez de um erro
+// genérico.
+func TestService_AuthorizeURLRequiresAnApp(t *testing.T) {
+	h := newServiceTest(t, svcOpts{storiesEnabled: true})
+	h.svc.appsRepo = newFakeAppsRepo()
+	// Zera o app global para simular produção sem INSTAGRAM_APP_ID.
+	h.svc.api = NewAPIClient("", "", "https://cb.example/redirect", zap.NewNop())
+
+	_, err := h.svc.BuildAuthorizeURL(context.Background(), userA)
+	if !errors.Is(err, ErrInstagramAppNotConfigured) {
+		t.Fatalf("esperava ErrInstagramAppNotConfigured, got %v", err)
+	}
+}
+
+// O token da URL do webhook resolve o app ANTES de qualquer leitura de corpo —
+// é o que torna possível validar assinatura num webhook multi-tenant.
+func TestService_ClientByWebhookTokenResolvesTheRightApp(t *testing.T) {
+	h := newServiceTest(t, svcOpts{storiesEnabled: true})
+	apps := newFakeAppsRepo()
+	h.svc.appsRepo = apps
+	ctx := context.Background()
+
+	appA, _ := apps.Upsert(ctx, userA, "APP-A", encryptedAppSecret(t, "segredo-a"))
+	apps.Upsert(ctx, userB, "APP-B", encryptedAppSecret(t, "segredo-b"))
+
+	client, app, err := h.svc.ClientByWebhookToken(ctx, appA.WebhookToken)
+	if err != nil {
+		t.Fatalf("resolver por token: %v", err)
+	}
+	if app.UserID != userA {
+		t.Errorf("token de A resolveu para %s", app.UserID)
+	}
+	if client.AppSecret() != "segredo-a" {
+		t.Error("segredo resolvido nao e o do dono do token")
+	}
+
+	// Token desconhecido não pode resolver para app nenhum.
+	if _, _, err := h.svc.ClientByWebhookToken(ctx, "token-inventado"); !errors.Is(err, ErrInstagramAppNotConfigured) {
+		t.Errorf("token desconhecido deveria falhar, got %v", err)
+	}
+	// Token vazio idem — é o default de linha malformada.
+	if _, _, err := h.svc.ClientByWebhookToken(ctx, ""); !errors.Is(err, ErrInstagramAppNotConfigured) {
+		t.Errorf("token vazio deveria falhar, got %v", err)
+	}
+}
+
+// O segredo do app é guardado cifrado; o valor em claro só existe em memória.
+func TestService_AppSecretIsStoredEncrypted(t *testing.T) {
+	enc := encryptedAppSecret(t, "segredo-muito-secreto")
+	if strings.Contains(enc, "segredo-muito-secreto") {
+		t.Fatal("segredo do app gravado em claro")
 	}
 }

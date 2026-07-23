@@ -22,6 +22,45 @@ message StoryPost {
   string created_at = 7;
 }
 
+// The Meta app the CLIENT registered. The app secret is never returned — once
+// saved, the UI only learns that one exists.
+message MetaApp {
+  string app_id = 1;
+  // Whether a secret is stored. The secret itself never leaves the server.
+  bool has_secret = 2;
+  // Full webhook URL the client must paste into their own Meta app dashboard.
+  // Carries an opaque per-client token, which is how the server knows whose
+  // app signed an incoming webhook before reading the body.
+  string webhook_url = 3;
+  // Verify token for Meta's webhook handshake (hub.verify_token).
+  string verify_token = 4;
+  // OAuth redirect URI to register in the client's Meta app. Same for everyone.
+  string redirect_uri = 5;
+  bool is_verified = 6;
+  string updated_at = 7;
+}
+
+message GetMetaAppRequest {}
+
+message GetMetaAppResponse {
+  // Absent when the client has not registered an app yet.
+  MetaApp app = 1;
+}
+
+message SaveMetaAppRequest {
+  string app_id = 1;
+  // Write-only. Empty on update means "keep the stored secret".
+  string app_secret = 2;
+}
+
+message SaveMetaAppResponse {
+  MetaApp app = 1;
+}
+
+message DeleteMetaAppRequest {}
+
+message DeleteMetaAppResponse {}
+
 message GetStatusRequest {}
 
 message GetStatusResponse {
@@ -35,6 +74,9 @@ message GetStatusResponse {
   // Token expiry (ISO 8601), empty when not connected.
   string token_expires_at = 5;
   repeated StoryPost recent_stories = 6;
+  // Whether THIS user has registered their own Meta app. Connecting an account
+  // is impossible before that.
+  bool has_meta_app = 7;
 }
 
 message GetAuthorizeUrlRequest {}
@@ -59,4 +101,10 @@ service InstagramService {
   rpc GetAuthorizeUrl(GetAuthorizeUrlRequest) returns (GetAuthorizeUrlResponse);
   // Disconnect removes this user's stored Instagram credentials.
   rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
+  // GetMetaApp returns this user's registered Meta app (never the secret).
+  rpc GetMetaApp(GetMetaAppRequest) returns (GetMetaAppResponse);
+  // SaveMetaApp stores/updates the client's own Meta app credentials.
+  rpc SaveMetaApp(SaveMetaAppRequest) returns (SaveMetaAppResponse);
+  // DeleteMetaApp removes the client's Meta app registration.
+  rpc DeleteMetaApp(DeleteMetaAppRequest) returns (DeleteMetaAppResponse);
 }
