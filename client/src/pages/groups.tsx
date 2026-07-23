@@ -4,6 +4,7 @@ import {
   GroupConnectionStatus,
   GroupInviteCodeDialog,
   GroupListTable,
+  GroupMemberMetrics,
   GroupMembersDialog,
   GroupReconnectDialog,
 } from '@/components/groups';
@@ -431,6 +432,13 @@ export default function Groups() {
                 />
               )}
             </div>
+
+            {/* Histórico de membros (migração 076). Isolado num ErrorBoundary
+                próprio: se as métricas falharem, a lista de grupos — que é o
+                trabalho real da página — continua funcionando. */}
+            <ErrorBoundary>
+              <GroupMemberMetrics />
+            </ErrorBoundary>
 
             {/* Groups Table */}
             <ErrorBoundary>

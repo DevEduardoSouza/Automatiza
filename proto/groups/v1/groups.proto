@@ -656,6 +656,79 @@ message DemoteMemberResponse {
 }
 
 // ============================================================
+// Member Metrics (histórico de membros — migração 076)
+// ============================================================
+
+/**
+ * Estado da cobertura de dados de membros.
+ * ZERO NUNCA REPRESENTA AUSÊNCIA: um grupo sem baseline devolve
+ * members_count ausente e status COLLECTING, nunca 0.
+ */
+enum MemberDataStatus {
+  MEMBER_DATA_STATUS_UNSPECIFIED = 0;
+  // Há baseline e observações para o recorte pedido.
+  MEMBER_DATA_STATUS_OK = 1;
+  // A reconciliação ainda não cobriu o recorte pedido (ou não o cobriu por inteiro).
+  MEMBER_DATA_STATUS_COLLECTING = 2;
+}
+
+/**
+ * Um dia do agregado de membros. A data é o bucket local America/Sao_Paulo.
+ */
+message GroupMemberDailyPoint {
+  // YYYY-MM-DD no fuso America/Sao_Paulo.
+  string date = 1;
+  // Ausente = nenhuma observação naquele dia. NÃO é zero.
+  optional int32 members_count = 2;
+  int32 joins = 3;
+  int32 leaves = 4;
+  // Quantos grupos contribuíram com observação nesse dia. Sem isto, um
+  // aumento de COBERTURA seria lido no gráfico como crescimento real.
+  int32 groups_observed = 5;
+}
+
+/**
+ * Uma linha do ranking de crescimento/perda.
+ */
+message GroupMemberRankingEntry {
+  string group_id = 1;
+  string group_name = 2;
+  int32 joins = 3;
+  int32 leaves = 4;
+  int32 net = 5;
+  optional int32 members_count = 6;
+}
+
+/**
+ * Membros ativos por DDD. Só entra quem tem telefone identificado.
+ */
+message DddDistributionEntry {
+  string ddd = 1;
+  int32 members = 2;
+}
+
+message GetGroupMemberMetricsRequest {
+  // Janela em dias. 0 => default do servidor (30). Teto de 90.
+  int32 days = 1;
+  // Quando presente, a série é do grupo em vez do agregado da conta.
+  optional string group_id = 2;
+}
+
+message GetGroupMemberMetricsResponse {
+  MemberDataStatus status = 1;
+  // Total de grupos do usuário e quantos já têm baseline — é o que permite
+  // à interface dizer "coletando" com número em vez de mostrar vazio.
+  int32 groups_total = 2;
+  int32 groups_with_data = 3;
+  // Ausente enquanto não houver nenhum baseline.
+  optional int32 active_members = 4;
+  repeated GroupMemberDailyPoint series = 5;
+  repeated GroupMemberRankingEntry top_growth = 6;
+  repeated GroupMemberRankingEntry top_loss = 7;
+  repeated DddDistributionEntry ddd_distribution = 8;
+}
+
+// ============================================================
 // Service Definition
 // ============================================================
 
@@ -762,4 +835,11 @@ service GroupsService {
 
   // Demotes a member from admin.
   rpc DemoteMember(DemoteMemberRequest) returns (DemoteMemberResponse);
+
+  // ============================
+  // Member Metrics
+  // ============================
+
+  // Retorna o histórico de membros da conta (ou de um grupo).
+  rpc GetGroupMemberMetrics(GetGroupMemberMetricsRequest) returns (GetGroupMemberMetricsResponse);
 }

@@ -11,3 +11,4 @@ export { GroupInviteCodeDialog } from './group-invite-code-dialog';
 export { GroupBulkActions } from './group-bulk-actions';
 export { GroupListTable } from './group-list-table';
 export { GroupMembersDialog } from './group-members-dialog';
+export { GroupMemberMetrics } from './group-member-metrics';

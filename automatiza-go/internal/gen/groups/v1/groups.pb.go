@@ -77,6 +77,61 @@ func (GroupStatus) EnumDescriptor() ([]byte, []int) {
 }
 
 // *
+// Estado da cobertura de dados de membros.
+// ZERO NUNCA REPRESENTA AUSÊNCIA: um grupo sem baseline devolve
+// members_count ausente e status COLLECTING, nunca 0.
+type MemberDataStatus int32
+
+const (
+	MemberDataStatus_MEMBER_DATA_STATUS_UNSPECIFIED MemberDataStatus = 0
+	// Há baseline e observações para o recorte pedido.
+	MemberDataStatus_MEMBER_DATA_STATUS_OK MemberDataStatus = 1
+	// A reconciliação ainda não cobriu o recorte pedido (ou não o cobriu por inteiro).
+	MemberDataStatus_MEMBER_DATA_STATUS_COLLECTING MemberDataStatus = 2
+)
+
+// Enum value maps for MemberDataStatus.
+var (
+	MemberDataStatus_name = map[int32]string{
+		0: "MEMBER_DATA_STATUS_UNSPECIFIED",
+		1: "MEMBER_DATA_STATUS_OK",
+		2: "MEMBER_DATA_STATUS_COLLECTING",
+	}
+	MemberDataStatus_value = map[string]int32{
+		"MEMBER_DATA_STATUS_UNSPECIFIED": 0,
+		"MEMBER_DATA_STATUS_OK":          1,
+		"MEMBER_DATA_STATUS_COLLECTING":  2,
+	}
+)
+
+func (x MemberDataStatus) Enum() *MemberDataStatus {
+	p := new(MemberDataStatus)
+	*p = x
+	return p
+}
+
+func (x MemberDataStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MemberDataStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_groups_v1_groups_proto_enumTypes[1].Descriptor()
+}
+
+func (MemberDataStatus) Type() protoreflect.EnumType {
+	return &file_groups_v1_groups_proto_enumTypes[1]
+}
+
+func (x MemberDataStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use MemberDataStatus.Descriptor instead.
+func (MemberDataStatus) EnumDescriptor() ([]byte, []int) {
+	return file_groups_v1_groups_proto_rawDescGZIP(), []int{1}
+}
+
+// *
 // Represents a WhatsApp group managed by the system.
 type Group struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -3488,6 +3543,385 @@ func (x *DemoteMemberResponse) GetSuccess() bool {
 	return false
 }
 
+// *
+// Um dia do agregado de membros. A data é o bucket local America/Sao_Paulo.
+type GroupMemberDailyPoint struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// YYYY-MM-DD no fuso America/Sao_Paulo.
+	Date string `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`
+	// Ausente = nenhuma observação naquele dia. NÃO é zero.
+	MembersCount *int32 `protobuf:"varint,2,opt,name=members_count,json=membersCount,proto3,oneof" json:"members_count,omitempty"`
+	Joins        int32  `protobuf:"varint,3,opt,name=joins,proto3" json:"joins,omitempty"`
+	Leaves       int32  `protobuf:"varint,4,opt,name=leaves,proto3" json:"leaves,omitempty"`
+	// Quantos grupos contribuíram com observação nesse dia. Sem isto, um
+	// aumento de COBERTURA seria lido no gráfico como crescimento real.
+	GroupsObserved int32 `protobuf:"varint,5,opt,name=groups_observed,json=groupsObserved,proto3" json:"groups_observed,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *GroupMemberDailyPoint) Reset() {
+	*x = GroupMemberDailyPoint{}
+	mi := &file_groups_v1_groups_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupMemberDailyPoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupMemberDailyPoint) ProtoMessage() {}
+
+func (x *GroupMemberDailyPoint) ProtoReflect() protoreflect.Message {
+	mi := &file_groups_v1_groups_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupMemberDailyPoint.ProtoReflect.Descriptor instead.
+func (*GroupMemberDailyPoint) Descriptor() ([]byte, []int) {
+	return file_groups_v1_groups_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *GroupMemberDailyPoint) GetDate() string {
+	if x != nil {
+		return x.Date
+	}
+	return ""
+}
+
+func (x *GroupMemberDailyPoint) GetMembersCount() int32 {
+	if x != nil && x.MembersCount != nil {
+		return *x.MembersCount
+	}
+	return 0
+}
+
+func (x *GroupMemberDailyPoint) GetJoins() int32 {
+	if x != nil {
+		return x.Joins
+	}
+	return 0
+}
+
+func (x *GroupMemberDailyPoint) GetLeaves() int32 {
+	if x != nil {
+		return x.Leaves
+	}
+	return 0
+}
+
+func (x *GroupMemberDailyPoint) GetGroupsObserved() int32 {
+	if x != nil {
+		return x.GroupsObserved
+	}
+	return 0
+}
+
+// *
+// Uma linha do ranking de crescimento/perda.
+type GroupMemberRankingEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	GroupId       string                 `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	GroupName     string                 `protobuf:"bytes,2,opt,name=group_name,json=groupName,proto3" json:"group_name,omitempty"`
+	Joins         int32                  `protobuf:"varint,3,opt,name=joins,proto3" json:"joins,omitempty"`
+	Leaves        int32                  `protobuf:"varint,4,opt,name=leaves,proto3" json:"leaves,omitempty"`
+	Net           int32                  `protobuf:"varint,5,opt,name=net,proto3" json:"net,omitempty"`
+	MembersCount  *int32                 `protobuf:"varint,6,opt,name=members_count,json=membersCount,proto3,oneof" json:"members_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GroupMemberRankingEntry) Reset() {
+	*x = GroupMemberRankingEntry{}
+	mi := &file_groups_v1_groups_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupMemberRankingEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupMemberRankingEntry) ProtoMessage() {}
+
+func (x *GroupMemberRankingEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_groups_v1_groups_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupMemberRankingEntry.ProtoReflect.Descriptor instead.
+func (*GroupMemberRankingEntry) Descriptor() ([]byte, []int) {
+	return file_groups_v1_groups_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *GroupMemberRankingEntry) GetGroupId() string {
+	if x != nil {
+		return x.GroupId
+	}
+	return ""
+}
+
+func (x *GroupMemberRankingEntry) GetGroupName() string {
+	if x != nil {
+		return x.GroupName
+	}
+	return ""
+}
+
+func (x *GroupMemberRankingEntry) GetJoins() int32 {
+	if x != nil {
+		return x.Joins
+	}
+	return 0
+}
+
+func (x *GroupMemberRankingEntry) GetLeaves() int32 {
+	if x != nil {
+		return x.Leaves
+	}
+	return 0
+}
+
+func (x *GroupMemberRankingEntry) GetNet() int32 {
+	if x != nil {
+		return x.Net
+	}
+	return 0
+}
+
+func (x *GroupMemberRankingEntry) GetMembersCount() int32 {
+	if x != nil && x.MembersCount != nil {
+		return *x.MembersCount
+	}
+	return 0
+}
+
+// *
+// Membros ativos por DDD. Só entra quem tem telefone identificado.
+type DddDistributionEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ddd           string                 `protobuf:"bytes,1,opt,name=ddd,proto3" json:"ddd,omitempty"`
+	Members       int32                  `protobuf:"varint,2,opt,name=members,proto3" json:"members,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DddDistributionEntry) Reset() {
+	*x = DddDistributionEntry{}
+	mi := &file_groups_v1_groups_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DddDistributionEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DddDistributionEntry) ProtoMessage() {}
+
+func (x *DddDistributionEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_groups_v1_groups_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DddDistributionEntry.ProtoReflect.Descriptor instead.
+func (*DddDistributionEntry) Descriptor() ([]byte, []int) {
+	return file_groups_v1_groups_proto_rawDescGZIP(), []int{57}
+}
+
+func (x *DddDistributionEntry) GetDdd() string {
+	if x != nil {
+		return x.Ddd
+	}
+	return ""
+}
+
+func (x *DddDistributionEntry) GetMembers() int32 {
+	if x != nil {
+		return x.Members
+	}
+	return 0
+}
+
+type GetGroupMemberMetricsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Janela em dias. 0 => default do servidor (30). Teto de 90.
+	Days int32 `protobuf:"varint,1,opt,name=days,proto3" json:"days,omitempty"`
+	// Quando presente, a série é do grupo em vez do agregado da conta.
+	GroupId       *string `protobuf:"bytes,2,opt,name=group_id,json=groupId,proto3,oneof" json:"group_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetGroupMemberMetricsRequest) Reset() {
+	*x = GetGroupMemberMetricsRequest{}
+	mi := &file_groups_v1_groups_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetGroupMemberMetricsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetGroupMemberMetricsRequest) ProtoMessage() {}
+
+func (x *GetGroupMemberMetricsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_groups_v1_groups_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetGroupMemberMetricsRequest.ProtoReflect.Descriptor instead.
+func (*GetGroupMemberMetricsRequest) Descriptor() ([]byte, []int) {
+	return file_groups_v1_groups_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *GetGroupMemberMetricsRequest) GetDays() int32 {
+	if x != nil {
+		return x.Days
+	}
+	return 0
+}
+
+func (x *GetGroupMemberMetricsRequest) GetGroupId() string {
+	if x != nil && x.GroupId != nil {
+		return *x.GroupId
+	}
+	return ""
+}
+
+type GetGroupMemberMetricsResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Status MemberDataStatus       `protobuf:"varint,1,opt,name=status,proto3,enum=groups.v1.MemberDataStatus" json:"status,omitempty"`
+	// Total de grupos do usuário e quantos já têm baseline — é o que permite
+	// à interface dizer "coletando" com número em vez de mostrar vazio.
+	GroupsTotal    int32 `protobuf:"varint,2,opt,name=groups_total,json=groupsTotal,proto3" json:"groups_total,omitempty"`
+	GroupsWithData int32 `protobuf:"varint,3,opt,name=groups_with_data,json=groupsWithData,proto3" json:"groups_with_data,omitempty"`
+	// Ausente enquanto não houver nenhum baseline.
+	ActiveMembers   *int32                     `protobuf:"varint,4,opt,name=active_members,json=activeMembers,proto3,oneof" json:"active_members,omitempty"`
+	Series          []*GroupMemberDailyPoint   `protobuf:"bytes,5,rep,name=series,proto3" json:"series,omitempty"`
+	TopGrowth       []*GroupMemberRankingEntry `protobuf:"bytes,6,rep,name=top_growth,json=topGrowth,proto3" json:"top_growth,omitempty"`
+	TopLoss         []*GroupMemberRankingEntry `protobuf:"bytes,7,rep,name=top_loss,json=topLoss,proto3" json:"top_loss,omitempty"`
+	DddDistribution []*DddDistributionEntry    `protobuf:"bytes,8,rep,name=ddd_distribution,json=dddDistribution,proto3" json:"ddd_distribution,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetGroupMemberMetricsResponse) Reset() {
+	*x = GetGroupMemberMetricsResponse{}
+	mi := &file_groups_v1_groups_proto_msgTypes[59]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetGroupMemberMetricsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetGroupMemberMetricsResponse) ProtoMessage() {}
+
+func (x *GetGroupMemberMetricsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_groups_v1_groups_proto_msgTypes[59]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetGroupMemberMetricsResponse.ProtoReflect.Descriptor instead.
+func (*GetGroupMemberMetricsResponse) Descriptor() ([]byte, []int) {
+	return file_groups_v1_groups_proto_rawDescGZIP(), []int{59}
+}
+
+func (x *GetGroupMemberMetricsResponse) GetStatus() MemberDataStatus {
+	if x != nil {
+		return x.Status
+	}
+	return MemberDataStatus_MEMBER_DATA_STATUS_UNSPECIFIED
+}
+
+func (x *GetGroupMemberMetricsResponse) GetGroupsTotal() int32 {
+	if x != nil {
+		return x.GroupsTotal
+	}
+	return 0
+}
+
+func (x *GetGroupMemberMetricsResponse) GetGroupsWithData() int32 {
+	if x != nil {
+		return x.GroupsWithData
+	}
+	return 0
+}
+
+func (x *GetGroupMemberMetricsResponse) GetActiveMembers() int32 {
+	if x != nil && x.ActiveMembers != nil {
+		return *x.ActiveMembers
+	}
+	return 0
+}
+
+func (x *GetGroupMemberMetricsResponse) GetSeries() []*GroupMemberDailyPoint {
+	if x != nil {
+		return x.Series
+	}
+	return nil
+}
+
+func (x *GetGroupMemberMetricsResponse) GetTopGrowth() []*GroupMemberRankingEntry {
+	if x != nil {
+		return x.TopGrowth
+	}
+	return nil
+}
+
+func (x *GetGroupMemberMetricsResponse) GetTopLoss() []*GroupMemberRankingEntry {
+	if x != nil {
+		return x.TopLoss
+	}
+	return nil
+}
+
+func (x *GetGroupMemberMetricsResponse) GetDddDistribution() []*DddDistributionEntry {
+	if x != nil {
+		return x.DddDistribution
+	}
+	return nil
+}
+
 var File_groups_v1_groups_proto protoreflect.FileDescriptor
 
 const file_groups_v1_groups_proto_rawDesc = "" +
@@ -3781,12 +4215,50 @@ const file_groups_v1_groups_proto_rawDesc = "" +
 	"\bgroup_id\x18\x02 \x01(\tB\x15\xbaH\x12r\x102\x0e^[0-9]+@g\\.us$R\agroupId\x12*\n" +
 	"\fphone_number\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vphoneNumber\"0\n" +
 	"\x14DemoteMemberResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess*r\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"\xbe\x01\n" +
+	"\x15GroupMemberDailyPoint\x12\x12\n" +
+	"\x04date\x18\x01 \x01(\tR\x04date\x12(\n" +
+	"\rmembers_count\x18\x02 \x01(\x05H\x00R\fmembersCount\x88\x01\x01\x12\x14\n" +
+	"\x05joins\x18\x03 \x01(\x05R\x05joins\x12\x16\n" +
+	"\x06leaves\x18\x04 \x01(\x05R\x06leaves\x12'\n" +
+	"\x0fgroups_observed\x18\x05 \x01(\x05R\x0egroupsObservedB\x10\n" +
+	"\x0e_members_count\"\xcf\x01\n" +
+	"\x17GroupMemberRankingEntry\x12\x19\n" +
+	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12\x1d\n" +
+	"\n" +
+	"group_name\x18\x02 \x01(\tR\tgroupName\x12\x14\n" +
+	"\x05joins\x18\x03 \x01(\x05R\x05joins\x12\x16\n" +
+	"\x06leaves\x18\x04 \x01(\x05R\x06leaves\x12\x10\n" +
+	"\x03net\x18\x05 \x01(\x05R\x03net\x12(\n" +
+	"\rmembers_count\x18\x06 \x01(\x05H\x00R\fmembersCount\x88\x01\x01B\x10\n" +
+	"\x0e_members_count\"B\n" +
+	"\x14DddDistributionEntry\x12\x10\n" +
+	"\x03ddd\x18\x01 \x01(\tR\x03ddd\x12\x18\n" +
+	"\amembers\x18\x02 \x01(\x05R\amembers\"_\n" +
+	"\x1cGetGroupMemberMetricsRequest\x12\x12\n" +
+	"\x04days\x18\x01 \x01(\x05R\x04days\x12\x1e\n" +
+	"\bgroup_id\x18\x02 \x01(\tH\x00R\agroupId\x88\x01\x01B\v\n" +
+	"\t_group_id\"\xe8\x03\n" +
+	"\x1dGetGroupMemberMetricsResponse\x123\n" +
+	"\x06status\x18\x01 \x01(\x0e2\x1b.groups.v1.MemberDataStatusR\x06status\x12!\n" +
+	"\fgroups_total\x18\x02 \x01(\x05R\vgroupsTotal\x12(\n" +
+	"\x10groups_with_data\x18\x03 \x01(\x05R\x0egroupsWithData\x12*\n" +
+	"\x0eactive_members\x18\x04 \x01(\x05H\x00R\ractiveMembers\x88\x01\x01\x128\n" +
+	"\x06series\x18\x05 \x03(\v2 .groups.v1.GroupMemberDailyPointR\x06series\x12A\n" +
+	"\n" +
+	"top_growth\x18\x06 \x03(\v2\".groups.v1.GroupMemberRankingEntryR\ttopGrowth\x12=\n" +
+	"\btop_loss\x18\a \x03(\v2\".groups.v1.GroupMemberRankingEntryR\atopLoss\x12J\n" +
+	"\x10ddd_distribution\x18\b \x03(\v2\x1f.groups.v1.DddDistributionEntryR\x0fdddDistributionB\x11\n" +
+	"\x0f_active_members*r\n" +
 	"\vGroupStatus\x12\x1c\n" +
 	"\x18GROUP_STATUS_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11GROUP_STATUS_OPEN\x10\x01\x12\x17\n" +
 	"\x13GROUP_STATUS_CLOSED\x10\x02\x12\x15\n" +
-	"\x11GROUP_STATUS_FULL\x10\x032\x95\x12\n" +
+	"\x11GROUP_STATUS_FULL\x10\x03*t\n" +
+	"\x10MemberDataStatus\x12\"\n" +
+	"\x1eMEMBER_DATA_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15MEMBER_DATA_STATUS_OK\x10\x01\x12!\n" +
+	"\x1dMEMBER_DATA_STATUS_COLLECTING\x10\x022\x81\x13\n" +
 	"\rGroupsService\x12I\n" +
 	"\n" +
 	"ListGroups\x12\x1c.groups.v1.ListGroupsRequest\x1a\x1d.groups.v1.ListGroupsResponse\x12C\n" +
@@ -3816,7 +4288,8 @@ const file_groups_v1_groups_proto_rawDesc = "" +
 	"\n" +
 	"LeaveGroup\x12\x1c.groups.v1.LeaveGroupRequest\x1a\x1d.groups.v1.LeaveGroupResponse\x12R\n" +
 	"\rPromoteMember\x12\x1f.groups.v1.PromoteMemberRequest\x1a .groups.v1.PromoteMemberResponse\x12O\n" +
-	"\fDemoteMember\x12\x1e.groups.v1.DemoteMemberRequest\x1a\x1f.groups.v1.DemoteMemberResponseB\x90\x01\n" +
+	"\fDemoteMember\x12\x1e.groups.v1.DemoteMemberRequest\x1a\x1f.groups.v1.DemoteMemberResponse\x12j\n" +
+	"\x15GetGroupMemberMetrics\x12'.groups.v1.GetGroupMemberMetricsRequest\x1a(.groups.v1.GetGroupMemberMetricsResponseB\x90\x01\n" +
 	"\rcom.groups.v1B\vGroupsProtoP\x01Z-automatiza-go/internal/gen/groups/v1;groupsv1\xa2\x02\x03GXX\xaa\x02\tGroups.V1\xca\x02\tGroups\\V1\xe2\x02\x15Groups\\V1\\GPBMetadata\xea\x02\n" +
 	"Groups::V1b\x06proto3"
 
@@ -3832,136 +4305,149 @@ func file_groups_v1_groups_proto_rawDescGZIP() []byte {
 	return file_groups_v1_groups_proto_rawDescData
 }
 
-var file_groups_v1_groups_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_groups_v1_groups_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
+var file_groups_v1_groups_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_groups_v1_groups_proto_msgTypes = make([]protoimpl.MessageInfo, 60)
 var file_groups_v1_groups_proto_goTypes = []any{
 	(GroupStatus)(0),                       // 0: groups.v1.GroupStatus
-	(*Group)(nil),                          // 1: groups.v1.Group
-	(*ListGroupsRequest)(nil),              // 2: groups.v1.ListGroupsRequest
-	(*ListGroupsResponse)(nil),             // 3: groups.v1.ListGroupsResponse
-	(*GetGroupRequest)(nil),                // 4: groups.v1.GetGroupRequest
-	(*GetGroupResponse)(nil),               // 5: groups.v1.GetGroupResponse
-	(*GetGroupsByIdsRequest)(nil),          // 6: groups.v1.GetGroupsByIdsRequest
-	(*GetGroupsByIdsResponse)(nil),         // 7: groups.v1.GetGroupsByIdsResponse
-	(*CreateGroupRequest)(nil),             // 8: groups.v1.CreateGroupRequest
-	(*CreateGroupResponse)(nil),            // 9: groups.v1.CreateGroupResponse
-	(*UpdateGroupRequest)(nil),             // 10: groups.v1.UpdateGroupRequest
-	(*UpdateGroupResponse)(nil),            // 11: groups.v1.UpdateGroupResponse
-	(*ToggleGroupFavoriteRequest)(nil),     // 12: groups.v1.ToggleGroupFavoriteRequest
-	(*ToggleGroupFavoriteResponse)(nil),    // 13: groups.v1.ToggleGroupFavoriteResponse
-	(*SyncGroupsRequest)(nil),              // 14: groups.v1.SyncGroupsRequest
-	(*SyncGroupsResponse)(nil),             // 15: groups.v1.SyncGroupsResponse
-	(*DeleteGroupRequest)(nil),             // 16: groups.v1.DeleteGroupRequest
-	(*DeleteGroupResponse)(nil),            // 17: groups.v1.DeleteGroupResponse
-	(*BulkUpdateGroupsRequest)(nil),        // 18: groups.v1.BulkUpdateGroupsRequest
-	(*BulkUpdateGroupsResponse)(nil),       // 19: groups.v1.BulkUpdateGroupsResponse
-	(*SendGroupMessageRequest)(nil),        // 20: groups.v1.SendGroupMessageRequest
-	(*SendGroupMessageResponse)(nil),       // 21: groups.v1.SendGroupMessageResponse
-	(*SendGroupAudioRequest)(nil),          // 22: groups.v1.SendGroupAudioRequest
-	(*SendGroupAudioResponse)(nil),         // 23: groups.v1.SendGroupAudioResponse
-	(*SendGroupImageRequest)(nil),          // 24: groups.v1.SendGroupImageRequest
-	(*SendGroupImageResponse)(nil),         // 25: groups.v1.SendGroupImageResponse
-	(*SendGroupPollRequest)(nil),           // 26: groups.v1.SendGroupPollRequest
-	(*SendGroupPollResponse)(nil),          // 27: groups.v1.SendGroupPollResponse
-	(*UpdateGroupSubjectRequest)(nil),      // 28: groups.v1.UpdateGroupSubjectRequest
-	(*UpdateGroupSubjectResponse)(nil),     // 29: groups.v1.UpdateGroupSubjectResponse
-	(*UpdateGroupDescriptionRequest)(nil),  // 30: groups.v1.UpdateGroupDescriptionRequest
-	(*UpdateGroupDescriptionResponse)(nil), // 31: groups.v1.UpdateGroupDescriptionResponse
-	(*UpdateGroupPictureRequest)(nil),      // 32: groups.v1.UpdateGroupPictureRequest
-	(*UpdateGroupPictureResponse)(nil),     // 33: groups.v1.UpdateGroupPictureResponse
-	(*UpdateGroupPicturesRequest)(nil),     // 34: groups.v1.UpdateGroupPicturesRequest
-	(*UpdateGroupPictureResult)(nil),       // 35: groups.v1.UpdateGroupPictureResult
-	(*UpdateGroupPicturesResponse)(nil),    // 36: groups.v1.UpdateGroupPicturesResponse
-	(*UpdateGroupSettingsRequest)(nil),     // 37: groups.v1.UpdateGroupSettingsRequest
-	(*UpdateGroupSettingsResponse)(nil),    // 38: groups.v1.UpdateGroupSettingsResponse
-	(*GetGroupInviteCodeRequest)(nil),      // 39: groups.v1.GetGroupInviteCodeRequest
-	(*GetGroupInviteCodeResponse)(nil),     // 40: groups.v1.GetGroupInviteCodeResponse
-	(*GetSyncStatusRequest)(nil),           // 41: groups.v1.GetSyncStatusRequest
-	(*GetSyncStatusResponse)(nil),          // 42: groups.v1.GetSyncStatusResponse
-	(*GroupParticipant)(nil),               // 43: groups.v1.GroupParticipant
-	(*GetGroupParticipantsRequest)(nil),    // 44: groups.v1.GetGroupParticipantsRequest
-	(*GetGroupParticipantsResponse)(nil),   // 45: groups.v1.GetGroupParticipantsResponse
-	(*AddGroupMemberRequest)(nil),          // 46: groups.v1.AddGroupMemberRequest
-	(*AddGroupMemberResponse)(nil),         // 47: groups.v1.AddGroupMemberResponse
-	(*RemoveGroupMemberRequest)(nil),       // 48: groups.v1.RemoveGroupMemberRequest
-	(*RemoveGroupMemberResponse)(nil),      // 49: groups.v1.RemoveGroupMemberResponse
-	(*LeaveGroupRequest)(nil),              // 50: groups.v1.LeaveGroupRequest
-	(*LeaveGroupResponse)(nil),             // 51: groups.v1.LeaveGroupResponse
-	(*PromoteMemberRequest)(nil),           // 52: groups.v1.PromoteMemberRequest
-	(*PromoteMemberResponse)(nil),          // 53: groups.v1.PromoteMemberResponse
-	(*DemoteMemberRequest)(nil),            // 54: groups.v1.DemoteMemberRequest
-	(*DemoteMemberResponse)(nil),           // 55: groups.v1.DemoteMemberResponse
+	(MemberDataStatus)(0),                  // 1: groups.v1.MemberDataStatus
+	(*Group)(nil),                          // 2: groups.v1.Group
+	(*ListGroupsRequest)(nil),              // 3: groups.v1.ListGroupsRequest
+	(*ListGroupsResponse)(nil),             // 4: groups.v1.ListGroupsResponse
+	(*GetGroupRequest)(nil),                // 5: groups.v1.GetGroupRequest
+	(*GetGroupResponse)(nil),               // 6: groups.v1.GetGroupResponse
+	(*GetGroupsByIdsRequest)(nil),          // 7: groups.v1.GetGroupsByIdsRequest
+	(*GetGroupsByIdsResponse)(nil),         // 8: groups.v1.GetGroupsByIdsResponse
+	(*CreateGroupRequest)(nil),             // 9: groups.v1.CreateGroupRequest
+	(*CreateGroupResponse)(nil),            // 10: groups.v1.CreateGroupResponse
+	(*UpdateGroupRequest)(nil),             // 11: groups.v1.UpdateGroupRequest
+	(*UpdateGroupResponse)(nil),            // 12: groups.v1.UpdateGroupResponse
+	(*ToggleGroupFavoriteRequest)(nil),     // 13: groups.v1.ToggleGroupFavoriteRequest
+	(*ToggleGroupFavoriteResponse)(nil),    // 14: groups.v1.ToggleGroupFavoriteResponse
+	(*SyncGroupsRequest)(nil),              // 15: groups.v1.SyncGroupsRequest
+	(*SyncGroupsResponse)(nil),             // 16: groups.v1.SyncGroupsResponse
+	(*DeleteGroupRequest)(nil),             // 17: groups.v1.DeleteGroupRequest
+	(*DeleteGroupResponse)(nil),            // 18: groups.v1.DeleteGroupResponse
+	(*BulkUpdateGroupsRequest)(nil),        // 19: groups.v1.BulkUpdateGroupsRequest
+	(*BulkUpdateGroupsResponse)(nil),       // 20: groups.v1.BulkUpdateGroupsResponse
+	(*SendGroupMessageRequest)(nil),        // 21: groups.v1.SendGroupMessageRequest
+	(*SendGroupMessageResponse)(nil),       // 22: groups.v1.SendGroupMessageResponse
+	(*SendGroupAudioRequest)(nil),          // 23: groups.v1.SendGroupAudioRequest
+	(*SendGroupAudioResponse)(nil),         // 24: groups.v1.SendGroupAudioResponse
+	(*SendGroupImageRequest)(nil),          // 25: groups.v1.SendGroupImageRequest
+	(*SendGroupImageResponse)(nil),         // 26: groups.v1.SendGroupImageResponse
+	(*SendGroupPollRequest)(nil),           // 27: groups.v1.SendGroupPollRequest
+	(*SendGroupPollResponse)(nil),          // 28: groups.v1.SendGroupPollResponse
+	(*UpdateGroupSubjectRequest)(nil),      // 29: groups.v1.UpdateGroupSubjectRequest
+	(*UpdateGroupSubjectResponse)(nil),     // 30: groups.v1.UpdateGroupSubjectResponse
+	(*UpdateGroupDescriptionRequest)(nil),  // 31: groups.v1.UpdateGroupDescriptionRequest
+	(*UpdateGroupDescriptionResponse)(nil), // 32: groups.v1.UpdateGroupDescriptionResponse
+	(*UpdateGroupPictureRequest)(nil),      // 33: groups.v1.UpdateGroupPictureRequest
+	(*UpdateGroupPictureResponse)(nil),     // 34: groups.v1.UpdateGroupPictureResponse
+	(*UpdateGroupPicturesRequest)(nil),     // 35: groups.v1.UpdateGroupPicturesRequest
+	(*UpdateGroupPictureResult)(nil),       // 36: groups.v1.UpdateGroupPictureResult
+	(*UpdateGroupPicturesResponse)(nil),    // 37: groups.v1.UpdateGroupPicturesResponse
+	(*UpdateGroupSettingsRequest)(nil),     // 38: groups.v1.UpdateGroupSettingsRequest
+	(*UpdateGroupSettingsResponse)(nil),    // 39: groups.v1.UpdateGroupSettingsResponse
+	(*GetGroupInviteCodeRequest)(nil),      // 40: groups.v1.GetGroupInviteCodeRequest
+	(*GetGroupInviteCodeResponse)(nil),     // 41: groups.v1.GetGroupInviteCodeResponse
+	(*GetSyncStatusRequest)(nil),           // 42: groups.v1.GetSyncStatusRequest
+	(*GetSyncStatusResponse)(nil),          // 43: groups.v1.GetSyncStatusResponse
+	(*GroupParticipant)(nil),               // 44: groups.v1.GroupParticipant
+	(*GetGroupParticipantsRequest)(nil),    // 45: groups.v1.GetGroupParticipantsRequest
+	(*GetGroupParticipantsResponse)(nil),   // 46: groups.v1.GetGroupParticipantsResponse
+	(*AddGroupMemberRequest)(nil),          // 47: groups.v1.AddGroupMemberRequest
+	(*AddGroupMemberResponse)(nil),         // 48: groups.v1.AddGroupMemberResponse
+	(*RemoveGroupMemberRequest)(nil),       // 49: groups.v1.RemoveGroupMemberRequest
+	(*RemoveGroupMemberResponse)(nil),      // 50: groups.v1.RemoveGroupMemberResponse
+	(*LeaveGroupRequest)(nil),              // 51: groups.v1.LeaveGroupRequest
+	(*LeaveGroupResponse)(nil),             // 52: groups.v1.LeaveGroupResponse
+	(*PromoteMemberRequest)(nil),           // 53: groups.v1.PromoteMemberRequest
+	(*PromoteMemberResponse)(nil),          // 54: groups.v1.PromoteMemberResponse
+	(*DemoteMemberRequest)(nil),            // 55: groups.v1.DemoteMemberRequest
+	(*DemoteMemberResponse)(nil),           // 56: groups.v1.DemoteMemberResponse
+	(*GroupMemberDailyPoint)(nil),          // 57: groups.v1.GroupMemberDailyPoint
+	(*GroupMemberRankingEntry)(nil),        // 58: groups.v1.GroupMemberRankingEntry
+	(*DddDistributionEntry)(nil),           // 59: groups.v1.DddDistributionEntry
+	(*GetGroupMemberMetricsRequest)(nil),   // 60: groups.v1.GetGroupMemberMetricsRequest
+	(*GetGroupMemberMetricsResponse)(nil),  // 61: groups.v1.GetGroupMemberMetricsResponse
 }
 var file_groups_v1_groups_proto_depIdxs = []int32{
 	0,  // 0: groups.v1.Group.status:type_name -> groups.v1.GroupStatus
-	1,  // 1: groups.v1.ListGroupsResponse.groups:type_name -> groups.v1.Group
-	1,  // 2: groups.v1.GetGroupResponse.group:type_name -> groups.v1.Group
-	1,  // 3: groups.v1.GetGroupsByIdsResponse.groups:type_name -> groups.v1.Group
+	2,  // 1: groups.v1.ListGroupsResponse.groups:type_name -> groups.v1.Group
+	2,  // 2: groups.v1.GetGroupResponse.group:type_name -> groups.v1.Group
+	2,  // 3: groups.v1.GetGroupsByIdsResponse.groups:type_name -> groups.v1.Group
 	0,  // 4: groups.v1.CreateGroupRequest.status:type_name -> groups.v1.GroupStatus
-	1,  // 5: groups.v1.CreateGroupResponse.group:type_name -> groups.v1.Group
+	2,  // 5: groups.v1.CreateGroupResponse.group:type_name -> groups.v1.Group
 	0,  // 6: groups.v1.UpdateGroupRequest.status:type_name -> groups.v1.GroupStatus
-	1,  // 7: groups.v1.UpdateGroupResponse.group:type_name -> groups.v1.Group
-	1,  // 8: groups.v1.ToggleGroupFavoriteResponse.group:type_name -> groups.v1.Group
+	2,  // 7: groups.v1.UpdateGroupResponse.group:type_name -> groups.v1.Group
+	2,  // 8: groups.v1.ToggleGroupFavoriteResponse.group:type_name -> groups.v1.Group
 	0,  // 9: groups.v1.BulkUpdateGroupsRequest.status:type_name -> groups.v1.GroupStatus
-	35, // 10: groups.v1.UpdateGroupPicturesResponse.results:type_name -> groups.v1.UpdateGroupPictureResult
-	43, // 11: groups.v1.GetGroupParticipantsResponse.participants:type_name -> groups.v1.GroupParticipant
-	2,  // 12: groups.v1.GroupsService.ListGroups:input_type -> groups.v1.ListGroupsRequest
-	4,  // 13: groups.v1.GroupsService.GetGroup:input_type -> groups.v1.GetGroupRequest
-	6,  // 14: groups.v1.GroupsService.GetGroupsByIds:input_type -> groups.v1.GetGroupsByIdsRequest
-	8,  // 15: groups.v1.GroupsService.CreateGroup:input_type -> groups.v1.CreateGroupRequest
-	10, // 16: groups.v1.GroupsService.UpdateGroup:input_type -> groups.v1.UpdateGroupRequest
-	12, // 17: groups.v1.GroupsService.ToggleGroupFavorite:input_type -> groups.v1.ToggleGroupFavoriteRequest
-	14, // 18: groups.v1.GroupsService.SyncGroups:input_type -> groups.v1.SyncGroupsRequest
-	41, // 19: groups.v1.GroupsService.GetSyncStatus:input_type -> groups.v1.GetSyncStatusRequest
-	16, // 20: groups.v1.GroupsService.DeleteGroup:input_type -> groups.v1.DeleteGroupRequest
-	18, // 21: groups.v1.GroupsService.BulkUpdateGroups:input_type -> groups.v1.BulkUpdateGroupsRequest
-	20, // 22: groups.v1.GroupsService.SendGroupMessage:input_type -> groups.v1.SendGroupMessageRequest
-	22, // 23: groups.v1.GroupsService.SendGroupAudio:input_type -> groups.v1.SendGroupAudioRequest
-	24, // 24: groups.v1.GroupsService.SendGroupImage:input_type -> groups.v1.SendGroupImageRequest
-	26, // 25: groups.v1.GroupsService.SendGroupPoll:input_type -> groups.v1.SendGroupPollRequest
-	28, // 26: groups.v1.GroupsService.UpdateGroupSubject:input_type -> groups.v1.UpdateGroupSubjectRequest
-	30, // 27: groups.v1.GroupsService.UpdateGroupDescription:input_type -> groups.v1.UpdateGroupDescriptionRequest
-	32, // 28: groups.v1.GroupsService.UpdateGroupPicture:input_type -> groups.v1.UpdateGroupPictureRequest
-	34, // 29: groups.v1.GroupsService.UpdateGroupPictures:input_type -> groups.v1.UpdateGroupPicturesRequest
-	37, // 30: groups.v1.GroupsService.UpdateGroupSettings:input_type -> groups.v1.UpdateGroupSettingsRequest
-	39, // 31: groups.v1.GroupsService.GetGroupInviteCode:input_type -> groups.v1.GetGroupInviteCodeRequest
-	44, // 32: groups.v1.GroupsService.GetGroupParticipants:input_type -> groups.v1.GetGroupParticipantsRequest
-	46, // 33: groups.v1.GroupsService.AddGroupMember:input_type -> groups.v1.AddGroupMemberRequest
-	48, // 34: groups.v1.GroupsService.RemoveGroupMember:input_type -> groups.v1.RemoveGroupMemberRequest
-	50, // 35: groups.v1.GroupsService.LeaveGroup:input_type -> groups.v1.LeaveGroupRequest
-	52, // 36: groups.v1.GroupsService.PromoteMember:input_type -> groups.v1.PromoteMemberRequest
-	54, // 37: groups.v1.GroupsService.DemoteMember:input_type -> groups.v1.DemoteMemberRequest
-	3,  // 38: groups.v1.GroupsService.ListGroups:output_type -> groups.v1.ListGroupsResponse
-	5,  // 39: groups.v1.GroupsService.GetGroup:output_type -> groups.v1.GetGroupResponse
-	7,  // 40: groups.v1.GroupsService.GetGroupsByIds:output_type -> groups.v1.GetGroupsByIdsResponse
-	9,  // 41: groups.v1.GroupsService.CreateGroup:output_type -> groups.v1.CreateGroupResponse
-	11, // 42: groups.v1.GroupsService.UpdateGroup:output_type -> groups.v1.UpdateGroupResponse
-	13, // 43: groups.v1.GroupsService.ToggleGroupFavorite:output_type -> groups.v1.ToggleGroupFavoriteResponse
-	15, // 44: groups.v1.GroupsService.SyncGroups:output_type -> groups.v1.SyncGroupsResponse
-	42, // 45: groups.v1.GroupsService.GetSyncStatus:output_type -> groups.v1.GetSyncStatusResponse
-	17, // 46: groups.v1.GroupsService.DeleteGroup:output_type -> groups.v1.DeleteGroupResponse
-	19, // 47: groups.v1.GroupsService.BulkUpdateGroups:output_type -> groups.v1.BulkUpdateGroupsResponse
-	21, // 48: groups.v1.GroupsService.SendGroupMessage:output_type -> groups.v1.SendGroupMessageResponse
-	23, // 49: groups.v1.GroupsService.SendGroupAudio:output_type -> groups.v1.SendGroupAudioResponse
-	25, // 50: groups.v1.GroupsService.SendGroupImage:output_type -> groups.v1.SendGroupImageResponse
-	27, // 51: groups.v1.GroupsService.SendGroupPoll:output_type -> groups.v1.SendGroupPollResponse
-	29, // 52: groups.v1.GroupsService.UpdateGroupSubject:output_type -> groups.v1.UpdateGroupSubjectResponse
-	31, // 53: groups.v1.GroupsService.UpdateGroupDescription:output_type -> groups.v1.UpdateGroupDescriptionResponse
-	33, // 54: groups.v1.GroupsService.UpdateGroupPicture:output_type -> groups.v1.UpdateGroupPictureResponse
-	36, // 55: groups.v1.GroupsService.UpdateGroupPictures:output_type -> groups.v1.UpdateGroupPicturesResponse
-	38, // 56: groups.v1.GroupsService.UpdateGroupSettings:output_type -> groups.v1.UpdateGroupSettingsResponse
-	40, // 57: groups.v1.GroupsService.GetGroupInviteCode:output_type -> groups.v1.GetGroupInviteCodeResponse
-	45, // 58: groups.v1.GroupsService.GetGroupParticipants:output_type -> groups.v1.GetGroupParticipantsResponse
-	47, // 59: groups.v1.GroupsService.AddGroupMember:output_type -> groups.v1.AddGroupMemberResponse
-	49, // 60: groups.v1.GroupsService.RemoveGroupMember:output_type -> groups.v1.RemoveGroupMemberResponse
-	51, // 61: groups.v1.GroupsService.LeaveGroup:output_type -> groups.v1.LeaveGroupResponse
-	53, // 62: groups.v1.GroupsService.PromoteMember:output_type -> groups.v1.PromoteMemberResponse
-	55, // 63: groups.v1.GroupsService.DemoteMember:output_type -> groups.v1.DemoteMemberResponse
-	38, // [38:64] is the sub-list for method output_type
-	12, // [12:38] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	36, // 10: groups.v1.UpdateGroupPicturesResponse.results:type_name -> groups.v1.UpdateGroupPictureResult
+	44, // 11: groups.v1.GetGroupParticipantsResponse.participants:type_name -> groups.v1.GroupParticipant
+	1,  // 12: groups.v1.GetGroupMemberMetricsResponse.status:type_name -> groups.v1.MemberDataStatus
+	57, // 13: groups.v1.GetGroupMemberMetricsResponse.series:type_name -> groups.v1.GroupMemberDailyPoint
+	58, // 14: groups.v1.GetGroupMemberMetricsResponse.top_growth:type_name -> groups.v1.GroupMemberRankingEntry
+	58, // 15: groups.v1.GetGroupMemberMetricsResponse.top_loss:type_name -> groups.v1.GroupMemberRankingEntry
+	59, // 16: groups.v1.GetGroupMemberMetricsResponse.ddd_distribution:type_name -> groups.v1.DddDistributionEntry
+	3,  // 17: groups.v1.GroupsService.ListGroups:input_type -> groups.v1.ListGroupsRequest
+	5,  // 18: groups.v1.GroupsService.GetGroup:input_type -> groups.v1.GetGroupRequest
+	7,  // 19: groups.v1.GroupsService.GetGroupsByIds:input_type -> groups.v1.GetGroupsByIdsRequest
+	9,  // 20: groups.v1.GroupsService.CreateGroup:input_type -> groups.v1.CreateGroupRequest
+	11, // 21: groups.v1.GroupsService.UpdateGroup:input_type -> groups.v1.UpdateGroupRequest
+	13, // 22: groups.v1.GroupsService.ToggleGroupFavorite:input_type -> groups.v1.ToggleGroupFavoriteRequest
+	15, // 23: groups.v1.GroupsService.SyncGroups:input_type -> groups.v1.SyncGroupsRequest
+	42, // 24: groups.v1.GroupsService.GetSyncStatus:input_type -> groups.v1.GetSyncStatusRequest
+	17, // 25: groups.v1.GroupsService.DeleteGroup:input_type -> groups.v1.DeleteGroupRequest
+	19, // 26: groups.v1.GroupsService.BulkUpdateGroups:input_type -> groups.v1.BulkUpdateGroupsRequest
+	21, // 27: groups.v1.GroupsService.SendGroupMessage:input_type -> groups.v1.SendGroupMessageRequest
+	23, // 28: groups.v1.GroupsService.SendGroupAudio:input_type -> groups.v1.SendGroupAudioRequest
+	25, // 29: groups.v1.GroupsService.SendGroupImage:input_type -> groups.v1.SendGroupImageRequest
+	27, // 30: groups.v1.GroupsService.SendGroupPoll:input_type -> groups.v1.SendGroupPollRequest
+	29, // 31: groups.v1.GroupsService.UpdateGroupSubject:input_type -> groups.v1.UpdateGroupSubjectRequest
+	31, // 32: groups.v1.GroupsService.UpdateGroupDescription:input_type -> groups.v1.UpdateGroupDescriptionRequest
+	33, // 33: groups.v1.GroupsService.UpdateGroupPicture:input_type -> groups.v1.UpdateGroupPictureRequest
+	35, // 34: groups.v1.GroupsService.UpdateGroupPictures:input_type -> groups.v1.UpdateGroupPicturesRequest
+	38, // 35: groups.v1.GroupsService.UpdateGroupSettings:input_type -> groups.v1.UpdateGroupSettingsRequest
+	40, // 36: groups.v1.GroupsService.GetGroupInviteCode:input_type -> groups.v1.GetGroupInviteCodeRequest
+	45, // 37: groups.v1.GroupsService.GetGroupParticipants:input_type -> groups.v1.GetGroupParticipantsRequest
+	47, // 38: groups.v1.GroupsService.AddGroupMember:input_type -> groups.v1.AddGroupMemberRequest
+	49, // 39: groups.v1.GroupsService.RemoveGroupMember:input_type -> groups.v1.RemoveGroupMemberRequest
+	51, // 40: groups.v1.GroupsService.LeaveGroup:input_type -> groups.v1.LeaveGroupRequest
+	53, // 41: groups.v1.GroupsService.PromoteMember:input_type -> groups.v1.PromoteMemberRequest
+	55, // 42: groups.v1.GroupsService.DemoteMember:input_type -> groups.v1.DemoteMemberRequest
+	60, // 43: groups.v1.GroupsService.GetGroupMemberMetrics:input_type -> groups.v1.GetGroupMemberMetricsRequest
+	4,  // 44: groups.v1.GroupsService.ListGroups:output_type -> groups.v1.ListGroupsResponse
+	6,  // 45: groups.v1.GroupsService.GetGroup:output_type -> groups.v1.GetGroupResponse
+	8,  // 46: groups.v1.GroupsService.GetGroupsByIds:output_type -> groups.v1.GetGroupsByIdsResponse
+	10, // 47: groups.v1.GroupsService.CreateGroup:output_type -> groups.v1.CreateGroupResponse
+	12, // 48: groups.v1.GroupsService.UpdateGroup:output_type -> groups.v1.UpdateGroupResponse
+	14, // 49: groups.v1.GroupsService.ToggleGroupFavorite:output_type -> groups.v1.ToggleGroupFavoriteResponse
+	16, // 50: groups.v1.GroupsService.SyncGroups:output_type -> groups.v1.SyncGroupsResponse
+	43, // 51: groups.v1.GroupsService.GetSyncStatus:output_type -> groups.v1.GetSyncStatusResponse
+	18, // 52: groups.v1.GroupsService.DeleteGroup:output_type -> groups.v1.DeleteGroupResponse
+	20, // 53: groups.v1.GroupsService.BulkUpdateGroups:output_type -> groups.v1.BulkUpdateGroupsResponse
+	22, // 54: groups.v1.GroupsService.SendGroupMessage:output_type -> groups.v1.SendGroupMessageResponse
+	24, // 55: groups.v1.GroupsService.SendGroupAudio:output_type -> groups.v1.SendGroupAudioResponse
+	26, // 56: groups.v1.GroupsService.SendGroupImage:output_type -> groups.v1.SendGroupImageResponse
+	28, // 57: groups.v1.GroupsService.SendGroupPoll:output_type -> groups.v1.SendGroupPollResponse
+	30, // 58: groups.v1.GroupsService.UpdateGroupSubject:output_type -> groups.v1.UpdateGroupSubjectResponse
+	32, // 59: groups.v1.GroupsService.UpdateGroupDescription:output_type -> groups.v1.UpdateGroupDescriptionResponse
+	34, // 60: groups.v1.GroupsService.UpdateGroupPicture:output_type -> groups.v1.UpdateGroupPictureResponse
+	37, // 61: groups.v1.GroupsService.UpdateGroupPictures:output_type -> groups.v1.UpdateGroupPicturesResponse
+	39, // 62: groups.v1.GroupsService.UpdateGroupSettings:output_type -> groups.v1.UpdateGroupSettingsResponse
+	41, // 63: groups.v1.GroupsService.GetGroupInviteCode:output_type -> groups.v1.GetGroupInviteCodeResponse
+	46, // 64: groups.v1.GroupsService.GetGroupParticipants:output_type -> groups.v1.GetGroupParticipantsResponse
+	48, // 65: groups.v1.GroupsService.AddGroupMember:output_type -> groups.v1.AddGroupMemberResponse
+	50, // 66: groups.v1.GroupsService.RemoveGroupMember:output_type -> groups.v1.RemoveGroupMemberResponse
+	52, // 67: groups.v1.GroupsService.LeaveGroup:output_type -> groups.v1.LeaveGroupResponse
+	54, // 68: groups.v1.GroupsService.PromoteMember:output_type -> groups.v1.PromoteMemberResponse
+	56, // 69: groups.v1.GroupsService.DemoteMember:output_type -> groups.v1.DemoteMemberResponse
+	61, // 70: groups.v1.GroupsService.GetGroupMemberMetrics:output_type -> groups.v1.GetGroupMemberMetricsResponse
+	44, // [44:71] is the sub-list for method output_type
+	17, // [17:44] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_groups_v1_groups_proto_init() }
@@ -3984,13 +4470,17 @@ func file_groups_v1_groups_proto_init() {
 	}
 	file_groups_v1_groups_proto_msgTypes[33].OneofWrappers = []any{}
 	file_groups_v1_groups_proto_msgTypes[41].OneofWrappers = []any{}
+	file_groups_v1_groups_proto_msgTypes[55].OneofWrappers = []any{}
+	file_groups_v1_groups_proto_msgTypes[56].OneofWrappers = []any{}
+	file_groups_v1_groups_proto_msgTypes[58].OneofWrappers = []any{}
+	file_groups_v1_groups_proto_msgTypes[59].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_groups_v1_groups_proto_rawDesc), len(file_groups_v1_groups_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   55,
+			NumEnums:      2,
+			NumMessages:   60,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

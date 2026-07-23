@@ -45,6 +45,19 @@ type fakeRepo struct {
 	cleanupEvents    int64
 	cleanupSnapshots int64
 	cleanupCalls     int
+
+	metrics     *models.GroupMemberMetrics
+	metricsErr  error
+	metricsArgs []metricsCall
+}
+
+// metricsCall registra os argumentos de leitura da tela de métricas: o escopo
+// (userID) é o que impede uma conta de ler o histórico de outra, então o teste
+// precisa poder afirmar o que chegou no repositório.
+type metricsCall struct {
+	userID  string
+	days    int
+	groupID string
 }
 
 func (f *fakeRepo) ResolveWebhookTenant(_ context.Context, _ string) (*models.TrackingTenant, error) {
@@ -102,6 +115,16 @@ func (f *fakeRepo) CleanupOldGroupMemberSnapshots(_ context.Context, _ time.Time
 	defer f.mu.Unlock()
 	f.cleanupCalls++
 	return f.cleanupSnapshots, nil
+}
+
+func (f *fakeRepo) GetMemberMetrics(_ context.Context, userID string, days int, groupID string) (*models.GroupMemberMetrics, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.metricsArgs = append(f.metricsArgs, metricsCall{userID: userID, days: days, groupID: groupID})
+	if f.metricsErr != nil {
+		return nil, f.metricsErr
+	}
+	return f.metrics, nil
 }
 
 func (f *fakeRepo) writeCalls() int {

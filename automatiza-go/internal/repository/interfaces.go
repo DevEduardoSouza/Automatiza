@@ -872,4 +872,9 @@ type GroupMemberRepository interface {
 	// CleanupOldGroupMemberSnapshots apaga agregados com snapshot_date
 	// anterior a olderThan, em lotes limitados. Devolve o total apagado.
 	CleanupOldGroupMemberSnapshots(ctx context.Context, olderThan time.Time, batchSize, maxBatches int) (int64, error)
+
+	// GetMemberMetrics monta o pacote de leitura da tela de métricas, escopado
+	// pelo tenant. groupID vazio devolve o agregado da conta. Nunca troca
+	// "não observado" por zero: sem baseline, os campos vêm nil.
+	GetMemberMetrics(ctx context.Context, userID string, days int, groupID string) (*models.GroupMemberMetrics, error)
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 // GroupEventPublisher publishes real-time group change notifications.
@@ -48,6 +49,7 @@ type GroupsHandler struct {
 	eventPublisher    GroupEventPublisher
 	historyPublisher  GroupHistoryPublisher
 	progressReader    SyncProgressReader
+	groupMemberRepo   repository.GroupMemberRepository
 	logger            *zap.Logger
 }
 
@@ -1590,4 +1592,114 @@ func (h *GroupsHandler) DemoteMember(
 	return connect.NewResponse(&groupsv1.DemoteMemberResponse{
 		Success: true,
 	}), nil
+}
+
+// =============================================================================
+// Member Metrics (Fase B)
+// =============================================================================
+
+// WithGroupMemberRepo liga o histórico de membros ao handler. Opcional: sem
+// ele o RPC responde "coletando" em vez de falhar — a tela de grupos não pode
+// quebrar porque o tracking não está configurado.
+func WithGroupMemberRepo(repo repository.GroupMemberRepository) GroupsHandlerOption {
+	return func(h *GroupsHandler) {
+		h.groupMemberRepo = repo
+	}
+}
+
+// Janela da série. O default de 30 dias cobre o uso normal; o teto de 90
+// impede que um cliente peça um scan largo do agregado.
+const (
+	metricsDefaultDays = 30
+	metricsMaxDays     = 90
+)
+
+// GetGroupMemberMetrics devolve o histórico de membros da conta (ou de um grupo).
+//
+// Contrato de honestidade: enquanto a reconciliação não tiver coberto os grupos,
+// o status é COLLECTING e members_count vem AUSENTE — nunca zero. Zero só
+// aparece quando foi de fato observado.
+func (h *GroupsHandler) GetGroupMemberMetrics(
+	ctx context.Context,
+	req *connect.Request[groupsv1.GetGroupMemberMetricsRequest],
+) (*connect.Response[groupsv1.GetGroupMemberMetricsResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	if h.groupMemberRepo == nil {
+		return connect.NewResponse(&groupsv1.GetGroupMemberMetricsResponse{
+			Status: groupsv1.MemberDataStatus_MEMBER_DATA_STATUS_COLLECTING,
+		}), nil
+	}
+
+	days := int(req.Msg.GetDays())
+	if days <= 0 {
+		days = metricsDefaultDays
+	}
+	if days > metricsMaxDays {
+		days = metricsMaxDays
+	}
+
+	metrics, err := h.groupMemberRepo.GetMemberMetrics(ctx, user.ID, days, req.Msg.GetGroupId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to load member metrics: %w", err))
+	}
+
+	resp := &groupsv1.GetGroupMemberMetricsResponse{
+		Status:         groupsv1.MemberDataStatus_MEMBER_DATA_STATUS_COLLECTING,
+		GroupsTotal:    int32(metrics.GroupsTotal),
+		GroupsWithData: int32(metrics.GroupsWithData),
+	}
+	// OK exige cobertura real. Sem nenhum grupo com baseline a tela mostra o
+	// estado de coleta, não um gráfico vazio que parece bug.
+	if metrics.GroupsWithData > 0 {
+		resp.Status = groupsv1.MemberDataStatus_MEMBER_DATA_STATUS_OK
+	}
+	if metrics.ActiveMembers != nil {
+		resp.ActiveMembers = proto.Int32(int32(*metrics.ActiveMembers))
+	}
+
+	for _, p := range metrics.Series {
+		point := &groupsv1.GroupMemberDailyPoint{
+			Date:           p.Date.Format("2006-01-02"),
+			Joins:          int32(p.Joins),
+			Leaves:         int32(p.Leaves),
+			GroupsObserved: int32(p.GroupsObserved),
+		}
+		if p.MembersCount != nil {
+			point.MembersCount = proto.Int32(int32(*p.MembersCount))
+		}
+		resp.Series = append(resp.Series, point)
+	}
+
+	toEntries := func(src []models.GroupMemberRankingEntry) []*groupsv1.GroupMemberRankingEntry {
+		out := make([]*groupsv1.GroupMemberRankingEntry, 0, len(src))
+		for _, e := range src {
+			entry := &groupsv1.GroupMemberRankingEntry{
+				GroupId:   e.GroupID,
+				GroupName: e.GroupName,
+				Joins:     int32(e.Joins),
+				Leaves:    int32(e.Leaves),
+				Net:       int32(e.Net),
+			}
+			if e.MembersCount != nil {
+				entry.MembersCount = proto.Int32(int32(*e.MembersCount))
+			}
+			out = append(out, entry)
+		}
+		return out
+	}
+	resp.TopGrowth = toEntries(metrics.TopGrowth)
+	resp.TopLoss = toEntries(metrics.TopLoss)
+
+	for _, d := range metrics.DDDDistribution {
+		resp.DddDistribution = append(resp.DddDistribution, &groupsv1.DddDistributionEntry{
+			Ddd:     d.DDD,
+			Members: int32(d.Members),
+		})
+	}
+
+	return connect.NewResponse(resp), nil
 }

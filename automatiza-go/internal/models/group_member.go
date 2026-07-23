@@ -113,3 +113,50 @@ type GroupMemberDailySnapshot struct {
 	JoinsCount        int
 	LeavesCount       int
 }
+
+// =============================================================================
+// Métricas (Fase B) — leitura do agregado diário e da projeção
+// =============================================================================
+
+// GroupMemberDailyPoint é um dia da série de membros.
+type GroupMemberDailyPoint struct {
+	Date time.Time
+	// MembersCount é nil quando NENHUM grupo do recorte teve observação
+	// naquele dia. Nil nunca deve ser renderizado como zero.
+	MembersCount *int
+	Joins        int
+	Leaves       int
+	// GroupsObserved evita a leitura errada mais provável desta série: um
+	// salto de COBERTURA (mais grupos reconciliados) parecendo crescimento
+	// real de membros.
+	GroupsObserved int
+}
+
+// GroupMemberRankingEntry é uma linha do ranking de crescimento/perda.
+type GroupMemberRankingEntry struct {
+	GroupID      string
+	GroupName    string
+	Joins        int
+	Leaves       int
+	Net          int
+	MembersCount *int
+}
+
+// DDDDistributionEntry conta membros ativos por DDD.
+type DDDDistributionEntry struct {
+	DDD     string
+	Members int
+}
+
+// GroupMemberMetrics é o pacote de leitura que alimenta a tela de métricas.
+type GroupMemberMetrics struct {
+	GroupsTotal    int
+	GroupsWithData int
+	// ActiveMembers é nil enquanto não houver nenhum baseline: sem cobertura,
+	// "0 membros" seria uma afirmação falsa.
+	ActiveMembers   *int
+	Series          []GroupMemberDailyPoint
+	TopGrowth       []GroupMemberRankingEntry
+	TopLoss         []GroupMemberRankingEntry
+	DDDDistribution []DDDDistributionEntry
+}

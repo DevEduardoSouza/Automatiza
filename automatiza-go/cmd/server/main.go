@@ -997,6 +997,9 @@ func main() {
 		connectrpc.WithGroupHistoryPublisher(sseHub),
 		connectrpc.WithAsynqInspector(asynqInspectorServer),
 		connectrpc.WithSyncProgressReader(syncProgressReader),
+		// Histórico de membros (migração 076). Só leitura; a tela degrada para
+		// "coletando" se o repositório não estiver disponível.
+		connectrpc.WithGroupMemberRepo(repos.GroupMember),
 	)
 	groupsPath, groupsHTTPHandler := groupsv1connect.NewGroupsServiceHandler(
 		groupsHandler,

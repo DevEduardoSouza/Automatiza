@@ -110,6 +110,9 @@ const (
 	// GroupsServiceDemoteMemberProcedure is the fully-qualified name of the GroupsService's
 	// DemoteMember RPC.
 	GroupsServiceDemoteMemberProcedure = "/groups.v1.GroupsService/DemoteMember"
+	// GroupsServiceGetGroupMemberMetricsProcedure is the fully-qualified name of the GroupsService's
+	// GetGroupMemberMetrics RPC.
+	GroupsServiceGetGroupMemberMetricsProcedure = "/groups.v1.GroupsService/GetGroupMemberMetrics"
 )
 
 // GroupsServiceClient is a client for the groups.v1.GroupsService service.
@@ -168,6 +171,8 @@ type GroupsServiceClient interface {
 	PromoteMember(context.Context, *connect.Request[v1.PromoteMemberRequest]) (*connect.Response[v1.PromoteMemberResponse], error)
 	// Demotes a member from admin.
 	DemoteMember(context.Context, *connect.Request[v1.DemoteMemberRequest]) (*connect.Response[v1.DemoteMemberResponse], error)
+	// Retorna o histórico de membros da conta (ou de um grupo).
+	GetGroupMemberMetrics(context.Context, *connect.Request[v1.GetGroupMemberMetricsRequest]) (*connect.Response[v1.GetGroupMemberMetricsResponse], error)
 }
 
 // NewGroupsServiceClient constructs a client for the groups.v1.GroupsService service. By default,
@@ -337,6 +342,12 @@ func NewGroupsServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(groupsServiceMethods.ByName("DemoteMember")),
 			connect.WithClientOptions(opts...),
 		),
+		getGroupMemberMetrics: connect.NewClient[v1.GetGroupMemberMetricsRequest, v1.GetGroupMemberMetricsResponse](
+			httpClient,
+			baseURL+GroupsServiceGetGroupMemberMetricsProcedure,
+			connect.WithSchema(groupsServiceMethods.ByName("GetGroupMemberMetrics")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -368,6 +379,7 @@ type groupsServiceClient struct {
 	leaveGroup             *connect.Client[v1.LeaveGroupRequest, v1.LeaveGroupResponse]
 	promoteMember          *connect.Client[v1.PromoteMemberRequest, v1.PromoteMemberResponse]
 	demoteMember           *connect.Client[v1.DemoteMemberRequest, v1.DemoteMemberResponse]
+	getGroupMemberMetrics  *connect.Client[v1.GetGroupMemberMetricsRequest, v1.GetGroupMemberMetricsResponse]
 }
 
 // ListGroups calls groups.v1.GroupsService.ListGroups.
@@ -500,6 +512,11 @@ func (c *groupsServiceClient) DemoteMember(ctx context.Context, req *connect.Req
 	return c.demoteMember.CallUnary(ctx, req)
 }
 
+// GetGroupMemberMetrics calls groups.v1.GroupsService.GetGroupMemberMetrics.
+func (c *groupsServiceClient) GetGroupMemberMetrics(ctx context.Context, req *connect.Request[v1.GetGroupMemberMetricsRequest]) (*connect.Response[v1.GetGroupMemberMetricsResponse], error) {
+	return c.getGroupMemberMetrics.CallUnary(ctx, req)
+}
+
 // GroupsServiceHandler is an implementation of the groups.v1.GroupsService service.
 type GroupsServiceHandler interface {
 	// Lists all groups for the authenticated user.
@@ -556,6 +573,8 @@ type GroupsServiceHandler interface {
 	PromoteMember(context.Context, *connect.Request[v1.PromoteMemberRequest]) (*connect.Response[v1.PromoteMemberResponse], error)
 	// Demotes a member from admin.
 	DemoteMember(context.Context, *connect.Request[v1.DemoteMemberRequest]) (*connect.Response[v1.DemoteMemberResponse], error)
+	// Retorna o histórico de membros da conta (ou de um grupo).
+	GetGroupMemberMetrics(context.Context, *connect.Request[v1.GetGroupMemberMetricsRequest]) (*connect.Response[v1.GetGroupMemberMetricsResponse], error)
 }
 
 // NewGroupsServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -721,6 +740,12 @@ func NewGroupsServiceHandler(svc GroupsServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(groupsServiceMethods.ByName("DemoteMember")),
 		connect.WithHandlerOptions(opts...),
 	)
+	groupsServiceGetGroupMemberMetricsHandler := connect.NewUnaryHandler(
+		GroupsServiceGetGroupMemberMetricsProcedure,
+		svc.GetGroupMemberMetrics,
+		connect.WithSchema(groupsServiceMethods.ByName("GetGroupMemberMetrics")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/groups.v1.GroupsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GroupsServiceListGroupsProcedure:
@@ -775,6 +800,8 @@ func NewGroupsServiceHandler(svc GroupsServiceHandler, opts ...connect.HandlerOp
 			groupsServicePromoteMemberHandler.ServeHTTP(w, r)
 		case GroupsServiceDemoteMemberProcedure:
 			groupsServiceDemoteMemberHandler.ServeHTTP(w, r)
+		case GroupsServiceGetGroupMemberMetricsProcedure:
+			groupsServiceGetGroupMemberMetricsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -886,4 +913,8 @@ func (UnimplementedGroupsServiceHandler) PromoteMember(context.Context, *connect
 
 func (UnimplementedGroupsServiceHandler) DemoteMember(context.Context, *connect.Request[v1.DemoteMemberRequest]) (*connect.Response[v1.DemoteMemberResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("groups.v1.GroupsService.DemoteMember is not implemented"))
+}
+
+func (UnimplementedGroupsServiceHandler) GetGroupMemberMetrics(context.Context, *connect.Request[v1.GetGroupMemberMetricsRequest]) (*connect.Response[v1.GetGroupMemberMetricsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("groups.v1.GroupsService.GetGroupMemberMetrics is not implemented"))
 }

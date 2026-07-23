@@ -675,3 +675,155 @@ func (r *groupMemberRepository) deleteInBatches(
 	}
 	return total, nil
 }
+
+// =============================================================================
+// Leitura de métricas (Fase B)
+// =============================================================================
+
+// metricsRankingLimit e metricsDDDLimit limitam o que vai para a tela. Um
+// ranking longo não é lido, e um eixo com 40 DDDs vira ruído.
+const (
+	metricsRankingLimit = 5
+	metricsDDDLimit     = 12
+)
+
+// GetMemberMetrics monta o pacote de leitura da tela de métricas.
+//
+// Tudo é escopado por user_id. groupID vazio => agregado da conta.
+// Nenhuma query devolve zero no lugar de "não observado": members_count segue
+// NULL até haver baseline, e a interface distingue as duas coisas.
+func (r *groupMemberRepository) GetMemberMetrics(
+	ctx context.Context,
+	userID string,
+	days int,
+	groupID string,
+) (*models.GroupMemberMetrics, error) {
+	var groupFilter *string
+	if groupID != "" {
+		groupFilter = &groupID
+	}
+
+	out := &models.GroupMemberMetrics{}
+
+	// 1. Cobertura + total ativo. É o que permite à tela dizer "coletando"
+	//    com número em vez de mostrar um vazio ambíguo.
+	const coverage = `
+		SELECT
+			(SELECT count(*) FROM groups WHERE user_id = $1),
+			(SELECT count(*) FROM groups WHERE user_id = $1 AND member_tracking_started_at IS NOT NULL),
+			(SELECT count(*) FROM group_memberships WHERE user_id = $1 AND is_active)`
+
+	var active int
+	if err := r.db.QueryRow(ctx, coverage, userID).
+		Scan(&out.GroupsTotal, &out.GroupsWithData, &active); err != nil {
+		return nil, fmt.Errorf("group member metrics coverage: %w", err)
+	}
+	// Sem baseline nenhum, "0 membros" seria uma afirmação falsa.
+	if out.GroupsWithData > 0 {
+		out.ActiveMembers = &active
+	}
+
+	// 2. Série diária. O bucket já está gravado em America/Sao_Paulo, então a
+	//    janela também é contada no dia LOCAL — senão a borda erraria por 3h.
+	const series = `
+		SELECT snapshot_date,
+		       sum(members_count) FILTER (WHERE members_count IS NOT NULL)::int,
+		       count(*) FILTER (WHERE members_count IS NOT NULL)::int,
+		       coalesce(sum(joins_count), 0)::int,
+		       coalesce(sum(leaves_count), 0)::int
+		FROM group_member_daily_snapshots
+		WHERE user_id = $1
+		  AND snapshot_date >= ((now() AT TIME ZONE 'America/Sao_Paulo')::date - $2::int)
+		  AND ($3::uuid IS NULL OR group_id = $3::uuid)
+		GROUP BY snapshot_date
+		ORDER BY snapshot_date`
+
+	rows, err := r.db.Query(ctx, series, userID, days, groupFilter)
+	if err != nil {
+		return nil, fmt.Errorf("group member metrics series: %w", err)
+	}
+	for rows.Next() {
+		var p models.GroupMemberDailyPoint
+		if err := rows.Scan(&p.Date, &p.MembersCount, &p.GroupsObserved, &p.Joins, &p.Leaves); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan group member metrics series: %w", err)
+		}
+		out.Series = append(out.Series, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("group member metrics series rows: %w", err)
+	}
+
+	// 3. Ranking. members_count é a observação MAIS RECENTE do grupo na
+	//    janela (não um max/sum, que misturaria dias diferentes).
+	const ranking = `
+		SELECT g.id::text, g.name,
+		       coalesce(sum(s.joins_count), 0)::int,
+		       coalesce(sum(s.leaves_count), 0)::int,
+		       (coalesce(sum(s.joins_count), 0) - coalesce(sum(s.leaves_count), 0))::int AS net,
+		       (array_agg(s.members_count ORDER BY s.snapshot_date DESC)
+		          FILTER (WHERE s.members_count IS NOT NULL))[1]
+		FROM group_member_daily_snapshots s
+		JOIN groups g ON g.id = s.group_id
+		WHERE s.user_id = $1
+		  AND s.snapshot_date >= ((now() AT TIME ZONE 'America/Sao_Paulo')::date - $2::int)
+		GROUP BY g.id, g.name
+		HAVING coalesce(sum(s.joins_count), 0) + coalesce(sum(s.leaves_count), 0) > 0
+		ORDER BY net ` + "%s" + `, g.name
+		LIMIT $3`
+
+	loadRanking := func(direction string) ([]models.GroupMemberRankingEntry, error) {
+		q := fmt.Sprintf(ranking, direction)
+		rs, err := r.db.Query(ctx, q, userID, days, metricsRankingLimit)
+		if err != nil {
+			return nil, fmt.Errorf("group member metrics ranking: %w", err)
+		}
+		defer rs.Close()
+
+		var list []models.GroupMemberRankingEntry
+		for rs.Next() {
+			var e models.GroupMemberRankingEntry
+			if err := rs.Scan(&e.GroupID, &e.GroupName, &e.Joins, &e.Leaves, &e.Net, &e.MembersCount); err != nil {
+				return nil, fmt.Errorf("scan group member metrics ranking: %w", err)
+			}
+			list = append(list, e)
+		}
+		return list, rs.Err()
+	}
+
+	if out.TopGrowth, err = loadRanking("DESC"); err != nil {
+		return nil, err
+	}
+	if out.TopLoss, err = loadRanking("ASC"); err != nil {
+		return nil, err
+	}
+
+	// 4. Distribuição por DDD dos membros ATIVOS. Só entra quem tem telefone
+	//    identificado — um @lid sem pn não tem DDD e não é contado.
+	const ddd = `
+		SELECT ddd, count(*)::int
+		FROM group_memberships
+		WHERE user_id = $1 AND is_active AND ddd IS NOT NULL
+		GROUP BY ddd
+		ORDER BY 2 DESC, 1
+		LIMIT $2`
+
+	dRows, err := r.db.Query(ctx, ddd, userID, metricsDDDLimit)
+	if err != nil {
+		return nil, fmt.Errorf("group member metrics ddd: %w", err)
+	}
+	defer dRows.Close()
+	for dRows.Next() {
+		var e models.DDDDistributionEntry
+		if err := dRows.Scan(&e.DDD, &e.Members); err != nil {
+			return nil, fmt.Errorf("scan group member metrics ddd: %w", err)
+		}
+		out.DDDDistribution = append(out.DDDDistribution, e)
+	}
+	if err := dRows.Err(); err != nil {
+		return nil, fmt.Errorf("group member metrics ddd rows: %w", err)
+	}
+
+	return out, nil
+}
