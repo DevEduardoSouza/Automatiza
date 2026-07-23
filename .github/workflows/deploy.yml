@@ -495,6 +495,23 @@ jobs:
           # entao troca-lo criaria identidades novas. Ausente/curto com a flag
           # ligada = servico inerte + um unico erro de inicializacao.
           GROUP_MEMBER_HASH_SECRET=${{ secrets.GROUP_MEMBER_HASH_SECRET }}
+          # Instagram: kill switch da feature. Ausente/"false" = a tela mostra
+          # "em breve" e o gatilho {story} vira no-op. Rollout/rollback sem
+          # deploy: gh variable set INSTAGRAM_STORIES_ENABLED --body true|false
+          # + bounce.
+          INSTAGRAM_STORIES_ENABLED=${{ vars.INSTAGRAM_STORIES_ENABLED }}
+          # Segredo DEDICADO que assina o state do OAuth do Instagram. Separado
+          # do HMAC de tokens de proposito: reaproveitar aquela chave faria um
+          # vazamento do state virar comprometimento de sessao. Ausente/curto
+          # (<32 bytes) = Configured() false e a feature NAO liga, mesmo com o
+          # switch acima em true.
+          INSTAGRAM_STATE_SIGNING_KEY=${{ secrets.INSTAGRAM_STATE_SIGNING_KEY }}
+          # App GLOBAL da Meta: opcional e normalmente VAZIO. Desde a Fase 1
+          # cada cliente registra o proprio app (instagram_apps), que e o que
+          # dispensa o App Review da Meta. Estas duas existem so como fallback
+          # para quem tenha conectado pelo modo antigo.
+          INSTAGRAM_APP_ID=${{ vars.INSTAGRAM_APP_ID }}
+          INSTAGRAM_APP_SECRET=${{ secrets.INSTAGRAM_APP_SECRET }}
           # Image pins: o compose usa ${BACKEND_IMAGE:-...latest}. Sem estes pins no
           # .env, qualquer `docker compose up` MANUAL no box (fora do CI) derruba a
           # build pra :latest. O CI ja passa os tags inline; isto protege ops manuais.
