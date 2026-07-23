@@ -127,6 +127,29 @@ message CreateJobResponse {
   Job job = 1;
 }
 
+// CreateJobsRequest cria um lote inteiro numa unica chamada.
+//
+// Substitui o loop de N `CreateJob` sequenciais do modal de agendamento: com
+// 500 jobs o loop levava dezenas de segundos com o botao ainda clicavel, e o
+// segundo clique duplicava o lote todo. Uma chamada so fecha essa janela.
+//
+// Cap 500 espelha o MAX_TOTAL_JOBS do frontend (schedule-multiple-groups.tsx).
+message CreateJobsRequest {
+  repeated CreateJobRequest jobs = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 500
+  }];
+}
+
+message CreateJobsResponse {
+  // Um Job por item do request, na MESMA ordem. Item que ja existia devolve o
+  // job original — o cliente nao precisa distinguir criado de reaproveitado.
+  repeated Job jobs = 1;
+  // Quantos itens caiam em agendamento identico ja existente. Serve para a UI
+  // dizer "N ja existiam e foram mantidos" em vez de rotular como erro.
+  int32 deduplicated = 2;
+}
+
 message UpdateJobRequest {
   string id = 1 [(buf.validate.field).string.uuid = true];
   optional JobActionType action_type = 2;
@@ -168,6 +191,7 @@ service JobsService {
   rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc CreateJob(CreateJobRequest) returns (CreateJobResponse);
+  rpc CreateJobs(CreateJobsRequest) returns (CreateJobsResponse);
   rpc UpdateJob(UpdateJobRequest) returns (UpdateJobResponse);
   rpc DeleteJob(DeleteJobRequest) returns (DeleteJobResponse);
   rpc ProcessScheduledJobs(ProcessScheduledJobsRequest) returns (ProcessScheduledJobsResponse);

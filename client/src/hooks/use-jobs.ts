@@ -589,7 +589,7 @@ export function useJobs(): UseJobsReturn {
         });
       } else {
         // Recorrência/múltiplos horários: N jobs single-shot via bulk.
-        await createBulkJobs(
+        const result = await createBulkJobs(
           occurrences.map((scheduled_for) => ({
             action_type: finalActionType,
             scheduled_for,
@@ -599,7 +599,16 @@ export function useJobs(): UseJobsReturn {
 
         toast({
           title: t('pages.jobs.success.scheduled'),
-          description: t('pages.jobs.success.scheduledBulkMessage', { count: occurrences.length }),
+          // Aviso neutro: agendamento repetido é engano comum (dois cliques),
+          // não erro do usuário — e recorrência legítima nunca cai aqui,
+          // porque cada ocorrência tem horário próprio.
+          description:
+            result.deduplicated > 0
+              ? t('pages.jobs.success.scheduledBulkDeduped', {
+                  count: occurrences.length,
+                  deduplicated: result.deduplicated,
+                })
+              : t('pages.jobs.success.scheduledBulkMessage', { count: occurrences.length }),
         });
       }
 

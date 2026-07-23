@@ -37,6 +37,7 @@ import {
   IntervalSelector,
   ListModeConfig,
   ModeSection,
+  MonitorCadenceInput,
   MonitorDelayInput,
   MonitorGroupsSelector,
   MonitoringTextProcessing,
@@ -337,7 +338,7 @@ export function AutomationFormDialog({
             <IntervalSelector formData={formData} setFormData={setFormData} />
           )}
 
-          {/* Delay (monitor mode) */}
+          {/* Delay entre GRUPOS de destino (monitor mode) */}
           {formData.mode === 'monitor' && (
             <MonitorDelayInput
               monitorDelayUnit={monitorDelayUnit}
@@ -346,6 +347,11 @@ export function AutomationFormDialog({
               setMonitorDelayInput={setMonitorDelayInput}
               setFormData={setFormData}
             />
+          )}
+
+          {/* Intervalo entre MENSAGENS monitoradas (monitor mode, atrás de gate) */}
+          {formData.mode === 'monitor' && (
+            <MonitorCadenceInput formData={formData} setFormData={setFormData} />
           )}
 
           {/* List config (only for list mode) */}

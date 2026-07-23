@@ -215,6 +215,30 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 		zap.Bool("fromMe", msg.FromMe),
 		zap.Int("bodyLen", len(msg.Body)))
 
+	// Cadência durável do espelho (Melhoria 7). Roda SÍNCRONA e ANTES de todo o
+	// resto: antes da goroutine de fan-out, antes do lock de chat, antes dos
+	// claims de dedup em Redis e antes do checkpoint. Ordem obrigatória —
+	// reivindicar dedup antes de persistir faria uma falha de banco parecer
+	// duplicata no retry, e a mensagem sumiria em silêncio.
+	//
+	// Com a feature desligada isto retorna antes de qualquer I/O.
+	cadence, _ := p.monitoringService.(monitoring.CadenceAdmitter)
+	var cadenced map[string]struct{}
+	if cadence != nil {
+		admission, admitErr := cadence.PrepareCadencedMessage(ctx, msg)
+		if admitErr != nil {
+			// Devolve o erro ao consumidor de webhook: ele já tem retry e, no
+			// limite, o DLQ de 7 dias com o evento original. Seguir adiante
+			// aqui enviaria imediatamente uma mensagem que deveria esperar.
+			p.logger.Error("Monitor cadence admission failed; event will be retried",
+				zap.String("session", sessionName),
+				zap.String("messageID", msg.MessageID),
+				zap.Error(admitErr))
+			return admitErr
+		}
+		cadenced = admission.Excluded()
+	}
+
 	// Own (FromMe) messages must NOT go to monitoring — that mode never copies
 	// the chip's own posts. But they MUST still reach offer_generate: a chip
 	// owner manually posting a product/offer into a monitor group (or a monitor
@@ -260,7 +284,15 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 		}
 
 		if !msg.FromMe {
-			if err := p.monitoringService.ProcessIncomingMessage(procCtx, msg); err != nil {
+			// Automações assumidas pela cadência são puladas aqui: sair pelos
+			// dois caminhos duplicaria a oferta no grupo.
+			relay := func(c context.Context, m *models.IncomingMessage) error {
+				if cadence != nil && len(cadenced) > 0 {
+					return cadence.ProcessIncomingMessageExcluding(c, m, cadenced)
+				}
+				return p.monitoringService.ProcessIncomingMessage(c, m)
+			}
+			if err := relay(procCtx, msg); err != nil {
 				p.logger.Error("Failed to process message for monitoring",
 					zap.String("session", sessionName),
 					zap.String("messageID", msg.MessageID),

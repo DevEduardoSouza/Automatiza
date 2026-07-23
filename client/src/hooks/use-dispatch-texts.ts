@@ -62,6 +62,8 @@ export function useDispatchTexts() {
       preco_formatado: t('pages.dispatchTexts.sampleVars.priceFormatted'),
       preco_original: t('pages.dispatchTexts.sampleVars.originalPrice'),
       preco_original_formatado: t('pages.dispatchTexts.sampleVars.originalPriceFormatted'),
+      desconto: t('pages.dispatchTexts.sampleVars.discount'),
+      desconto_formatado: t('pages.dispatchTexts.sampleVars.discountFormatted'),
       link_afiliado: t('pages.dispatchTexts.sampleVars.affiliateLink'),
       aviso_preco: t('pages.dispatchTexts.sampleVars.priceWarning'),
       cta: t('pages.dispatchTexts.sampleVars.cta'),

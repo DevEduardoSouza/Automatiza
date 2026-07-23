@@ -219,6 +219,21 @@ message Automation {
   // backend disfarça o comportamento (delays variáveis, jitter, etc.).
   optional string humanize_mode = 42;
 
+  // Intervalo MÍNIMO entre mensagens espelhadas por esta automação, em
+  // minutos (0..1440). 0 = envio imediato (comportamento histórico).
+  //
+  // Só vale no modo monitoring. NÃO confundir com delay_seconds (pausa entre
+  // GRUPOS de destino da MESMA mensagem) nem com interval_minutes (scheduler
+  // de search/list, que o monitor nunca lê).
+  optional int32 monitor_interval_minutes = 43;
+
+  // Quantas mensagens estão na fila da cadência agora (read-only).
+  uint32 monitor_pending_count = 44;
+
+  // Quando a próxima mensagem da fila pode sair (RFC3339 UTC, read-only).
+  // Ausente quando não há fila.
+  optional string monitor_next_scheduled_at = 45;
+
   // Preferred sender chip — when set and connected, every dispatch from
   // this automation goes through this chip; otherwise falls back to the
   // group's owner chip and then to the first connected instance.
@@ -398,6 +413,9 @@ message CreateAutomationRequest {
   // Intensidade da humanização anti-ban. Unset = default do server
   // ('high'). Ver Automation.humanize_mode.
   optional string humanize_mode = 37;
+  // Cadência do modo monitoring (0..1440 minutos). Unset = 0 (imediato).
+  // Ver Automation.monitor_interval_minutes.
+  optional int32 monitor_interval_minutes = 38 [(buf.validate.field).int32 = {gte: 0, lte: 1440}];
 }
 
 message CreateAutomationResponse {
@@ -477,6 +495,10 @@ message UpdateAutomationRequest {
   // Intensidade da humanização anti-ban. Unset = leave unchanged.
   // Ver Automation.humanize_mode.
   optional string humanize_mode = 38;
+  // Cadência do modo monitoring (0..1440 minutos). Unset = não altera;
+  // 0 explícito drena a fila e volta ao envio imediato.
+  // Ver Automation.monitor_interval_minutes.
+  optional int32 monitor_interval_minutes = 39 [(buf.validate.field).int32 = {gte: 0, lte: 1440}];
 }
 
 message UpdateAutomationResponse {

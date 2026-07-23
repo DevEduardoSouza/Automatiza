@@ -1,0 +1,301 @@
+syntax = "proto3";
+
+package failover.v1;
+
+option go_package = "github.com/automatiza/proto/failover/v1;failoverv1";
+
+// ============================================================
+// Enums
+// ============================================================
+
+// FailoverMode é o modo de operação da política.
+//
+// NÃO existe modo automático — nem como valor de enum, nem como booleano, nem
+// como string livre. Trocar o chip que atende os grupos de um cliente é uma
+// decisão humana: FAILED/STOPPED/timeout/erro de envio nunca significam
+// banimento, e um automatismo sobre esse sinal trocaria a frota inteira num
+// soluço de rede.
+enum FailoverMode {
+  FAILOVER_MODE_UNSPECIFIED = 0;
+  // MANUAL: nada acontece sem o usuário rodar dry-run e confirmar.
+  FAILOVER_MODE_MANUAL = 1;
+  // ASSISTED: o detector observa a primária e PROPÕE quando ela está
+  // indisponível de forma persistente. A proposta não troca nada sozinha.
+  FAILOVER_MODE_ASSISTED = 2;
+}
+
+// FailoverState é o estado da política.
+enum FailoverState {
+  FAILOVER_STATE_UNSPECIFIED = 0;
+  // Primária vigente, política armada.
+  FAILOVER_STATE_ACTIVE = 1;
+  // Evidência assisted aguardando decisão humana (expira sozinha).
+  FAILOVER_STATE_PROPOSED = 2;
+  // Gate fechado, failover em andamento (não terminal).
+  FAILOVER_STATE_SWITCHING = 3;
+  // Roteamento trocado para a reserva.
+  FAILOVER_STATE_ACTIVE_ON_BACKUP = 4;
+  // Gate fechado, reversão em andamento (não terminal).
+  FAILOVER_STATE_REVERTING = 5;
+  // Inconsistência que não admite inferência segura. Só leitura; correção é
+  // forward-only após auditoria humana.
+  FAILOVER_STATE_FAILED = 6;
+}
+
+// FailoverDirection é o sentido de um ensaio/operação.
+enum FailoverDirection {
+  FAILOVER_DIRECTION_UNSPECIFIED = 0;
+  // Primária → reserva.
+  FAILOVER_DIRECTION_FAILOVER = 1;
+  // Reserva → primária (usa o snapshot original, não substituição inversa).
+  FAILOVER_DIRECTION_REVERT = 2;
+}
+
+// CoverageStatus é o resultado da checagem de cobertura de UMA automação.
+enum CoverageStatus {
+  COVERAGE_STATUS_UNSPECIFIED = 0;
+  // O chip alvo participa de todos os grupos exigidos (e é admin onde
+  // necessário).
+  COVERAGE_STATUS_COMPLETE = 1;
+  // Falta grupo, falta admin, capacidade estourada ou configuração inválida.
+  COVERAGE_STATUS_BLOCKED = 2;
+  // Não foi possível SABER (erro/timeout do WAHA, payload incompleto).
+  // Nunca é tratado como "falta" nem como "cobre".
+  COVERAGE_STATUS_UNAVAILABLE = 3;
+}
+
+// OperationStatus é o estado de uma operação mutável.
+enum OperationStatus {
+  OPERATION_STATUS_UNSPECIFIED = 0;
+  OPERATION_STATUS_PREPARING = 1;
+  OPERATION_STATUS_DRAINING = 2;
+  OPERATION_STATUS_VERIFYING = 3;
+  OPERATION_STATUS_COMPLETED = 4;
+  OPERATION_STATUS_ABORTED = 5;
+  OPERATION_STATUS_FAILED = 6;
+}
+
+// ============================================================
+// Tipos de leitura
+// ============================================================
+
+// FailoverPolicy é a projeção legível de uma política.
+//
+// Só carrega IDs numéricos de instância: a UI já tem a lista de chips do
+// usuário e casa por ID. Nenhum telefone, JID ou nome de grupo trafega aqui.
+message FailoverPolicy {
+  int64 id = 1;
+  int64 primary_instance_id = 2;
+  int64 backup_instance_id = 3;
+  FailoverMode mode = 4;
+  FailoverState state = 5;
+  // Versão de CONFIGURAÇÃO (optimistic locking). Telemetria de probe não a
+  // incrementa.
+  int64 version = 6;
+  // UUID da operação não terminal; vazio nos estados estáveis.
+  string current_operation_id = 7;
+  int32 unhealthy_after_seconds = 8;
+  int32 required_consecutive_probes = 9;
+  int32 drain_deadline_seconds = 10;
+  int32 proposal_ttl_seconds = 11;
+  // Timestamps RFC3339; string vazia = NULL.
+  string primary_unhealthy_since = 12;
+  int32 consecutive_unhealthy_probes = 13;
+  string last_probe_at = 14;
+  string last_probe_status = 15;
+  string proposal_expires_at = 16;
+  string created_at = 17;
+  string updated_at = 18;
+}
+
+// FailoverEvent é uma linha do ledger append-only.
+message FailoverEvent {
+  int64 id = 1;
+  string event_type = 2;
+  string actor_type = 3;
+  int64 policy_id_snapshot = 4;
+  string operation_id = 5;
+  string dry_run_id = 6;
+  int64 policy_version = 7;
+  // Relatório serializado (contagens, fases, reason codes). Nunca texto de
+  // erro do provider nem payload.
+  string report_json = 8;
+  string created_at = 9;
+}
+
+// AutomationCoverage é a cobertura calculada para uma automação.
+message AutomationCoverage {
+  string automation_id = 1;
+  string automation_name = 2;
+  CoverageStatus status = 3;
+  // wa_group_id que o chip alvo NÃO serve (ledger autorizado por tenant).
+  repeated string missing_groups = 4;
+  repeated string missing_admin_groups = 5;
+  repeated string reason_codes = 6;
+  int32 required_target_groups = 7;
+  int32 required_source_groups = 8;
+}
+
+// DryRunReport é o recibo de um ensaio. Só existe a partir de GETs no WAHA.
+message DryRunReport {
+  string dry_run_id = 1;
+  // Impressão digital do ensaio: a confirmação só é aceita com esta ref exata.
+  string dry_run_ref = 2;
+  FailoverDirection direction = 3;
+  int64 policy_id = 4;
+  int64 policy_version = 5;
+  bool passed = 6;
+  string expires_at = 7;
+  repeated AutomationCoverage items = 8;
+  repeated string blocking_reason_codes = 9;
+  string created_at = 10;
+}
+
+// OperationReport descreve uma operação mutável (failover ou reversão).
+message OperationReport {
+  string operation_id = 1;
+  FailoverDirection kind = 2;
+  OperationStatus status = 3;
+  int64 policy_id = 4;
+  string dry_run_id = 5;
+  int32 automations_total = 6;
+  int32 automations_applied = 7;
+  int32 automations_restored = 8;
+  string gate_closed_at = 9;
+  string applied_at = 10;
+  string completed_at = 11;
+  repeated string reason_codes = 12;
+}
+
+// ============================================================
+// Requests / Responses
+// ============================================================
+
+// SetPolicyRequest cria (policy_id=0, expected_version=0) ou atualiza uma
+// política. A primária é imutável depois de criada.
+message SetPolicyRequest {
+  // 0 = criar.
+  int64 policy_id = 1;
+  int64 primary_instance_id = 2;
+  int64 backup_instance_id = 3;
+  FailoverMode mode = 4;
+  // Obrigatório: 0 no create, versão exata no update.
+  int64 expected_version = 5;
+  string idempotency_key = 6;
+  // Limiares (opcionais; ausentes preservam o valor atual / o default).
+  optional int32 unhealthy_after_seconds = 7;
+  optional int32 required_consecutive_probes = 8;
+  optional int32 drain_deadline_seconds = 9;
+  optional int32 proposal_ttl_seconds = 10;
+}
+
+message SetPolicyResponse {
+  FailoverPolicy policy = 1;
+  FailoverEvent last_event = 2;
+}
+
+message GetPolicyRequest {
+  int64 policy_id = 1;
+}
+
+message GetPolicyResponse {
+  FailoverPolicy policy = 1;
+  FailoverEvent last_event = 2;
+  // Operação não terminal em curso, quando houver.
+  OperationReport current_operation = 3;
+}
+
+message ListPoliciesRequest {}
+
+message ListPoliciesResponse {
+  repeated FailoverPolicy policies = 1;
+}
+
+message RunDryRunRequest {
+  int64 policy_id = 1;
+  FailoverDirection direction = 2;
+  string idempotency_key = 3;
+}
+
+message RunDryRunResponse {
+  DryRunReport report = 1;
+}
+
+message ConfirmFailoverRequest {
+  int64 policy_id = 1;
+  int64 expected_version = 2;
+  string dry_run_id = 3;
+  string dry_run_ref = 4;
+  string idempotency_key = 5;
+}
+
+message ConfirmFailoverResponse {
+  OperationReport operation = 1;
+  FailoverPolicy policy = 2;
+}
+
+message RevertFailoverRequest {
+  int64 policy_id = 1;
+  int64 expected_version = 2;
+  string dry_run_id = 3;
+  string dry_run_ref = 4;
+  string idempotency_key = 5;
+}
+
+message RevertFailoverResponse {
+  OperationReport operation = 1;
+  FailoverPolicy policy = 2;
+}
+
+message DisablePolicyRequest {
+  int64 policy_id = 1;
+  int64 expected_version = 2;
+  string idempotency_key = 3;
+}
+
+message DisablePolicyResponse {
+  FailoverEvent last_event = 1;
+}
+
+message ListEventsRequest {
+  int64 policy_id = 1;
+  // Cursor opaco (created_at,id) devolvido pela página anterior.
+  string cursor = 2;
+  // Máximo 100; 0 usa o default.
+  int32 limit = 3;
+}
+
+message ListEventsResponse {
+  repeated FailoverEvent events = 1;
+  string next_cursor = 2;
+}
+
+// ============================================================
+// Service
+// ============================================================
+
+// FailoverService gerencia chip reserva e troca de roteamento entre chips do
+// MESMO usuário.
+//
+// O handler é registrado SEMPRE. Com FEATURE_INSTANCE_FAILOVER desligada toda
+// RPC responde FailedPrecondition com o reason estável
+// INSTANCE_FAILOVER_DISABLED — nunca Unimplemented, que quebraria clientes
+// antigos de forma indistinguível de um deploy ruim.
+service FailoverService {
+  // SetPolicy cria ou atualiza a política primária/reserva.
+  rpc SetPolicy(SetPolicyRequest) returns (SetPolicyResponse);
+  // GetPolicy devolve uma política do próprio usuário.
+  rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
+  // ListPolicies lista as políticas do próprio usuário.
+  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
+  // RunDryRun ensaia a troca (ou a reversão) usando SOMENTE leituras do WAHA.
+  rpc RunDryRun(RunDryRunRequest) returns (RunDryRunResponse);
+  // ConfirmFailover executa a troca primária→reserva, all-or-nothing.
+  rpc ConfirmFailover(ConfirmFailoverRequest) returns (ConfirmFailoverResponse);
+  // RevertFailover restaura o roteamento original a partir do snapshot.
+  rpc RevertFailover(RevertFailoverRequest) returns (RevertFailoverResponse);
+  // DisablePolicy remove a política (proibido em ACTIVE_ON_BACKUP).
+  rpc DisablePolicy(DisablePolicyRequest) returns (DisablePolicyResponse);
+  // ListEvents pagina o ledger de auditoria da política.
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+}

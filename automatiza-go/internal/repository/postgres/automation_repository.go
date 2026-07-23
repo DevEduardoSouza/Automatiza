@@ -69,7 +69,8 @@ func (r *automationRepository) GetUserAutomations(ctx context.Context, userID st
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
 		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
-		       search_send_as_image, monitoring_send_as_image, humanize_mode
+		       search_send_as_image, monitoring_send_as_image, humanize_mode,
+		       monitor_interval_minutes
 		FROM automations
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -97,7 +98,8 @@ func (r *automationRepository) GetActiveAutomations(ctx context.Context) ([]mode
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
 		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
-		       search_send_as_image, monitoring_send_as_image, humanize_mode
+		       search_send_as_image, monitoring_send_as_image, humanize_mode,
+		       monitor_interval_minutes
 		FROM automations
 		WHERE status = 'active'
 		ORDER BY priority DESC, created_at ASC
@@ -125,7 +127,8 @@ func (r *automationRepository) GetAutomationByID(ctx context.Context, automation
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
 		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
-		       search_send_as_image, monitoring_send_as_image, humanize_mode
+		       search_send_as_image, monitoring_send_as_image, humanize_mode,
+		       monitor_interval_minutes
 		FROM automations
 		WHERE id = $1
 	`
@@ -146,7 +149,8 @@ func (r *automationRepository) GetAutomationByIDAndUser(ctx context.Context, aut
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
 		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
-		       search_send_as_image, monitoring_send_as_image, humanize_mode
+		       search_send_as_image, monitoring_send_as_image, humanize_mode,
+		       monitor_interval_minutes
 		FROM automations
 		WHERE id = $1 AND user_id = $2
 	`
@@ -182,12 +186,13 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 			texts, ctas, cta_ids, ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 			list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
 			repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
-			search_send_as_image, monitoring_send_as_image, humanize_mode
+			search_send_as_image, monitoring_send_as_image, humanize_mode,
+			monitor_interval_minutes
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
 			$32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47,
-			$48, $49, $50
+			$48, $49, $50, $51
 		)
 		RETURNING id
 	`
@@ -230,18 +235,24 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 	chipOverridesJSON := marshalJSONField(r.logger, data.ChipOverrides, "chip_overrides", []byte("{}"))
 
 	var id string
-	err := r.db.QueryRow(ctx, query,
-		userID, data.Name, data.Type, data.Status, data.Mode, data.ShopeeLink, data.Keyword,
-		groupIDsJSON, sendGroupsJSON, monitorGroupIDsJSON, monitoringRulesJSON,
-		categoriesJSON, storesJSON, data.MinPrice, data.MaxPrice, data.MinDiscount, 0,
-		data.CustomMessage, data.IncludeImage, data.DispatchTextID, nil,
-		data.ScheduleTime, scheduleDaysJSON, data.StartTime, data.EndTime, data.IntervalMinutes,
-		data.DelaySeconds, data.DedupeHours, data.CouponID, now, now,
-		data.Texts, data.CTAs, data.CTAIDs, data.MlLinkListID, data.ListItemsPerRun, data.ListIncludeImage, data.PriorityType,
-		data.ListSendAsImage, instanceIDArg, instanceIDsArg, data.ApplyCouponRules, chipOverridesJSON,
-		data.RepeatWhenFinished, data.StartDate, data.EndDate, data.OfferGenerateSendAsImage,
-		data.SearchSendAsImage, data.MonitoringSendAsImage, data.HumanizeMode,
-	).Scan(&id)
+	// Guard de failover (Melhoria 5): com a feature desligada isto é o mesmo
+	// QueryRow de sempre, no pool, sem transação nem lock.
+	err := r.runGuardedAutomationMutation(ctx,
+		automationGuardScope{userID: userID, kind: automationMutationCreate},
+		func(ex pgExecutor) error {
+			return ex.QueryRow(ctx, query,
+				userID, data.Name, data.Type, data.Status, data.Mode, data.ShopeeLink, data.Keyword,
+				groupIDsJSON, sendGroupsJSON, monitorGroupIDsJSON, monitoringRulesJSON,
+				categoriesJSON, storesJSON, data.MinPrice, data.MaxPrice, data.MinDiscount, 0,
+				data.CustomMessage, data.IncludeImage, data.DispatchTextID, nil,
+				data.ScheduleTime, scheduleDaysJSON, data.StartTime, data.EndTime, data.IntervalMinutes,
+				data.DelaySeconds, data.DedupeHours, data.CouponID, now, now,
+				data.Texts, data.CTAs, data.CTAIDs, data.MlLinkListID, data.ListItemsPerRun, data.ListIncludeImage, data.PriorityType,
+				data.ListSendAsImage, instanceIDArg, instanceIDsArg, data.ApplyCouponRules, chipOverridesJSON,
+				data.RepeatWhenFinished, data.StartDate, data.EndDate, data.OfferGenerateSendAsImage,
+				data.SearchSendAsImage, data.MonitoringSendAsImage, data.HumanizeMode,
+			).Scan(&id)
+		})
 
 	if err != nil {
 		r.logger.Error("Failed to create automation",
@@ -381,7 +392,22 @@ func (r *automationRepository) UpdateAutomation(ctx context.Context, automationI
 
 	query := fmt.Sprintf("UPDATE automations SET %s WHERE id = $%d", setClauses, argIndex)
 
-	_, err := r.db.pool.Exec(ctx, query, args...)
+	// Guard de failover (Melhoria 5): só updates que mexem em escopo/roteamento
+	// passam pelo guard. Schedule, status e contadores seguem direto — o cron
+	// escreve last_run_at/next_run_at a cada minuto e não pode ficar atrás de um
+	// advisory lock.
+	scope := automationGuardScope{automationID: automationID, kind: automationMutationUpdateRouting}
+	exec := func(ex pgExecutor) error {
+		_, execErr := ex.Exec(ctx, query, args...)
+		return execErr
+	}
+
+	var err error
+	if updateTouchesRouting(updates) {
+		err = r.runGuardedAutomationMutation(ctx, scope, exec)
+	} else {
+		err = exec(r.db.pool)
+	}
 	if err != nil {
 		r.logger.Error("Failed to update automation",
 			zap.String("automationID", automationID),
@@ -482,7 +508,14 @@ func (r *automationRepository) dropDeadInstanceIDs(ctx context.Context, automati
 func (r *automationRepository) DeleteAutomation(ctx context.Context, automationID, userID string) error {
 	query := `DELETE FROM automations WHERE id = $1 AND user_id = $2`
 
-	_, err := r.db.pool.Exec(ctx, query, automationID, userID)
+	// Guard de failover (Melhoria 5): apagar uma automação que ESTÁ no snapshot
+	// de uma troca em curso é bloqueado. Apagar qualquer outra segue normal.
+	err := r.runGuardedAutomationMutation(ctx,
+		automationGuardScope{userID: userID, automationID: automationID, kind: automationMutationDelete},
+		func(ex pgExecutor) error {
+			_, execErr := ex.Exec(ctx, query, automationID, userID)
+			return execErr
+		})
 	if err != nil {
 		r.logger.Error("Failed to delete automation",
 			zap.String("automationID", automationID),
@@ -507,7 +540,8 @@ func (r *automationRepository) GetMonitoringAutomationsForGroup(ctx context.Cont
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
 		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
-		       search_send_as_image, monitoring_send_as_image, humanize_mode
+		       search_send_as_image, monitoring_send_as_image, humanize_mode,
+		       monitor_interval_minutes
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'monitoring'
@@ -538,7 +572,8 @@ func (r *automationRepository) GetOfferGenerateAutomationsForGroup(ctx context.C
 		       ml_link_list_id, list_items_per_run, list_include_image, priority_type,
 		       list_send_as_image, instance_id, instance_ids, apply_coupon_rules, chip_overrides,
 		       repeat_when_finished, start_date, end_date, offer_generate_send_as_image,
-		       search_send_as_image, monitoring_send_as_image, humanize_mode
+		       search_send_as_image, monitoring_send_as_image, humanize_mode,
+		       monitor_interval_minutes
 		FROM automations
 		WHERE status = 'active'
 		  AND type = 'offer_generate'
@@ -587,6 +622,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	var startDate *time.Time
 	var endDate *time.Time
 	var humanizeMode *string
+	var monitorIntervalMinutes int
 
 	err := row.Scan(
 		&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
@@ -601,6 +637,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 		&listSendAsImage, &instanceID, &instanceIDs, &a.ApplyCouponRules, &chipOverridesJSON,
 		&repeatWhenFinished, &startDate, &endDate, &offerGenerateSendAsImage,
 		&searchSendAsImage, &monitoringSendAsImage, &humanizeMode,
+		&monitorIntervalMinutes,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -631,6 +668,7 @@ func (r *automationRepository) scanAutomation(row pgx.Row) (*models.Automation, 
 	a.MonitoringSendAsImage = monitoringSendAsImage
 	a.RepeatWhenFinished = repeatWhenFinished
 	a.HumanizeMode = humanizeMode
+	a.MonitorIntervalMinutes = &monitorIntervalMinutes
 	if startDate != nil {
 		t := startDate.Format("2006-01-02")
 		a.StartDate = &t
@@ -747,6 +785,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		var startDate *time.Time
 		var endDate *time.Time
 		var humanizeMode *string
+		var monitorIntervalMinutes int
 
 		err := rows.Scan(
 			&a.ID, &a.UserID, &a.Name, &automationType, &a.Status, &mode, &shopeeLink, &keyword,
@@ -761,6 +800,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 			&listSendAsImage, &instanceID, &instanceIDs, &a.ApplyCouponRules, &chipOverridesJSON,
 			&repeatWhenFinished, &startDate, &endDate, &offerGenerateSendAsImage,
 			&searchSendAsImage, &monitoringSendAsImage, &humanizeMode,
+			&monitorIntervalMinutes,
 		)
 		if err != nil {
 			return nil, err
@@ -788,6 +828,7 @@ func (r *automationRepository) scanAutomations(rows pgx.Rows) ([]models.Automati
 		a.MonitoringSendAsImage = monitoringSendAsImage
 		a.RepeatWhenFinished = repeatWhenFinished
 		a.HumanizeMode = humanizeMode
+		a.MonitorIntervalMinutes = &monitorIntervalMinutes
 		if startDate != nil {
 			t := startDate.Format("2006-01-02")
 			a.StartDate = &t

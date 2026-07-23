@@ -96,6 +96,16 @@ export interface LocalAutomation {
   offerGenerateSendAsImage?: boolean;
   searchSendAsImage?: boolean;
   monitoringSendAsImage?: boolean;
+  /**
+   * Intervalo MÍNIMO entre mensagens espelhadas (minutos, 0..1440). 0 =
+   * imediato. Não confundir com delaySeconds (pausa entre GRUPOS da mesma
+   * mensagem) nem com intervalMinutes (scheduler de busca/lista).
+   */
+  monitorIntervalMinutes?: number;
+  /** Quantas mensagens aguardam na fila da cadência (read-only). */
+  monitorPendingCount?: number;
+  /** Quando a próxima mensagem da fila pode sair, RFC3339 UTC (read-only). */
+  monitorNextScheduledAt?: string;
   // Preferred sender chip (instance database id, string form). Empty / unset
   // = no preference; the worker treats either case as "fall back to per-group
   // ownership / first connected."
@@ -168,6 +178,12 @@ export interface CreateAutomationParams {
   offerGenerateSendAsImage?: boolean;
   searchSendAsImage?: boolean;
   monitoringSendAsImage?: boolean;
+  /**
+   * Intervalo MÍNIMO entre mensagens espelhadas (minutos, 0..1440). 0 =
+   * imediato. Não confundir com delaySeconds (pausa entre GRUPOS da mesma
+   * mensagem) nem com intervalMinutes (scheduler de busca/lista).
+   */
+  monitorIntervalMinutes?: number;
   instanceId?: string;
   // Multi-chip preference (049). Empty array also valid as "clear preference."
   instanceIds?: string[];
@@ -213,6 +229,12 @@ export interface UpdateAutomationParams {
   offerGenerateSendAsImage?: boolean;
   searchSendAsImage?: boolean;
   monitoringSendAsImage?: boolean;
+  /**
+   * Intervalo MÍNIMO entre mensagens espelhadas (minutos, 0..1440). 0 =
+   * imediato. Não confundir com delaySeconds (pausa entre GRUPOS da mesma
+   * mensagem) nem com intervalMinutes (scheduler de busca/lista).
+   */
+  monitorIntervalMinutes?: number;
   // Empty string explicitly clears the preference; undefined leaves it
   // unchanged (matches proto3 optional semantics on the wire).
   instanceId?: string;
@@ -436,6 +458,9 @@ function fromProtoAutomation(automation: Automation): LocalAutomation {
     offerGenerateSendAsImage: automation.offerGenerateSendAsImage,
     searchSendAsImage: automation.searchSendAsImage,
     monitoringSendAsImage: automation.monitoringSendAsImage,
+    monitorIntervalMinutes: automation.monitorIntervalMinutes,
+    monitorPendingCount: automation.monitorPendingCount,
+    monitorNextScheduledAt: automation.monitorNextScheduledAt,
     instanceId: automation.instanceId,
     instanceIds: [...(automation.instanceIds ?? [])],
     // Proto map<string,string> deserializes as a plain object; copy to a
@@ -593,6 +618,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           offerGenerateSendAsImage: params.offerGenerateSendAsImage,
           searchSendAsImage: params.searchSendAsImage,
           monitoringSendAsImage: params.monitoringSendAsImage,
+          monitorIntervalMinutes: params.monitorIntervalMinutes,
           instanceId: params.instanceId,
           instanceIds: params.instanceIds ?? [],
           chipOverrides: params.chipOverrides ?? {},
@@ -682,6 +708,7 @@ export function useAutomationsConnect(): UseAutomationsConnectReturn {
           offerGenerateSendAsImage: params.offerGenerateSendAsImage,
           searchSendAsImage: params.searchSendAsImage,
           monitoringSendAsImage: params.monitoringSendAsImage,
+          monitorIntervalMinutes: params.monitorIntervalMinutes,
           instanceId: params.instanceId,
           instanceIds: params.instanceIds ?? [],
           chipOverrides: params.chipOverrides ?? {},

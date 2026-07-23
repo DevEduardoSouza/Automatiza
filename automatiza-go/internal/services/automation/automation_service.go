@@ -18,6 +18,7 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/failover"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/shopee"
 	sharedErrors "automatiza-go/internal/shared/errors"
@@ -88,6 +89,25 @@ type automationService struct {
 	queueClient   *workers.QueueClient
 	cache         *cache.Cache
 	logger        *zap.Logger
+
+	// dispatchGate é a barreira contra troca de chip em andamento (Melhoria 5).
+	// nil = sem gate (comportamento histórico).
+	dispatchGate DispatchGate
+}
+
+// DispatchGate é a fatia do failover que este produtor consome. Definida aqui,
+// no consumidor, para o serviço de automação não depender do pacote failover.
+//
+// Acquire devolve o contexto que TODO o trabalho seguinte deve usar: quando a
+// lease se perde no meio do caminho, esse contexto é cancelado e o produtor
+// para em vez de continuar enfileirando por um chip que já não é o roteado.
+type DispatchGate interface {
+	Acquire(ctx context.Context, userID, automationID string) (*failover.Lease, error)
+}
+
+// SetDispatchGate liga o gate de failover (Melhoria 5) neste serviço.
+func (s *automationService) SetDispatchGate(gate DispatchGate) {
+	s.dispatchGate = gate
 }
 
 // NewAutomationService creates a new automation service.
@@ -333,6 +353,23 @@ func (s *automationService) DiagnoseAutomation(ctx context.Context, automationID
 }
 
 func (s *automationService) RunAutomation(ctx context.Context, automationID, userID string) (*models.RunAutomationResult, error) {
+	// Gate de failover ANTES de qualquer leitura: se uma troca de chip está em
+	// curso para esta automação, nem começamos — criar dispatch_log e enfileirar
+	// job congelaria o chip antigo no payload do Asynq e ele enviaria depois da
+	// troca (split-brain). A lease vale por toda a criação/enfileiramento.
+	if s.dispatchGate != nil {
+		lease, gateErr := s.dispatchGate.Acquire(ctx, userID, automationID)
+		if gateErr != nil {
+			s.logger.Warn("RunAutomation blocked by failover gate",
+				zap.String("automationID", automationID),
+				zap.String("userID", userID),
+				zap.Error(gateErr))
+			return nil, gateErr
+		}
+		defer lease.Release()
+		ctx = lease.Ctx
+	}
+
 	// Get automation
 	automation, err := s.automationRepo.GetAutomationByIDAndUser(ctx, automationID, userID)
 	if err != nil {
@@ -646,42 +683,11 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		stores = []string{"shopee"}
 	}
 
-	// Pre-fetch CTA entities. Política:
-	//   - automation.CTAIDs preenchido → override explícito, busca só esses
-	//   - automation.CTAIDs vazio → pool inteiro de CTAs ativos do user
-	//
-	// Pool inteiro é o caminho default (paridade com affilipro): o user
-	// cadastra CTAs em /ctas e o sistema escolhe automaticamente o que casa
-	// com a plataforma do produto (search mode é Shopee-only).
-	var ctaEntities []models.CTA
-	if s.ctaRepo != nil {
-		if len(automation.CTAIDs) > 0 {
-			fetched, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, automation.CTAIDs, automation.UserID)
-			if ctaErr != nil {
-				s.logger.Warn("Failed to fetch CTA entities by IDs, falling back to inline CTAs",
-					zap.String("automationID", automation.ID),
-					zap.Error(ctaErr))
-			} else {
-				ctaEntities = fetched
-			}
-		} else {
-			fetched, ctaErr := s.ctaRepo.GetUserCTAs(ctx, automation.UserID, map[string]interface{}{"is_active": true})
-			if ctaErr != nil {
-				s.logger.Warn("Failed to fetch user CTA pool, falling back to inline CTAs",
-					zap.String("automationID", automation.ID),
-					zap.Error(ctaErr))
-			} else {
-				ctaEntities = fetched
-			}
-		}
-	}
-
 	s.logger.Info("Search automation setup complete",
 		zap.String("automationID", automation.ID),
 		zap.Int("targetGroups", len(targetGroups)),
 		zap.String("instanceID", connectedInstance.InstanceID),
-		zap.Strings("stores", stores),
-		zap.Int("ctaEntities", len(ctaEntities)))
+		zap.Strings("stores", stores))
 
 	// Build keywords list: prefer Texts array, fallback to single Keyword
 	keywords := automation.Texts
@@ -723,6 +729,47 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 		zap.String("automationID", automation.ID),
 		zap.Int("copyVariations", len(dispatchCopies)),
 		zap.Int("variableCount", len(templateVars)))
+
+	// CTA é estritamente opt-in: só existe quando a cópia efetivamente sorteada
+	// para a mensagem traz a variável {cta} (não há mais append pós-render). Por
+	// isso o pool é carregado LAZY — uma automação com CTAs cadastradas mas
+	// template sem {cta} não gasta nenhuma consulta. Política preservada:
+	//   - automation.CTAIDs preenchido → override explícito, busca só esses
+	//   - automation.CTAIDs vazio → pool inteiro de CTAs ativos do user
+	// No máximo uma consulta por run (ctaLoadAttempted), inclusive em erro —
+	// senão cada grupo repetiria a query que já falhou. Fail-open: erro devolve
+	// pool vazio e o build cai nos CTAs inline.
+	var ctaEntities []models.CTA
+	ctaLoadAttempted := false
+	loadCTAs := func() []models.CTA {
+		if ctaLoadAttempted {
+			return ctaEntities
+		}
+		ctaLoadAttempted = true
+		if s.ctaRepo == nil {
+			return nil
+		}
+		if len(automation.CTAIDs) > 0 {
+			fetched, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, automation.CTAIDs, automation.UserID)
+			if ctaErr != nil {
+				s.logger.Warn("Failed to fetch CTA entities by IDs, falling back to inline CTAs",
+					zap.String("automationID", automation.ID),
+					zap.Error(ctaErr))
+			} else {
+				ctaEntities = fetched
+			}
+			return ctaEntities
+		}
+		fetched, ctaErr := s.ctaRepo.GetUserCTAs(ctx, automation.UserID, map[string]interface{}{"is_active": true})
+		if ctaErr != nil {
+			s.logger.Warn("Failed to fetch user CTA pool, falling back to inline CTAs",
+				zap.String("automationID", automation.ID),
+				zap.Error(ctaErr))
+		} else {
+			ctaEntities = fetched
+		}
+		return ctaEntities
+	}
 
 	// Send offers to groups
 	sentCount := 0
@@ -1040,8 +1087,17 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 				}
 				selectedCopy := dispatchCopies[copyIndex]
 
+				// Gate do CTA sobre a cópia REALMENTE escolhida (não sobre o
+				// conjunto): numa configuração com cópias mistas, uma rodada que
+				// sorteie só cópias sem {cta} não consulta o repositório.
+				useCTA := text.TemplateUsesVariable(selectedCopy, text.VarCTA)
+				var copyCTAs []models.CTA
+				if useCTA {
+					copyCTAs = loadCTAs()
+				}
+
 				// Build message from selected copy
-				message := s.buildOfferMessage(selectedCopy, &offer, automation, ctaEntities, couponResult)
+				message := s.buildOfferMessage(selectedCopy, &offer, automation, useCTA, copyCTAs, couponResult)
 
 				s.logger.Debug("Message built for offer",
 					zap.String("automationID", automation.ID),
@@ -1213,14 +1269,21 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 	}, nil
 }
 
-func (s *automationService) buildOfferMessage(template string, offer *models.ShopeeOffer, automation *models.Automation, ctaEntities []models.CTA, couponResult *CouponResult) string {
+func (s *automationService) buildOfferMessage(template string, offer *models.ShopeeOffer, automation *models.Automation, useCTA bool, ctaEntities []models.CTA, couponResult *CouponResult) string {
+	// CTA só existe quando o template a posiciona por {cta} (useCTA, decidido
+	// pelo caller sobre a cópia efetiva). Sem isso, nem sorteio nem inline
+	// rodam — a CTA não teria onde ser renderizada.
+	//
 	// Search mode é exclusivamente Shopee (offer vem do ShopeeOffer). Filtra
 	// ctaEntities por platform Shopee/all antes do sorteio — sem isso, uma
 	// automation com CTA "MERCADO LIVRE 🔥" no pool mandava o texto de ML
 	// num link Shopee. Fallback para CTAs inline da automation se nada bater.
-	cta := ctapicker.PickByPlatform(ctaEntities, false, true)
-	if cta == "" && len(automation.CTAs) > 0 {
-		cta = automation.CTAs[rand.IntN(len(automation.CTAs))] //nolint:gosec // G404: non-security random for CTA selection
+	cta := ""
+	if useCTA {
+		cta = ctapicker.PickByPlatform(ctaEntities, false, true)
+		if cta == "" && len(automation.CTAs) > 0 {
+			cta = automation.CTAs[rand.IntN(len(automation.CTAs))] //nolint:gosec // G404: non-security random for CTA selection
+		}
 	}
 
 	// Cupom resolvido pelo rules engine (mesmo padrão do LIST em
@@ -1279,11 +1342,6 @@ func (s *automationService) buildOfferMessage(template string, offer *models.Sho
 	}
 
 	message := text.RenderShopeeOfferTemplate(template, vars)
-
-	// Auto-append CTA if template doesn't contain {cta} variable but a CTA was selected
-	if cta != "" && !strings.Contains(template, "{cta}") {
-		message = message + "\n\n" + cta
-	}
 
 	// Auto-append do bloco de cupom SÓ quando o template não posiciona o cupom
 	// por nenhum placeholder ({cupom_bloco} ou {couponText}) — senão o cupom

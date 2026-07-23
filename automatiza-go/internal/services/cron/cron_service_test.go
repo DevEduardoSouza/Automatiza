@@ -44,6 +44,10 @@ func (m *mockJobsService) CreateJob(_ context.Context, _ string, _ *models.Stand
 	return nil, nil
 }
 
+func (m *mockJobsService) CreateJobs(_ context.Context, _ string, _ []*models.StandaloneJob) ([]models.StandaloneJob, int, error) {
+	return nil, 0, nil
+}
+
 func (m *mockJobsService) GetJob(_ context.Context, _, _ string) (*models.StandaloneJob, error) {
 	return nil, nil
 }

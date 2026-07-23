@@ -28,6 +28,15 @@ type WhatsAppHandler struct {
 	profileRepo   repository.ProfileRepository
 	queueClient   *workers.QueueClient
 	webhookSecret string
+	// failoverRepo é opcional: quando nil, o precheck de chip reserva é pulado
+	// e a FK RESTRICT da migração 077 segue como rede de segurança.
+	failoverRepo repository.InstanceFailoverRepository
+}
+
+// WithFailoverRepo liga o precheck de política de chip reserva.
+func (h *WhatsAppHandler) WithFailoverRepo(repo repository.InstanceFailoverRepository) *WhatsAppHandler {
+	h.failoverRepo = repo
+	return h
 }
 
 // NewWhatsAppHandler creates a new WhatsApp handler.
@@ -258,6 +267,12 @@ func (h *WhatsAppHandler) DeleteInstance(
 		}
 		if inst == nil {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("instance not found for this user"))
+		}
+		// Precheck de chip reserva ANTES do DeleteSession: apagar a sessão de um
+		// chip que é primária/reserva deixaria a política apontando para um
+		// número que não existe mais na WAHA.
+		if err := failoverRoleBlocksDelete(ctx, h.failoverRepo, inst.ID); err != nil {
+			return nil, err
 		}
 	}
 

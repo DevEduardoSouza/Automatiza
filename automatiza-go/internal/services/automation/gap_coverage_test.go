@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"automatiza-go/internal/config"
 	bpLib "automatiza-go/internal/lib/backpressure"
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/lib/urlsafety"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
@@ -1198,7 +1200,7 @@ func TestBuildListModeMessage(t *testing.T) {
 			ProductImageURL: &imageURL,
 		}
 
-		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, false, nil, nil)
+		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, false, false, nil, nil)
 		assert.NotEmpty(t, message)
 		assert.Contains(t, message, "Product Title")
 	})
@@ -1236,7 +1238,7 @@ func TestBuildListModeMessage(t *testing.T) {
 			Installments:  &installments,
 		}
 
-		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", "", false, false, nil, nil)
+		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", "", false, false, false, nil, nil)
 		assert.NotEmpty(t, message)
 		assert.Contains(t, message, "Test Product Full")
 	})
@@ -1263,7 +1265,7 @@ func TestBuildListModeMessage(t *testing.T) {
 		}
 
 		template := "{{titulo}} por {{preco}} - {{link}}"
-		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", template, false, false, nil, nil)
+		message := svc.buildListModeMessage(automation, item, preview, nil, "https://affiliate.link", template, false, false, false, nil, nil)
 		assert.NotEmpty(t, message)
 	})
 
@@ -1284,7 +1286,7 @@ func TestBuildListModeMessage(t *testing.T) {
 			ProductImageURL: nil,
 		}
 
-		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, false, nil, nil)
+		message := svc.buildListModeMessage(automation, item, nil, nil, "https://affiliate.link", "", false, false, false, nil, nil)
 		assert.NotEmpty(t, message) // Should still render with empty/zero values
 	})
 }
@@ -2798,7 +2800,7 @@ func TestBuildOfferMessage_WithCoupon(t *testing.T) {
 	}
 
 	template := "{{PRODUTO_NOME}}\n{{LINK_AFILIADO}}\n{{CTA}}"
-	message := svc.buildOfferMessage(template, offer, automation, nil, nil)
+	message := svc.buildOfferMessage(template, offer, automation, false, nil, nil)
 	assert.Contains(t, message, "Product A")
 	assert.Contains(t, message, "https://s.shopee.com/aff1")
 }
@@ -2832,14 +2834,14 @@ func TestBuildOfferMessage_Coupon(t *testing.T) {
 			CouponText:      "\n\n🎟️ Use o cupom OFICIAL20",
 			DiscountedPrice: 80.0,
 		}
-		message := svc.buildOfferMessage(template, offer, automation, nil, cr)
+		message := svc.buildOfferMessage(template, offer, automation, false, nil, cr)
 		assert.Contains(t, message, "OFICIAL20", "texto do cupom deve ser anexado")
 		assert.Contains(t, message, "R$ 80,00", "preço deve refletir o desconto do cupom")
 		assert.NotContains(t, message, "R$ 100,00", "preço cheio deve ser substituído pelo com desconto")
 	})
 
 	t.Run("cupom nil mantém a mensagem sem cupom", func(t *testing.T) {
-		message := svc.buildOfferMessage(template, offer, automation, nil, nil)
+		message := svc.buildOfferMessage(template, offer, automation, false, nil, nil)
 		assert.Contains(t, message, "R$ 100,00", "sem cupom → preço cheio")
 		assert.NotContains(t, message, "🎟️")
 	})
@@ -5114,4 +5116,304 @@ func (m *mockDispatchLogRepo) GetListResurrectCandidates(ctx context.Context, wi
 }
 func (m *mockMlLinkListItemRepo) ResetConsumedByIDs(ctx context.Context, itemIDs []string) (int64, error) {
 	return 0, nil
+}
+
+// =============================================================================
+// Melhoria 6 — CTA estritamente opt-in por {cta}
+// =============================================================================
+
+// ctaPoolShopeeML devolve um pool com um CTA por plataforma, para provar QUAL
+// foi escolhido (ou que nenhum foi).
+func ctaPoolShopeeML() []models.CTA {
+	return []models.CTA{
+		{Message: "CTA_POOL_SHOPEE", Platform: models.CTAPlatformShopee, IsActive: true},
+		{Message: "CTA_POOL_ML", Platform: models.CTAPlatformMercadoLivre, IsActive: true},
+	}
+}
+
+// buildSearchMessage replica o wiring do executeSearchAutomation: o gate é
+// calculado sobre a cópia efetivamente escolhida e só então o builder é
+// chamado. Testar o builder com useCTA arbitrário provaria menos que isto.
+func buildSearchMessage(svc *automationService, copyText string, offer *models.ShopeeOffer,
+	automation *models.Automation, pool []models.CTA, coupon *CouponResult) string {
+	useCTA := text.TemplateUsesVariable(copyText, text.VarCTA)
+	var entities []models.CTA
+	if useCTA {
+		entities = pool
+	}
+	return svc.buildOfferMessage(copyText, offer, automation, useCTA, entities, coupon)
+}
+
+// buildListMessage replica o wiring do executeListAutomation, incluindo o
+// default por plataforma antes do gate.
+func buildListMessage(svc *automationService, raw string, item *models.MlLinkListItem,
+	preview *models.MLProductPreview, shopeeProduct *models.ShopeeOffer,
+	automation *models.Automation, isML, isShopee bool, pool []models.CTA, coupon *CouponResult) string {
+	useCTA := text.TemplateUsesVariable(resolveListDispatchTemplate(raw, isShopee), text.VarCTA)
+	var entities []models.CTA
+	if useCTA {
+		entities = pool
+	}
+	return svc.buildListModeMessage(automation, item, preview, shopeeProduct, "https://affiliate.link",
+		raw, useCTA, isML, isShopee, entities, coupon)
+}
+
+func searchOfferFixture() *models.ShopeeOffer {
+	return &models.ShopeeOffer{
+		Name:          "Produto Busca",
+		Price:         50.0,
+		OriginalPrice: 100.0,
+		Discount:      50,
+		ProductURL:    "https://shopee.com.br/p1",
+		AffiliateLink: "https://s.shopee.com.br/aff1",
+	}
+}
+
+// Busca: a CTA só aparece quando a cópia sorteada traz {cta}, e aparece
+// exatamente uma vez por placeholder autorado — nunca uma a mais por append.
+func TestBuildOfferMessage_CTAOptIn(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		copyText string
+		inline   []string
+		pool     []models.CTA
+		marker   string
+		want     int
+	}{
+		{
+			name:     "com {cta} e pool Shopee",
+			copyText: "{{PRODUTO_NOME}}\n{cta}",
+			pool:     ctaPoolShopeeML(),
+			marker:   "CTA_POOL_SHOPEE",
+			want:     1,
+		},
+		{
+			name:     "com {{cta}} e pool Shopee",
+			copyText: "{{PRODUTO_NOME}}\n{{cta}}",
+			pool:     ctaPoolShopeeML(),
+			marker:   "CTA_POOL_SHOPEE",
+			want:     1,
+		},
+		{
+			name:     "duas ocorrencias rendem duas, nao tres",
+			copyText: "{cta}\n{{PRODUTO_NOME}}\n{cta}",
+			pool:     ctaPoolShopeeML(),
+			marker:   "CTA_POOL_SHOPEE",
+			want:     2,
+		},
+		{
+			name:     "sem {cta} e pool configurado nao anexa",
+			copyText: "{{PRODUTO_NOME}}\n{{LINK_AFILIADO}}",
+			pool:     ctaPoolShopeeML(),
+			marker:   "CTA_POOL_SHOPEE",
+			want:     0,
+		},
+		{
+			name:     "sem {cta} e inline configurado nao anexa",
+			copyText: "{{PRODUTO_NOME}}\n{{LINK_AFILIADO}}",
+			inline:   []string{"CTA_INLINE"},
+			marker:   "CTA_INLINE",
+			want:     0,
+		},
+		{
+			name:     "{cta_extra} nao autoriza",
+			copyText: "{{PRODUTO_NOME}}\n{cta_extra}",
+			pool:     ctaPoolShopeeML(),
+			inline:   []string{"CTA_INLINE"},
+			marker:   "CTA_",
+			want:     0,
+		},
+		{
+			name:     "{CTA} maiusculo nao autoriza",
+			copyText: "{{PRODUTO_NOME}}\n{CTA}",
+			pool:     ctaPoolShopeeML(),
+			inline:   []string{"CTA_INLINE"},
+			marker:   "CTA_",
+			want:     0,
+		},
+		{
+			name:     "spintax {cta|x} nao autoriza",
+			copyText: "{{PRODUTO_NOME}}\n{cta|aproveite}",
+			pool:     ctaPoolShopeeML(),
+			inline:   []string{"CTA_INLINE"},
+			marker:   "CTA_",
+			want:     0,
+		},
+		{
+			name:     "{cta} com pool sem elegivel cai no inline",
+			copyText: "{{PRODUTO_NOME}}\n{cta}",
+			pool:     []models.CTA{{Message: "CTA_POOL_ML", Platform: models.CTAPlatformMercadoLivre, IsActive: true}},
+			inline:   []string{"CTA_INLINE"},
+			marker:   "CTA_INLINE",
+			want:     1,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			svc := &automationService{logger: zaptest.NewLogger(t)}
+			automation := &models.Automation{ID: "auto-1", UserID: "user-1", CTAs: tc.inline}
+
+			message := buildSearchMessage(svc, tc.copyText, searchOfferFixture(), automation, tc.pool, nil)
+
+			if got := strings.Count(message, tc.marker); got != tc.want {
+				t.Errorf("ocorrências de %q = %d, want %d.\n got: %q", tc.marker, got, tc.want, message)
+			}
+			if strings.Contains(message, "{cta}") {
+				t.Errorf("placeholder de CTA vazou para o disparo.\n got: %q", message)
+			}
+		})
+	}
+}
+
+// {cta} autorizado mas sem nenhuma CTA disponível: o placeholder some e a linha
+// vazia colapsa — nada de buraco no meio do texto do cliente.
+func TestBuildOfferMessage_CTAAuthorizedButEmpty(t *testing.T) {
+	t.Parallel()
+
+	svc := &automationService{logger: zaptest.NewLogger(t)}
+	automation := &models.Automation{ID: "auto-1", UserID: "user-1"}
+
+	message := buildSearchMessage(svc, "{{PRODUTO_NOME}}\n\n{cta}\n\n{{LINK_AFILIADO}}",
+		searchOfferFixture(), automation, nil, nil)
+
+	if strings.Contains(message, "{cta}") {
+		t.Errorf("placeholder não substituído vazou.\n got: %q", message)
+	}
+	if strings.Contains(message, "\n\n\n") {
+		t.Errorf("linha da CTA vazia deveria ter colapsado.\n got: %q", message)
+	}
+	if !strings.Contains(message, "Produto Busca") {
+		t.Errorf("a oferta deveria continuar sendo renderizada.\n got: %q", message)
+	}
+}
+
+// Canário de cupom na Busca: o opt-in do CTA não pode ter mexido no cupom.
+// Comparação por string EXATA, não por Contains.
+func TestBuildOfferMessage_CouponUnchangedByCTAOptIn(t *testing.T) {
+	t.Parallel()
+
+	svc := &automationService{logger: zaptest.NewLogger(t)}
+	automation := &models.Automation{ID: "auto-1", UserID: "user-1", CTAs: []string{"CTA_INLINE"}}
+	coupon := &CouponResult{
+		Applied:         true,
+		CouponCode:      "OFICIAL20",
+		CouponText:      "\n\n🎟️ Use o cupom OFICIAL20",
+		DiscountedPrice: 80.0,
+	}
+
+	t.Run("sem placeholder de cupom: bloco anexado no fim", func(t *testing.T) {
+		t.Parallel()
+		got := buildSearchMessage(svc, "{{PRODUTO_NOME}} por {{PRODUTO_PRECO}}", searchOfferFixture(), automation, nil, coupon)
+		want := "Produto Busca por R$ 80,00\n\n🎟️ Use o cupom OFICIAL20"
+		if got != want {
+			t.Errorf("saída com cupom mudou.\n got: %q\nwant: %q", got, want)
+		}
+	})
+
+	t.Run("com {cupom_bloco}: posicionado pelo template, sem append", func(t *testing.T) {
+		t.Parallel()
+		got := buildSearchMessage(svc, "{{PRODUTO_NOME}}\n{cupom_bloco}", searchOfferFixture(), automation, nil, coupon)
+		want := "Produto Busca\n\n🎟️ Use o cupom OFICIAL20"
+		if got != want {
+			t.Errorf("saída com {cupom_bloco} mudou.\n got: %q\nwant: %q", got, want)
+		}
+	})
+}
+
+// resolveListDispatchTemplate é o que faz o gate enxergar o MESMO texto que o
+// renderer vai usar quando a automação não configurou dispatch text.
+func TestResolveListDispatchTemplate(t *testing.T) {
+	t.Parallel()
+
+	if got := resolveListDispatchTemplate("", true); got != text.DefaultShopeeTemplate() {
+		t.Errorf("template vazio + Shopee deveria cair no default Shopee.\n got: %q", got)
+	}
+	if got := resolveListDispatchTemplate("", false); got != text.DefaultMLTemplate() {
+		t.Errorf("template vazio + não-Shopee deveria cair no default ML.\n got: %q", got)
+	}
+	const custom = "MEU TEMPLATE {cta}"
+	if got := resolveListDispatchTemplate(custom, true); got != custom {
+		t.Errorf("template configurado não pode ser trocado.\n got: %q", got)
+	}
+	if got := resolveListDispatchTemplate(custom, false); got != custom {
+		t.Errorf("template configurado não pode ser trocado.\n got: %q", got)
+	}
+	// Os defaults atuais NÃO trazem {cta} — logo, item sem dispatch text nunca
+	// autoriza CTA (e o run nunca consulta o repositório por causa dele).
+	if text.TemplateUsesVariable(resolveListDispatchTemplate("", true), text.VarCTA) {
+		t.Error("default Shopee não deveria autorizar CTA")
+	}
+	if text.TemplateUsesVariable(resolveListDispatchTemplate("", false), text.VarCTA) {
+		t.Error("default ML não deveria autorizar CTA")
+	}
+}
+
+// Lista: mesmos oráculos da Busca, nos dois ramos (Shopee e ML).
+func TestBuildListModeMessage_CTAOptIn(t *testing.T) {
+	t.Parallel()
+
+	item := &models.MlLinkListItem{ID: "item-1", OriginURL: "https://origem.example/p"}
+	shopeeProduct := &models.ShopeeOffer{Name: "Produto Lista", Price: 50.0}
+	preview := &models.MLProductPreview{Title: "Produto Lista", Price: 50.0}
+
+	cases := []struct {
+		name     string
+		raw      string
+		isShopee bool
+		inline   []string
+		pool     []models.CTA
+		marker   string
+		want     int
+	}{
+		{"shopee com {cta}", "{nome_produto}\n{cta}", true, nil, ctaPoolShopeeML(), "CTA_POOL_SHOPEE", 1},
+		{"shopee com {{cta}}", "{nome_produto}\n{{cta}}", true, nil, ctaPoolShopeeML(), "CTA_POOL_SHOPEE", 1},
+		{"shopee duas ocorrencias", "{cta}\n{nome_produto}\n{cta}", true, nil, ctaPoolShopeeML(), "CTA_POOL_SHOPEE", 2},
+		{"shopee sem {cta} com pool", "{nome_produto}", true, nil, ctaPoolShopeeML(), "CTA_POOL_SHOPEE", 0},
+		{"shopee sem {cta} com inline", "{nome_produto}", true, []string{"CTA_INLINE"}, nil, "CTA_INLINE", 0},
+		{"shopee template vazio usa default sem cta", "", true, []string{"CTA_INLINE"}, ctaPoolShopeeML(), "CTA_", 0},
+		{
+			"shopee com {cta} e pool incompativel cai no inline",
+			"{nome_produto}\n{cta}", true, []string{"CTA_INLINE"},
+			[]models.CTA{{Message: "CTA_POOL_ML", Platform: models.CTAPlatformMercadoLivre, IsActive: true}},
+			"CTA_INLINE", 1,
+		},
+		{"ml com {cta}", "{nome_produto}\n{cta}", false, nil, ctaPoolShopeeML(), "CTA_POOL_ML", 1},
+		{"ml com {{cta}}", "{nome_produto}\n{{cta}}", false, nil, ctaPoolShopeeML(), "CTA_POOL_ML", 1},
+		{"ml duas ocorrencias", "{cta}\n{nome_produto}\n{cta}", false, nil, ctaPoolShopeeML(), "CTA_POOL_ML", 2},
+		{"ml sem {cta} com pool", "{nome_produto}", false, nil, ctaPoolShopeeML(), "CTA_POOL_ML", 0},
+		{"ml sem {cta} com inline", "{nome_produto}", false, []string{"CTA_INLINE"}, nil, "CTA_INLINE", 0},
+		{"ml template vazio usa default sem cta", "", false, []string{"CTA_INLINE"}, ctaPoolShopeeML(), "CTA_", 0},
+		{
+			"ml com {cta} e pool incompativel cai no inline",
+			"{nome_produto}\n{cta}", false, []string{"CTA_INLINE"},
+			[]models.CTA{{Message: "CTA_POOL_SHOPEE", Platform: models.CTAPlatformShopee, IsActive: true}},
+			"CTA_INLINE", 1,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			svc := &automationService{logger: zaptest.NewLogger(t)}
+			automation := &models.Automation{ID: "auto-1", UserID: "user-1", CTAs: tc.inline}
+
+			var message string
+			if tc.isShopee {
+				message = buildListMessage(svc, tc.raw, item, nil, shopeeProduct, automation, false, true, tc.pool, nil)
+			} else {
+				message = buildListMessage(svc, tc.raw, item, preview, nil, automation, true, false, tc.pool, nil)
+			}
+
+			if got := strings.Count(message, tc.marker); got != tc.want {
+				t.Errorf("ocorrências de %q = %d, want %d.\n got: %q", tc.marker, got, tc.want, message)
+			}
+			if strings.Contains(message, "{cta}") {
+				t.Errorf("placeholder de CTA vazou para o disparo.\n got: %q", message)
+			}
+		})
+	}
 }

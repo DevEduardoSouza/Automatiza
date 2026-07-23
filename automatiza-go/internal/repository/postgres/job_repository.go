@@ -5,13 +5,16 @@ import (
 	"automatiza-go/internal/repository"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/zap"
 )
 
@@ -242,24 +245,42 @@ func (r *jobRepository) ListByUserID(ctx context.Context, params repository.JobL
 	return result, nil
 }
 
-func (r *jobRepository) GetPendingDueJobs(ctx context.Context, limit int) ([]models.StandaloneJob, error) {
+// ClaimPendingDueJobs reivindica jobs vencidos marcando-os 'running' e
+// devolvendo-os no MESMO statement.
+//
+// A versão anterior fazia `SELECT ... FOR UPDATE SKIP LOCKED` por `pool.Query`,
+// que roda fora de transação: o lock morria no `rows.Close()`, ANTES de o
+// serviço chamar `UpdateStatus('running')` — e esse UPDATE ia por outra
+// conexão. Entre uma coisa e outra o job seguia 'pending' e sem lock, então um
+// tick sobreposto (ou uma segunda réplica do server) pegava o mesmo job e
+// enviava a mensagem duas vezes. Com o UPDATE ... WHERE id IN (SELECT ... FOR
+// UPDATE SKIP LOCKED) RETURNING, lock e mudança de status são atômicos.
+func (r *jobRepository) ClaimPendingDueJobs(ctx context.Context, limit int) ([]models.StandaloneJob, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 
-	// Use FOR UPDATE SKIP LOCKED for safe concurrent processing
 	query := `
-		SELECT id, user_id, action_type, scheduled_for, status, payload, error_message, retry_count, max_retries, created_at, updated_at
-		FROM jobs
-		WHERE status = $1 AND scheduled_for <= NOW()
-		ORDER BY scheduled_for ASC
-		LIMIT $2
-		FOR UPDATE SKIP LOCKED
+		UPDATE jobs
+		SET status = $1, updated_at = NOW()
+		WHERE id IN (
+			SELECT id
+			FROM jobs
+			WHERE status = $2 AND scheduled_for <= NOW()
+			ORDER BY scheduled_for ASC
+			LIMIT $3
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, user_id, action_type, scheduled_for, status, payload, error_message, retry_count, max_retries, created_at, updated_at
 	`
 
-	rows, err := r.db.Query(ctx, query, models.StandaloneJobStatusPending, limit)
+	rows, err := r.db.Query(ctx, query,
+		models.StandaloneJobStatusRunning,
+		models.StandaloneJobStatusPending,
+		limit,
+	)
 	if err != nil {
-		r.logger.Error("Failed to get pending due jobs",
+		r.logger.Error("Failed to claim pending due jobs",
 			zap.Error(err))
 		return nil, err
 	}
@@ -293,10 +314,103 @@ func (r *jobRepository) GetPendingDueJobs(ctx context.Context, limit int) ([]mod
 		return nil, err
 	}
 
+	// RETURNING não garante ordem (o ORDER BY vale para o subselect que escolhe
+	// as linhas, não para a saída). O consumidor processa em sequência e pode
+	// ser cortado pelo cap de 5min do cron, então o mais atrasado tem que sair
+	// primeiro — quem sobrar é devolvido para 'pending' e pega o próximo tick.
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].ScheduledFor.Before(jobs[j].ScheduledFor)
+	})
+
 	return jobs, nil
 }
 
-func (r *jobRepository) Create(ctx context.Context, job *models.StandaloneJob) (*models.StandaloneJob, error) {
+// ReleaseClaimedJobs devolve para 'pending' jobs reivindicados que não chegaram
+// a rodar.
+//
+// Existe por causa do cap de 5min do ctx do cron: com o claim em lote, todos os
+// 50 jobs já saem 'running', então um lote que estoura o tempo deixaria os não
+// processados presos até o reaper marcá-los 'failed' 30min depois. Antes do
+// claim atômico eles simplesmente continuavam 'pending' e voltavam no tick
+// seguinte — este método preserva esse comportamento.
+//
+// O `AND status = 'running'` garante que um job que JÁ teve desfecho terminal
+// (done/failed) nunca seja ressuscitado por um release atrasado.
+func (r *jobRepository) ReleaseClaimedJobs(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	query := `
+		UPDATE jobs
+		SET status = $1, updated_at = NOW()
+		WHERE id = ANY($2) AND status = $3
+	`
+
+	result, err := r.db.pool.Exec(ctx, query,
+		models.StandaloneJobStatusPending,
+		ids,
+		models.StandaloneJobStatusRunning,
+	)
+	if err != nil {
+		r.logger.Error("Failed to release claimed jobs",
+			zap.Int("count", len(ids)),
+			zap.Error(err))
+		return 0, fmt.Errorf("release claimed jobs: %w", err)
+	}
+
+	return result.RowsAffected(), nil
+}
+
+// isDuplicatePendingJobErr reconhece SOMENTE a violação do índice de dedupe de
+// agendamentos. Qualquer outro 23505 continua subindo cru: mascarar violação de
+// schema como "já existe agendamento igual" esconderia bug real.
+func isDuplicatePendingJobErr(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		return false
+	}
+	return pgErr.ConstraintName == "uq_jobs_pending_logical"
+}
+
+// jobExecutor é o mínimo comum entre o pool e uma transação, para que o INSERT
+// idempotente seja literalmente o mesmo código dentro e fora de transação.
+type jobExecutor interface {
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+}
+
+// `type` e `action_type` recebem o mesmo valor ($3) porque é assim que a tabela
+// sempre foi escrita; o índice único usa `type`, que é NOT NULL.
+//
+// O ON CONFLICT mira o índice parcial `uq_jobs_pending_logical` (migração 079).
+// DO NOTHING em vez de DO UPDATE de propósito: um agendamento idêntico já
+// pending não tem nada a atualizar — a resposta certa é devolver o original.
+const insertJobQuery = `
+	INSERT INTO jobs (id, user_id, type, action_type, scheduled_for, status, payload, created_at, updated_at)
+	VALUES ($1, $2, $3, $3, $4, $5, $6::jsonb, $7, $7)
+	ON CONFLICT (user_id, type, scheduled_for, md5(payload::text)) WHERE status = 'pending'
+	DO NOTHING
+	RETURNING id, created_at, updated_at
+`
+
+// Mesma expressão do índice: `$4::jsonb::text` passa pela normalização canônica
+// do Postgres, então ordem de chaves e espaços no JSON do cliente não mudam a
+// chave (verificado: {"a":1,"b":2} e {"b":2,"a":1} colidem).
+const findPendingJobByLogicalKeyQuery = `
+	SELECT id, user_id, action_type, scheduled_for, status, payload, error_message, retry_count, max_retries, created_at, updated_at
+	FROM jobs
+	WHERE user_id = $1 AND type = $2 AND scheduled_for = $3
+	  AND md5(payload::text) = md5($4::jsonb::text)
+	  AND status = 'pending'
+	LIMIT 1
+`
+
+// createJob insere o job de forma idempotente e informa se ele já existia.
+//
+// Contrato deliberado: duplicata NÃO é erro. Um segundo clique no botão de
+// agendar (ou o retry de uma aba com o bundle antigo em cache) devolve o MESMO
+// job, não um 409 — quem clica duas vezes quis uma coisa só.
+func (r *jobRepository) createJob(ctx context.Context, q jobExecutor, job *models.StandaloneJob) (*models.StandaloneJob, bool, error) {
 	now := time.Now().UTC()
 
 	// Generate UUID if not provided
@@ -315,38 +429,117 @@ func (r *jobRepository) Create(ctx context.Context, job *models.StandaloneJob) (
 		scheduledFor = now
 	}
 
-	query := `
-		INSERT INTO jobs (id, user_id, type, action_type, scheduled_for, status, payload, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id, created_at, updated_at
-	`
+	// Serializar aqui (em vez de deixar o driver.Valuer do JobPayload agir)
+	// para que o MESMO texto vá para o INSERT e para a busca da chave lógica.
+	payloadJSON, err := json.Marshal(job.Payload)
+	if err != nil {
+		return nil, false, fmt.Errorf("serializar payload do job: %w", err)
+	}
 
 	var createdAt, updatedAt time.Time
 
-	err := r.db.QueryRow(ctx, query,
+	err = q.QueryRow(ctx, insertJobQuery,
 		job.ID,
 		job.UserID,
 		job.ActionType,
-		job.ActionType,
 		scheduledFor,
 		job.Status,
-		job.Payload,
-		now,
+		string(payloadJSON),
 		now,
 	).Scan(&job.ID, &createdAt, &updatedAt)
-	if err != nil {
+
+	if err == nil {
+		job.CreatedAt = createdAt
+		job.UpdatedAt = updatedAt
+		job.ScheduledFor = scheduledFor
+		return job, false, nil
+	}
+
+	if !errors.Is(err, pgx.ErrNoRows) {
 		r.logger.Error("Failed to create job",
 			zap.String("userID", job.UserID),
 			zap.String("actionType", string(job.ActionType)),
 			zap.Error(err))
-		return nil, err
+		return nil, false, err
 	}
 
-	job.CreatedAt = createdAt
-	job.UpdatedAt = updatedAt
-	job.ScheduledFor = scheduledFor
+	// Zero linhas = o DO NOTHING agiu: existe agendamento idêntico pending.
+	// Nesse ponto a linha conflitante já está commitada (o ON CONFLICT DO
+	// NOTHING espera a transação concorrente resolver), então ela é visível.
+	var existing models.StandaloneJob
+	err = q.QueryRow(ctx, findPendingJobByLogicalKeyQuery,
+		job.UserID,
+		job.ActionType,
+		scheduledFor,
+		string(payloadJSON),
+	).Scan(
+		&existing.ID,
+		&existing.UserID,
+		&existing.ActionType,
+		&existing.ScheduledFor,
+		&existing.Status,
+		&existing.Payload,
+		&existing.ErrorMessage,
+		&existing.RetryCount,
+		&existing.MaxRetries,
+		&existing.CreatedAt,
+		&existing.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Corrida rara: o job conflitante foi apagado entre o INSERT e esta
+			// leitura. Erro explícito é melhor que devolver nil silenciosamente.
+			return nil, false, fmt.Errorf("agendamento duplicado desapareceu durante a criacao")
+		}
+		r.logger.Error("Failed to fetch existing duplicate job",
+			zap.String("userID", job.UserID),
+			zap.Error(err))
+		return nil, false, err
+	}
 
-	return job, nil
+	return &existing, true, nil
+}
+
+func (r *jobRepository) Create(ctx context.Context, job *models.StandaloneJob) (*models.StandaloneJob, bool, error) {
+	return r.createJob(ctx, r.db, job)
+}
+
+// CreateBatch cria o lote inteiro numa única transação.
+//
+// Tudo-ou-nada é o ponto: o frontend criava o lote com N `CreateJob`
+// sequenciais e sem try/catch, então falhar no item 300 de 500 deixava 299
+// agendamentos órfãos no banco e nenhuma forma de o usuário saber quais.
+func (r *jobRepository) CreateBatch(ctx context.Context, jobs []*models.StandaloneJob) ([]models.StandaloneJob, int, error) {
+	if len(jobs) == 0 {
+		return nil, 0, nil
+	}
+
+	created := make([]models.StandaloneJob, 0, len(jobs))
+	deduped := 0
+
+	err := r.db.WithTx(ctx, func(tx pgx.Tx) error {
+		// Reset: WithTx não repete a função, mas deixar explícito evita que um
+		// retry futuro acumule resultados de uma tentativa abortada.
+		created = created[:0]
+		deduped = 0
+
+		for _, job := range jobs {
+			result, wasDuplicate, err := r.createJob(ctx, tx, job)
+			if err != nil {
+				return err
+			}
+			if wasDuplicate {
+				deduped++
+			}
+			created = append(created, *result)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return created, deduped, nil
 }
 
 func (r *jobRepository) Update(ctx context.Context, id string, updates map[string]interface{}) error {
@@ -378,6 +571,11 @@ func (r *jobRepository) Update(ctx context.Context, id string, updates map[strin
 
 	result, err := r.db.pool.Exec(ctx, query, args...)
 	if err != nil {
+		if isDuplicatePendingJobErr(err) {
+			// Reagendar um job para cima de outro idêntico já pending. É estado
+			// do usuário, não bug: a mensagem tem que ser legível na tela.
+			return repository.ErrDuplicatePendingJob
+		}
 		r.logger.Error("Failed to update job",
 			zap.String("jobID", id),
 			zap.Error(err))

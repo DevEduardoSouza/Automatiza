@@ -1,6 +1,7 @@
 package text
 
 import (
+	"automatiza-go/internal/lib/commerceurl"
 	"automatiza-go/internal/models"
 	"regexp"
 	"strings"
@@ -294,30 +295,47 @@ func ExtractMLLinks(text string) []string {
 	return mlLinks
 }
 
+// LinkStore classifica um link cru delegando ao commerceurl, a única fonte de
+// verdade de host.
+//
+// Devolve a loja (models.MonitorStore*, ou "" quando não é loja) e blocked=true
+// quando a URL é insegura — host forjado, userinfo, IP literal, porta estranha,
+// scheme não-http. blocked NUNCA deve ser tratado como "link comum": relayar
+// uma URL bloqueada é justamente o vazamento que a checagem existe para evitar.
+//
+// A comparação anterior era strings.Contains sobre a URL inteira, o que
+// classificava https://evil.example/shopee.com.br/x como Shopee e mandava o
+// expansor buscá-la.
+func LinkStore(raw string) (store string, blocked bool) {
+	u, err := commerceurl.Parse(raw)
+	if err != nil {
+		return "", true
+	}
+	return u.Store, false
+}
+
+// IsBlockedLink reporta se o link é inseguro segundo o commerceurl.
+func IsBlockedLink(raw string) bool {
+	_, blocked := LinkStore(raw)
+	return blocked
+}
+
 // IsShopeeLink checks if a URL is a Shopee link.
 // shope.ee é o encurtador GLOBAL que a própria API Shopee emite em
 // generateShortLink (schema.graphql: ShortLinkResult.shortLink) e que
-// shopee_service.isShopeeHost já reconhece como conversível. Sem ele aqui, um
-// link shope.ee não era classificado como Shopee, escapava da conversão e caía
-// no relay cru — vazando a comissão da fonte. ExpandURL segue o redirect HTTP
-// e resolve shope.ee para a URL real, então o fluxo Shopee (converter +
-// reatribuir ao dono) funciona igual a shp.ee.
+// shopee_service.isShopeeHost já reconhece como conversível. ExpandURL segue o
+// redirect HTTP e resolve shope.ee para a URL real, então o fluxo Shopee
+// (converter + reatribuir ao dono) funciona igual a shp.ee.
 func IsShopeeLink(url string) bool {
-	lowerURL := strings.ToLower(url)
-	return strings.Contains(lowerURL, "shopee.com.br") ||
-		strings.Contains(lowerURL, "s.shopee.com.br") ||
-		strings.Contains(lowerURL, "shope.ee") ||
-		strings.Contains(lowerURL, "shp.ee")
+	store, _ := LinkStore(url)
+	return store == models.MonitorStoreShopee
 }
 
 // IsMLLink checks if a URL is a Mercado Livre link, including the
 // official short-link domain meli.la.
 func IsMLLink(url string) bool {
-	lowerURL := strings.ToLower(url)
-	return strings.Contains(lowerURL, "mercadolivre.com.br") ||
-		strings.Contains(lowerURL, "mercadolibre.com") ||
-		strings.Contains(lowerURL, "ml.com.br") ||
-		strings.Contains(lowerURL, "meli.la")
+	store, _ := LinkStore(url)
+	return store == models.MonitorStoreMercadoLivr
 }
 
 // IsOtherStoreLink detects product links of stores the platform has no
@@ -329,15 +347,8 @@ func IsMLLink(url string) bool {
 // (Instagram, sites, convites) — that must keep passing (lesson from the
 // reverted PR #216 whitelist).
 func IsOtherStoreLink(url string) bool {
-	lowerURL := strings.ToLower(url)
-	return strings.Contains(lowerURL, "amazon.com") ||
-		strings.Contains(lowerURL, "amzn.to") ||
-		strings.Contains(lowerURL, "amzn.com") ||
-		strings.Contains(lowerURL, "magazineluiza.com.br") ||
-		strings.Contains(lowerURL, "magazinevoce.com.br") ||
-		strings.Contains(lowerURL, "magalu.com") ||
-		strings.Contains(lowerURL, "shein.com") ||
-		strings.Contains(lowerURL, "aliexpress.com")
+	store, _ := LinkStore(url)
+	return store == models.MonitorStoreUnsupported
 }
 
 // ReplaceLinksInText replaces links in text with new links

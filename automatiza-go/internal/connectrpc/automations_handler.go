@@ -34,6 +34,76 @@ type AutomationsHandler struct {
 	automationService automation.Service
 	jobsService       jobs.Service
 	logger            *zap.Logger
+
+	// monitorCadenceRepo alimenta o resumo da fila do espelho (Melhoria 7).
+	// Opcional: nil = campos de fila ficam zerados, nada mais muda.
+	monitorCadenceRepo repository.MonitorCadenceRepository
+}
+
+// SetMonitorCadenceRepo liga o resumo da fila da cadência. Setter em vez de
+// parâmetro novo no construtor para não reescrever todo call site e fixture
+// existente por causa de um campo de leitura.
+func (h *AutomationsHandler) SetMonitorCadenceRepo(repo repository.MonitorCadenceRepository) {
+	h.monitorCadenceRepo = repo
+}
+
+// validateMonitorInterval aplica as três recusas do contrato da cadência.
+// Valor zero é sempre aceito: é o default e o caminho de dreno.
+func validateMonitorInterval(value int32, effectiveType string) error {
+	if value == 0 {
+		return nil
+	}
+	if value < 0 || value > models.MonitorMaxIntervalMinutes {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("intervalo entre mensagens deve estar entre 0 e %d minutos", models.MonitorMaxIntervalMinutes))
+	}
+	if effectiveType != models.AutomationTypeMonitoring {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("intervalo entre mensagens só existe no modo monitoramento"))
+	}
+	if !config.MonitorDispatchCadenceEnabled() {
+		// FailedPrecondition (não InvalidArgument): o pedido é válido, o
+		// servidor é que está com a feature desligada.
+		return connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("intervalo entre mensagens indisponível no momento"))
+	}
+	return nil
+}
+
+// attachMonitorQueue preenche contagem e próximo horário da fila em UMA query
+// para a página inteira — nunca uma por automação (a listagem é o caminho mais
+// chamado do painel).
+func (h *AutomationsHandler) attachMonitorQueue(ctx context.Context, userID string, protos []*automationsv1.Automation) {
+	if h.monitorCadenceRepo == nil || len(protos) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(protos))
+	for _, p := range protos {
+		if p.GetMode() == automationsv1.AutomationMode_AUTOMATION_MODE_MONITOR {
+			ids = append(ids, p.GetId())
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	summaries, err := h.monitorCadenceRepo.GetMonitorQueueSummaries(ctx, userID, ids)
+	if err != nil {
+		// Fail-open: a fila é informação acessória; não pode derrubar a
+		// listagem de automações do cliente.
+		h.logger.Warn("failed to load monitor queue summaries", zap.Error(err))
+		return
+	}
+	for _, p := range protos {
+		summary, ok := summaries[p.GetId()]
+		if !ok {
+			continue
+		}
+		p.MonitorPendingCount = uint32(summary.PendingCount)
+		if summary.NextScheduledAt != nil {
+			next := summary.NextScheduledAt.UTC().Format(time.RFC3339)
+			p.MonitorNextScheduledAt = &next
+		}
+	}
 }
 
 // NewAutomationsHandler creates a new automations handler.
@@ -300,6 +370,7 @@ func (h *AutomationsHandler) ListAutomations(
 	for i, a := range automations {
 		protoAutomations[i] = automationToProto(&a)
 	}
+	h.attachMonitorQueue(ctx, user.ID, protoAutomations)
 
 	return connect.NewResponse(&automationsv1.ListAutomationsResponse{
 		Automations: protoAutomations,
@@ -324,8 +395,11 @@ func (h *AutomationsHandler) GetAutomation(
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("automation not found"))
 	}
 
+	protoAutomation := automationToProto(automation)
+	h.attachMonitorQueue(ctx, user.ID, []*automationsv1.Automation{protoAutomation})
+
 	return connect.NewResponse(&automationsv1.GetAutomationResponse{
-		Automation: automationToProto(automation),
+		Automation: protoAutomation,
 	}), nil
 }
 
@@ -353,6 +427,13 @@ func (h *AutomationsHandler) CreateAutomation(
 	}
 
 	automation := protoToAutomationCreate(req.Msg)
+
+	// Cadência do espelho (078): recusa antes de gravar. Valor > 0 fora do
+	// modo monitoramento é pedido inválido; com a feature desligada é
+	// FailedPrecondition (o pedido está certo, o servidor é que não pode).
+	if err := validateMonitorInterval(req.Msg.GetMonitorIntervalMinutes(), automation.GetType()); err != nil {
+		return nil, err
+	}
 
 	// Manual chip routing per group (050). Validate that every override
 	// references a chip enabled on the automation. We do it at the
@@ -428,6 +509,24 @@ func (h *AutomationsHandler) UpdateAutomation(
 	}
 
 	updates := protoToAutomationUpdate(req.Msg)
+
+	// Cadência do espelho (078). O tipo efetivo é o do próprio update quando
+	// ele troca o modo; senão, o que já está gravado.
+	if req.Msg.MonitorIntervalMinutes != nil {
+		effectiveType := existing.GetType()
+		if newType, ok := updates["type"].(string); ok {
+			effectiveType = newType
+		}
+		if err := validateMonitorInterval(req.Msg.GetMonitorIntervalMinutes(), effectiveType); err != nil {
+			return nil, err
+		}
+	}
+	// Sair do modo monitoramento zera a cadência: o worker cancela o que
+	// restou na fila (a automação deixa de ser monitoring e o guard de
+	// despacho a recusa antes de qualquer POST).
+	if newType, ok := updates["type"].(string); ok && newType != models.AutomationTypeMonitoring {
+		updates["monitor_interval_minutes"] = 0
+	}
 
 	// Monitor mode is Shopee-only (see protoToAutomationCreate). Covers both
 	// changing the stores of a monitoring automation and switching an
@@ -857,6 +956,13 @@ func automationToProto(a *models.Automation) *automationsv1.Automation {
 	// Humanização anti-ban (default "high" server-side, migration 060).
 	proto.HumanizeMode = a.HumanizeMode
 
+	// Cadência do espelho (migração 078). Só o valor configurado; contagem e
+	// próximo horário vêm do ledger em attachMonitorQueue.
+	if a.MonitorIntervalMinutes != nil {
+		v := int32(*a.MonitorIntervalMinutes)
+		proto.MonitorIntervalMinutes = &v
+	}
+
 	// Data de agendamento (migration 053). Empty/unset = sem agendamento.
 	if a.StartDate != nil && *a.StartDate != "" {
 		proto.StartDate = a.StartDate
@@ -1181,6 +1287,12 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.MonitoringSendAsImage = msg.MonitoringSendAsImage
 	}
 
+	// Cadência do espelho (078). Ausente = 0 (envio imediato).
+	if msg.MonitorIntervalMinutes != nil {
+		v := int(msg.GetMonitorIntervalMinutes())
+		automation.MonitorIntervalMinutes = &v
+	}
+
 	// Preferred sender chip — empty string == no preference, so drop it
 	// to nil so the repo writes NULL.
 	if msg.InstanceId != nil && *msg.InstanceId != "" {
@@ -1319,6 +1431,9 @@ func protoToAutomationUpdate(msg *automationsv1.UpdateAutomationRequest) map[str
 	}
 	if msg.DelaySeconds != nil {
 		updates["delay_seconds"] = msg.GetDelaySeconds()
+	}
+	if msg.MonitorIntervalMinutes != nil {
+		updates["monitor_interval_minutes"] = int(msg.GetMonitorIntervalMinutes())
 	}
 
 	// Handle texts - update both texts array and keyword for legacy

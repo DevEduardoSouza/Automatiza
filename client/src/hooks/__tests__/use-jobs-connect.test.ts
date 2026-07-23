@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   mockToast,
   mockClientCreateJob,
+  mockClientCreateJobs,
   mockClientUpdateJob,
   mockClientDeleteJob,
   mockClientProcessScheduledJobs,
@@ -26,11 +27,13 @@ const {
 } = vi.hoisted(() => {
   const mockToast = vi.fn();
   const mockClientCreateJob = vi.fn();
+  const mockClientCreateJobs = vi.fn();
   const mockClientUpdateJob = vi.fn();
   const mockClientDeleteJob = vi.fn();
   const mockClientProcessScheduledJobs = vi.fn();
   const mockClient = {
     createJob: mockClientCreateJob,
+    createJobs: mockClientCreateJobs,
     updateJob: mockClientUpdateJob,
     deleteJob: mockClientDeleteJob,
     processScheduledJobs: mockClientProcessScheduledJobs,
@@ -65,7 +68,9 @@ const {
       mutateAsync: config.mutationFn,
       mutate: (...args: unknown[]) => {
         const result = config.mutationFn(...args);
-        result.then((data: unknown) => config.onSuccess?.(data)).catch((err: unknown) => config.onError?.(err));
+        result
+          .then((data: unknown) => config.onSuccess?.(data))
+          .catch((err: unknown) => config.onError?.(err));
       },
       isPending: false,
     };
@@ -74,6 +79,7 @@ const {
   return {
     mockToast,
     mockClientCreateJob,
+    mockClientCreateJobs,
     mockClientUpdateJob,
     mockClientDeleteJob,
     mockClientProcessScheduledJobs,
@@ -154,6 +160,7 @@ vi.mock('@/gen/jobs/v1/jobs-JobsService_connectquery', () => ({
 
 vi.mock('@/gen/jobs/v1/jobs_pb', () => ({
   CreateJobRequestSchema: 'CreateJobRequestSchema',
+  CreateJobsRequestSchema: 'CreateJobsRequestSchema',
   DeleteJobRequestSchema: 'DeleteJobRequestSchema',
   UpdateJobRequestSchema: 'UpdateJobRequestSchema',
   ProcessScheduledJobsRequestSchema: 'ProcessScheduledJobsRequestSchema',
@@ -399,11 +406,13 @@ describe('useJobsConnect', () => {
     it('should convert valid timestamp to ISO string', () => {
       const date = new Date('2026-01-15T10:00:00Z');
       mockJobsDataRef.current = {
-        jobs: [makeProtoJob({
-          scheduledFor: makeProtoTimestamp(date),
-          createdAt: makeProtoTimestamp(date),
-          updatedAt: makeProtoTimestamp(date),
-        })],
+        jobs: [
+          makeProtoJob({
+            scheduledFor: makeProtoTimestamp(date),
+            createdAt: makeProtoTimestamp(date),
+            updatedAt: makeProtoTimestamp(date),
+          }),
+        ],
         nextPageToken: '',
         totalCount: 1,
       };
@@ -417,12 +426,14 @@ describe('useJobsConnect', () => {
     it('should handle timestamp with nanos', () => {
       const date = new Date('2026-01-15T10:00:00.500Z');
       mockJobsDataRef.current = {
-        jobs: [makeProtoJob({
-          scheduledFor: {
-            seconds: BigInt(Math.floor(date.getTime() / 1000)),
-            nanos: 500_000_000,
-          },
-        })],
+        jobs: [
+          makeProtoJob({
+            scheduledFor: {
+              seconds: BigInt(Math.floor(date.getTime() / 1000)),
+              nanos: 500_000_000,
+            },
+          }),
+        ],
         nextPageToken: '',
         totalCount: 1,
       };
@@ -814,12 +825,13 @@ describe('useJobsConnect', () => {
     });
 
     describe('createBulkJobs', () => {
-      it('should create multiple jobs sequentially', async () => {
+      // O lote inteiro sai em UMA chamada. O loop de N RPCs sequenciais que
+      // existia aqui era a origem do problema: dezenas de segundos com o botão
+      // ativo, e falha no item N deixava os N-1 anteriores criados.
+      it('should create the whole batch in a single RPC', async () => {
         const job1 = makeProtoJob({ id: 'bulk-1' });
         const job2 = makeProtoJob({ id: 'bulk-2' });
-        mockClientCreateJob
-          .mockResolvedValueOnce({ job: job1 })
-          .mockResolvedValueOnce({ job: job2 });
+        mockClientCreateJobs.mockResolvedValue({ jobs: [job1, job2], deduplicated: 0 });
 
         const { result } = renderJobsConnect();
 
@@ -830,10 +842,66 @@ describe('useJobsConnect', () => {
           ]);
         });
 
-        expect(mockClientCreateJob).toHaveBeenCalledTimes(2);
-        expect(created).toHaveLength(2);
-        expect(created[0].id).toBe('bulk-1');
-        expect(created[1].id).toBe('bulk-2');
+        expect(mockClientCreateJobs).toHaveBeenCalledTimes(1);
+        expect(mockClientCreateJob).not.toHaveBeenCalled();
+        expect(mockClientCreateJobs.mock.calls[0][0].jobs).toHaveLength(2);
+        expect(created.jobs).toHaveLength(2);
+        expect(created.jobs[0].id).toBe('bulk-1');
+        expect(created.jobs[1].id).toBe('bulk-2');
+        expect(created.deduplicated).toBe(0);
+      });
+
+      // Duplicata não é erro: o servidor devolve o job original e diz quantos
+      // itens já existiam, para a UI avisar de forma neutra.
+      it('should surface the deduplicated count', async () => {
+        mockClientCreateJobs.mockResolvedValue({
+          jobs: [makeProtoJob({ id: 'bulk-1' })],
+          deduplicated: 1,
+        });
+
+        const { result } = renderJobsConnect();
+
+        const created = await act(async () => {
+          return result.current.createBulkJobs([
+            { action_type: 'send_message', scheduled_for: new Date(), payload: { groups: ['g1'] } },
+          ]);
+        });
+
+        expect(created.deduplicated).toBe(1);
+        expect(created.jobs).toHaveLength(1);
+      });
+
+      // A guarda de reentrância: enquanto o lote está em voo, `isCreatingJob`
+      // fica true, e é ele que desabilita o botão nas duas telas. Sem isso o
+      // segundo clique disparava a rajada inteira de novo.
+      it('should expose isCreatingJob while the batch is in flight', async () => {
+        let releaseBatch: (value: unknown) => void = () => {};
+        mockClientCreateJobs.mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              releaseBatch = resolve;
+            })
+        );
+
+        const { result } = renderJobsConnect();
+
+        expect(result.current.isCreatingJob).toBe(false);
+
+        let pending: Promise<unknown> = Promise.resolve();
+        await act(async () => {
+          pending = result.current.createBulkJobs([
+            { action_type: 'send_message', scheduled_for: new Date(), payload: { groups: ['g1'] } },
+          ]);
+        });
+
+        expect(result.current.isCreatingJob).toBe(true);
+
+        await act(async () => {
+          releaseBatch({ jobs: [], deduplicated: 0 });
+          await pending;
+        });
+
+        expect(result.current.isCreatingJob).toBe(false);
       });
 
       it('should throw when user is null for bulk creation', async () => {
@@ -850,29 +918,8 @@ describe('useJobsConnect', () => {
         ).rejects.toThrow('common.errors.notAuthenticated');
       });
 
-      it('should skip jobs where response.job is null', async () => {
-        mockClientCreateJob
-          .mockResolvedValueOnce({ job: makeProtoJob({ id: 'ok-1' }) })
-          .mockResolvedValueOnce({ job: null })
-          .mockResolvedValueOnce({ job: makeProtoJob({ id: 'ok-3' }) });
-
-        const { result } = renderJobsConnect();
-
-        const created = await act(async () => {
-          return result.current.createBulkJobs([
-            { action_type: 'send_message', scheduled_for: new Date(), payload: { groups: [] } },
-            { action_type: 'send_message', scheduled_for: new Date(), payload: { groups: [] } },
-            { action_type: 'send_message', scheduled_for: new Date(), payload: { groups: [] } },
-          ]);
-        });
-
-        expect(created).toHaveLength(2);
-        expect(created[0].id).toBe('ok-1');
-        expect(created[1].id).toBe('ok-3');
-      });
-
       it('should invalidate queries after bulk creation', async () => {
-        mockClientCreateJob.mockResolvedValue({ job: makeProtoJob() });
+        mockClientCreateJobs.mockResolvedValue({ jobs: [makeProtoJob()], deduplicated: 0 });
 
         const { result } = renderJobsConnect();
 

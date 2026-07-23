@@ -68,23 +68,42 @@ describe('renderTemplate', () => {
 
   // ── Integration with VARIABLE_MAP ───────────────────────────
 
-  it('should substitute all 7 standard VARIABLE_MAP placeholders', () => {
+  // Deriva os valores do próprio VARIABLE_MAP: antes a lista era escrita à
+  // mão e ficava para trás a cada variável nova (cta, cupom_bloco e info já
+  // estavam de fora), deixando o teste vermelho sem apontar bug nenhum.
+  it('should substitute every VARIABLE_MAP placeholder', () => {
     const template = Object.values(VARIABLE_MAP).join(' | ');
 
-    const vars: Record<string, string> = {
-      nome_produto: 'Fone BT',
-      preco: '49.90',
-      preco_formatado: 'R$ 49,90',
-      preco_original: '99.90',
-      preco_original_formatado: 'R$ 99,90',
-      link_afiliado: 'https://shope.ee/abc',
-      aviso_preco: 'Preco pode variar',
-    };
+    const vars = Object.fromEntries(
+      Object.values(VARIABLE_MAP).map((token) => [
+        token.slice(1, -1),
+        `valor:${token.slice(1, -1)}`,
+      ])
+    );
 
     const result = renderTemplate(template, vars);
 
     expect(result).toBe(
-      'Fone BT | 49.90 | R$ 49,90 | 99.90 | R$ 99,90 | https://shope.ee/abc | Preco pode variar'
+      Object.values(VARIABLE_MAP)
+        .map((token) => `valor:${token.slice(1, -1)}`)
+        .join(' | ')
     );
+    expect(result).not.toContain('{');
+  });
+
+  // ── Melhoria 10: desconto ───────────────────────────────────
+
+  it('should map the discount chip to the formatted placeholder', () => {
+    expect(VARIABLE_MAP.discount).toBe('{desconto_formatado}');
+  });
+
+  // Paridade com o preview do backend: as duas variáveis de desconto são
+  // substituídas pelo mesmo mecanismo das demais.
+  it('should render both discount variables', () => {
+    const result = renderTemplate('{desconto} | {desconto_formatado}', {
+      desconto: '25',
+      desconto_formatado: '25% OFF',
+    });
+    expect(result).toBe('25 | 25% OFF');
   });
 });

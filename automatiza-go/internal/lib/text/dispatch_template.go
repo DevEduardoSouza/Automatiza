@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
+	"unicode"
 )
 
 // TemplateVar represents a variable for template rendering
@@ -32,8 +34,14 @@ const (
 	// has no info tag, which collapses any blank line around it via the
 	// multi-newline cleanup in RenderTemplate.
 	VarInfo = "info"
+	// Desconto do PRODUTO (nunca o do cupom), preenchido igual nos dois
+	// marketplaces a partir do mesmo percentual normalizado: VarDesconto é o
+	// inteiro cru ("25", que mantém o template legado "{desconto}% OFF"
+	// funcionando) e VarDescontoFormatado é o texto pronto ("25% OFF").
+	// Ambos vazios quando o percentual é inválido — nunca "0% OFF".
+	VarDesconto          = "desconto"
+	VarDescontoFormatado = "desconto_formatado"
 	// ML-specific
-	VarDesconto        = "desconto"
 	VarCondicao        = "condicao"
 	VarVendidos        = "vendidos"
 	VarAvaliacao       = "avaliacao"
@@ -125,6 +133,54 @@ func StripEmptyOriginalPriceLine(template string, originalPriceEmpty bool) strin
 	return strings.Join(kept, "\n")
 }
 
+// StripEmptyDiscountLine remove a linha do desconto quando o percentual é
+// inválido (as duas variáveis renderizam ""), no mesmo molde de
+// StripEmptyOriginalPriceLine.
+//
+// A linha só sai quando, tirados os placeholders de desconto, NÃO sobra
+// nenhuma letra ou dígito: "🔥 {desconto_formatado} 🔥" e "-{desconto}%" são
+// decoração órfã e somem inteiras. Já "Por {preco_formatado} {desconto_formatado}"
+// e o legado "{desconto}% OFF" carregam conteúdo próprio (o outro placeholder
+// tem letras; "OFF" também) e ficam — o RenderTemplate apenas apaga a variável,
+// que é a regra "linha mista perde só a variável".
+//
+// Só considera as variáveis em português. O alias legado {discount} fica de
+// fora de propósito: ele tem vazio próprio (FormatDiscount) e um Discount
+// fracionário como 0.4 ainda imprime "0% OFF" ali — incluí-lo apagaria linha
+// que hoje é enviada.
+func StripEmptyDiscountLine(template string, discountEmpty bool) string {
+	if !discountEmpty {
+		return template
+	}
+
+	lines := strings.Split(template, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		rest := line
+		for _, k := range []string{VarDescontoFormatado, VarDesconto} {
+			rest = strings.ReplaceAll(rest, "{{"+k+"}}", "")
+			rest = strings.ReplaceAll(rest, "{"+k+"}", "")
+		}
+		if rest != line && !hasLetterOrDigit(rest) {
+			continue // era só desconto + decoração — descarta a linha
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// hasLetterOrDigit diz se a string tem algum caractere de conteúdo. Emoji,
+// pontuação e espaço não contam — é o que separa "decoração órfã" de
+// "texto que o usuário quis manter".
+func hasLetterOrDigit(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
+}
+
 // ShopeeOfferVars holds variables for a Shopee offer template
 type ShopeeOfferVars struct {
 	Title         string
@@ -173,6 +229,8 @@ func RenderShopeeOfferTemplate(template string, offer ShopeeOfferVars) string {
 		store = "Shopee"
 	}
 
+	discountPercent := NormalizeDiscountPercent(offer.Discount)
+
 	vars := map[string]string{
 		// Portuguese names (primary — used by dispatch texts)
 		VarNomeProduto:            offer.Title,
@@ -188,6 +246,9 @@ func RenderShopeeOfferTemplate(template string, offer ShopeeOfferVars) string {
 		VarCupomBloco:             offer.CouponBlock,
 		VarAvisoPreco:             AvisoPrecoDefault,
 		VarInfo:                   offer.Info,
+		// Desconto do produto — mesmo par de saídas do Mercado Livre.
+		VarDesconto:          formatDiscountPercent(discountPercent),
+		VarDescontoFormatado: FormatDiscount(discountPercent),
 		// English names (backward compat with older templates)
 		VarTitle:         offer.Title,
 		VarPrice:         FormatBRLSpaced(offer.Price),
@@ -206,6 +267,7 @@ func RenderShopeeOfferTemplate(template string, offer ShopeeOfferVars) string {
 	}
 
 	template = StripEmptyOriginalPriceLine(template, offer.OriginalPrice <= 0)
+	template = StripEmptyDiscountLine(template, discountPercent <= 0)
 	return RenderTemplate(template, vars)
 }
 
@@ -215,6 +277,8 @@ func RenderMLOfferTemplate(template string, offer MLOfferVars) string {
 	// Strip embedded price from title (e.g., "Product Name - R$ 199,90" → "Product Name")
 	// Matches Node.js parity: buildMlDispatchVars calls stripEmbeddedPriceFromTitle
 	cleanTitle := StripEmbeddedPriceFromTitle(offer.Title)
+
+	discountPercent := NormalizeDiscountPercent(offer.Discount)
 
 	vars := map[string]string{
 		// Portuguese names (primary)
@@ -231,8 +295,10 @@ func RenderMLOfferTemplate(template string, offer MLOfferVars) string {
 		VarCupomBloco:             offer.CouponBlock,
 		VarAvisoPreco:             AvisoPrecoDefault,
 		VarInfo:                   offer.Info,
+		// Desconto do produto — mesmo par de saídas da Shopee.
+		VarDesconto:          formatDiscountPercent(discountPercent),
+		VarDescontoFormatado: FormatDiscount(discountPercent),
 		// ML-specific
-		VarDesconto:        formatDiscountPercent(offer.Discount),
 		VarCondicao:        offer.Condition,
 		VarVendidos:        formatSoldCount(offer.SoldCount),
 		VarAvaliacao:       formatRating(offer.Rating),
@@ -256,6 +322,7 @@ func RenderMLOfferTemplate(template string, offer MLOfferVars) string {
 	}
 
 	template = StripEmptyOriginalPriceLine(template, offer.OriginalPrice <= 0)
+	template = StripEmptyDiscountLine(template, discountPercent <= 0)
 	return RenderTemplate(template, vars)
 }
 
@@ -298,6 +365,42 @@ func FormatDiscount(discount float64) string {
 		return ""
 	}
 	return fmt.Sprintf("%.0f%% OFF", discount)
+}
+
+// NormalizeDiscountPercent devolve o percentual pronto para exibição, ou 0
+// (= vazio) quando o valor não descreve um desconto real.
+//
+// Arredonda para inteiro ANTES de validar a faixa, então 25.4→25, 99.6→100 e
+// 0.4→0 (meio ponto percentual não é "desconto de 0%" no texto: é ruído de
+// cálculo por preços). Fora de 1..100 — negativo, 150, NaN, ±Inf — vira 0.
+//
+// É a única normalização usada pelos dois renderers; quem apresenta são
+// formatDiscountPercent (número cru) e FormatDiscount (texto completo).
+// FormatDiscount continua recebendo o valor CRU no alias legado {discount},
+// que por contrato não muda de saída.
+func NormalizeDiscountPercent(discount float64) float64 {
+	if math.IsNaN(discount) || math.IsInf(discount, 0) {
+		return 0
+	}
+	rounded := math.Round(discount)
+	if rounded < 1 || rounded > 100 {
+		return 0
+	}
+	return rounded
+}
+
+// DiscountPercentFromPrices calcula o percentual a partir dos preços, para
+// quando a integração não informa a taxa. Exige preço cheio positivo e maior
+// que o atual; qualquer outra combinação é 0 (= vazio).
+//
+// Vive aqui, mas é chamada nos SERVICES de propósito: só lá os dois preços
+// são garantidamente pré-cupom. No renderer, Price já pode ter sido reduzido
+// por cupom/tag de desconto, e o percentual do produto engoliria o do cupom.
+func DiscountPercentFromPrices(original, current float64) float64 {
+	if !(original > 0) || !(current >= 0) || original <= current {
+		return 0
+	}
+	return NormalizeDiscountPercent((original - current) / original * 100)
 }
 
 // formatBrazilianNumber formats a float as "1.234,56" (Brazilian number format)
@@ -458,4 +561,125 @@ func ExtractTemplateVariables(template string) []string {
 	}
 
 	return vars
+}
+
+// TemplateUsesVariable diz se o template autoriza uma variável. Reusa
+// ExtractTemplateVariables — o tokenizador que já existe aqui — em vez de um
+// regex próprio. Comparação crua e case-sensitive: `{cta}` e `{{cta}}` valem;
+// `{CTA}`, `{ cta }`, `{cta_extra}` e `{cta|fallback}` (spintax) não.
+//
+// É um teste de AUTORIZAÇÃO, não de contagem: quem chama decide UM valor e o
+// renderer o aplica em todas as ocorrências exatas daquele token.
+//
+// ATENÇÃO — este tokenizador NÃO é o mecanismo de substituição: RenderTemplate
+// troca por strings.ReplaceAll("{"+key+"}"). Os dois concordam em toda
+// autoria normal, mas divergem quando o token exato fica ENGOLIDO por um token
+// maior (`{{cta}`, `{a{cta}`, `{opcao|compre {cta}}`): aqui dá false, e o
+// ReplaceAll ainda acharia o `{cta}` interno. A divergência é sempre na direção
+// segura — sem autorização o valor é "" e nada vaza — e é a mesma decisão da
+// linha acima sobre spintax: token não-exato não autoriza CTA.
+func TemplateUsesVariable(template, variable string) bool {
+	for _, candidate := range ExtractTemplateVariables(template) {
+		if candidate == variable {
+			return true
+		}
+	}
+	return false
+}
+
+// LinkReplacement é um par original→convertido na ORDEM em que o link aparece
+// na mensagem-fonte. Converted vazio significa REMOÇÃO (loja bloqueada, link
+// exhausted/superseded).
+type LinkReplacement struct {
+	Original  string
+	Converted string
+}
+
+// ReplaceLinksLongestFirst troca os links no corpo aplicando primeiro os
+// originais MAIS LONGOS.
+//
+// Sem a ordenação, uma URL curta (.../m/cupom) substituída antes da longa
+// (.../m/cupom?mmp_pid=fonte) soldaria o link convertido dentro da querystring
+// da outra, corrompendo as duas. Não normaliza espaços: quem chama normaliza
+// uma vez só, para que corpo público e marca de selfsend vejam o mesmo texto.
+func ReplaceLinksLongestFirst(body string, replacements []LinkReplacement) string {
+	ordered := make([]LinkReplacement, len(replacements))
+	copy(ordered, replacements)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return len(ordered[i].Original) > len(ordered[j].Original)
+	})
+	for _, r := range ordered {
+		if r.Original == "" {
+			continue
+		}
+		body = strings.ReplaceAll(body, r.Original, r.Converted)
+	}
+	return body
+}
+
+// paragraphBreakRegex separa parágrafos por uma ou mais linhas em branco
+// (tolerando espaços/tabs na linha vazia). É a definição de "parágrafo" da
+// §6.7 do plano: o bloco é a unidade que espera por link pending.
+var paragraphBreakRegex = regexp.MustCompile(`\r?\n[ \t]*\r?\n+`)
+
+// SplitParagraphs devolve os parágrafos não vazios do corpo, na ordem.
+func SplitParagraphs(body string) []string {
+	normalized := strings.ReplaceAll(body, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	raw := paragraphBreakRegex.Split(normalized, -1)
+	out := make([]string, 0, len(raw))
+	for _, p := range raw {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+// SelectParagraphsContaining devolve, na ordem da fonte e cada um UMA vez, os
+// parágrafos do corpo já processado que contêm alguma das agulhas.
+//
+// Opera sobre o corpo processado de propósito: se uma regra do operador removeu
+// o parágrafo, ele não é ressuscitado aqui. Generaliza o antigo
+// extractShopeeCouponParagraphs para qualquer loja — o seletor nunca soube de
+// loja, só de "qual link convertido está neste bloco".
+func SelectParagraphsContaining(body string, needles []string) string {
+	if strings.TrimSpace(body) == "" || len(needles) == 0 {
+		return ""
+	}
+	var selected []string
+	for _, p := range SplitParagraphs(body) {
+		for _, needle := range needles {
+			if needle == "" {
+				continue
+			}
+			if strings.Contains(p, needle) {
+				selected = append(selected, p)
+				break
+			}
+		}
+	}
+	return strings.Join(selected, "\n\n")
+}
+
+// RenderMixedCampaignNotice monta o aviso agregado quando a mesma mensagem
+// trouxe campanhas de MAIS DE UMA loja.
+//
+// Por que não encadear RenderShopeeCouponNotice + RenderMLCouponNotice: cada um
+// carimba o rótulo da SUA loja e o seu apêndice, então encadear produziria dois
+// cabeçalhos, dois CTAs e dois rodapés no mesmo aviso. Aqui o corpo já vem
+// agregado (parágrafos das duas lojas, cada um uma vez, na ordem original, com
+// os links já trocados longest-first) e recebe CTA e rodapé UMA única vez.
+// Deliberadamente sem rótulo de loja: inventar "SHOPEE + MERCADO LIVRE" seria
+// afirmar a composição do aviso, que muda conforme o que ficou pending.
+func RenderMixedCampaignNotice(aggregatedBody, cta string) string {
+	body := strings.TrimSpace(aggregatedBody)
+	if body == "" {
+		return ""
+	}
+	cta = strings.TrimSpace(cta)
+	if cta == "" {
+		return body + "\n\n" + ShopeeCouponLimitedNotice
+	}
+	return cta + "\n\n" + body + "\n\n" + ShopeeCouponLimitedNotice
 }

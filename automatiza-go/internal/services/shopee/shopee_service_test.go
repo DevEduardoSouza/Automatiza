@@ -1,14 +1,17 @@
 package shopee
 
 import (
+	"automatiza-go/internal/lib/commerceurl"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -126,7 +129,10 @@ var _ repository.SettingsRepository = (*mockSettingsRepo)(nil)
 func newTestService(t *testing.T, baseURL string, affiliateRepo repository.AffiliateCredentialsRepository, settingsRepo repository.SettingsRepository) *shopeeService {
 	t.Helper()
 	return &shopeeService{
-		httpClient:    http.DefaultClient,
+		httpClient: http.DefaultClient,
+		// Expansor endurecido padrão: recusa loopback, como em produção.
+		// Testes que precisam falar com um httptest chamam withExpanderTo.
+		safeExpander:  commerceurl.NewSafeClient(commerceurl.ClientOptions{Store: models.MonitorStoreShopee, FollowRedirects: true}),
 		cache:         nil,
 		affiliateRepo: affiliateRepo,
 		settingsRepo:  settingsRepo,
@@ -134,6 +140,26 @@ func newTestService(t *testing.T, baseURL string, affiliateRepo repository.Affil
 		categoryMap:   initCategoryMapping(),
 		logger:        zaptest.NewLogger(t),
 	}
+}
+
+// withExpanderTo aponta o expansor endurecido para um servidor de teste SEM
+// afrouxar a validação de host: o teste continua obrigado a usar um hostname
+// Shopee real na URL, e só a conexão TCP é desviada. É o que garante que a
+// checagem de host está sendo exercitada de verdade, não contornada.
+func withExpanderTo(svc *shopeeService, serverURL string) *shopeeService {
+	addr := strings.TrimPrefix(strings.TrimPrefix(serverURL, "http://"), "https://")
+	svc.safeExpander = commerceurl.NewSafeClient(commerceurl.ClientOptions{
+		Store:           models.MonitorStoreShopee,
+		FollowRedirects: true,
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, network, addr)
+		},
+		// httptest.NewTLSServer usa certificado auto-assinado; o guard de host,
+		// de IP e de redirect continua valendo integralmente.
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	})
+	return svc
 }
 
 func validCreds() *models.AffiliateCredentials {
@@ -301,7 +327,10 @@ func TestStripAffiliateAttribution(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := stripAffiliateAttribution(tt.in)
+			got, err := stripAffiliateAttribution(tt.in)
+			if err != nil {
+				t.Fatalf("stripAffiliateAttribution(%q) erro inesperado: %v", tt.in, err)
+			}
 			if got != tt.want {
 				t.Errorf("stripAffiliateAttribution(%q)\n  = %q\n  want %q", tt.in, got, tt.want)
 			}
@@ -809,6 +838,108 @@ func TestSearchOffers(t *testing.T) {
 		}
 		if offer.Discount != 25.0 {
 			t.Errorf("discount = %f, want 25.0", offer.Discount)
+		}
+	})
+
+	// priceDiscountRate é Int! e a Shopee devolve 0 mesmo em produto com preço
+	// cheio maior (schema.graphql:440). Sem o fallback por preços, {desconto}
+	// sairia vazio nessas ofertas. Os preços aqui são os da resposta da API —
+	// pré-cupom por construção.
+	t.Run("sem priceDiscountRate o desconto sai dos precos", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := map[string]interface{}{
+				"productOfferV2": map[string]interface{}{
+					"nodes": []map[string]interface{}{
+						{
+							"productName":       "Sem Taxa",
+							"itemId":            123,
+							"shopId":            456,
+							"productLink":       "https://shopee.com.br/product/456/123",
+							"offerLink":         "https://s.shopee.com.br/abc",
+							"imageUrl":          "https://img.shopee.com.br/test.jpg",
+							"priceMin":          "50.00",
+							"priceMax":          "100.00",
+							"price":             "75.00",
+							"commission":        "5.00",
+							"commissionRate":    "6.5",
+							"sales":             100,
+							"ratingStar":        "4.5",
+							"priceDiscountRate": 0,
+							"shopName":          "TestShop",
+						},
+					},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, graphqlResponse(resp))
+		}))
+		defer server.Close()
+
+		repo := &mockAffiliateRepo{
+			GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
+				return validCreds(), nil
+			},
+		}
+		svc := newTestService(t, server.URL, repo, &mockSettingsRepo{})
+
+		result, err := svc.SearchOffers(ctx, "user1", models.ShopeeSearchParams{Limit: 20})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(result.Offers) != 1 {
+			t.Fatalf("expected 1 offer, got %d", len(result.Offers))
+		}
+		// (100 - 75) / 100 = 25%
+		if result.Offers[0].Discount != 25.0 {
+			t.Errorf("discount = %f, want 25.0 (derivado de priceMax x price)", result.Offers[0].Discount)
+		}
+	})
+
+	t.Run("filtro MinDiscount continua decidindo pela taxa oficial", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := map[string]interface{}{
+				"productOfferV2": map[string]interface{}{
+					"nodes": []map[string]interface{}{
+						{
+							"productName":       "Sem Taxa",
+							"itemId":            123,
+							"shopId":            456,
+							"productLink":       "https://shopee.com.br/product/456/123",
+							"offerLink":         "https://s.shopee.com.br/abc",
+							"imageUrl":          "https://img.shopee.com.br/test.jpg",
+							"priceMin":          "50.00",
+							"priceMax":          "100.00",
+							"price":             "75.00",
+							"commission":        "5.00",
+							"commissionRate":    "6.5",
+							"sales":             100,
+							"ratingStar":        "4.5",
+							"priceDiscountRate": 0,
+							"shopName":          "TestShop",
+						},
+					},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, graphqlResponse(resp))
+		}))
+		defer server.Close()
+
+		repo := &mockAffiliateRepo{
+			GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
+				return validCreds(), nil
+			},
+		}
+		svc := newTestService(t, server.URL, repo, &mockSettingsRepo{})
+
+		minDiscount := 10.0
+		result, err := svc.SearchOffers(ctx, "user1", models.ShopeeSearchParams{Limit: 20, MinDiscount: &minDiscount})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// O fallback roda DEPOIS do filtro: elegibilidade não muda.
+		if len(result.Offers) != 0 {
+			t.Errorf("expected 0 offers (filtrado pela taxa oficial 0), got %d", len(result.Offers))
 		}
 	})
 
@@ -1609,15 +1740,20 @@ func TestGenerateAffiliateLink_ShortURL(t *testing.T) {
 				return validCreds(), nil
 			},
 		}
-		svc := newTestService(t, "", repo, &mockSettingsRepo{})
+		svc := withExpanderTo(newTestService(t, "", repo, &mockSettingsRepo{}), expandServer.URL)
 
-		// ExpandURL will follow the redirect to expandServer which has no product IDs
-		_, err := svc.GenerateAffiliateLink(ctx, expandServer.URL+"/s.shopee.com.br/bad", "user1")
+		// A expansão termina num host Shopee real sem IDs de produto.
+		_, err := svc.GenerateAffiliateLink(ctx, "http://s.shopee.com.br/bad", "user1")
 		if err == nil {
 			t.Fatal("expected error when expanded URL has no product IDs")
 		}
-		if !strings.Contains(err.Error(), "invalid shopee URL after expansion") {
-			t.Errorf("expected 'invalid shopee URL after expansion' in error, got: %v", err)
+		// Contrato NOVO: uma URL Shopee sem IDs de produto não é mais recusada
+		// de cara — ela é `unknown` e segue para generateShortLink, que é quem
+		// prova campanha (§5.3.6). Sem credencial/endpoint utilizável a
+		// conversão falha, e o que importa é o invariante: erro, e a URL
+		// original NUNCA aparece no resultado.
+		if strings.Contains(err.Error(), "s.shopee.com.br/bad") {
+			t.Errorf("erro vazou a URL original: %v", err)
 		}
 	})
 }
@@ -1770,6 +1906,10 @@ func TestGetProduct(t *testing.T) {
 		if product.OriginalPrice != 50.0 {
 			t.Errorf("originalPrice = %f, want 50.0 (priceMax)", product.OriginalPrice)
 		}
+		// Sem priceDiscountRate, o percentual sai dos preços: (50-30)/50 = 40%
+		if product.Discount != 40.0 {
+			t.Errorf("discount = %f, want 40.0 (derivado de priceMax x price)", product.Discount)
+		}
 	})
 
 	t.Run("price calculation: originalPrice equals effectivePrice when no discount and priceMax <= effectivePrice", func(t *testing.T) {
@@ -1816,6 +1956,11 @@ func TestGetProduct(t *testing.T) {
 		if product.OriginalPrice != 100.0 {
 			t.Errorf("originalPrice = %f, want 100.0 (same as effective)", product.OriginalPrice)
 		}
+		// Preço cheio igual ao atual não é desconto: o fallback devolve 0 e as
+		// variáveis de desconto ficam vazias.
+		if product.Discount != 0 {
+			t.Errorf("discount = %f, want 0 (sem desconto real)", product.Discount)
+		}
 	})
 }
 
@@ -1827,38 +1972,41 @@ func TestExpandURL(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("follows redirects and returns final URL", func(t *testing.T) {
-		finalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Um único servidor TLS atende os dois saltos: o dialer injetado manda
+		// toda conexão para ele, e a validação de host/scheme roda de verdade.
+		mux := http.NewServeMux()
+		mux.HandleFunc("/short", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "https://shopee.com.br/final-page", http.StatusFound)
+		})
+		mux.HandleFunc("/final-page", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-		}))
-		defer finalServer.Close()
-
-		redirectServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, finalServer.URL+"/final-page", http.StatusFound)
-		}))
+		})
+		redirectServer := httptest.NewTLSServer(mux)
 		defer redirectServer.Close()
 
-		svc := newTestService(t, "", &mockAffiliateRepo{}, &mockSettingsRepo{})
+		// O destino do redirect precisa ser um host Shopee real: um redirect
+		// para outro host é justamente o que o guard bloqueia.
+		svc := withExpanderTo(newTestService(t, "", &mockAffiliateRepo{}, &mockSettingsRepo{}), redirectServer.URL)
 
-		result, err := svc.ExpandURL(ctx, redirectServer.URL+"/short")
+		result, err := svc.ExpandURL(ctx, "https://s.shopee.com.br/short")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result != finalServer.URL+"/final-page" {
-			t.Errorf("got %q, want %q", result, finalServer.URL+"/final-page")
+		if want := "https://shopee.com.br/final-page"; result != want {
+			t.Errorf("got %q, want %q", result, want)
 		}
 	})
 
 	t.Run("too many redirects returns error", func(t *testing.T) {
 		// Create a server that always redirects to itself
-		var server *httptest.Server
-		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, server.URL+"/loop", http.StatusFound)
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "https://shopee.com.br/loop", http.StatusFound)
 		}))
 		defer server.Close()
 
-		svc := newTestService(t, "", &mockAffiliateRepo{}, &mockSettingsRepo{})
+		svc := withExpanderTo(newTestService(t, "", &mockAffiliateRepo{}, &mockSettingsRepo{}), server.URL)
 
-		_, err := svc.ExpandURL(ctx, server.URL+"/start")
+		_, err := svc.ExpandURL(ctx, "https://s.shopee.com.br/start")
 		if err == nil {
 			t.Fatal("expected error for too many redirects")
 		}
@@ -1870,14 +2018,14 @@ func TestExpandURL(t *testing.T) {
 		}))
 		defer server.Close()
 
-		svc := newTestService(t, "", &mockAffiliateRepo{}, &mockSettingsRepo{})
+		svc := withExpanderTo(newTestService(t, "", &mockAffiliateRepo{}, &mockSettingsRepo{}), server.URL)
 
-		result, err := svc.ExpandURL(ctx, server.URL+"/direct")
+		result, err := svc.ExpandURL(ctx, "http://s.shopee.com.br/direct")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result != server.URL+"/direct" {
-			t.Errorf("got %q, want %q", result, server.URL+"/direct")
+		if want := "http://s.shopee.com.br/direct"; result != want {
+			t.Errorf("got %q, want %q", result, want)
 		}
 	})
 }
@@ -2253,15 +2401,28 @@ func TestShouldRelayOwnShortLink(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldRelayOwnShortLink(tt.productURL, tt.expandedURL, appID); got != tt.want {
+			if got := shouldRelayOwnShortLink(tt.productURL, tt.expandedURL, appID, true); got != tt.want {
 				t.Errorf("shouldRelayOwnShortLink() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 
 	t.Run("appID vazio → nunca repassa", func(t *testing.T) {
-		if shouldRelayOwnShortLink(shortURL, "https://shopee.com.br/product/1/2?utm_source=an_&utm_content=AUTOMATISA----", "") {
+		if shouldRelayOwnShortLink(shortURL, "https://shopee.com.br/product/1/2?utm_source=an_&utm_content=AUTOMATISA----", "", true) {
 			t.Error("empty appID must not short-circuit")
+		}
+	})
+
+	// Contrato NOVO (melhoria 9, §5.3.7): app_id é COMPARTILHADO entre contas,
+	// então "a expansão parece nossa" não prova autoria. Sem FromMe, um short
+	// de terceiro seria repassado opaco e a comissão iria para ele.
+	t.Run("fromMe=false → nunca repassa, mesmo com tracking idêntico", func(t *testing.T) {
+		expanded := "https://shopee.com.br/product/1/2?utm_source=an_" + appID + "&utm_content=" + shopeeSubIDDefault
+		if shouldRelayOwnShortLink(shortURL, expanded, appID, false) {
+			t.Error("short de terceiro não pode ser repassado opaco")
+		}
+		if !shouldRelayOwnShortLink(shortURL, expanded, appID, true) {
+			t.Error("o mesmo short postado pelo dono deve continuar curto-circuitando")
 		}
 	})
 }

@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/commerceurl"
 	"automatiza-go/internal/lib/crypto"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
@@ -516,18 +520,23 @@ func TestGetProductPreview(t *testing.T) {
 			},
 		}, &mockMLLinkRepo{})
 
-		preview, err := svc.GetProductPreview(context.Background(), server.URL+"/product/p/MLB123456", "user1")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		// Contrato NOVO (melhoria 9, §9): non-200 devolve erro TIPADO, não
+		// mais "preview vazio com erro nil". Aquele colapso era a origem do
+		// falso aviso de cupom — 404/429/HTML mudado viravam
+		// HasProductData=false, que o offer_generate lia como campanha.
+		preview, err := svc.GetProductPreview(context.Background(), "http://www.mercadolivre.com.br/p/MLB123456", "user1")
+		if err == nil {
+			t.Fatalf("esperava erro tipado para non-200, veio preview=%+v", preview)
 		}
-		if preview == nil {
-			t.Fatal("expected non-nil preview")
+		var remote *RemoteError
+		if !errors.As(err, &remote) {
+			t.Fatalf("erro = %v, queria *RemoteError", err)
 		}
-		if preview.ID != "MLB123456" {
-			t.Errorf("ID = %q, want 'MLB123456'", preview.ID)
+		if remote.StatusCode != http.StatusNotFound {
+			t.Errorf("StatusCode = %d, queria 404", remote.StatusCode)
 		}
-		if preview.Currency != "BRL" {
-			t.Errorf("Currency = %q, want 'BRL'", preview.Currency)
+		if remote.Class != models.ErrorClassPermanentConte || remote.Reason != models.ReasonNotFound {
+			t.Errorf("(%s,%s), queria (permanent_content,not_found)", remote.Class, remote.Reason)
 		}
 	})
 
@@ -554,7 +563,7 @@ func TestGetProductPreview(t *testing.T) {
 			},
 		}, &mockMLLinkRepo{})
 
-		preview, err := svc.GetProductPreview(context.Background(), server.URL+"/product/p/MLB999888", "user1")
+		preview, err := svc.GetProductPreview(context.Background(), "http://www.mercadolivre.com.br/product/p/MLB999888", "user1")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -594,22 +603,33 @@ func TestCreateAffiliateLink(t *testing.T) {
 		}
 	})
 
-	t.Run("affiliate short link is returned as-is (no error, no creds)", func(t *testing.T) {
-		// meli.la/sec short links are already affiliate links and have no MLB id;
-		// they must not error (that used to drop the whole offer in offer_generate).
+	t.Run("short link de afiliado de terceiro NUNCA volta como-está", func(t *testing.T) {
+		// Contrato NOVO (melhoria 9, §4.3 e §5.4.2): devolver o short recebido
+		// como se fosse o link do nosso usuário repassava a comissão de um
+		// terceiro assinada como nossa. Agora o short é resolvido
+		// anonimamente até o produto; sem resolver, sai erro tipado e o
+		// chamador retém o parágrafo — jamais emite o original.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusGatewayTimeout)
+		}))
+		defer srv.Close()
+
 		for _, u := range []string{"https://meli.la/2dKTwgt", "https://www.mercadolivre.com.br/sec/2dKTwgt"} {
-			svc := NewMLService(nil, &mockMLCredsRepo{
+			svc := newServiceWithHTTPClient(t, nil, srv.URL, &mockMLCredsRepo{
 				GetFn: func(_ context.Context, _ string) (*models.MLCredentialsDB, error) {
 					return nil, fmt.Errorf("creds must NOT be needed for affiliate short links")
 				},
-			}, &mockMLLinkRepo{}, testEncryptionKey, logger)
+			}, &mockMLLinkRepo{})
 
 			result, err := svc.CreateAffiliateLink(context.Background(), u, "user1")
-			if err != nil {
-				t.Fatalf("%s: unexpected error: %v", u, err)
+			if err == nil {
+				t.Fatalf("%s: esperava erro, veio %+v", u, result)
 			}
-			if result == nil || result.AffiliateLink != u {
-				t.Fatalf("%s: AffiliateLink = %v, want the URL itself", u, result)
+			if result != nil {
+				t.Fatalf("%s: resultado deve ser nil em falha, veio %+v", u, result)
+			}
+			if strings.Contains(err.Error(), u) {
+				t.Fatalf("%s: erro vazou a URL original: %v", u, err)
 			}
 		}
 	})
@@ -683,7 +703,7 @@ func TestCreateAffiliateLink(t *testing.T) {
 			},
 		}, &mockMLLinkRepo{})
 
-		result, err := svc.CreateAffiliateLink(context.Background(), server.URL+"/product/p/MLB555666", "user1")
+		result, err := svc.CreateAffiliateLink(context.Background(), "https://www.mercadolivre.com.br/product/p/MLB555666", "user1")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -729,7 +749,7 @@ func TestCreateAffiliateLink(t *testing.T) {
 			},
 		}, &mockMLLinkRepo{})
 
-		result, err := svc.CreateAffiliateLink(context.Background(), server.URL+"/product/p/MLB777888", "user1")
+		result, err := svc.CreateAffiliateLink(context.Background(), "https://www.mercadolivre.com.br/product/p/MLB777888", "user1")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -758,7 +778,7 @@ func TestCreateAffiliateLink(t *testing.T) {
 			},
 		}, &mockMLLinkRepo{})
 
-		_, err = svc.CreateAffiliateLink(context.Background(), server.URL+"/product/p/MLB000111", "user1")
+		_, err = svc.CreateAffiliateLink(context.Background(), "https://www.mercadolivre.com.br/product/p/MLB000111", "user1")
 		if err == nil {
 			t.Error("expected error for non-200 response")
 		}
@@ -788,7 +808,7 @@ func TestCreateAffiliateLink(t *testing.T) {
 			},
 		}, &mockMLLinkRepo{})
 
-		_, err = svc.CreateAffiliateLink(context.Background(), server.URL+"/product/p/MLB222333", "user1")
+		_, err = svc.CreateAffiliateLink(context.Background(), "https://www.mercadolivre.com.br/product/p/MLB222333", "user1")
 		if err == nil {
 			t.Error("expected error for empty urls")
 		}
@@ -824,8 +844,18 @@ func newServiceWithHTTPClient(
 	client := &http.Client{
 		Transport: &redirectAllTransport{targetURL: serverURL},
 	}
+	// O cliente endurecido resolve host REAL do ML; o dialer injetado manda a
+	// conexão para o servidor de teste. Assim o teste exercita a validação de
+	// host de verdade em vez de contorná-la com uma URL de loopback.
+	addr := strings.TrimPrefix(strings.TrimPrefix(serverURL, "http://"), "https://")
 	svc := &mlService{
-		httpClient:    client,
+		httpClient: client,
+		safe: newSafeMLClients(commerceurl.ClientOptions{
+			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, network, addr)
+			},
+		}),
 		cache:         nil,
 		mlCredsRepo:   credsRepo,
 		mlLinkRepo:    linkRepo,

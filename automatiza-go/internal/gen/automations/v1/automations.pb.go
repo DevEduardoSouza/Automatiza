@@ -532,6 +532,18 @@ type Automation struct {
 	// 'high' em novas automations (migration 060). Quanto maior, mais o
 	// backend disfarça o comportamento (delays variáveis, jitter, etc.).
 	HumanizeMode *string `protobuf:"bytes,42,opt,name=humanize_mode,json=humanizeMode,proto3,oneof" json:"humanize_mode,omitempty"`
+	// Intervalo MÍNIMO entre mensagens espelhadas por esta automação, em
+	// minutos (0..1440). 0 = envio imediato (comportamento histórico).
+	//
+	// Só vale no modo monitoring. NÃO confundir com delay_seconds (pausa entre
+	// GRUPOS de destino da MESMA mensagem) nem com interval_minutes (scheduler
+	// de search/list, que o monitor nunca lê).
+	MonitorIntervalMinutes *int32 `protobuf:"varint,43,opt,name=monitor_interval_minutes,json=monitorIntervalMinutes,proto3,oneof" json:"monitor_interval_minutes,omitempty"`
+	// Quantas mensagens estão na fila da cadência agora (read-only).
+	MonitorPendingCount uint32 `protobuf:"varint,44,opt,name=monitor_pending_count,json=monitorPendingCount,proto3" json:"monitor_pending_count,omitempty"`
+	// Quando a próxima mensagem da fila pode sair (RFC3339 UTC, read-only).
+	// Ausente quando não há fila.
+	MonitorNextScheduledAt *string `protobuf:"bytes,45,opt,name=monitor_next_scheduled_at,json=monitorNextScheduledAt,proto3,oneof" json:"monitor_next_scheduled_at,omitempty"`
 	// Preferred sender chip — when set and connected, every dispatch from
 	// this automation goes through this chip; otherwise falls back to the
 	// group's owner chip and then to the first connected instance.
@@ -849,6 +861,27 @@ func (x *Automation) GetMonitoringSendAsImage() bool {
 func (x *Automation) GetHumanizeMode() string {
 	if x != nil && x.HumanizeMode != nil {
 		return *x.HumanizeMode
+	}
+	return ""
+}
+
+func (x *Automation) GetMonitorIntervalMinutes() int32 {
+	if x != nil && x.MonitorIntervalMinutes != nil {
+		return *x.MonitorIntervalMinutes
+	}
+	return 0
+}
+
+func (x *Automation) GetMonitorPendingCount() uint32 {
+	if x != nil {
+		return x.MonitorPendingCount
+	}
+	return 0
+}
+
+func (x *Automation) GetMonitorNextScheduledAt() string {
+	if x != nil && x.MonitorNextScheduledAt != nil {
+		return *x.MonitorNextScheduledAt
 	}
 	return ""
 }
@@ -1305,9 +1338,12 @@ type CreateAutomationRequest struct {
 	MonitoringSendAsImage *bool `protobuf:"varint,36,opt,name=monitoring_send_as_image,json=monitoringSendAsImage,proto3,oneof" json:"monitoring_send_as_image,omitempty"`
 	// Intensidade da humanização anti-ban. Unset = default do server
 	// ('high'). Ver Automation.humanize_mode.
-	HumanizeMode  *string `protobuf:"bytes,37,opt,name=humanize_mode,json=humanizeMode,proto3,oneof" json:"humanize_mode,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	HumanizeMode *string `protobuf:"bytes,37,opt,name=humanize_mode,json=humanizeMode,proto3,oneof" json:"humanize_mode,omitempty"`
+	// Cadência do modo monitoring (0..1440 minutos). Unset = 0 (imediato).
+	// Ver Automation.monitor_interval_minutes.
+	MonitorIntervalMinutes *int32 `protobuf:"varint,38,opt,name=monitor_interval_minutes,json=monitorIntervalMinutes,proto3,oneof" json:"monitor_interval_minutes,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *CreateAutomationRequest) Reset() {
@@ -1599,6 +1635,13 @@ func (x *CreateAutomationRequest) GetHumanizeMode() string {
 	return ""
 }
 
+func (x *CreateAutomationRequest) GetMonitorIntervalMinutes() int32 {
+	if x != nil && x.MonitorIntervalMinutes != nil {
+		return *x.MonitorIntervalMinutes
+	}
+	return 0
+}
+
 type CreateAutomationResponse struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Automation *Automation            `protobuf:"bytes,1,opt,name=automation,proto3" json:"automation,omitempty"`
@@ -1719,9 +1762,13 @@ type UpdateAutomationRequest struct {
 	MonitoringSendAsImage *bool `protobuf:"varint,37,opt,name=monitoring_send_as_image,json=monitoringSendAsImage,proto3,oneof" json:"monitoring_send_as_image,omitempty"`
 	// Intensidade da humanização anti-ban. Unset = leave unchanged.
 	// Ver Automation.humanize_mode.
-	HumanizeMode  *string `protobuf:"bytes,38,opt,name=humanize_mode,json=humanizeMode,proto3,oneof" json:"humanize_mode,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	HumanizeMode *string `protobuf:"bytes,38,opt,name=humanize_mode,json=humanizeMode,proto3,oneof" json:"humanize_mode,omitempty"`
+	// Cadência do modo monitoring (0..1440 minutos). Unset = não altera;
+	// 0 explícito drena a fila e volta ao envio imediato.
+	// Ver Automation.monitor_interval_minutes.
+	MonitorIntervalMinutes *int32 `protobuf:"varint,39,opt,name=monitor_interval_minutes,json=monitorIntervalMinutes,proto3,oneof" json:"monitor_interval_minutes,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *UpdateAutomationRequest) Reset() {
@@ -2018,6 +2065,13 @@ func (x *UpdateAutomationRequest) GetHumanizeMode() string {
 		return *x.HumanizeMode
 	}
 	return ""
+}
+
+func (x *UpdateAutomationRequest) GetMonitorIntervalMinutes() int32 {
+	if x != nil && x.MonitorIntervalMinutes != nil {
+		return *x.MonitorIntervalMinutes
+	}
+	return 0
 }
 
 type UpdateAutomationResponse struct {
@@ -2821,7 +2875,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x16\n" +
 	"\x06suffix\x18\x04 \x01(\tR\x06suffix\x12!\n" +
 	"\fclean_phones\x18\x05 \x01(\bR\vcleanPhones\x12%\n" +
-	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\xa7\x12\n" +
+	"\x0eclean_mentions\x18\x06 \x01(\bR\rcleanMentions\"\x95\x14\n" +
 	"\n" +
 	"Automation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -2866,16 +2920,19 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x1coffer_generate_send_as_image\x18' \x01(\bH\x0fR\x18offerGenerateSendAsImage\x88\x01\x01\x124\n" +
 	"\x14search_send_as_image\x18( \x01(\bH\x10R\x11searchSendAsImage\x88\x01\x01\x12<\n" +
 	"\x18monitoring_send_as_image\x18) \x01(\bH\x11R\x15monitoringSendAsImage\x88\x01\x01\x12(\n" +
-	"\rhumanize_mode\x18* \x01(\tH\x12R\fhumanizeMode\x88\x01\x01\x12$\n" +
-	"\vinstance_id\x18  \x01(\tH\x13R\n" +
+	"\rhumanize_mode\x18* \x01(\tH\x12R\fhumanizeMode\x88\x01\x01\x12=\n" +
+	"\x18monitor_interval_minutes\x18+ \x01(\x05H\x13R\x16monitorIntervalMinutes\x88\x01\x01\x122\n" +
+	"\x15monitor_pending_count\x18, \x01(\rR\x13monitorPendingCount\x12>\n" +
+	"\x19monitor_next_scheduled_at\x18- \x01(\tH\x14R\x16monitorNextScheduledAt\x88\x01\x01\x12$\n" +
+	"\vinstance_id\x18  \x01(\tH\x15R\n" +
 	"instanceId\x88\x01\x01\x12,\n" +
 	"\x12apply_coupon_rules\x18! \x01(\bR\x10applyCouponRules\x12!\n" +
 	"\finstance_ids\x18\" \x03(\tR\vinstanceIds\x12T\n" +
 	"\x0echip_overrides\x18# \x03(\v2-.automations.v1.Automation.ChipOverridesEntryR\rchipOverrides\x120\n" +
 	"\x14repeat_when_finished\x18$ \x01(\bR\x12repeatWhenFinished\x12\"\n" +
 	"\n" +
-	"start_date\x18% \x01(\tH\x14R\tstartDate\x88\x01\x01\x12\x1e\n" +
-	"\bend_date\x18& \x01(\tH\x15R\aendDate\x88\x01\x01\x1a@\n" +
+	"start_date\x18% \x01(\tH\x16R\tstartDate\x88\x01\x01\x12\x1e\n" +
+	"\bend_date\x18& \x01(\tH\x17R\aendDate\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x13\n" +
@@ -2900,7 +2957,9 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x1d_offer_generate_send_as_imageB\x17\n" +
 	"\x15_search_send_as_imageB\x1b\n" +
 	"\x19_monitoring_send_as_imageB\x10\n" +
-	"\x0e_humanize_modeB\x0e\n" +
+	"\x0e_humanize_modeB\x1b\n" +
+	"\x19_monitor_interval_minutesB\x1c\n" +
+	"\x1a_monitor_next_scheduled_atB\x0e\n" +
 	"\f_instance_idB\r\n" +
 	"\v_start_dateB\v\n" +
 	"\t_end_date\"w\n" +
@@ -2932,7 +2991,7 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x15GetAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
-	"automation\"\x9e\x11\n" +
+	"automation\"\x86\x12\n" +
 	"\x17CreateAutomationRequest\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x04name\x122\n" +
@@ -2980,7 +3039,9 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x1coffer_generate_send_as_image\x18\" \x01(\bH\x10R\x18offerGenerateSendAsImage\x88\x01\x01\x124\n" +
 	"\x14search_send_as_image\x18# \x01(\bH\x11R\x11searchSendAsImage\x88\x01\x01\x12<\n" +
 	"\x18monitoring_send_as_image\x18$ \x01(\bH\x12R\x15monitoringSendAsImage\x88\x01\x01\x12(\n" +
-	"\rhumanize_mode\x18% \x01(\tH\x13R\fhumanizeMode\x88\x01\x01\x1a@\n" +
+	"\rhumanize_mode\x18% \x01(\tH\x13R\fhumanizeMode\x88\x01\x01\x12I\n" +
+	"\x18monitor_interval_minutes\x18& \x01(\x05B\n" +
+	"\xbaH\a\x1a\x05\x18\xa0\v(\x00H\x14R\x16monitorIntervalMinutes\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x13\n" +
@@ -3006,12 +3067,13 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x1d_offer_generate_send_as_imageB\x17\n" +
 	"\x15_search_send_as_imageB\x1b\n" +
 	"\x19_monitoring_send_as_imageB\x10\n" +
-	"\x0e_humanize_mode\"r\n" +
+	"\x0e_humanize_modeB\x1b\n" +
+	"\x19_monitor_interval_minutes\"r\n" +
 	"\x18CreateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +
 	"automation\x12\x1a\n" +
-	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\xad\x12\n" +
+	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\x95\x13\n" +
 	"\x17UpdateAutomationRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12!\n" +
 	"\x04name\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xff\x01H\x00R\x04name\x88\x01\x01\x127\n" +
@@ -3059,7 +3121,9 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x1coffer_generate_send_as_image\x18# \x01(\bH\x18R\x18offerGenerateSendAsImage\x88\x01\x01\x124\n" +
 	"\x14search_send_as_image\x18$ \x01(\bH\x19R\x11searchSendAsImage\x88\x01\x01\x12<\n" +
 	"\x18monitoring_send_as_image\x18% \x01(\bH\x1aR\x15monitoringSendAsImage\x88\x01\x01\x12(\n" +
-	"\rhumanize_mode\x18& \x01(\tH\x1bR\fhumanizeMode\x88\x01\x01\x1a@\n" +
+	"\rhumanize_mode\x18& \x01(\tH\x1bR\fhumanizeMode\x88\x01\x01\x12I\n" +
+	"\x18monitor_interval_minutes\x18' \x01(\x05B\n" +
+	"\xbaH\a\x1a\x05\x18\xa0\v(\x00H\x1cR\x16monitorIntervalMinutes\x88\x01\x01\x1a@\n" +
 	"\x12ChipOverridesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\a\n" +
@@ -3093,7 +3157,8 @@ const file_automations_v1_automations_proto_rawDesc = "" +
 	"\x1d_offer_generate_send_as_imageB\x17\n" +
 	"\x15_search_send_as_imageB\x1b\n" +
 	"\x19_monitoring_send_as_imageB\x10\n" +
-	"\x0e_humanize_mode\"r\n" +
+	"\x0e_humanize_modeB\x1b\n" +
+	"\x19_monitor_interval_minutes\"r\n" +
 	"\x18UpdateAutomationResponse\x12:\n" +
 	"\n" +
 	"automation\x18\x01 \x01(\v2\x1a.automations.v1.AutomationR\n" +

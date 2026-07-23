@@ -167,6 +167,60 @@ func (h *JobsHandler) CreateJob(
 	}), nil
 }
 
+// CreateJobs creates a batch of jobs atomically.
+//
+// Mesma autenticação e mesmo dono do CreateJob unário: o user_id vem do
+// contexto, nunca do request — um lote não pode agendar em nome de terceiro.
+func (h *JobsHandler) CreateJobs(
+	ctx context.Context,
+	req *connect.Request[jobsv1.CreateJobsRequest],
+) (*connect.Response[jobsv1.CreateJobsResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	items := req.Msg.GetJobs()
+	domainJobs := make([]*models.StandaloneJob, 0, len(items))
+	for _, item := range items {
+		job := &models.StandaloneJob{
+			ActionType: mappers.ProtoToActionType(item.GetActionType()),
+			Status:     models.StandaloneJobStatusPending,
+		}
+		if item.GetScheduledFor() != nil {
+			job.ScheduledFor = item.GetScheduledFor().AsTime()
+		}
+		if item.GetPayload() != nil {
+			job.Payload = *mappers.ProtoToPayload(item.GetPayload())
+		}
+		domainJobs = append(domainJobs, job)
+	}
+
+	created, deduplicated, err := h.jobsService.CreateJobs(ctx, user.ID, domainJobs)
+	if err != nil {
+		h.logger.Error("Failed to create jobs batch",
+			zap.String("userID", user.ID),
+			zap.Int("count", len(domainJobs)),
+			zap.Error(err))
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	protoJobs := make([]*jobsv1.Job, 0, len(created))
+	for i := range created {
+		protoJobs = append(protoJobs, mappers.JobToProto(&created[i]))
+	}
+
+	h.logger.Info("Jobs batch created",
+		zap.String("userID", user.ID),
+		zap.Int("created", len(protoJobs)),
+		zap.Int("deduplicated", deduplicated))
+
+	return connect.NewResponse(&jobsv1.CreateJobsResponse{
+		Jobs:         protoJobs,
+		Deduplicated: int32(deduplicated),
+	}), nil
+}
+
 // UpdateJob updates an existing job.
 func (h *JobsHandler) UpdateJob(
 	ctx context.Context,
@@ -206,6 +260,12 @@ func (h *JobsHandler) UpdateJob(
 		if errors.Is(err, jobs.ErrJobNotPending) {
 			return nil, connect.NewError(connect.CodeFailedPrecondition,
 				errors.New("Este agendamento já foi executado e não pode mais ser editado. Crie um novo agendamento.")) //nolint:revive // mensagem user-facing (capitalizada/pontuada de propósito)
+		}
+		// Mesma classe: o usuário reagendou para cima de um agendamento
+		// idêntico que já existe. Estado do usuário, não erro de servidor.
+		if errors.Is(err, repository.ErrDuplicatePendingJob) {
+			return nil, connect.NewError(connect.CodeAlreadyExists,
+				errors.New("Já existe um agendamento idêntico para este horário. O original foi mantido.")) //nolint:revive // mensagem user-facing (capitalizada/pontuada de propósito)
 		}
 		h.logger.Error("Failed to update job",
 			zap.String("jobID", req.Msg.GetId()),

@@ -182,6 +182,54 @@ func GroupMemberTrackingEnabled() bool {
 	return groupMemberTrackingFlag()
 }
 
+// instanceFailoverFlag: gate da Melhoria 5 (chip reserva e failover de
+// instância). Default FALSE = feature inerte: o handler ConnectRPC continua
+// registrado, mas toda RPC responde FailedPrecondition/INSTANCE_FAILOVER_DISABLED;
+// detector e recovery não fazem I/O; e o DispatchGate é no-op SEM tocar o banco,
+// então o caminho quente de envio não paga nada.
+//
+// Uma coisa a flag deliberadamente NÃO faz: abandonar uma operação em curso.
+// Se o boot encontra operação não terminal, o gate é armado mesmo com a flag
+// desligada — desligar a flag no meio de uma troca abriria o gate exatamente
+// quando ele mais precisa estar fechado. Transição de flag só é segura com zero
+// operações não terminais.
+//
+// Desligar a flag também não reverte automações que já estão na reserva: voltar
+// exige reativar, rodar dry-run de reversão e confirmar. Nunca editar o banco
+// na mão.
+var instanceFailoverFlag = sync.OnceValue(loadInstanceFailover)
+
+func loadInstanceFailover() bool {
+	return getEnvBool("FEATURE_INSTANCE_FAILOVER", false)
+}
+
+// InstanceFailoverEnabled reporta se a Melhoria 5 está ligada.
+func InstanceFailoverEnabled() bool {
+	return instanceFailoverFlag()
+}
+
+// monitorDispatchCadenceFlag: gate da Melhoria 7 (intervalo mínimo entre
+// mensagens espelhadas). Default FALSE = feature INERTE no caminho quente: a
+// admissão retorna antes de qualquer query, nenhum pending nasce e o espelho
+// segue imediato como sempre foi.
+//
+// O que a flag NÃO faz: apagar fila já aceita. Poller, worker e manutenção
+// continuam registrados justamente para DRENAR em ordem os itens admitidos
+// antes do desligamento — desligar a flag é rollback gracioso, não um botão de
+// descarte. Enquanto houver fila drenando com a flag off, mensagens novas
+// seguem pelo caminho imediato (podem ultrapassar a fila em dreno); é o custo
+// aceito para o caminho quente não pagar nada com a feature desligada.
+var monitorDispatchCadenceFlag = sync.OnceValue(loadMonitorDispatchCadence)
+
+func loadMonitorDispatchCadence() bool {
+	return getEnvBool("FEATURE_MONITOR_DISPATCH_CADENCE", false)
+}
+
+// MonitorDispatchCadenceEnabled reporta se a cadência do espelho está ligada.
+func MonitorDispatchCadenceEnabled() bool {
+	return monitorDispatchCadenceFlag()
+}
+
 // getEnvBool reads a boolean value from an environment variable.
 // Returns the default value if the variable is not set or cannot be parsed.
 // Accepted values: "true", "false", "1", "0", "yes", "no" (case-insensitive)
@@ -215,4 +263,6 @@ func ResetFeatureFlags() {
 	// acesso — necessário para testes cobrirem os dois lados da flag.
 	webhookLeanPersistFlag = sync.OnceValue(loadWebhookLeanPersist)
 	groupMemberTrackingFlag = sync.OnceValue(loadGroupMemberTracking)
+	instanceFailoverFlag = sync.OnceValue(loadInstanceFailover)
+	monitorDispatchCadenceFlag = sync.OnceValue(loadMonitorDispatchCadence)
 }

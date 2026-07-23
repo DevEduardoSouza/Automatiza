@@ -47,6 +47,8 @@ type Repositories struct {
 	InstagramApp             repository.InstagramAppRepository
 	WebPushSubscription      repository.WebPushSubscriptionRepository
 	GroupMember              repository.GroupMemberRepository
+	InstanceFailover         repository.InstanceFailoverRepository
+	MonitorCadence           repository.MonitorCadenceRepository
 }
 
 // NewRepositories creates all PostgreSQL repositories
@@ -91,5 +93,7 @@ func NewRepositories(db *DB, logger *zap.Logger) *Repositories {
 		InstagramApp:             NewInstagramAppRepository(db, logger),
 		WebPushSubscription:      NewWebPushSubscriptionRepository(db, logger),
 		GroupMember:              NewGroupMemberRepository(db, logger),
+		InstanceFailover:         NewInstanceFailoverRepository(db, logger),
+		MonitorCadence:           NewMonitorCadenceRepository(db, logger),
 	}
 }

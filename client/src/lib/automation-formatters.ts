@@ -56,3 +56,22 @@ export function formatDelayCompact(auto: Automation): string {
   }
   return `${auto.interval_minutes} min`;
 }
+
+/**
+ * Resumo da fila da cadência do espelho (Melhoria 7): "N na fila · próxima em
+ * <data/hora local>". String vazia quando não há fila — que é o caso de todo
+ * mundo enquanto a feature está desligada, então nada muda na listagem.
+ *
+ * O horário chega em UTC (RFC3339) e é formatado no fuso do navegador: quem lê
+ * quer saber quando VAI SAIR no relógio dele.
+ */
+export function formatMonitorQueue(auto: Automation, t: TFunction): string {
+  const pending = Number(auto.monitor_pending_count ?? 0);
+  if (!pending) {
+    return '';
+  }
+  const when = auto.monitor_next_scheduled_at
+    ? new Date(auto.monitor_next_scheduled_at).toLocaleString()
+    : '—';
+  return t('pages.offerAutomations.form.monitorQueue', { count: pending, when });
+}

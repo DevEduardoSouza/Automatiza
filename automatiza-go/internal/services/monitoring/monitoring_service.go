@@ -26,6 +26,7 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/failover"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/shopee"
 
@@ -122,6 +123,26 @@ type monitoringService struct {
 
 	cache  *cache.Cache
 	logger *zap.Logger
+
+	// dispatchGate é a barreira contra troca de chip em andamento (Melhoria 5).
+	// nil = sem gate (comportamento histórico).
+	dispatchGate DispatchGate
+
+	// cadenceRepo/durableMedia são a cadência durável (Melhoria 7). nil =
+	// feature ausente: nenhum caminho abaixo muda de comportamento.
+	cadenceRepo  repository.MonitorCadenceRepository
+	durableMedia whatsapp.DurableMediaFetcher
+}
+
+// DispatchGate é a fatia do failover que este produtor consome. Definida aqui,
+// no consumidor, para o espelho não depender do pacote failover.
+type DispatchGate interface {
+	Acquire(ctx context.Context, userID, automationID string) (*failover.Lease, error)
+}
+
+// WithDispatchGate liga o gate de failover (Melhoria 5) neste serviço.
+func WithDispatchGate(gate DispatchGate) Option {
+	return func(s *monitoringService) { s.dispatchGate = gate }
 }
 
 // monitorDispatchRender é o resultado de renderizar o texto de disparo do
@@ -327,17 +348,20 @@ func (s *monitoringService) markDeadGroup(ctx context.Context, session, groupID 
 }
 
 func (s *monitoringService) ProcessIncomingMessage(ctx context.Context, msg *models.IncomingMessage) error {
-	return s.processIncoming(ctx, msg, false)
+	return s.processIncoming(ctx, msg, false, nil)
 }
 
 // ProcessReconciledMessage — ver contrato na interface. fromReconcile=true
 // pula apenas os claims de nível mensagem; todo o resto (selfsend, janela,
 // claim por destino, dead-group, reputação) é idêntico ao caminho vivo.
 func (s *monitoringService) ProcessReconciledMessage(ctx context.Context, msg *models.IncomingMessage) error {
-	return s.processIncoming(ctx, msg, true)
+	return s.processIncoming(ctx, msg, true, nil)
 }
 
-func (s *monitoringService) processIncoming(ctx context.Context, msg *models.IncomingMessage, fromReconcile bool) error {
+// excluded (Melhoria 7): automações que a cadência durável já assumiu para
+// ESTE evento. Pular aqui é o que impede a mesma mensagem de sair pelos dois
+// caminhos (imediato e diferido). nil = comportamento histórico.
+func (s *monitoringService) processIncoming(ctx context.Context, msg *models.IncomingMessage, fromReconcile bool, excluded map[string]struct{}) error {
 	// 1. Validate message is from group
 	if !strings.HasSuffix(msg.RemoteJID, "@g.us") {
 		return nil
@@ -432,7 +456,12 @@ func (s *monitoringService) processIncoming(ctx context.Context, msg *models.Inc
 
 	// 7. Process each automation
 	for i := range automations {
-		if err := s.processAutomation(ctx, &automations[i], msg, links, fromReconcile); err != nil {
+		if _, skip := excluded[automations[i].ID]; skip {
+			s.logger.Debug("Automation handled by dispatch cadence, skipping immediate relay",
+				zap.String("automationID", automations[i].ID))
+			continue
+		}
+		if err := s.processAutomation(ctx, &automations[i], msg, links, fromReconcile, nil); err != nil {
 			s.logger.Warn("Failed to process monitoring automation",
 				zap.String("automationID", automations[i].ID),
 				zap.Error(err))
@@ -442,7 +471,41 @@ func (s *monitoringService) processIncoming(ctx context.Context, msg *models.Inc
 	return nil
 }
 
-func (s *monitoringService) processAutomation(ctx context.Context, automation *models.Automation, msg *models.IncomingMessage, links []string, fromReconcile bool) error {
+// deferred (Melhoria 7): quando não-nil, este mesmo pipeline roda a partir da
+// fila durável — cada destino passa pelo ledger (claim → sending → desfecho) em
+// vez de ser um envio-e-esquece. nil = caminho vivo, byte a byte o de sempre.
+func (s *monitoringService) processAutomation(ctx context.Context, automation *models.Automation, msg *models.IncomingMessage, links []string, fromReconcile bool, deferred *deferredRun) error {
+	// Gate de failover: o espelho resolve chip e envia NA PRÓPRIA goroutine —
+	// não há job Asynq com InstanceName congelado para drenar aqui. A lease
+	// cobre todo o fan-out síncrono abaixo, e o contexto que ela devolve é o que
+	// pacing e envio usam.
+	sendRoot := context.Background()
+	if s.dispatchGate != nil {
+		lease, gateErr := s.dispatchGate.Acquire(ctx, automation.UserID, automation.ID)
+		if gateErr != nil {
+			s.logger.Warn("monitoring: automation blocked by failover gate",
+				zap.String("automationID", automation.ID),
+				zap.Error(gateErr))
+			return gateErr
+		}
+		defer lease.Release()
+		ctx = lease.Ctx
+		sendRoot = lease.SendCtx
+
+		// Reler a automação SOB a lease: entre a listagem que a trouxe até aqui
+		// e agora, uma troca pode ter reescrito o roteamento. Usar a cópia velha
+		// enviaria pelo chip antigo.
+		fresh, err := s.automationRepo.GetAutomationByIDAndUser(ctx, automation.ID, automation.UserID)
+		if err != nil {
+			return err
+		}
+		if fresh == nil {
+			// Apagada no meio: nada a espelhar.
+			return nil
+		}
+		automation = fresh
+	}
+
 	// 1. Check time window
 	if automation.StartTime != nil && automation.EndTime != nil {
 		tw := &models.TimeWindow{
@@ -459,6 +522,12 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				zap.String("automationID", automation.ID),
 				zap.String("startTime", *automation.StartTime),
 				zap.String("endTime", *automation.EndTime))
+			// Item da fila não é DESCARTADO por janela fechada: volta a
+			// pending com novo not_before_at (só o horário muda; a ordem por
+			// sequência é preservada).
+			if deferred != nil {
+				return errWindowClosed
+			}
 			return nil
 		}
 	}
@@ -774,7 +843,19 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	// jpegThumbnail do link preview (~100px) — usá-lo como imagem do card faz o
 	// WhatsApp renderizar o preview MINIMIZADO nos grupos espelhados, enquanto o
 	// grupo-fonte mostra o card grande. Thumbnail vira último recurso.
-	if imageURL == "" && msg.HasMedia && (msg.MediaType == "image" || strings.HasPrefix(msg.MimeType, "image/")) {
+	// Cadência: os bytes da mídia-fonte vêm do payload PERSISTIDO. A media.url
+	// que veio no webhook pode ter expirado — o contrato da WAHA
+	// (waha-plus-openapi.json, schema WAMedia) não promete retenção, e este
+	// item pode estar saindo horas depois.
+	if deferred != nil && deferred.work.Media != nil && imageURL == "" {
+		imageBase64 = base64.StdEncoding.EncodeToString(deferred.work.Media.Bytes)
+		imageMimetype = deferred.work.Media.Mimetype
+		if imageMimetype == "" {
+			imageMimetype = msg.MimeType
+		}
+	}
+
+	if imageURL == "" && imageBase64 == "" && msg.HasMedia && (msg.MediaType == "image" || strings.HasPrefix(msg.MimeType, "image/")) {
 		if s.waProvider != nil {
 			// Try downloading via WAHA media URL (fast, uses local cache)
 			if msg.MediaURL != "" {
@@ -950,6 +1031,20 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	resolved := config.GetHumanization().ForMode(automation.HumanizeMode)
 	rt := config.GetAntiBanRuntime()
 	resolved.Pacing.Shuffle(destinationGroups)
+	// Cadência: a ordem embaralhada acima é CONGELADA no ledger na primeira
+	// execução. Numa retomada, quem manda são as linhas já gravadas — reembaralhar
+	// entre tentativas faria um destino já atendido reaparecer noutra posição, e
+	// o ledger perderia a correspondência ordinal↔grupo.
+	if deferred != nil {
+		remaining, mErr := deferred.materialize(ctx, destinationGroups, canonicalKey, store)
+		if mErr != nil {
+			return mErr
+		}
+		if len(remaining) == 0 {
+			return nil
+		}
+		destinationGroups = remaining
+	}
 	baseDelay := 0
 	if automation.DelaySeconds != nil && *automation.DelaySeconds > 0 {
 		baseDelay = *automation.DelaySeconds
@@ -967,6 +1062,17 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	for gi, groupID := range destinationGroups {
 		// Skip if same group
 		if groupID == msg.RemoteJID {
+			// No ledger o destino precisa de desfecho, senão o item nunca
+			// fecha e volta para a fila para sempre.
+			if deferred != nil {
+				deferred.finish(ctx, groupID, models.MonitorDestinationSkipped, "self_group", 0)
+			}
+			continue
+		}
+
+		// Reserva do destino no ledger. false = já terminal, reivindicado por
+		// outra execução ou ainda em backoff.
+		if deferred != nil && !deferred.claim(ctx, groupID) {
 			continue
 		}
 
@@ -990,6 +1096,9 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// removed). Quality-based suppression, not volume — fail-open.
 		if rt.Reputation.IsSuppressed(ctx, senderSession, groupID) {
 			s.logDispatch(ctx, automation, groupID, links[0], "skipped", "reputacao (grupo problematico)", canonicalKey, store)
+			if deferred != nil {
+				deferred.finish(ctx, groupID, models.MonitorDestinationSkipped, models.MonitorCodeReputation, 0)
+			}
 			continue
 		}
 
@@ -1003,6 +1112,9 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				zap.String("automationID", automation.ID),
 				zap.String("toGroup", groupID))
 			s.logDispatch(ctx, automation, groupID, links[0], "skipped", "bot nao participa do grupo", canonicalKey, store)
+			if deferred != nil {
+				deferred.finish(ctx, groupID, models.MonitorDestinationSkipped, models.MonitorCodeNotParticipating, 0)
+			}
 			continue
 		}
 
@@ -1014,21 +1126,41 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				zap.String("canonicalKey", canonicalKey),
 				zap.Int("dedupeHours", dedupeHours))
 			s.logDispatch(ctx, automation, groupID, links[0], "skipped", "dedupe", canonicalKey, store)
+			if deferred != nil {
+				deferred.finish(ctx, groupID, models.MonitorDestinationSkipped, models.MonitorCodeDedupe, 0)
+			}
+			continue
+		}
+
+		// Fronteira do resultado incerto. Marcada ANTES do pacing porque um
+		// crash durante a espera não pode deixar o destino recuperável: se
+		// alguém reivindicasse este slot de novo, a promoção sairia duplicada
+		// no grupo. Depois daqui, na dúvida, assumed_sent.
+		if deferred != nil && !deferred.authorizeSend(ctx, groupID) {
 			continue
 		}
 
 		// Anti-ban pacing: jittered inter-message delay (honors delay_seconds) plus
 		// an occasional micro-break, keyed on the sending chip — clamped so the
 		// whole fan-out still lands inside the budget.
-		time.Sleep(pacing.BudgetedGap(
+		// Timer cancelável, não time.Sleep: um sleep surdo acordaria para
+		// enviar mesmo depois de a lease ter sido perdida no meio do fan-out.
+		if !pacing.Sleep(sendRoot, pacing.BudgetedGap(
 			resolved.Pacing.Step(baseDelay)+rt.Pacing.MicroBreak(ctx, senderSession, resolved.Pacing),
-			fanoutDeadline, len(destinationGroups)-gi))
+			fanoutDeadline, len(destinationGroups)-gi)) {
+			s.logger.Warn("monitoring: dispatch lease lost mid fan-out, stopping",
+				zap.String("automationID", automation.ID))
+			break
+		}
 
 		// Send message via WhatsAppProvider using the automation owner's session
 		// Priority 1: Link custom preview (source had WhatsApp link preview)
 		// Priority 2: Image + caption (current behavior)
 		// Priority 3: Text only
-		sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// Raiz do envio: Background quando não há gate (o cancelamento do
+		// consumidor de webhook nunca abortou um envio em andamento) e o
+		// contexto da lease quando há — perder a lease PRECISA parar o fan-out.
+		sendCtx, sendCancel := context.WithTimeout(sendRoot, 30*time.Second)
 		var err error
 		var sent bool
 
@@ -1123,6 +1255,9 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 					s.logger.Warn("Link preview timed out — delivery uncertain, NOT falling back",
 						zap.String("groupID", groupID),
 						zap.Error(err))
+					if deferred != nil {
+						deferred.finish(ctx, groupID, models.MonitorDestinationAssumedSent, models.MonitorCodeSendAmbiguous, 0)
+					}
 					stopTyping()
 					sendCancel()
 					continue
@@ -1174,6 +1309,9 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				s.logger.Warn("Session not participating in group, marking dead (no retry)",
 					zap.String("automationID", automation.ID),
 					zap.String("groupID", groupID))
+				if deferred != nil {
+					deferred.finish(ctx, groupID, models.MonitorDestinationSkipped, models.MonitorCodeNotParticipating, 0)
+				}
 				continue
 			}
 			// Timeout/cancelamento: a mensagem PODE ter sido entregue. Liberar o
@@ -1185,6 +1323,9 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				s.logger.Warn("Send timed out — delivery uncertain, keeping dedup slot",
 					zap.String("groupID", groupID),
 					zap.Error(err))
+				if deferred != nil {
+					deferred.finish(ctx, groupID, models.MonitorDestinationAssumedSent, models.MonitorCodeSendAmbiguous, 0)
+				}
 				continue
 			}
 			// Falha DEFINITIVA (envio comprovadamente não aconteceu): libera o
@@ -1194,10 +1335,19 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			s.logger.Error("Failed to send message",
 				zap.String("groupID", groupID),
 				zap.Error(err))
+			// Falha PROVADAMENTE anterior à entrega: o destino volta para a
+			// fila com backoff quadrático e o slot de dedup já foi liberado
+			// acima, então o retry pode reenviar sem duplicar.
+			if deferred != nil {
+				deferred.retryOrFailDestination(ctx, groupID, models.MonitorCodeSendFailed)
+			}
 			continue
 		}
 
 		s.logDispatch(ctx, automation, groupID, links[0], "sent", "", canonicalKey, store, couponDispatchExtra(couponUsed))
+		if deferred != nil {
+			deferred.finish(ctx, groupID, models.MonitorDestinationSent, "", 0)
+		}
 
 		if hasMentions {
 			// Observabilidade anti-ban: quantos @todos-relays saem por hora.
@@ -1253,15 +1403,16 @@ func (s *monitoringService) renderMonitorDispatchText(
 	// antes do produto na mensagem não rouba mais o template.
 	isShopeeProduct := shopeeAff != nil && shopeeAff.AffiliateLink != "" &&
 		shopeeAff.ItemID > 0 && shopeeAff.ShopID > 0
+	// A CTA NÃO é escolhida aqui: cada renderer a pede depois dos próprios
+	// guards, para que um ramo que acabe caindo no repasse histórico (preview ML
+	// que não é produto, afiliado Shopee sem IDs) não pague consulta nenhuma.
 	if isShopeeProduct {
-		cta := s.pickMonitorCTA(ctx, automation, false, true)
-		return s.renderShopeeDispatchTemplate(ctx, automation, body, cta, shopeeAff, shopeeOriginalLink)
+		return s.renderShopeeDispatchTemplate(ctx, automation, body, shopeeAff, shopeeOriginalLink)
 	}
 
 	if mlAffiliateLink != "" && s.mlService != nil {
-		cta := s.pickMonitorCTA(ctx, automation, true, false)
 		if mlRender := s.renderMLDispatchTemplate(
-			ctx, automation, body, cta, mlOriginalLink, mlAffiliateLink, fallbackImageURL); mlRender.Body != "" {
+			ctx, automation, body, mlOriginalLink, mlAffiliateLink, fallbackImageURL); mlRender.Body != "" {
 			return mlRender
 		}
 		// ML não é produto (cupom/campanha ou preview bloqueado): cai para o
@@ -1269,8 +1420,11 @@ func (s *monitoringService) renderMonitorDispatchText(
 	}
 
 	if hasShopeeCouponLink {
-		cta := s.pickMonitorCTA(ctx, automation, false, true)
-		return monitorDispatchRender{ShopeeCouponRelay: true, CTA: cta}
+		// Aqui o conteúdo enviado é o relay da fonte embrulhado por
+		// RenderShopeeCouponNotice — não há RenderTemplate, então {cta} no texto
+		// de disparo selecionado funciona como FLAG de opt-in: autoriza a CTA
+		// mas o token em si não é renderizado. Sem a flag, o wrapper recebe "".
+		return monitorDispatchRender{ShopeeCouponRelay: true, CTA: s.pickMonitorCTA(ctx, automation, body, false, true)}
 	}
 
 	return monitorDispatchRender{}
@@ -1281,7 +1435,14 @@ func (s *monitoringService) renderMonitorDispatchText(
 // vazio → pool inteiro de CTAs ativos do usuário; sempre filtrado por
 // plataforma via ctapicker. Fallback para os CTAs inline da automation quando
 // o pool não resolve (repo ausente/erro/nenhum elegível). "" = sem CTA.
-func (s *monitoringService) pickMonitorCTA(ctx context.Context, automation *models.Automation, isML, isShopee bool) string {
+//
+// body é o texto de disparo já selecionado: sem a variável {cta} nele, a CTA
+// não foi pedida e a função sai antes de qualquer consulta ou sorteio.
+func (s *monitoringService) pickMonitorCTA(ctx context.Context, automation *models.Automation, body string, isML, isShopee bool) string {
+	if !text.TemplateUsesVariable(body, text.VarCTA) {
+		return ""
+	}
+
 	var pool []models.CTA
 	if s.ctaRepo != nil {
 		if len(automation.CTAIDs) > 0 {
@@ -1322,16 +1483,11 @@ func (s *monitoringService) applyMonitorCoupon(ctx context.Context, automation *
 	return res
 }
 
-// applyCouponAndCTA injeta o bloco de cupom nas vars, faz o render e anexa CTA
-// e cupom quando o template não traz os placeholders {cta}/{cupom_bloco} —
-// mesmo padrão de automation.buildListModeMessage. render é o RenderXOfferTemplate
-// já ligado às vars da plataforma (o cupom precisa ser injetado antes de chamá-lo).
-func applyCTAAndCouponAppend(message, body, cta string, coupon *CouponResult) string {
-	if cta != "" && !strings.Contains(body, "{cta}") {
-		message = message + "\n\n" + cta
-	}
-	// Auto-append do cupom só quando o template não o posiciona por nenhum
-	// placeholder ({cupom_bloco} ou {couponText}) — evita render duplo.
+// applyCouponAppend anexa o bloco de cupom quando o template não o posiciona
+// por nenhum placeholder ({cupom_bloco} ou {couponText}) — evita render duplo.
+// Mesmo padrão de automation.buildListModeMessage. A CTA saiu daqui: ela agora
+// só existe via {cta} no template, renderizada pelo RenderXOfferTemplate.
+func applyCouponAppend(message, body string, coupon *CouponResult) string {
 	if coupon.Applied && !strings.Contains(body, "{cupom_bloco}") && !strings.Contains(body, "{couponText}") {
 		message = message + coupon.CouponText
 	}
@@ -1344,7 +1500,7 @@ func applyCTAAndCouponAppend(message, body, cta string, coupon *CouponResult) st
 func (s *monitoringService) renderShopeeDispatchTemplate(
 	ctx context.Context,
 	automation *models.Automation,
-	body, cta string,
+	body string,
 	shopeeAff *models.ShopeeAffiliateLink,
 	shopeeOriginalLink string,
 ) monitorDispatchRender {
@@ -1361,7 +1517,7 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 		Link:          shopeeOriginalLink,
 		Image:         shopeeAff.ImageURL,
 		Store:         "Shopee",
-		CTA:           cta,
+		CTA:           s.pickMonitorCTA(ctx, automation, body, false, true),
 	}
 	productIsOfficial := false
 	var productCategoryIDs []int64
@@ -1395,7 +1551,7 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 		}
 	}
 
-	message := applyCTAAndCouponAppend(text.RenderShopeeOfferTemplate(body, vars), body, cta, coupon)
+	message := applyCouponAppend(text.RenderShopeeOfferTemplate(body, vars), body, coupon)
 	return monitorDispatchRender{
 		Body:       message,
 		CardTitle:  vars.Title,
@@ -1409,13 +1565,12 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 func (s *monitoringService) renderMLDispatchTemplate(
 	ctx context.Context,
 	automation *models.Automation,
-	body, cta, mlOriginalLink, mlAffiliateLink, fallbackImageURL string,
+	body, mlOriginalLink, mlAffiliateLink, fallbackImageURL string,
 ) monitorDispatchRender {
 	vars := text.MLOfferVars{
 		AffiliateLink: mlAffiliateLink,
 		Link:          mlOriginalLink,
 		Image:         fallbackImageURL,
-		CTA:           cta,
 	}
 	preview, prevErr := s.mlService.GetProductPreview(ctx, mlOriginalLink, automation.UserID)
 	if prevErr != nil || !preview.HasProductData() {
@@ -1425,8 +1580,16 @@ func (s *monitoringService) renderMLDispatchTemplate(
 		// afiliado do dono — em vez de um card de oferta com dados vazios.
 		return monitorDispatchRender{}
 	}
+	// Só o caminho que de fato renderiza produto pede a CTA.
+	vars.CTA = s.pickMonitorCTA(ctx, automation, body, true, false)
 	vars.Title = preview.Title
 	vars.Price = preview.Price
+	// Paridade com o espelho Shopee (renderShopeeDispatchTemplate) e com os
+	// outros produtores de MLOfferVars (process_list, offer_generate): sem
+	// isto {desconto}/{desconto_formatado} saíam SEMPRE vazios no espelho ML.
+	// preview.Discount é calculado pelo ml_service a partir dos preços da
+	// origem — antes do cupom, que só entra logo abaixo.
+	vars.Discount = preview.Discount
 	if preview.Image != "" {
 		vars.Image = preview.Image
 	}
@@ -1448,7 +1611,7 @@ func (s *monitoringService) renderMLDispatchTemplate(
 		}
 	}
 
-	message := applyCTAAndCouponAppend(text.RenderMLOfferTemplate(body, vars), body, cta, coupon)
+	message := applyCouponAppend(text.RenderMLOfferTemplate(body, vars), body, coupon)
 	return monitorDispatchRender{
 		Body:       message,
 		CardTitle:  vars.Title,

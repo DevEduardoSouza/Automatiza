@@ -6,6 +6,7 @@
 package pacing
 
 import (
+	"context"
 	mathrand "math/rand/v2"
 	"time"
 )
@@ -135,4 +136,31 @@ func BudgetedGap(gap time.Duration, deadline time.Time, remaining int) time.Dura
 		return maxGap
 	}
 	return gap
+}
+
+// Sleep espera `d` respeitando o cancelamento do contexto.
+//
+// Devolve false quando o contexto morreu durante (ou antes) da espera — nesse
+// caso o chamador DEVE parar o fan-out em vez de seguir para o próximo envio.
+//
+// Existe porque `time.Sleep` é surdo: com uma troca de chip em andamento, a
+// lease de dispatch pode ser perdida no meio de um fan-out de dezenas de
+// grupos, e um sleep não-cancelável continuaria acordando para enviar pelo chip
+// que já não é o roteado. d <= 0 é no-op e devolve o estado atual do contexto.
+func Sleep(ctx context.Context, d time.Duration) bool {
+	if ctx == nil {
+		time.Sleep(d)
+		return true
+	}
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }

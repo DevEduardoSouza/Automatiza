@@ -32,6 +32,7 @@ export const VARIABLE_KEYS = [
   'priceFormatted',
   'originalPrice',
   'originalPriceFormatted',
+  'discount',
   'affiliateLink',
   'priceWarning',
   'cta',
@@ -50,6 +51,12 @@ export const VARIABLE_MAP: Record<VariableKey, string> = {
   priceFormatted: '{preco_formatado}',
   originalPrice: '{preco_original}',
   originalPriceFormatted: '{preco_original_formatado}',
+  // O chip insere a versão FORMATADA ("25% OFF"), que é a que o usuário
+  // escreve direto na mensagem. O número cru continua disponível como
+  // {desconto} para quem monta o próprio sufixo (ex.: "{desconto}% OFF").
+  // É o desconto do PRODUTO, nunca o do cupom; quando não houver, o backend
+  // remove a linha inteira em vez de deixar decoração órfã.
+  discount: '{desconto_formatado}',
   affiliateLink: '{link_afiliado}',
   priceWarning: '{aviso_preco}',
   cta: '{cta}',

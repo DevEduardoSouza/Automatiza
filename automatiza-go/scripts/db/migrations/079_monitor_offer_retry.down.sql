@@ -1,0 +1,22 @@
+-- DOWN DOCUMENTAL — melhoria 9 (ledger de oferta/campanha do monitor).
+--
+-- O runner de migrações do projeto NÃO executa down: o ledger
+-- `_deploy_migrations` só aplica o que é novo, e migração aqui não tem
+-- rollback. Este arquivo existe para documentar o que a 079 criou.
+--
+-- O ROLLBACK OPERACIONAL da melhoria 9 é desligar os gates:
+--
+--   MONITOR_MIRROR_CONTENT=off
+--   MONITOR_PRODUCT_RETRY=off
+--
+-- Com os gates off o código não escreve nem lê estas tabelas, então elas ficam
+-- inertes — derrubá-las não é necessário e destruiria o rastro de entregas
+-- ambíguas, que é justamente o que se consulta depois de um incidente.
+--
+-- Se algum dia for MESMO preciso remover (banco de teste, bootstrap zerado):
+--
+--   DROP TABLE IF EXISTS monitor_offer_deliveries;
+--   DROP TABLE IF EXISTS monitor_offer_items;
+--   DROP TABLE IF EXISTS monitor_offer_jobs;
+--
+-- Nesta ordem: deliveries e items têm FK para jobs.

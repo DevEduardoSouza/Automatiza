@@ -1057,6 +1057,32 @@ func (f *FakeAdapter) RedownloadMedia(ctx context.Context, sessionName, chatID, 
 	}, nil
 }
 
+// DownloadMediaByURLLimited implements DurableMediaFetcher no fake. Aplica o
+// mesmo contrato do adapter real (recusa, não trunca) para os testes da
+// cadência exercitarem o caminho de mídia grande.
+func (f *FakeAdapter) DownloadMediaByURLLimited(ctx context.Context, mediaURL string, maxBytes int64) (*DownloadMediaResult, error) {
+	res, err := f.DownloadMediaByURL(ctx, mediaURL)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(res.Data)) > maxBytes {
+		return nil, ErrMediaTooLarge
+	}
+	return res, nil
+}
+
+// RedownloadMediaLimited implements DurableMediaFetcher no fake.
+func (f *FakeAdapter) RedownloadMediaLimited(ctx context.Context, sessionName, chatID, messageID string, maxBytes int64) (*DownloadMediaResult, error) {
+	res, err := f.RedownloadMedia(ctx, sessionName, chatID, messageID)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(res.Data)) > maxBytes {
+		return nil, ErrMediaTooLarge
+	}
+	return res, nil
+}
+
 // SetMediaData configures media data for testing.
 func (f *FakeAdapter) SetMediaData(sessionName, mediaID string, data []byte) {
 	f.mu.Lock()

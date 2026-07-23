@@ -1,6 +1,6 @@
 export { ModeSection } from './mode-section';
 export { TimeWindowInputs, DateWindowInputs, IntervalSelector } from './timing-section';
-export { MonitorDelayInput } from './monitor-delay-section';
+export { MonitorCadenceInput, MonitorDelayInput } from './monitor-delay-section';
 export { ListModeConfig } from './list-mode-section';
 export { HumanizationSection } from './humanization-section';
 export { SendGroupsSelector, MonitorGroupsSelector, GroupsListCheckbox } from './groups-section';

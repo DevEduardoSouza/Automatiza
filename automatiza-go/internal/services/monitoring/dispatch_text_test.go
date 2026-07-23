@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 )
 
@@ -334,6 +335,48 @@ func TestRenderMonitorDispatchText_MLProductPreview_StillRenders(t *testing.T) {
 	}
 }
 
+// Paridade de desconto no ESPELHO: antes da melhoria 10 o caminho ML não
+// preenchia MLOfferVars.Discount, então {desconto_formatado} saía vazio só ali
+// enquanto o Shopee rendia normalmente. As duas lojas passam pelo mesmo
+// template e devem produzir o mesmo texto de desconto.
+func TestRenderMonitorDispatchText_DiscountParityShopeeML(t *testing.T) {
+	const body = "🛍️ {nome_produto}\n💸 Por {preco_formatado}\n🔥 {desconto_formatado}"
+
+	shopeeSvc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: body}}
+		s.shopeeService = &mockShopeeService{
+			GetProductFn: func(_ context.Context, _, _ int64, _ string) (*models.ShopeeOffer, error) {
+				return &models.ShopeeOffer{Name: "P", Price: 99.90, OriginalPrice: 199.90, Discount: 50}, nil
+			},
+		}
+	})
+	automation := &models.Automation{ID: "auto-1", UserID: "user-1", DispatchTextID: strPtr("dt-1")}
+	aff := &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/a", ItemID: 1, ShopID: 2}
+	shopeeOut := shopeeSvc.renderMonitorDispatchText(context.Background(), automation, aff,
+		"https://shopee.com.br/prod", "", "", "", false).Body
+
+	mlSvc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: body}}
+		s.mlService = &mockMLService{
+			GetProductPreviewFn: func(_ context.Context, _, _ string) (*models.MLProductPreview, error) {
+				return &models.MLProductPreview{
+					Title: "P", Price: 99.90, Discount: 50,
+					Permalink: "https://mercadolivre.com.br/p/MLB1",
+				}, nil
+			},
+		}
+	})
+	mlOut := mlSvc.renderMonitorDispatchText(context.Background(), automation, nil,
+		"", "https://mercadolivre.com.br/p/MLB1", "https://mercadolivre.com.br/sec/OWN", "", false)
+
+	if !strings.Contains(shopeeOut, "🔥 50% OFF") {
+		t.Fatalf("espelho Shopee deveria conter '50%% OFF'; got:\n%s", shopeeOut)
+	}
+	if !strings.Contains(mlOut.Body, "🔥 50% OFF") {
+		t.Fatalf("espelho ML deveria conter '50%% OFF' (paridade); got:\n%s", mlOut.Body)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Roteamento produto × cupom Shopee.
 // ---------------------------------------------------------------------------
@@ -355,11 +398,15 @@ func ctaPoolRepo() *mockCTARepo {
 // afiliado não expõe lookup de cupom), então o renderer sinaliza relay em vez
 // de renderizar um card com {nome_produto}/{preco} vazios.
 func TestRenderMonitorDispatchText_ShopeeCouponOnlySignalsRelay(t *testing.T) {
+	// {cta} aqui é FLAG de opt-in: o conteúdo enviado é o relay da fonte
+	// embrulhado por RenderShopeeCouponNotice, sem RenderTemplate — o token não
+	// é renderizado, mas autoriza a CTA no wrapper.
+	cta := ctaPoolRepo()
 	svc := newTestService(t, func(s *monitoringService) {
 		s.settingsRepo = &mockSettingsRepo{
-			dt: &models.DispatchText{Body: "TEMPLATE_MARKER {nome_produto}\nPor {preco_formatado}"},
+			dt: &models.DispatchText{Body: "TEMPLATE_MARKER {nome_produto}\nPor {preco_formatado}\n{cta}"},
 		}
-		s.ctaRepo = ctaPoolRepo()
+		s.ctaRepo = cta
 	})
 	automation := &models.Automation{ID: "auto-cupom", UserID: "user-1", DispatchTextID: strPtr("dt-1")}
 
@@ -373,6 +420,37 @@ func TestRenderMonitorDispatchText_ShopeeCouponOnlySignalsRelay(t *testing.T) {
 	}
 	if rendered.CTA != "CTA_POOL_SHOPEE" {
 		t.Errorf("CTA = %q, want o CTA de plataforma Shopee", rendered.CTA)
+	}
+	cta.assertCalls(t, 1, 0)
+}
+
+// Cupom-only SEM {cta} no texto de disparo: wrapper sem CTA e zero consulta.
+// O corpo é comparado por string EXATA — o aviso de cupom é contrato de saída.
+func TestRenderMonitorDispatchText_ShopeeCouponOnlyWithoutCTAVariable(t *testing.T) {
+	cta := ctaPoolRepo()
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{
+			dt: &models.DispatchText{Body: "TEMPLATE_MARKER {nome_produto}\nPor {preco_formatado}"},
+		}
+		s.ctaRepo = cta
+	})
+	automation := &models.Automation{ID: "auto-cupom", UserID: "user-1", DispatchTextID: strPtr("dt-1")}
+
+	rendered := svc.renderMonitorDispatchText(context.Background(), automation, nil, "", "", "", "", true)
+
+	if rendered.CTA != "" {
+		t.Errorf("sem {cta} o wrapper não recebe CTA; got: %q", rendered.CTA)
+	}
+	if !rendered.ShopeeCouponRelay {
+		t.Error("deveria sinalizar ShopeeCouponRelay mesmo assim")
+	}
+	cta.assertCalls(t, 0, 0)
+
+	const relayBody = "  🎟 R$30 OFF acima de R$299  "
+	got := text.RenderShopeeCouponNotice(relayBody, rendered.CTA)
+	want := "🎟 R$30 OFF acima de R$299" + "\n\n" + text.ShopeeCouponLimitedNotice
+	if got != want {
+		t.Errorf("aviso de cupom mudou.\n got: %q\nwant: %q", got, want)
 	}
 }
 
@@ -404,7 +482,7 @@ func TestRenderShopeeDispatchTemplate_InvalidAffiliateNeverRenders(t *testing.T)
 			automation := &models.Automation{ID: "auto-1", UserID: "user-1", ApplyCouponRules: true}
 
 			got := svc.renderShopeeDispatchTemplate(context.Background(), automation,
-				"{nome_produto} {link_afiliado}", "CTA", tc.aff, "https://shopee.com.br/x")
+				"{nome_produto} {link_afiliado}", tc.aff, "https://shopee.com.br/x")
 
 			if got != (monitorDispatchRender{}) {
 				t.Errorf("esperava struct vazio; got: %+v", got)
@@ -424,7 +502,7 @@ func TestRenderShopeeDispatchTemplate_InvalidAffiliateNeverRenders(t *testing.T)
 func TestRenderMonitorDispatchText_MLProductPreferredOverShopeeCoupon(t *testing.T) {
 	svc := newTestService(t, func(s *monitoringService) {
 		s.settingsRepo = &mockSettingsRepo{
-			dt: &models.DispatchText{Body: "🛍️ {nome_produto}\n💸 Por {preco_formatado}\n🛒 {link_afiliado}"},
+			dt: &models.DispatchText{Body: "🛍️ {nome_produto}\n💸 Por {preco_formatado}\n🛒 {link_afiliado}\n{cta}"},
 		}
 		s.mlService = &mockMLService{
 			GetProductPreviewFn: func(_ context.Context, _, _ string) (*models.MLProductPreview, error) {
@@ -457,14 +535,15 @@ func TestRenderMonitorDispatchText_MLProductPreferredOverShopeeCoupon(t *testing
 // Link ML que também é cupom (preview sem produto) + cupom Shopee: nenhum
 // template é possível, então cai no aviso de cupom Shopee com o CTA Shopee.
 func TestRenderMonitorDispatchText_MLNonProductFallsThroughToShopeeCoupon(t *testing.T) {
+	cta := ctaPoolRepo()
 	svc := newTestService(t, func(s *monitoringService) {
-		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: "TEMPLATE_MARKER {nome_produto}"}}
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: "TEMPLATE_MARKER {nome_produto}\n{cta}"}}
 		s.mlService = &mockMLService{
 			GetProductPreviewFn: func(_ context.Context, _, _ string) (*models.MLProductPreview, error) {
 				return &models.MLProductPreview{Permalink: "https://mercadolivre.com.br/sec/ABC", Currency: "BRL"}, nil
 			},
 		}
-		s.ctaRepo = ctaPoolRepo()
+		s.ctaRepo = cta
 	})
 	automation := &models.Automation{ID: "auto-mix2", UserID: "user-1", DispatchTextID: strPtr("dt-1")}
 
@@ -480,4 +559,31 @@ func TestRenderMonitorDispatchText_MLNonProductFallsThroughToShopeeCoupon(t *tes
 	if rendered.CTA != "CTA_POOL_SHOPEE" {
 		t.Errorf("CTA = %q, want o CTA Shopee", rendered.CTA)
 	}
+	// O ramo ML abortou ANTES da CTA (não é produto); só o wrapper Shopee
+	// consultou — uma vez, não duas.
+	cta.assertCalls(t, 1, 0)
+}
+
+// Preview ML que não é produto e SEM cupom Shopee: cai no repasse histórico e
+// não pode consultar CTA, mesmo com {cta} no texto de disparo.
+func TestRenderMonitorDispatchText_MLNonProductWithoutCouponNeverQueriesCTA(t *testing.T) {
+	cta := ctaPoolRepo()
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: "TEMPLATE_MARKER {nome_produto}\n{cta}"}}
+		s.mlService = &mockMLService{
+			GetProductPreviewFn: func(_ context.Context, _, _ string) (*models.MLProductPreview, error) {
+				return &models.MLProductPreview{Permalink: "https://mercadolivre.com.br/sec/ABC", Currency: "BRL"}, nil
+			},
+		}
+		s.ctaRepo = cta
+	})
+	automation := &models.Automation{ID: "auto-ml-relay", UserID: "user-1", DispatchTextID: strPtr("dt-1")}
+
+	rendered := svc.renderMonitorDispatchText(context.Background(), automation, nil,
+		"", "https://mercadolivre.com.br/sec/ABC", "https://mercadolivre.com.br/sec/OWN", "", false)
+
+	if rendered.Body != "" || rendered.ShopeeCouponRelay || rendered.CTA != "" {
+		t.Errorf("deveria devolver render vazio (repasse histórico); got: %+v", rendered)
+	}
+	cta.assertCalls(t, 0, 0)
 }

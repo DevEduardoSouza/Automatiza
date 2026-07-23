@@ -2,6 +2,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { FailoverPolicyCard } from '@/components/whatsapp/failover-policy-card';
 import { InstancesList } from '@/components/whatsapp/instances-list';
 import {
   hasSeenRecommendations,
@@ -273,6 +274,14 @@ export default function WhatsApp() {
 
           {/* Existing instances list (renders only when the user has at least one chip) */}
           <InstancesList />
+
+          {/* Chip reserva (Melhoria 5). O próprio card se esconde quando a
+              feature está desligada no backend — e SÓ nesse caso. */}
+          {hasInstances && (
+            <div className="mb-5 xs:mb-6 sm:mb-8">
+              <FailoverPolicyCard instances={instances} />
+            </div>
+          )}
 
           {/* Connection Card — only shown to users with zero chips. Existing
               users manage everything via InstancesList + AddChipModal above. */}

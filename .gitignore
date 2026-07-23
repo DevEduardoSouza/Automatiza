@@ -11,3 +11,14 @@ participantes.txt
 
 # Compiled waha-router binary (build artifact, never commit)
 docker/waha-router/waha-router
+
+# Grafo do codebase (graphify): 35MB de artefato de build, regenerável com
+# `/graphify Automatiza --update`. Nunca versionar.
+graphify-out/
+
+# Bytecode Python dos scripts de ops.
+__pycache__/
+*.pyc
+
+# Lixo do Finder.
+.DS_Store

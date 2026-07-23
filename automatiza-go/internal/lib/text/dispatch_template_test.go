@@ -1,6 +1,7 @@
 package text
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -1005,6 +1006,123 @@ func TestExtractTemplateVariables(t *testing.T) {
 	}
 }
 
+// TemplateUsesVariable é o gate de opt-in do CTA: ele é a única coisa que
+// separa "o operador pediu CTA neste texto" de "existe CTA cadastrada na
+// conta". Reusa ExtractTemplateVariables de propósito — um regex paralelo
+// divergiria do renderer e o gate autorizaria o que o render não preenche.
+func TestTemplateUsesVariable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		template string
+		variable string
+		want     bool
+	}{
+		{"chave simples", "Oferta {cta} fim", VarCTA, true},
+		{"chave dupla", "Oferta {{cta}} fim", VarCTA, true},
+		{"template inteiro é a variável", "{cta}", VarCTA, true},
+		{"duas ocorrências", "{cta}\n{nome_produto}\n{cta}", VarCTA, true},
+		{"ocorrências em sintaxes diferentes", "{cta} e {{cta}}", VarCTA, true},
+		// "{cta}}" é um token {cta} reconhecido pelo parser mais um '}' literal.
+		// O renderer trata exatamente assim, então o gate acompanha em vez de
+		// criar um segundo validador de sintaxe que divergiria dele.
+		{"chave extra à direita", "{cta}}", VarCTA, true},
+		{"literal sem chaves", "compre agora cta", VarCTA, false},
+		{"caixa diferente", "{CTA}", VarCTA, false},
+		{"com espaços dentro das chaves", "{ cta }", VarCTA, false},
+		{"prefixo de outra variável", "{cta_extra}", VarCTA, false},
+		{"spintax simples não é placeholder", "{cta|aproveite}", VarCTA, false},
+		{"spintax dupla não é placeholder", "{{cta|aproveite}}", VarCTA, false},
+		{"abertura sem fechamento", "{cta", VarCTA, false},
+		{"chave dupla mal fechada", "{{cta}", VarCTA, false},
+		{"template vazio", "", VarCTA, false},
+		{"variável vazia nunca casa", "{cta}", "", false},
+		{"só outras variáveis", "{nome_produto} {preco_formatado}", VarCTA, false},
+		{"a variável procurada é outra", "{nome_produto}", VarNomeProduto, true},
+		// Os defaults reais do produto NÃO trazem CTA — nenhum disparo que caia
+		// neles pode disparar consulta ao repositório de CTA.
+		{"default Shopee atual", DefaultShopeeTemplate(), VarCTA, false},
+		{"default ML atual", DefaultMLTemplate(), VarCTA, false},
+		// Caso sintético: se um default um dia ganhar a variável, o gate passa a
+		// autorizar sobre ele — sem precisar mexer no default de produção.
+		{"default sintético com cta", DefaultShopeeTemplate() + "\n{cta}", VarCTA, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := TemplateUsesVariable(tt.template, tt.variable); got != tt.want {
+				t.Errorf("TemplateUsesVariable(%q, %q) = %v, want %v", tt.template, tt.variable, got, tt.want)
+			}
+		})
+	}
+}
+
+// Cardinalidade da CTA no render: UM valor é escolhido por mensagem e o
+// renderer o aplica em cada ocorrência autorada. O que não pode existir é a
+// ocorrência N+1 vinda de append pós-render (removido na melhoria 6).
+func TestRenderTemplate_CTAOccurrences(t *testing.T) {
+	t.Parallel()
+
+	const cta = "CTA_MARKER"
+
+	t.Run("um placeholder rende uma ocorrência", func(t *testing.T) {
+		t.Parallel()
+		got := RenderTemplate("Oferta\n\n{cta}", map[string]string{VarCTA: cta})
+		if n := strings.Count(got, cta); n != 1 {
+			t.Errorf("ocorrências de CTA = %d, want 1.\n got: %q", n, got)
+		}
+	})
+
+	t.Run("dois placeholders rendem o mesmo valor duas vezes", func(t *testing.T) {
+		t.Parallel()
+		got := RenderTemplate("{cta}\nOferta\n{{cta}}", map[string]string{VarCTA: cta})
+		if n := strings.Count(got, cta); n != 2 {
+			t.Errorf("ocorrências de CTA = %d, want 2 (uma por placeholder autorado).\n got: %q", n, got)
+		}
+	})
+
+	t.Run("spintax não recebe o valor da CTA", func(t *testing.T) {
+		t.Parallel()
+		got := RenderTemplate("{cta} {cta|aproveite}", map[string]string{VarCTA: cta})
+		if !strings.Contains(got, "{cta|aproveite}") {
+			t.Errorf("spintax deveria sobreviver ao render para o text.Vary expandir depois.\n got: %q", got)
+		}
+		if n := strings.Count(got, cta); n != 1 {
+			t.Errorf("ocorrências de CTA = %d, want 1 (spintax não conta).\n got: %q", n, got)
+		}
+	})
+
+	t.Run("CTA vazia não deixa placeholder nem buraco", func(t *testing.T) {
+		t.Parallel()
+		got := RenderTemplate("Oferta\n\n{cta}\n\nRodapé", map[string]string{VarCTA: ""})
+		if strings.Contains(got, "{cta}") {
+			t.Errorf("placeholder não substituído vazou para o disparo.\n got: %q", got)
+		}
+		if strings.Contains(got, "\n\n\n") {
+			t.Errorf("linha vazia da CTA deveria ter colapsado.\n got: %q", got)
+		}
+	})
+
+	t.Run("tags mistas: só as variáveis exatas recebem valor", func(t *testing.T) {
+		t.Parallel()
+		got := RenderTemplate("{cta} {info} {cta_extra} {cta|x}", map[string]string{
+			VarCTA:  cta,
+			VarInfo: "INFO_MARKER",
+		})
+		if !strings.Contains(got, cta) || !strings.Contains(got, "INFO_MARKER") {
+			t.Errorf("{cta} e {info} deveriam ter sido preenchidos.\n got: %q", got)
+		}
+		if strings.Contains(got, "{cta_extra}") {
+			t.Errorf("{cta_extra} é placeholder desconhecido — deveria ser varrido.\n got: %q", got)
+		}
+		if !strings.Contains(got, "{cta|x}") {
+			t.Errorf("spintax deveria sobreviver.\n got: %q", got)
+		}
+	})
+}
+
 // TestRenderMLOfferTemplate_EmptyOriginalPrice cobre o bug do "De ~~"
 // pendurado: oferta ML sem preço cheio (OriginalPrice == 0) não pode deixar
 // a linha do preço original riscado vazia no disparo.
@@ -1148,4 +1266,288 @@ func TestStripEmptyOriginalPriceLine(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- Melhoria 10: {desconto} e {desconto_formatado} ---
+
+func TestNormalizeDiscountPercent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		discount float64
+		want     float64
+	}{
+		{"inteiro valido", 25, 25},
+		{"fracionario arredonda pra baixo", 25.4, 25},
+		{"fracionario arredonda pra cima", 99.6, 100},
+		{"meio ponto percentual vira vazio", 0.4, 0},
+		{"zero", 0, 0},
+		{"negativo", -10, 0},
+		{"acima de 100", 150, 0},
+		{"limite inferior", 1, 1},
+		{"limite superior", 100, 100},
+		{"acima de 100 mas arredonda pra 100", 100.4, 100},
+		{"NaN", math.NaN(), 0},
+		{"mais infinito", math.Inf(1), 0},
+		{"menos infinito", math.Inf(-1), 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := NormalizeDiscountPercent(tt.discount); got != tt.want {
+				t.Errorf("NormalizeDiscountPercent(%v) = %v, want %v", tt.discount, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDiscountPercentFromPrices(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		original float64
+		current  float64
+		want     float64
+	}{
+		{"desconto simples", 100, 75, 25},
+		{"arredonda", 37.90, 11.99, 68},
+		{"original igual ao atual", 100, 100, 0},
+		{"original menor que o atual", 75, 100, 0},
+		{"original zero", 0, 50, 0},
+		{"original negativo", -10, 5, 0},
+		{"diferenca irrisoria vira vazio", 100, 99.7, 0},
+		{"atual negativo", 100, -5, 0},
+		{"original NaN", math.NaN(), 50, 0},
+		{"atual NaN", 100, math.NaN(), 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := DiscountPercentFromPrices(tt.original, tt.current); got != tt.want {
+				t.Errorf("DiscountPercentFromPrices(%v, %v) = %v, want %v", tt.original, tt.current, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDiscountVarsParity é a prova central do contrato: o MESMO template
+// produz a MESMA saída de desconto nos dois marketplaces, para todo valor de
+// entrada — inclusive os inválidos, que somem nos dois.
+func TestDiscountVarsParity(t *testing.T) {
+	t.Parallel()
+
+	const template = "cru=[{desconto}] fmt=[{desconto_formatado}]"
+
+	tests := []struct {
+		name     string
+		discount float64
+		want     string
+	}{
+		{"25 inteiro", 25, "cru=[25] fmt=[25% OFF]"},
+		{"25.4 arredonda", 25.4, "cru=[25] fmt=[25% OFF]"},
+		{"99.6 arredonda pra 100", 99.6, "cru=[100] fmt=[100% OFF]"},
+		{"0.4 vazio nos dois", 0.4, "cru=[] fmt=[]"},
+		{"zero vazio nos dois", 0, "cru=[] fmt=[]"},
+		{"negativo vazio nos dois", -10, "cru=[] fmt=[]"},
+		{"150 vazio nos dois", 150, "cru=[] fmt=[]"},
+		{"NaN vazio nos dois", math.NaN(), "cru=[] fmt=[]"},
+		{"infinito vazio nos dois", math.Inf(1), "cru=[] fmt=[]"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shopee := RenderShopeeOfferTemplate(template, ShopeeOfferVars{Title: "P", Discount: tt.discount})
+			ml := RenderMLOfferTemplate(template, MLOfferVars{Title: "P", Discount: tt.discount})
+			if shopee != tt.want {
+				t.Errorf("Shopee = %q, want %q", shopee, tt.want)
+			}
+			if ml != tt.want {
+				t.Errorf("ML = %q, want %q", ml, tt.want)
+			}
+			if shopee != ml {
+				t.Errorf("paridade quebrada: Shopee=%q ML=%q", shopee, ml)
+			}
+		})
+	}
+}
+
+// TestDiscountVarsLegacyCompat trava as saídas que NÃO podem mudar.
+func TestDiscountVarsLegacyCompat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("template legado {desconto}% OFF segue produzindo 25% OFF", func(t *testing.T) {
+		t.Parallel()
+		const template = "{desconto}% OFF"
+		if got := RenderMLOfferTemplate(template, MLOfferVars{Title: "P", Discount: 25}); got != "25% OFF" {
+			t.Errorf("ML = %q, want %q", got, "25% OFF")
+		}
+		if got := RenderShopeeOfferTemplate(template, ShopeeOfferVars{Title: "P", Discount: 25}); got != "25% OFF" {
+			t.Errorf("Shopee = %q, want %q", got, "25% OFF")
+		}
+	})
+
+	t.Run("alias legado {discount} nao e normalizado", func(t *testing.T) {
+		t.Parallel()
+		// 150 e 0.4 são inválidos para as variáveis novas, mas o alias inglês
+		// mantém a saída crua de FormatDiscount — contrato "não alterar
+		// aliases ingleses neste item".
+		cases := []struct {
+			discount float64
+			want     string
+		}{
+			{150, "150% OFF"},
+			{0.4, "0% OFF"},
+			{25.4, "25% OFF"},
+			{0, ""},
+		}
+		for _, c := range cases {
+			if got := RenderShopeeOfferTemplate("{discount}", ShopeeOfferVars{Title: "P", Discount: c.discount}); got != c.want {
+				t.Errorf("Shopee {discount} com %v = %q, want %q", c.discount, got, c.want)
+			}
+			if got := RenderMLOfferTemplate("{discount}", MLOfferVars{Title: "P", Discount: c.discount}); got != c.want {
+				t.Errorf("ML {discount} com %v = %q, want %q", c.discount, got, c.want)
+			}
+		}
+	})
+
+	t.Run("template sem a variavel nao ganha desconto", func(t *testing.T) {
+		t.Parallel()
+		const template = "🛍️ {nome_produto}\n💸 Por {preco_formatado}\n🛒 {link_afiliado}"
+		want := "🛍️ Produto\n💸 Por R$ 10,00\n🛒 https://exemplo"
+		offer := ShopeeOfferVars{Title: "Produto", Price: 10, Discount: 25, AffiliateLink: "https://exemplo"}
+		if got := RenderShopeeOfferTemplate(template, offer); got != want {
+			t.Errorf("Shopee = %q, want %q", got, want)
+		}
+		ml := MLOfferVars{Title: "Produto", Price: 10, Discount: 25, AffiliateLink: "https://exemplo"}
+		if got := RenderMLOfferTemplate(template, ml); got != want {
+			t.Errorf("ML = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestStripEmptyDiscountLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		template      string
+		discountEmpty bool
+		want          string
+	}{
+		{
+			name:          "linha so com a variavel some",
+			template:      "Por {preco_formatado}\n{desconto_formatado}\n{link_afiliado}",
+			discountEmpty: true,
+			want:          "Por {preco_formatado}\n{link_afiliado}",
+		},
+		{
+			name:          "linha so com variavel e decoracao some",
+			template:      "Por {preco_formatado}\n🔥 {desconto_formatado} 🔥\n{link_afiliado}",
+			discountEmpty: true,
+			want:          "Por {preco_formatado}\n{link_afiliado}",
+		},
+		{
+			name:          "decoracao de pontuacao tambem some",
+			template:      "Por {preco_formatado}\n-{desconto}%\n{link_afiliado}",
+			discountEmpty: true,
+			want:          "Por {preco_formatado}\n{link_afiliado}",
+		},
+		{
+			name:          "sintaxe de chave dupla tambem some",
+			template:      "Por {preco_formatado}\n{{desconto_formatado}}\n{link_afiliado}",
+			discountEmpty: true,
+			want:          "Por {preco_formatado}\n{link_afiliado}",
+		},
+		{
+			name:          "linha mista com preco fica",
+			template:      "Por {preco_formatado} {desconto_formatado}",
+			discountEmpty: true,
+			want:          "Por {preco_formatado} {desconto_formatado}",
+		},
+		{
+			name:          "linha legada {desconto}% OFF fica (tem texto proprio)",
+			template:      "{desconto}% OFF",
+			discountEmpty: true,
+			want:          "{desconto}% OFF",
+		},
+		{
+			name:          "linha com spintax fica",
+			template:      "{corre|voa} {desconto}",
+			discountEmpty: true,
+			want:          "{corre|voa} {desconto}",
+		},
+		{
+			name:          "nada muda quando ha desconto",
+			template:      "Por {preco_formatado}\n🔥 {desconto_formatado} 🔥",
+			discountEmpty: false,
+			want:          "Por {preco_formatado}\n🔥 {desconto_formatado} 🔥",
+		},
+		{
+			name:          "template sem a variavel fica intacto",
+			template:      "Por {preco_formatado}\n{link_afiliado}",
+			discountEmpty: true,
+			want:          "Por {preco_formatado}\n{link_afiliado}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := StripEmptyDiscountLine(tt.template, tt.discountEmpty); got != tt.want {
+				t.Errorf("StripEmptyDiscountLine() =\n%q\nwant\n%q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRenderOfferTemplate_EmptyDiscountLine prova end-to-end que desconto
+// inválido não deixa linha em branco, decoração órfã nem placeholder — e que
+// a linha mista com preço sobrevive.
+func TestRenderOfferTemplate_EmptyDiscountLine(t *testing.T) {
+	t.Parallel()
+
+	const template = "🛍️ {nome_produto}\n💸 Por {preco_formatado}\n🔥 {desconto_formatado}\n\n🛒 {link_afiliado}"
+
+	t.Run("sem desconto a linha some inteira", func(t *testing.T) {
+		t.Parallel()
+		want := "🛍️ Produto\n💸 Por R$ 11,99\n\n🛒 https://exemplo"
+		shopee := RenderShopeeOfferTemplate(template, ShopeeOfferVars{
+			Title: "Produto", Price: 11.99, Discount: 0, AffiliateLink: "https://exemplo",
+		})
+		if shopee != want {
+			t.Errorf("Shopee =\n%q\nwant\n%q", shopee, want)
+		}
+		ml := RenderMLOfferTemplate(template, MLOfferVars{
+			Title: "Produto", Price: 11.99, Discount: 0, AffiliateLink: "https://exemplo",
+		})
+		if ml != want {
+			t.Errorf("ML =\n%q\nwant\n%q", ml, want)
+		}
+	})
+
+	t.Run("com desconto a linha aparece", func(t *testing.T) {
+		t.Parallel()
+		want := "🛍️ Produto\n💸 Por R$ 11,99\n🔥 68% OFF\n\n🛒 https://exemplo"
+		shopee := RenderShopeeOfferTemplate(template, ShopeeOfferVars{
+			Title: "Produto", Price: 11.99, Discount: 68, AffiliateLink: "https://exemplo",
+		})
+		if shopee != want {
+			t.Errorf("Shopee =\n%q\nwant\n%q", shopee, want)
+		}
+	})
+
+	t.Run("linha mista com preco sobrevive sem desconto", func(t *testing.T) {
+		t.Parallel()
+		got := RenderShopeeOfferTemplate("Por {preco_formatado} {desconto_formatado}", ShopeeOfferVars{
+			Title: "Produto", Price: 11.99, Discount: 0,
+		})
+		if got != "Por R$ 11,99" {
+			t.Errorf("got %q, want %q", got, "Por R$ 11,99")
+		}
+	})
 }

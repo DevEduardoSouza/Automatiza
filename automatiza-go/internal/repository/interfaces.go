@@ -678,12 +678,31 @@ type JobListResult struct {
 	TotalCount int
 }
 
+// ErrDuplicatePendingJob indica que a operação criaria um segundo agendamento
+// logicamente idêntico (mesmo usuário, ação, horário e payload) com o primeiro
+// ainda pending. É estado do usuário, não falha do sistema.
+var ErrDuplicatePendingJob = errors.New("já existe um agendamento idêntico pendente para este horário")
+
 type JobRepository interface {
 	GetByID(ctx context.Context, id string) (*models.StandaloneJob, error)
 	GetByUserID(ctx context.Context, userID string, status *models.StandaloneJobStatus, limit int) ([]models.StandaloneJob, error)
 	ListByUserID(ctx context.Context, params JobListParams) (*JobListResult, error)
-	GetPendingDueJobs(ctx context.Context, limit int) ([]models.StandaloneJob, error)
-	Create(ctx context.Context, job *models.StandaloneJob) (*models.StandaloneJob, error)
+	// ClaimPendingDueJobs marca como 'running' e devolve na MESMA transação os
+	// jobs vencidos. Reivindicar e mudar o status em statements separados abria
+	// janela para dois ticks/réplicas pegarem o mesmo job e enviarem duas vezes.
+	ClaimPendingDueJobs(ctx context.Context, limit int) ([]models.StandaloneJob, error)
+	// ReleaseClaimedJobs devolve para 'pending' jobs reivindicados que não
+	// chegaram a ser executados (ctx do cron morreu no meio do lote). Sem isso
+	// eles ficariam 'running' até o reaper marcá-los como failed 30min depois —
+	// perda silenciosa de um agendamento que só precisava do próximo tick.
+	ReleaseClaimedJobs(ctx context.Context, ids []string) (int64, error)
+	// Create é idempotente: agendamento logicamente idêntico (mesmo usuário,
+	// ação, horário e payload) com job ainda pending devolve o job existente
+	// com deduped=true em vez de criar uma segunda linha.
+	Create(ctx context.Context, job *models.StandaloneJob) (created *models.StandaloneJob, deduped bool, err error)
+	// CreateBatch cria o lote inteiro numa única transação: item inválido
+	// desfaz tudo, itens duplicados devolvem o job já existente.
+	CreateBatch(ctx context.Context, jobs []*models.StandaloneJob) (created []models.StandaloneJob, dedupedCount int, err error)
 	Update(ctx context.Context, id string, updates map[string]interface{}) error
 	UpdateStatus(ctx context.Context, id string, status models.StandaloneJobStatus, errorMsg *string) error
 	ScheduleRetry(ctx context.Context, id string, nextRunAt time.Time) error
@@ -934,4 +953,302 @@ type GroupMemberRepository interface {
 	// pelo tenant. groupID vazio devolve o agregado da conta. Nunca troca
 	// "não observado" por zero: sem baseline, os campos vêm nil.
 	GetMemberMetrics(ctx context.Context, userID string, days int, groupID string) (*models.GroupMemberMetrics, error)
+}
+
+// =============================================================================
+// Melhoria 5 — chip reserva e failover de instância WhatsApp
+// =============================================================================
+
+// ErrFailoverInProgress indica que uma operação de failover não terminal já
+// cobre esta automação: o gate está fechado e nenhum produtor pode iniciar
+// enqueue/envio novo por ela.
+var ErrFailoverInProgress = errors.New("failover operation in progress for this automation")
+
+// ErrFailoverVersionConflict indica que a versão esperada da política não bate
+// (outra sessão/réplica mudou a configuração no meio).
+var ErrFailoverVersionConflict = errors.New("failover policy version conflict")
+
+// ErrFailoverIdempotencyMismatch indica replay da mesma idempotency key com
+// payload diferente.
+var ErrFailoverIdempotencyMismatch = errors.New("failover idempotency key reused with a different request")
+
+// ErrFailoverConcurrentOperation indica que o usuário já tem outra operação
+// não terminal (chave diferente).
+var ErrFailoverConcurrentOperation = errors.New("another failover operation is already running for this user")
+
+// ErrFailoverStaleConfiguration indica que o conjunto elegível ou algum
+// fingerprint mudou entre o ensaio e a aplicação. Aborta tudo, nunca aplica
+// parcialmente.
+var ErrFailoverStaleConfiguration = errors.New("failover configuration changed since the dry run")
+
+// ErrFailoverIndeterminate indica estado que não admite inferência segura: a
+// política/operação vai para `failed`, o gate continua fechado e a correção é
+// humana e forward-only.
+var ErrFailoverIndeterminate = errors.New("failover state is indeterminate")
+
+// InstanceFailoverRole é o papel de um chip numa política.
+type InstanceFailoverRole struct {
+	InstanceID int
+	PolicyID   int64
+	UserID     string
+	Role       string
+}
+
+// FailoverAutomationRouting é a projeção MÍNIMA de `automations` que o
+// failover precisa: identidade, escopo e roteamento. Nenhuma outra coluna é
+// lida — e nenhuma outra é escrita.
+type FailoverAutomationRouting struct {
+	Automation models.Automation
+	Name       string
+	Status     string
+}
+
+// SetFailoverPolicyInput descreve uma criação ou atualização de política.
+// PolicyID zero cria; caso contrário atualiza exigindo ExpectedVersion exata.
+type SetFailoverPolicyInput struct {
+	PolicyID                  int64
+	UserID                    string
+	ActorUserID               string
+	PrimaryInstanceID         int
+	BackupInstanceID          int
+	Mode                      string
+	ExpectedVersion           int64
+	IdempotencyKey            string
+	RequestHash               string
+	UnhealthyAfterSeconds     *int
+	RequiredConsecutiveProbes *int
+	DrainDeadlineSeconds      *int
+	ProposalTTLSeconds        *int
+}
+
+// DisableFailoverPolicyInput descreve a remoção de uma política.
+type DisableFailoverPolicyInput struct {
+	PolicyID        int64
+	UserID          string
+	ActorUserID     string
+	ExpectedVersion int64
+	IdempotencyKey  string
+	RequestHash     string
+}
+
+// FailoverPolicyMutation é o resultado de SetPolicy/DisablePolicy. Replay
+// devolve Replayed=true e o evento gravado da primeira execução.
+type FailoverPolicyMutation struct {
+	Policy   *models.InstanceFailoverPolicy
+	Event    *models.InstanceFailoverEvent
+	Replayed bool
+}
+
+// FailoverProbeInput é uma observação do detector assisted. NUNCA incrementa
+// `version`: telemetria de saúde a cada minuto não pode invalidar dry-runs.
+type FailoverProbeInput struct {
+	PolicyID int64
+	UserID   string
+	// Healthy=true zera timestamp e contador. Healthy=false com Valid=true
+	// acumula. Valid=false (WAHA indisponível/indeterminado) também zera —
+	// incerteza nunca conta como falha.
+	Healthy bool
+	Valid   bool
+	Status  string
+	Now     time.Time
+	// RequireDetectorLock faz a transação tentar
+	// pg_try_advisory_xact_lock('instance-failover-detector:<policy>') antes de
+	// qualquer outro lock. Sem o lock, a réplica pula sem erro (nil,nil,nil):
+	// é o que garante UM evento por política com duas réplicas rodando o mesmo
+	// cron.
+	RequireDetectorLock bool
+}
+
+// FailoverCloseGateInput fecha o gate de uma operação: vincula os itens,
+// muda a política para switching/reverting e marca o deadline de drain.
+type FailoverCloseGateInput struct {
+	OperationID     string
+	PolicyID        int64
+	UserID          string
+	ActorUserID     string
+	ExpectedVersion int64
+	ExpectedState   string
+	NewState        string
+	Items           []models.InstanceFailoverOperationItem
+	DrainDeadlineAt time.Time
+	RequestedEvent  string
+	GateClosedEvent string
+}
+
+// FailoverApplyInput aplica a projeção de TODAS as automações do snapshot numa
+// única transação. Qualquer divergência de fingerprint aborta a transação
+// inteira antes da primeira escrita.
+type FailoverApplyInput struct {
+	OperationID string
+	PolicyID    int64
+	UserID      string
+	ActorUserID string
+	// Estado exigido da política (switching ou reverting).
+	ExpectedState string
+	Items         []models.InstanceFailoverOperationItem
+	// Direção do fingerprint conferido antes de escrever: para apply é
+	// FingerprintBefore, para restore é FingerprintAfter.
+	ExpectFingerprintAfter bool
+	// Result gravado nos itens: applied ou restored.
+	ItemResult string
+	Event      string
+}
+
+// FailoverTerminateInput leva a operação a um estado terminal e devolve a
+// política ao estado combinado.
+type FailoverTerminateInput struct {
+	OperationID string
+	PolicyID    int64
+	UserID      string
+	ActorUserID string
+	// completed | aborted | failed
+	OperationStatus string
+	// Estado final da política. Vazio mantém o estado atual (caso failed).
+	PolicyState string
+	Event       string
+	ReasonCodes []string
+	Report      []byte
+}
+
+// FailoverLeaseInput pede uma lease de dispatch.
+type FailoverLeaseInput struct {
+	UserID       string
+	AutomationID string
+	HolderID     string
+	TTL          time.Duration
+}
+
+// ListFailoverEventsInput pagina o ledger por cursor (created_at,id).
+type ListFailoverEventsInput struct {
+	PolicyID int64
+	UserID   string
+	Cursor   string
+	Limit    int
+}
+
+// InstanceFailoverRepository é o acesso a dados da Melhoria 5.
+//
+// Os métodos transacionais têm granularidade GROSSA de propósito: a ordem
+// global de locks (advisory do usuário → policy → operation → automações por
+// UUID ascendente → ledger) precisa valer dentro de UMA transação, e deixar
+// isso para o serviço montar convidaria a deadlock entre réplicas.
+type InstanceFailoverRepository interface {
+	// --- leitura de política ---
+	GetPolicy(ctx context.Context, policyID int64, userID string) (*models.InstanceFailoverPolicy, error)
+	ListPolicies(ctx context.Context, userID string) ([]models.InstanceFailoverPolicy, error)
+	// GetRoleByInstance devolve o papel do chip em QUALQUER política (sem
+	// escopo de usuário): é o precheck dos handlers de delete de instância.
+	GetRoleByInstance(ctx context.Context, instanceID int) (*InstanceFailoverRole, error)
+	ListAssistedPolicies(ctx context.Context) ([]models.InstanceFailoverPolicy, error)
+
+	// --- mutação de política ---
+	SetPolicy(ctx context.Context, in SetFailoverPolicyInput) (*FailoverPolicyMutation, error)
+	DisablePolicy(ctx context.Context, in DisableFailoverPolicyInput) (*FailoverPolicyMutation, error)
+	// RecordProbe grava telemetria do detector e, quando os limiares batem,
+	// promove a política para proposed. Devolve a política resultante.
+	RecordProbe(ctx context.Context, in FailoverProbeInput) (*models.InstanceFailoverPolicy, *models.InstanceFailoverEvent, error)
+	// ExpireProposals volta para active as propostas vencidas.
+	ExpireProposals(ctx context.Context, now time.Time) (int, error)
+
+	// --- dry-run ---
+	FindDryRunByKey(ctx context.Context, userID, direction, key string) (*models.InstanceFailoverDryRun, error)
+	GetDryRun(ctx context.Context, dryRunID, userID string) (*models.InstanceFailoverDryRun, error)
+	ListDryRunItems(ctx context.Context, dryRunID string) ([]models.InstanceFailoverDryRunItem, error)
+	SaveDryRun(ctx context.Context, dr *models.InstanceFailoverDryRun, items []models.InstanceFailoverDryRunItem, ev *models.InstanceFailoverEvent) error
+
+	// --- operações ---
+	InsertOperation(ctx context.Context, op *models.InstanceFailoverOperation) (*models.InstanceFailoverOperation, bool, error)
+	GetOperation(ctx context.Context, operationID, userID string) (*models.InstanceFailoverOperation, error)
+	FindOperationByKey(ctx context.Context, userID, kind, key string) (*models.InstanceFailoverOperation, error)
+	GetNonTerminalOperation(ctx context.Context, userID string) (*models.InstanceFailoverOperation, error)
+	ListNonTerminalOperations(ctx context.Context) ([]models.InstanceFailoverOperation, error)
+	ListOperationItems(ctx context.Context, operationID string) ([]models.InstanceFailoverOperationItem, error)
+	GetLastCompletedOperation(ctx context.Context, policyID int64, userID, kind string) (*models.InstanceFailoverOperation, error)
+	CloseGate(ctx context.Context, in FailoverCloseGateInput) (*models.InstanceFailoverOperation, error)
+	ApplyProjection(ctx context.Context, in FailoverApplyInput) error
+	TerminateOperation(ctx context.Context, in FailoverTerminateInput) (*models.InstanceFailoverPolicy, error)
+
+	// --- gate de dispatch ---
+	// AcquireLease insere a lease SE nenhuma operação não terminal contiver a
+	// automação. Devolve ErrFailoverInProgress quando contém.
+	AcquireLease(ctx context.Context, in FailoverLeaseInput) (string, error)
+	RenewLease(ctx context.Context, leaseID string, ttl time.Duration) (bool, error)
+	ReleaseLease(ctx context.Context, leaseID string) error
+	CountActiveLeases(ctx context.Context, automationIDs []string, now time.Time) (int, error)
+	CleanupLeases(ctx context.Context, before time.Time) (int64, error)
+	// CountNonTerminalDispatches conta dispatch_logs pending/queued criados
+	// até `before` para as automações do snapshot.
+	CountNonTerminalDispatches(ctx context.Context, automationIDs []string, before time.Time) (int, error)
+
+	// --- automações (leitura de roteamento) ---
+	ListUserAutomationsRouting(ctx context.Context, userID string) ([]FailoverAutomationRouting, error)
+	// GetOperationForAutomations devolve a operação não terminal do usuário
+	// que contenha qualquer uma das automações informadas — é o guard de
+	// create/update/delete de automação.
+	FindBlockingOperationForAutomations(ctx context.Context, userID string, automationIDs []string) (*models.InstanceFailoverOperation, error)
+
+	// --- ledger ---
+	InsertEvent(ctx context.Context, ev *models.InstanceFailoverEvent) (*models.InstanceFailoverEvent, error)
+	GetLastEvent(ctx context.Context, policyID int64, userID string) (*models.InstanceFailoverEvent, error)
+	ListEvents(ctx context.Context, in ListFailoverEventsInput) ([]models.InstanceFailoverEvent, string, error)
+}
+
+// MonitorCadenceRepository é o ledger durável da cadência do espelho
+// (Melhoria 7, migração 078). PostgreSQL é a primitiva de verdade: Redis/Asynq
+// podem ser zerados e todo pending não terminal continua recuperável daqui.
+type MonitorCadenceRepository interface {
+	// --- admissão ---
+
+	// HasNonTerminalPending diz se alguma das automações ainda tem item na
+	// fila. Usado para continuar enfileirando durante o dreno (intervalo
+	// voltou a zero) em vez de deixar mensagem nova ultrapassar a fila.
+	HasNonTerminalPending(ctx context.Context, automationIDs []string) (bool, error)
+
+	// Admit persiste payload + reservas numa ÚNICA transação. Ou todas as
+	// automações elegíveis ficam reservadas, ou nenhuma fica. Devolve
+	// models.ErrMonitorBacklogFull quando alguma estourou o teto de fila.
+	Admit(ctx context.Context, in models.MonitorAdmissionInput) (*models.MonitorAdmissionResult, error)
+
+	// --- outbox (poller) ---
+
+	// ClaimDueHeads reivindica, por CAS, o head devido de até `limit`
+	// automações distintas. Réplicas concorrentes não colidem (SKIP LOCKED).
+	ClaimDueHeads(ctx context.Context, limit int) ([]models.MonitorPendingLease, error)
+	MarkEnqueued(ctx context.Context, pendingID int64, generation int, token string) error
+	// ReleaseEnqueueLease devolve o item a pending quando o enqueue falhou.
+	ReleaseEnqueueLease(ctx context.Context, pendingID int64, generation int, token string, notBefore time.Time) error
+
+	// --- worker ---
+
+	// ClaimPending faz o CAS enqueuing|enqueued -> processing. Zero linhas
+	// (nil, nil) significa task velha/replay: o worker retorna sem efeito.
+	ClaimPending(ctx context.Context, pendingID int64, generation int, token string) (*models.MonitorPendingWork, error)
+	// MarkPendingStarted grava first_started_at e o last_dispatch_started_at
+	// do estado na MESMA transação — é o que impede rajada de catch-up.
+	MarkPendingStarted(ctx context.Context, pendingID int64, processingToken string) error
+	// ReschedulePending devolve o item a pending (janela fechou, destino
+	// retentável) mexendo APENAS em not_before_at.
+	ReschedulePending(ctx context.Context, pendingID int64, processingToken string, notBefore time.Time, code string) error
+	FinalizePending(ctx context.Context, pendingID int64, processingToken, status string, result models.MonitorPendingResult, code string) error
+
+	// MaterializeDestinations cria o ledger por destino na primeira execução e
+	// devolve as linhas (existentes, se já materializado) em ordem de ordinal.
+	MaterializeDestinations(ctx context.Context, pendingID int64, dests []models.MonitorPendingDestination) ([]models.MonitorPendingDestination, error)
+	ListDestinations(ctx context.Context, pendingID int64) ([]models.MonitorPendingDestination, error)
+	ClaimDestination(ctx context.Context, destinationID int64, token string) (bool, error)
+	// MarkDestinationSending é a fronteira do resultado incerto.
+	MarkDestinationSending(ctx context.Context, destinationID int64, token string) (bool, error)
+	FinishDestination(ctx context.Context, destinationID int64, status, outcomeCode string, notBefore *time.Time) error
+
+	// --- manutenção ---
+
+	RecoverLeases(ctx context.Context) (models.MonitorRecoveryStats, error)
+	// CancelForAutomation cancela itens/destinos não iniciados de uma
+	// automação (desativada, tipo trocado ou apagada).
+	CancelForAutomation(ctx context.Context, automationID string) (int, error)
+	Cleanup(ctx context.Context, before time.Time, batch int) (int, error)
+
+	// --- API/UI ---
+
+	GetMonitorQueueSummaries(ctx context.Context, userID string, automationIDs []string) (map[string]models.MonitorQueueSummary, error)
 }

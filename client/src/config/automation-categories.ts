@@ -1245,3 +1245,15 @@ export const translateShopeeAffiliateError = (
 
 	return msg;
 };
+
+/**
+ * ENABLE_MONITOR_DISPATCH_CADENCE_UI — gate do controle "intervalo mínimo
+ * entre mensagens monitoradas" (Melhoria 7).
+ *
+ * FALSE: o controle não é renderizado e o campo nunca é enviado, então nem um
+ * cliente com bundle antigo em cache nem um novo conseguem ligar a cadência
+ * sem querer. O gate do backend (FEATURE_MONITOR_DISPATCH_CADENCE) é
+ * independente deste — os dois precisam estar ligados, e é o backend que
+ * recusa de verdade.
+ */
+export const ENABLE_MONITOR_DISPATCH_CADENCE_UI = false;

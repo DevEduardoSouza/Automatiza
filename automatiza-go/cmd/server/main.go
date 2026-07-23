@@ -28,6 +28,7 @@ import (
 	"automatiza-go/internal/gen/ctas/v1/ctasv1connect"
 	"automatiza-go/internal/gen/dashboard/v1/dashboardv1connect"
 	dispatchtextsv1connect "automatiza-go/internal/gen/dispatch_texts/v1/dispatch_textsv1connect"
+	"automatiza-go/internal/gen/failover/v1/failoverv1connect"
 	"automatiza-go/internal/gen/groups/v1/groupsv1connect"
 	"automatiza-go/internal/gen/history/v1/historyv1connect"
 	"automatiza-go/internal/gen/instagram/v1/instagramv1connect"
@@ -61,6 +62,7 @@ import (
 	"automatiza-go/internal/services/ctas"
 	"automatiza-go/internal/services/dashboard"
 	"automatiza-go/internal/services/email"
+	"automatiza-go/internal/services/failover"
 	"automatiza-go/internal/services/groupmembers"
 	"automatiza-go/internal/services/instagram"
 	"automatiza-go/internal/services/jobs"
@@ -148,6 +150,13 @@ func main() {
 	if err := observability.InitMetrics(cfg.OTelEnabled); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize OTel metrics: %v\n", err)
 		// Non-fatal: continue without custom metrics
+	}
+
+	// Métricas da Melhoria 5 (chip reserva). Mesmo gate de OTel das demais:
+	// com OTelEnabled=false o singleton fica nil e todo Record vira no-op.
+	if err := observability.InitFailoverMetrics(cfg.OTelEnabled); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize instance-failover metrics: %v\n", err)
+		// Non-fatal: a feature funciona sem métricas.
 	}
 
 	// WaitGroup available for tracking background goroutines
@@ -556,6 +565,45 @@ func main() {
 		config.NewModuleLogger(logger, "ctas"),
 	)
 
+	// Gate de dispatch da Melhoria 5. Criado antes dos produtores porque os
+	// três o recebem. Inerte (zero I/O) com FEATURE_INSTANCE_FAILOVER off e sem
+	// operação pendente no boot.
+	failoverGate := failover.NewGate(
+		repos.InstanceFailover,
+		config.InstanceFailoverEnabled,
+		config.NewModuleLogger(logger, "failover-gate"),
+	)
+
+	var failoverService *failover.Service
+	var failoverRecovery *failover.Recovery
+	var failoverDetector *failover.Detector
+	if concreteAdapter, ok := wahaAdapter.(*whatsapp.WahaAdapter); ok {
+		failoverService = failover.NewService(
+			repos.InstanceFailover,
+			instanceRepo,
+			concreteAdapter,
+			config.InstanceFailoverEnabled,
+			config.NewModuleLogger(logger, "failover"),
+		)
+		failoverDetector = failover.NewDetector(
+			repos.InstanceFailover,
+			instanceRepo,
+			concreteAdapter,
+			config.InstanceFailoverEnabled,
+			config.NewModuleLogger(logger, "failover-detector"),
+		)
+		failoverRecovery = failover.NewRecovery(
+			repos.InstanceFailover,
+			instanceRepo,
+			failoverService,
+			failoverGate,
+			config.InstanceFailoverEnabled,
+			config.NewModuleLogger(logger, "failover-recovery"),
+		)
+	} else {
+		logger.Warn("Instance failover disabled: WhatsApp provider is not a WahaAdapter (fresh status reads unavailable)")
+	}
+
 	automationService := automation.NewAutomationService(
 		automationRepo,
 		repos.AutomationRun,
@@ -649,6 +697,28 @@ func main() {
 	// transacionalmente pelos dois writers legítimos (webhook e reconciliação),
 	// o que elimina a janela falsa de contar membros num instante arbitrário e
 	// chamar isso de "fechamento do dia".
+	// Melhoria 5: detector assisted e recuperador de operações.
+	//
+	// O detector é no-op com a flag desligada. O recovery NÃO é: ele precisa
+	// terminar uma operação que ficou não terminal mesmo depois de a flag cair
+	// (rollback no meio de uma troca), e é ele quem arma/desarma o gate.
+	if failoverDetector != nil {
+		cronService.RegisterTask("failover_detector", 60*time.Second, func(ctx context.Context) error {
+			return failoverDetector.Run(ctx)
+		})
+	}
+	if failoverRecovery != nil {
+		cronService.RegisterTask("failover_recovery", 60*time.Second, func(ctx context.Context) error {
+			return failoverRecovery.Run(ctx)
+		})
+		// Boot scan: arma o gate ANTES de o cron começar a rodar automações.
+		bootCtx, bootCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := failoverRecovery.Boot(bootCtx); err != nil {
+			logger.Warn("Failover recovery boot scan failed", zap.Error(err))
+		}
+		bootCancel()
+	}
+
 	cronService.RegisterTask("reconcile_group_memberships", 1*time.Hour, func(ctx context.Context) error {
 		return groupMemberService.ReconcileMemberships(ctx)
 	})
@@ -799,7 +869,25 @@ func main() {
 		monitoring.WithCTARepo(ctaRepo),
 		monitoring.WithCouponApplier(monitorCouponApplier),
 		monitoring.WithDispatchText(os.Getenv("MONITOR_DISPATCH_TEXT")),
+		monitoring.WithDispatchGate(failoverGate),
+		// Cadência durável do espelho (Melhoria 7). O adapter WAHA implementa
+		// DurableMediaFetcher; outro provider entra como nil e a admissão
+		// simplesmente não persiste mídia (cai no base64 inline do webhook).
+		monitoring.WithCadence(repos.MonitorCadence, durableMediaFetcher(wahaAdapter)),
 	)
+
+	// Poller da cadência: SÓ no processo server (o worker retorna antes do
+	// cronService.Start()). Os três ticks são registrados mesmo com a feature
+	// desligada — é o que drena, em ordem, uma fila já admitida quando a flag
+	// é desligada como rollback.
+	cadencePoller := monitoring.NewCadencePoller(
+		repos.MonitorCadence,
+		queueClient,
+		config.NewModuleLogger(logger, "monitor-cadence"),
+	)
+	cronService.RegisterTask("process_monitor_pending", monitoring.CadencePollInterval, cadencePoller.Tick)
+	cronService.RegisterTask("monitor_cadence_maintenance", monitoring.CadenceMaintenanceInterval, cadencePoller.Maintain)
+	cronService.RegisterTask("cleanup_monitor_cadence", monitoring.CadenceCleanupInterval, cadencePoller.Cleanup)
 
 	var ogCouponHandler offer_generate.CouponApplier
 	if couponRepo != nil {
@@ -823,6 +911,30 @@ func main() {
 		cacheClient,
 		config.NewModuleLogger(logger, "offer-generate"),
 	)
+
+	// =========================================================================
+	// Melhoria 5 — chip reserva e failover de instância.
+	//
+	// Tudo aqui é inerte com FEATURE_INSTANCE_FAILOVER desligada: o gate não
+	// toca o banco, detector e recovery saem no primeiro if, e o handler
+	// responde FailedPrecondition/INSTANCE_FAILOVER_DISABLED. A ÚNICA exceção
+	// deliberada é o boot scan do recovery, que roda sempre: se um deploy
+	// pegou uma troca no meio, o gate precisa ser rearmado antes de qualquer
+	// produtor voltar a enfileirar.
+	// =========================================================================
+	// Gate nos TRÊS produtores. O scheduler sozinho não bastaria: monitoring e
+	// offer-generate fazem fan-out síncrono na própria goroutine e chamam a
+	// WAHA direto, sem passar por job Asynq nenhum.
+	if gated, ok := automationService.(interface {
+		SetDispatchGate(automation.DispatchGate)
+	}); ok {
+		gated.SetDispatchGate(failoverGate)
+	}
+	if gated, ok := offerGenerateService.(interface {
+		SetDispatchGate(offer_generate.DispatchGate)
+	}); ok {
+		gated.SetDispatchGate(failoverGate)
+	}
 
 	dashboardService := dashboard.NewDashboardService(
 		repos.Dashboard,
@@ -1044,6 +1156,8 @@ func main() {
 
 	// Register automations service handler (requires auth)
 	automationsHandler := connectrpc.NewAutomationsHandler(automationRepo, dispatchLogRepo, groupRepo, profileRepo, repos.Plan, automationService, jobsService, logger)
+	// Resumo da fila da cadência na listagem/detalhe (Melhoria 7).
+	automationsHandler.SetMonitorCadenceRepo(repos.MonitorCadence)
 	automationsPath, automationsHTTPHandler := automationsv1connect.NewAutomationsServiceHandler(
 		automationsHandler,
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
@@ -1060,7 +1174,8 @@ func main() {
 	connectServer.RegisterService(instagramPath, instagramHTTPHandler)
 
 	// Register WhatsApp service handler (canonical service, requires auth)
-	whatsappHandler := connectrpc.NewWhatsAppHandler(wahaAdapter, instanceRepo, repos.SyncJob, profileRepo, queueClient, cfg.WebhookSecret)
+	whatsappHandler := connectrpc.NewWhatsAppHandler(wahaAdapter, instanceRepo, repos.SyncJob, profileRepo, queueClient, cfg.WebhookSecret).
+		WithFailoverRepo(repos.InstanceFailover)
 	whatsappPath, whatsappHTTPHandler := whatsappv1connect.NewWhatsAppServiceHandler(
 		whatsappHandler,
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
@@ -1068,7 +1183,8 @@ func main() {
 	connectServer.RegisterService(whatsappPath, whatsappHTTPHandler)
 
 	// Register instances service handler (requires auth)
-	instancesHandler := connectrpc.NewInstancesHandlerWithAdapter(instanceRepo, wahaAdapter)
+	instancesHandler := connectrpc.NewInstancesHandlerWithAdapter(instanceRepo, wahaAdapter).
+		WithFailoverRepo(repos.InstanceFailover)
 	instancesPath, instancesHTTPHandler := instancesv1connect.NewInstancesServiceHandler(
 		instancesHandler,
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
@@ -1276,6 +1392,19 @@ func main() {
 		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
 	)
 	connectServer.RegisterService(webpushPath, webpushHTTPHandler)
+
+	// Register failover service handler (Melhoria 5; requires auth).
+	//
+	// Registrado SEMPRE, inclusive com a feature desligada: registrar só quando
+	// ligada faria o cliente novo receber Unimplemented, indistinguível de um
+	// deploy quebrado. Desligada, toda RPC responde
+	// FailedPrecondition/INSTANCE_FAILOVER_DISABLED.
+	failoverHandler := connectrpc.NewFailoverHandler(failoverService)
+	failoverPath, failoverHTTPHandler := failoverv1connect.NewFailoverServiceHandler(
+		failoverHandler,
+		connectrpc.WithInterceptors(connectServer.AuthInterceptors()...),
+	)
+	connectServer.RegisterService(failoverPath, failoverHTTPHandler)
 
 	// Register load balancer service handler (requires auth + admin role)
 	loadBalancerHandler := connectrpc.NewLoadBalancerHandler(
@@ -1508,6 +1637,17 @@ func (a *queueEnqueuerAdapter) EnqueueReconcileSession(ctx context.Context, sess
 func (a *queueEnqueuerAdapter) EnqueueReconcileChat(ctx context.Context, sessionName, chatID string) error {
 	_, err := a.client.EnqueueReconcileChat(ctx, sessionName, chatID)
 	return err
+}
+
+// durableMediaFetcher extrai do provider a interface estreita de aquisição
+// durável de mídia. Type assertion em vez de novo parâmetro: quem não a
+// implementa (fake de teste, provider futuro) segue funcionando, só sem mídia
+// persistida.
+func durableMediaFetcher(provider whatsapp.WhatsAppProvider) whatsapp.DurableMediaFetcher {
+	if f, ok := provider.(whatsapp.DurableMediaFetcher); ok {
+		return f
+	}
+	return nil
 }
 
 func runWorker(
@@ -1798,6 +1938,16 @@ func runWorker(
 		cfg.BackendPublicURL,
 		config.NewModuleLogger(logger, "instagram-story-worker"),
 	)
+	// Cadência do espelho (Melhoria 7): gatilho do item diferido. Registrado
+	// sempre — com a feature desligada não chega task nenhuma, e itens já
+	// admitidos precisam de quem os execute durante o dreno.
+	if runner, ok := monitoringService.(workers.MonitorCadenceRunner); ok {
+		monitorDeferredWorker := workers.NewMonitorDeferredWorker(
+			runner, config.NewModuleLogger(logger, "monitor-deferred"))
+		queueServer.RegisterHandler(workers.TypeMonitoringDeferredDispatch,
+			observability.SentryAsynqMiddleware("monitor_deferred", asynq.HandlerFunc(monitorDeferredWorker.ProcessTask)))
+	}
+
 	queueServer.RegisterHandler(workers.TypeInstagramPublishStory,
 		observability.SentryAsynqMiddleware("instagram_story", asynq.HandlerFunc(instagramStoryWorker.ProcessTask)))
 

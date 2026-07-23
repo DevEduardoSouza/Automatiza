@@ -39,6 +39,8 @@ const (
 	JobsServiceGetJobProcedure = "/jobs.v1.JobsService/GetJob"
 	// JobsServiceCreateJobProcedure is the fully-qualified name of the JobsService's CreateJob RPC.
 	JobsServiceCreateJobProcedure = "/jobs.v1.JobsService/CreateJob"
+	// JobsServiceCreateJobsProcedure is the fully-qualified name of the JobsService's CreateJobs RPC.
+	JobsServiceCreateJobsProcedure = "/jobs.v1.JobsService/CreateJobs"
 	// JobsServiceUpdateJobProcedure is the fully-qualified name of the JobsService's UpdateJob RPC.
 	JobsServiceUpdateJobProcedure = "/jobs.v1.JobsService/UpdateJob"
 	// JobsServiceDeleteJobProcedure is the fully-qualified name of the JobsService's DeleteJob RPC.
@@ -56,6 +58,7 @@ type JobsServiceClient interface {
 	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
 	GetJob(context.Context, *connect.Request[v1.GetJobRequest]) (*connect.Response[v1.GetJobResponse], error)
 	CreateJob(context.Context, *connect.Request[v1.CreateJobRequest]) (*connect.Response[v1.CreateJobResponse], error)
+	CreateJobs(context.Context, *connect.Request[v1.CreateJobsRequest]) (*connect.Response[v1.CreateJobsResponse], error)
 	UpdateJob(context.Context, *connect.Request[v1.UpdateJobRequest]) (*connect.Response[v1.UpdateJobResponse], error)
 	DeleteJob(context.Context, *connect.Request[v1.DeleteJobRequest]) (*connect.Response[v1.DeleteJobResponse], error)
 	ProcessScheduledJobs(context.Context, *connect.Request[v1.ProcessScheduledJobsRequest]) (*connect.Response[v1.ProcessScheduledJobsResponse], error)
@@ -91,6 +94,12 @@ func NewJobsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(jobsServiceMethods.ByName("CreateJob")),
 			connect.WithClientOptions(opts...),
 		),
+		createJobs: connect.NewClient[v1.CreateJobsRequest, v1.CreateJobsResponse](
+			httpClient,
+			baseURL+JobsServiceCreateJobsProcedure,
+			connect.WithSchema(jobsServiceMethods.ByName("CreateJobs")),
+			connect.WithClientOptions(opts...),
+		),
 		updateJob: connect.NewClient[v1.UpdateJobRequest, v1.UpdateJobResponse](
 			httpClient,
 			baseURL+JobsServiceUpdateJobProcedure,
@@ -123,6 +132,7 @@ type jobsServiceClient struct {
 	listJobs             *connect.Client[v1.ListJobsRequest, v1.ListJobsResponse]
 	getJob               *connect.Client[v1.GetJobRequest, v1.GetJobResponse]
 	createJob            *connect.Client[v1.CreateJobRequest, v1.CreateJobResponse]
+	createJobs           *connect.Client[v1.CreateJobsRequest, v1.CreateJobsResponse]
 	updateJob            *connect.Client[v1.UpdateJobRequest, v1.UpdateJobResponse]
 	deleteJob            *connect.Client[v1.DeleteJobRequest, v1.DeleteJobResponse]
 	processScheduledJobs *connect.Client[v1.ProcessScheduledJobsRequest, v1.ProcessScheduledJobsResponse]
@@ -142,6 +152,11 @@ func (c *jobsServiceClient) GetJob(ctx context.Context, req *connect.Request[v1.
 // CreateJob calls jobs.v1.JobsService.CreateJob.
 func (c *jobsServiceClient) CreateJob(ctx context.Context, req *connect.Request[v1.CreateJobRequest]) (*connect.Response[v1.CreateJobResponse], error) {
 	return c.createJob.CallUnary(ctx, req)
+}
+
+// CreateJobs calls jobs.v1.JobsService.CreateJobs.
+func (c *jobsServiceClient) CreateJobs(ctx context.Context, req *connect.Request[v1.CreateJobsRequest]) (*connect.Response[v1.CreateJobsResponse], error) {
+	return c.createJobs.CallUnary(ctx, req)
 }
 
 // UpdateJob calls jobs.v1.JobsService.UpdateJob.
@@ -169,6 +184,7 @@ type JobsServiceHandler interface {
 	ListJobs(context.Context, *connect.Request[v1.ListJobsRequest]) (*connect.Response[v1.ListJobsResponse], error)
 	GetJob(context.Context, *connect.Request[v1.GetJobRequest]) (*connect.Response[v1.GetJobResponse], error)
 	CreateJob(context.Context, *connect.Request[v1.CreateJobRequest]) (*connect.Response[v1.CreateJobResponse], error)
+	CreateJobs(context.Context, *connect.Request[v1.CreateJobsRequest]) (*connect.Response[v1.CreateJobsResponse], error)
 	UpdateJob(context.Context, *connect.Request[v1.UpdateJobRequest]) (*connect.Response[v1.UpdateJobResponse], error)
 	DeleteJob(context.Context, *connect.Request[v1.DeleteJobRequest]) (*connect.Response[v1.DeleteJobResponse], error)
 	ProcessScheduledJobs(context.Context, *connect.Request[v1.ProcessScheduledJobsRequest]) (*connect.Response[v1.ProcessScheduledJobsResponse], error)
@@ -198,6 +214,12 @@ func NewJobsServiceHandler(svc JobsServiceHandler, opts ...connect.HandlerOption
 		JobsServiceCreateJobProcedure,
 		svc.CreateJob,
 		connect.WithSchema(jobsServiceMethods.ByName("CreateJob")),
+		connect.WithHandlerOptions(opts...),
+	)
+	jobsServiceCreateJobsHandler := connect.NewUnaryHandler(
+		JobsServiceCreateJobsProcedure,
+		svc.CreateJobs,
+		connect.WithSchema(jobsServiceMethods.ByName("CreateJobs")),
 		connect.WithHandlerOptions(opts...),
 	)
 	jobsServiceUpdateJobHandler := connect.NewUnaryHandler(
@@ -232,6 +254,8 @@ func NewJobsServiceHandler(svc JobsServiceHandler, opts ...connect.HandlerOption
 			jobsServiceGetJobHandler.ServeHTTP(w, r)
 		case JobsServiceCreateJobProcedure:
 			jobsServiceCreateJobHandler.ServeHTTP(w, r)
+		case JobsServiceCreateJobsProcedure:
+			jobsServiceCreateJobsHandler.ServeHTTP(w, r)
 		case JobsServiceUpdateJobProcedure:
 			jobsServiceUpdateJobHandler.ServeHTTP(w, r)
 		case JobsServiceDeleteJobProcedure:
@@ -259,6 +283,10 @@ func (UnimplementedJobsServiceHandler) GetJob(context.Context, *connect.Request[
 
 func (UnimplementedJobsServiceHandler) CreateJob(context.Context, *connect.Request[v1.CreateJobRequest]) (*connect.Response[v1.CreateJobResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("jobs.v1.JobsService.CreateJob is not implemented"))
+}
+
+func (UnimplementedJobsServiceHandler) CreateJobs(context.Context, *connect.Request[v1.CreateJobsRequest]) (*connect.Response[v1.CreateJobsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("jobs.v1.JobsService.CreateJobs is not implemented"))
 }
 
 func (UnimplementedJobsServiceHandler) UpdateJob(context.Context, *connect.Request[v1.UpdateJobRequest]) (*connect.Response[v1.UpdateJobResponse], error) {

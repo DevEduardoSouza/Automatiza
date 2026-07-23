@@ -142,7 +142,8 @@
     },
     "download": "Baixar",
     "reconnect": "Reconectar",
-    "saving": "Salvando..."
+    "saving": "Salvando...",
+    "retry": "Tentar novamente"
   },
   "pages": {
     "index": {
@@ -763,6 +764,127 @@
         "description": "Escaneie o QR code com o WhatsApp deste número para voltar a conectá-lo. Os outros números seguem funcionando normalmente.",
         "requesting": "Gerando QR code...",
         "title": "Reconectar número"
+      },
+      "failover": {
+        "title": "Chip reserva",
+        "description": "Defina um segundo número para assumir os grupos caso o principal fique indisponível. A troca é sempre confirmada por você — nada acontece sozinho.",
+        "newPolicy": "Nova política",
+        "empty": "Nenhuma política configurada. Você precisa de pelo menos dois números conectados.",
+        "version": "Versão",
+        "history": "Histórico",
+        "noHistory": "Sem registros ainda.",
+        "inProgress": "Troca em andamento — aguarde a conclusão.",
+        "testSwitch": "Testar troca",
+        "testRevert": "Testar volta",
+        "disable": "Desativar",
+        "loadError": "Não foi possível carregar as políticas",
+        "dryRunFailed": "Não foi possível testar a troca",
+        "saveFailed": "Não foi possível salvar a política",
+        "disableFailed": "Não foi possível desativar a política",
+        "proposalNotice": "O número principal está indisponível há bastante tempo. Revise e decida se quer trocar — a proposta expira sozinha.",
+        "failedNotice": "Esta política está travada por inconsistência e precisa de revisão manual.",
+        "mode": {
+          "manual": "Manual",
+          "assisted": "Assistido"
+        },
+        "state": {
+          "active": "No número principal",
+          "proposed": "Sugestão de troca",
+          "switching": "Trocando",
+          "activeOnBackup": "No número reserva",
+          "reverting": "Voltando",
+          "failed": "Travada",
+          "unknown": "Desconhecido"
+        },
+        "coverage": {
+          "complete": "Cobertura completa",
+          "blocked": "Bloqueado",
+          "unavailable": "Não foi possível verificar"
+        },
+        "dialog": {
+          "createTitle": "Nova política de chip reserva",
+          "editTitle": "Editar política",
+          "description": "Escolha o número principal e o reserva. Os dois precisam ser seus.",
+          "primaryLabel": "Número principal",
+          "backupLabel": "Número reserva",
+          "primaryImmutable": "O número principal não pode ser alterado. Para trocá-lo, desative esta política e crie outra.",
+          "selectChip": "Selecione um número",
+          "modeLabel": "Modo",
+          "modeHelp": "Manual: nada acontece sem você pedir. Assistido: o sistema avisa quando o principal fica indisponível por muito tempo — mas a troca continua sendo sua decisão."
+        },
+        "dryRun": {
+          "titleFailover": "Teste de troca",
+          "titleRevert": "Teste de volta",
+          "description": "Este teste só consulta o WhatsApp. Nada é alterado agora.",
+          "blocked": "A troca está bloqueada:",
+          "expired": "Este teste expirou. Rode de novo antes de confirmar.",
+          "continue": "Continuar",
+          "missingGroups": "Grupos em que o número reserva não está",
+          "missingAdmin": "Grupos em que ele não é administrador",
+          "groupCounts": "{{targets}} grupo(s) de envio · {{sources}} grupo(s) de origem",
+          "noAutomations": "Nenhuma automação usa este número."
+        },
+        "confirm": {
+          "titleSwitch": "Confirmar troca de número",
+          "titleRevert": "Confirmar volta ao número principal",
+          "descriptionSwitch": "{{count}} automação(ões) passarão a enviar pelo número reserva.",
+          "descriptionRevert": "As automações voltarão exatamente à configuração que tinham antes da troca.",
+          "typeToConfirm": "Digite {{word}} para confirmar",
+          "help": "Esta ação muda por qual número seus grupos recebem as mensagens.",
+          "switchAction": "Trocar agora",
+          "revertAction": "Voltar agora",
+          "switchDone": "Troca concluída",
+          "revertDone": "Volta concluída",
+          "failed": "Não foi possível concluir"
+        },
+        "reason": {
+          "unmanaged_implicit": "Há automação sem número definido: ela usaria qualquer chip conectado.",
+          "invalid_instance_id": "Automação com número inválido na configuração.",
+          "instance_not_owned": "Automação aponta para um número que não é seu.",
+          "scalar_not_first_in_list": "Configuração de números inconsistente na automação.",
+          "duplicate_instance_id": "Número repetido na lista da automação.",
+          "override_unknown_instance": "Regra de grupo aponta para um número fora da lista.",
+          "override_unknown_group": "Regra de grupo aponta para um grupo que não é destino.",
+          "target_session_not_working": "O número de destino não está conectado agora.",
+          "reserve_identity_unknown": "Não foi possível identificar o número reserva nos grupos.",
+          "waha_unavailable": "Não foi possível consultar o WhatsApp agora. Tente de novo.",
+          "group_missing": "O número reserva não participa de algum grupo necessário.",
+          "admin_missing": "O número reserva não é administrador de algum grupo que exige.",
+          "capacity_exceeded": "O número reserva ficaria com grupos demais (limite de 20 por chip).",
+          "stale_configuration": "A configuração mudou durante a troca. Rode o teste de novo.",
+          "routing_diverged": "Alguma automação foi alterada depois da troca.",
+          "eligible_set_changed": "O conjunto de automações mudou durante a troca.",
+          "drain_timeout": "Havia envios em andamento que não terminaram a tempo. Nada foi alterado.",
+          "postcheck_failed": "A verificação após a troca falhou e tudo foi restaurado.",
+          "indeterminate_state": "Estado inconsistente: precisa de revisão manual."
+        },
+        "event": {
+          "policy_created": "Política criada",
+          "policy_updated": "Política atualizada",
+          "policy_disabled": "Política desativada",
+          "dry_run_passed": "Teste aprovado",
+          "dry_run_blocked": "Teste bloqueado",
+          "proposal_created": "Sugestão de troca criada",
+          "proposal_recovered": "Número principal voltou",
+          "proposal_expired": "Sugestão expirou",
+          "switch_requested": "Troca solicitada",
+          "switch_gate_closed": "Envios pausados para a troca",
+          "switch_drain_timeout": "Troca cancelada: envios em andamento",
+          "switch_applied": "Troca aplicada",
+          "switch_completed": "Troca concluída",
+          "switch_aborted": "Troca cancelada",
+          "switch_failed": "Troca falhou",
+          "revert_requested": "Volta solicitada",
+          "revert_gate_closed": "Envios pausados para a volta",
+          "revert_drain_timeout": "Volta cancelada: envios em andamento",
+          "revert_applied": "Volta aplicada",
+          "revert_completed": "Volta concluída",
+          "revert_aborted": "Volta cancelada",
+          "revert_failed": "Volta falhou",
+          "recovery_completed": "Operação concluída na retomada",
+          "recovery_aborted": "Operação cancelada na retomada",
+          "recovery_failed": "Operação travada na retomada"
+        }
       }
     },
     "history": {
@@ -1415,6 +1537,8 @@
           "description": "Os participantes de cada grupo serão buscados dinamicamente no momento do envio. Certifique-se de que você tem permissão para visualizar os membros dos grupos."
         },
         "scheduleCount": "Agendar Ações para {{count}} Grupo(s)",
+        "batchPreview": "Serão criados {{total}} agendamentos: {{occurrences}} horário(s) × {{groups}} grupo(s) × {{actions}} ação(ões).",
+        "batchPreviewTruncated": "Os {{truncated}} horário(s) seguintes ficaram de fora do limite de 500 por vez.",
         "handoff": {
           "descriptionFull": "Configure múltiplas ações para vários grupos e agende para uma data/hora específica.",
           "orderHelper": "Os grupos receberão numeração na ordem: #1, #2, #3…",
@@ -1449,7 +1573,8 @@
         "photoSelected": "Foto selecionada",
         "success": {
           "scheduled": "Ações agendadas!",
-          "scheduledDescription": "{{actions}} ação(ões) agendada(s) para {{groups}} grupo(s)"
+          "scheduledDescription": "{{actions}} ação(ões) agendada(s) para {{groups}} grupo(s)",
+          "scheduledDeduped": "{{actions}} ação(ões) para {{groups}} grupo(s). {{deduplicated}} já existiam com o mesmo conteúdo e horário — os originais foram mantidos."
         },
         "errors": {
           "requiredFields": "Campos obrigatórios",
@@ -1486,6 +1611,7 @@
         "priceFormatted": "Preço (R$ 11,99)",
         "originalPrice": "Preço original (37,90)",
         "originalPriceFormatted": "Preço original (R$ 37,90)",
+        "discount": "Desconto (%) — ex.: 25% OFF",
         "affiliateLink": "Link afiliado",
         "priceWarning": "Aviso padrão",
         "cta": "Call-to-Action (CTA) — pode ser sobrescrito por envio com a tag cta[…]",
@@ -1511,7 +1637,7 @@
       "howItWorks": {
         "title": "Como funciona",
         "description": "Os Textos de Disparo são templates reutilizáveis que suas automações usam para enviar ofertas nos grupos do WhatsApp.",
-        "variables": "Use variáveis como {nome_produto}, {preco}, {preco_original}, {link_afiliado}, {aviso_preco} e {cupom_bloco} para preencher automaticamente os dados do produto. A variável {info} recebe o texto entre colchetes na tag info[…] do disparo do gerar oferta — útil para cupons ou observações que variam por envio. Do mesmo jeito, a tag cta[…] no disparo sobrescreve a variável {cta} só naquele envio, ignorando o CTA automático.",
+        "variables": "Use variáveis como {nome_produto}, {preco}, {preco_original}, {link_afiliado}, {aviso_preco} e {cupom_bloco} para preencher automaticamente os dados do produto. A variável {desconto_formatado} mostra o desconto do produto pronto (ex.: 25% OFF) e fica melhor em uma linha própria logo abaixo do preço — use {desconto} se preferir só o número. Quando o produto não tiver desconto, essa linha é removida sozinha, sem deixar espaço em branco. A variável {info} recebe o texto entre colchetes na tag info[…] do disparo do gerar oferta — útil para cupons ou observações que variam por envio. Do mesmo jeito, a tag cta[…] no disparo sobrescreve a variável {cta} só naquele envio, ignorando o CTA automático.",
         "formatting": "Formatação WhatsApp: *negrito*, _itálico_, ~riscado~ e > citação. Quebre linhas para organizar a mensagem.",
         "automations": "Ao criar uma automação, selecione um ou mais textos de disparo ativos. O sistema escolhe aleatoriamente entre eles para variar as mensagens.",
         "note": "Textos inativos não aparecem na seleção de automações. Ative pelo menos um texto antes de configurar uma automação."
@@ -1548,6 +1674,8 @@
         "priceFormatted": "R$ 11,99",
         "originalPrice": "37,90",
         "originalPriceFormatted": "R$ 37,90",
+        "discount": "25",
+        "discountFormatted": "25% OFF",
         "affiliateLink": "https://s.shopee.com.br/806Bcl3ADX",
         "priceWarning": "O preço e disponibilidade do produto podem variar. As promoções são por tempo limitado",
         "cta": "🔥 Aproveite agora! Clique no link e garanta o seu!",
@@ -2144,6 +2272,7 @@
         "scheduled": "Ação agendada!",
         "scheduledMessage": "A ação será executada no horário programado",
         "scheduledBulkMessage": "{{count}} agendamentos criados para os horários programados",
+        "scheduledBulkDeduped": "{{count}} agendamentos confirmados. {{deduplicated}} já existiam com o mesmo conteúdo e horário — os originais foram mantidos.",
         "updated": "Agendamento atualizado!",
         "updatedMessage": "As alterações foram salvas com sucesso",
         "enhanced": "Mensagem melhorada!",
@@ -2464,6 +2593,9 @@
         "interval": "Intervalo de Execução (minutos)",
         "delay": "Delay para envio",
         "delayHint": "Tempo de espera antes de reenviar a mensagem convertida. Ex: 10 minutos = 600s.",
+        "monitorInterval": "Intervalo mínimo entre mensagens monitoradas (minutos)",
+        "monitorIntervalHint": "0 = envio imediato. Com um valor maior, cada mensagem nova do grupo monitorado espera esse tempo desde a anterior. Mudanças valem para mensagens novas — as já reservadas mantêm o horário.",
+        "monitorQueue": "{{count}} na fila · próxima em {{when}}",
         "coupon": "Cupom Promocional (Opcional)",
         "couponHint": "Selecione um cupom para incluir nas ofertas enviadas",
         "couponActive": "O cupom será incluído automaticamente nas mensagens de ofertas",

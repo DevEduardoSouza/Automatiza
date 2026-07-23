@@ -22,6 +22,15 @@ import (
 type InstancesHandler struct {
 	instanceRepo repository.InstanceRepository
 	waProvider   whatsapp.WhatsAppProvider
+	// failoverRepo é opcional: quando nil, o precheck de chip reserva é pulado
+	// e a FK RESTRICT da migração 077 segue como rede de segurança.
+	failoverRepo repository.InstanceFailoverRepository
+}
+
+// WithFailoverRepo liga o precheck de política de chip reserva.
+func (h *InstancesHandler) WithFailoverRepo(repo repository.InstanceFailoverRepository) *InstancesHandler {
+	h.failoverRepo = repo
+	return h
 }
 
 // NewInstancesHandler creates a new instances handler.
@@ -195,6 +204,9 @@ func (h *InstancesHandler) CleanupInvalidInstances(
 	var deletedCount int32
 	for _, inst := range instances {
 		if inst.InstanceID == "" && inst.Status == "connected" {
+			if failoverRoleProtects(ctx, h.failoverRepo, inst.ID) {
+				continue
+			}
 			if err := h.instanceRepo.DeleteInstance(ctx, inst.ID); err == nil {
 				deletedCount++
 			}
@@ -236,6 +248,11 @@ func (h *InstancesHandler) DeleteDisconnectedInstances(
 		// stopped"). Mirrors the paired-session protection in the FAILED-session
 		// cleanup.
 		if h.instanceAliveOrPaired(ctx, inst) {
+			protectedCount++
+			continue
+		}
+		// Chip em papel de failover nunca entra em limpeza automática.
+		if failoverRoleProtects(ctx, h.failoverRepo, inst.ID) {
 			protectedCount++
 			continue
 		}
@@ -323,6 +340,13 @@ func (h *InstancesHandler) DeleteInstance(
 	}
 	if instance == nil || instance.UserID != user.ID {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("instance not found"))
+	}
+
+	// Precheck de chip reserva ANTES de qualquer chamada mutável ao provider:
+	// desparear primeiro e só então descobrir que a FK proíbe apagar a linha
+	// deixaria o usuário sem o número E com a política intacta.
+	if err := failoverRoleBlocksDelete(ctx, h.failoverRepo, instanceID); err != nil {
+		return nil, err
 	}
 
 	// TRAVA ANTI-DESTRUIÇÃO: número CONECTADO (pareado e ativo agora) só sai

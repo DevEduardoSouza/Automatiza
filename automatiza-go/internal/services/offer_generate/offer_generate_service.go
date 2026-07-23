@@ -26,6 +26,7 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/failover"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/shopee"
 
@@ -84,6 +85,51 @@ type offerGenerateService struct {
 
 	cache  *cache.Cache
 	logger *zap.Logger
+
+	// dispatchGate é a barreira contra troca de chip em andamento (Melhoria 5).
+	// nil = sem gate (comportamento histórico).
+	dispatchGate DispatchGate
+}
+
+// DispatchGate é a fatia do failover que este produtor consome. Definida aqui,
+// no consumidor, para o offer-generate não depender do pacote failover.
+type DispatchGate interface {
+	Acquire(ctx context.Context, userID, automationID string) (*failover.Lease, error)
+}
+
+// SetDispatchGate liga o gate de failover (Melhoria 5) neste serviço.
+func (s *offerGenerateService) SetDispatchGate(gate DispatchGate) {
+	s.dispatchGate = gate
+}
+
+// acquireLease pega UMA lease para a automação e devolve a versão relida dela.
+//
+// Uma só: o caminho de oferta pode delegar para o relay no meio do percurso, e
+// duas leases para a mesma automação no mesmo fluxo não protegem nada a mais —
+// só dobram o custo e criam a chance de a segunda falhar com a primeira já
+// segurando trabalho em voo.
+func (s *offerGenerateService) acquireLease(ctx context.Context, auto *models.Automation) (*failover.Lease, *models.Automation, error) {
+	if s.dispatchGate == nil {
+		return &failover.Lease{Ctx: ctx, SendCtx: context.Background(), Release: func() {}}, auto, nil
+	}
+	lease, err := s.dispatchGate.Acquire(ctx, auto.UserID, auto.ID)
+	if err != nil {
+		s.logger.Warn("offer_generate: automation blocked by failover gate",
+			zap.String("automationID", auto.ID), zap.Error(err))
+		return nil, nil, err
+	}
+	// Reler SOB a lease: entre a listagem e agora, uma troca pode ter reescrito
+	// o roteamento desta automação.
+	fresh, err := s.automationRepo.GetAutomationByIDAndUser(lease.Ctx, auto.ID, auto.UserID)
+	if err != nil {
+		lease.Release()
+		return nil, nil, err
+	}
+	if fresh == nil {
+		lease.Release()
+		return nil, nil, nil
+	}
+	return lease, fresh, nil
 }
 
 // NewOfferGenerateService creates a new offer generate service.
@@ -279,7 +325,22 @@ func (s *offerGenerateService) processIncoming(ctx context.Context, msg *models.
 	return nil
 }
 
+// processAutomation adquire a lease de dispatch e delega. É o ÚNICO ponto de
+// aquisição deste caminho: se ele acabar delegando para o relay, o relay roda
+// com a MESMA lease (processAutomationRelayLeased), nunca com uma segunda.
 func (s *offerGenerateService) processAutomation(ctx context.Context, auto *models.Automation, msg *models.IncomingMessage, links []string) error {
+	lease, fresh, err := s.acquireLease(ctx, auto)
+	if err != nil {
+		return err
+	}
+	if lease == nil {
+		return nil
+	}
+	defer lease.Release()
+	return s.processAutomationLeased(lease.Ctx, lease.SendCtx, fresh, msg, links)
+}
+
+func (s *offerGenerateService) processAutomationLeased(ctx, sendRoot context.Context, auto *models.Automation, msg *models.IncomingMessage, links []string) error {
 	// 1. Check time window
 	if auto.StartTime != nil && auto.EndTime != nil {
 		tw := &models.TimeWindow{
@@ -343,13 +404,14 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		s.logger.Info("No store links matched — relaying original message as-is",
 			zap.String("automationID", auto.ID),
 			zap.Strings("stores", stores))
-		return s.processAutomationRelay(ctx, auto, msg)
+		return s.processAutomationRelayLeased(ctx, sendRoot, auto, msg)
 	}
 
-	// 4. Parse discount, info and cta tags from message body
+	// 4. Parse discount and info tags from message body. A tag cta[...] fica
+	// para depois do passo 5: só faz sentido lê-la quando a cópia sorteada
+	// autorizar CTA.
 	discountTag := text.ParseDiscountTag(msg.Body)
 	infoText := text.ParseInfoTag(msg.Body)
-	ctaOverride := text.ParseCTATag(msg.Body)
 
 	// 5. Load dispatch template. When the automation has no dispatch text
 	// configured (or it fails to load), fall back to the system default
@@ -380,16 +442,36 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 		dispatchText.Body = dispatchText.Copies[rand.IntN(len(dispatchText.Copies))] //nolint:gosec // G404: non-security random for copy rotation
 	}
 
-	// 6. Load CTA pool. Política espelha automation_service:
+	// 6. CTA: estritamente opt-in pela variável {cta} na cópia JÁ sorteada.
+	// Sem ela o texto não tem onde receber a CTA (o append pós-render saiu), e
+	// nada disso roda — nem o parse do override, nem consulta, nem sorteio.
+	useCTA := text.TemplateUsesVariable(dispatchText.Body, text.VarCTA)
+
+	// A tag cta[...] no corpo da mensagem é um override per-send: quando
+	// presente, substitui o CTA automático naquele disparo, ignorando pool e
+	// inline (espelha o comportamento da tag info[...]).
+	ctaOverride := ""
+	if useCTA {
+		ctaOverride = text.ParseCTATag(msg.Body)
+	}
+
+	// Pool carregado LAZY, dentro de pickCTA: os ramos de relay (cupom Shopee,
+	// aviso de cupom ML, mensagem sem link de loja) devolvem antes de renderizar
+	// oferta e nunca chamam pickCTA — não podem pagar consulta. Política:
 	//   - auto.CTAIDs preenchido → override explícito, busca só esses
 	//   - auto.CTAIDs vazio → pool inteiro de CTAs ativos do user
-	//
-	// O texto do CTA é selecionado mais tarde via ctapicker.PickByPlatform,
-	// já que aqui ainda não sabemos se o link vai resolver para Shopee ou ML
-	// (definido nos branches mais abaixo). Manter a busca uma vez fora do
-	// branch evita N+1 quando processa muitos links da mesma message.
+	// No máximo uma consulta por mensagem (ctaLoadAttempted), inclusive em erro,
+	// o que também mantém o antigo cuidado de não fazer N+1 por link.
 	var ctaPool []models.CTA
-	if s.ctaRepo != nil {
+	ctaLoadAttempted := false
+	loadCTAPool := func() []models.CTA {
+		if ctaLoadAttempted {
+			return ctaPool
+		}
+		ctaLoadAttempted = true
+		if s.ctaRepo == nil {
+			return nil
+		}
 		if len(auto.CTAIDs) > 0 {
 			fetched, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, auto.CTAIDs, auto.UserID)
 			if ctaErr != nil {
@@ -399,30 +481,31 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			} else {
 				ctaPool = fetched
 			}
-		} else {
-			fetched, ctaErr := s.ctaRepo.GetUserCTAs(ctx, auto.UserID, map[string]interface{}{"is_active": true})
-			if ctaErr != nil {
-				s.logger.Warn("Failed to fetch user CTA pool",
-					zap.String("automationID", auto.ID),
-					zap.Error(ctaErr))
-			} else {
-				ctaPool = fetched
-			}
+			return ctaPool
 		}
+		fetched, ctaErr := s.ctaRepo.GetUserCTAs(ctx, auto.UserID, map[string]interface{}{"is_active": true})
+		if ctaErr != nil {
+			s.logger.Warn("Failed to fetch user CTA pool",
+				zap.String("automationID", auto.ID),
+				zap.Error(ctaErr))
+		} else {
+			ctaPool = fetched
+		}
+		return ctaPool
 	}
 
 	// pickCTA escolhe pela plataforma resolvida (Shopee/ML) e cai pros
-	// inline auto.CTAs como fallback se o pool não tiver match.
-	//
-	// A tag cta[...] no corpo da mensagem é um override per-send: quando
-	// presente, substitui o CTA automático naquele disparo, ignorando pool e
-	// inline (espelha o comportamento da tag info[...]).
+	// inline auto.CTAs como fallback se o pool não tiver match. Com override
+	// o resultado já está decidido — não vale gastar consulta.
 	pickCTA := func(isML, isShopee bool) string {
+		if !useCTA {
+			return ""
+		}
 		if ctaOverride != "" {
 			return ctaOverride
 		}
-		if text := ctapicker.PickByPlatform(ctaPool, isML, isShopee); text != "" {
-			return text
+		if picked := ctapicker.PickByPlatform(loadCTAPool(), isML, isShopee); picked != "" {
+			return picked
 		}
 		if len(auto.CTAs) > 0 {
 			return auto.CTAs[rand.IntN(len(auto.CTAs))] //nolint:gosec // G404: non-security random for CTA selection
@@ -538,7 +621,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 			s.logger.Info("Shopee link is coupon/campaign (non-product), converting links before relay",
 				zap.String("automationID", auto.ID),
 				zap.String("link", link))
-			return s.relayWithConvertedShopeeLinks(ctx, auto, msg, shopeeLinks)
+			return s.relayWithConvertedShopeeLinks(ctx, sendRoot, auto, msg, shopeeLinks)
 		}
 
 		// Extract product IDs and get product details
@@ -655,7 +738,7 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				zap.String("automationID", auto.ID),
 				zap.String("link", link),
 				zap.Error(prevErr))
-			return s.relayMLCouponNotice(ctx, auto, msg, mlLinks)
+			return s.relayMLCouponNotice(ctx, sendRoot, auto, msg, mlLinks)
 		}
 
 		// ML is passthrough: the user posts their OWN affiliate link (meli.la/sec
@@ -888,9 +971,15 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				// Anti-ban pacing: jittered per-chip delay (honors delay_seconds)
 				// plus an occasional micro-break, keyed on the sending chip —
 				// clamped so this chip's slice still fits the fan-out budget.
-				time.Sleep(pacing.BudgetedGap(
+				// Timer cancelável, não time.Sleep: um sleep surdo acordaria para
+				// enviar mesmo depois de a lease ter sido perdida no meio do fan-out.
+				if !pacing.Sleep(sendRoot, pacing.BudgetedGap(
 					resolved.Pacing.Step(baseDelay)+rt.Pacing.MicroBreak(ctx, dispatchSession, resolved.Pacing),
-					fanoutDeadline, len(groupIDs)-gi))
+					fanoutDeadline, len(groupIDs)-gi)) {
+					s.logger.Warn("offer_generate: dispatch lease lost mid fan-out, stopping",
+						zap.String("automationID", auto.ID))
+					return
+				}
 
 				// Anti-ban: per-recipient content variation (URLs never mutated).
 				// markOwnOutgoing MUST key on the VARIED body — that's the exact text
@@ -902,7 +991,10 @@ func (s *offerGenerateService) processAutomation(ctx context.Context, auto *mode
 				selfsend.Mark(ctx, s.cache, groupID, perGroupMessage)
 
 				// Send via WhatsApp
-				sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				// Raiz do envio: Background quando não há gate (o cancelamento do
+				// consumidor de webhook nunca abortou um envio em andamento) e o
+				// contexto da lease quando há — perder a lease PRECISA parar o fan-out.
+				sendCtx, sendCancel := context.WithTimeout(sendRoot, 30*time.Second)
 				var sendErr error
 				// send_as_image default TRUE (preserva o comportamento histórico
 				// do offer_generate: sempre imagem quando há). OFF usa preview nativo.
@@ -1414,7 +1506,7 @@ func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.Inc
 // 10035 (conta sem Open API — conversão impossível para sempre) repassa o
 // original, senão o cupom nunca mais sairia; qualquer outra falha (10030,
 // timeout) retém o repasse, porque enviar sem converter é trabalhar de graça.
-func (s *offerGenerateService) relayWithConvertedShopeeLinks(ctx context.Context, auto *models.Automation, msg *models.IncomingMessage, shopeeLinks []string) error {
+func (s *offerGenerateService) relayWithConvertedShopeeLinks(ctx, sendRoot context.Context, auto *models.Automation, msg *models.IncomingMessage, shopeeLinks []string) error {
 	canonicalKey := fmt.Sprintf("relay:%s", hashStr(msg.MessageID+":"+msg.RemoteJID))
 	body := msg.Body
 
@@ -1488,7 +1580,7 @@ func (s *offerGenerateService) relayWithConvertedShopeeLinks(ctx context.Context
 	// compartilhada — cada um repassa com o próprio link.
 	relayMsg := *msg
 	relayMsg.Body = body
-	return s.processAutomationRelay(ctx, auto, &relayMsg)
+	return s.processAutomationRelayLeased(ctx, sendRoot, auto, &relayMsg)
 }
 
 // relayMLCouponNotice repassa um aviso de cupom/campanha do Mercado Livre.
@@ -1498,7 +1590,7 @@ func (s *offerGenerateService) relayWithConvertedShopeeLinks(ctx context.Context
 // batido do Shopee. Espelha a mecânica de relayWithConvertedShopeeLinks (ordena
 // do link mais longo para o mais curto p/ o ReplaceAll não solar prefixo, e usa
 // cópia rasa para o body convertido não vazar entre donos).
-func (s *offerGenerateService) relayMLCouponNotice(ctx context.Context, auto *models.Automation, msg *models.IncomingMessage, mlLinks []string) error {
+func (s *offerGenerateService) relayMLCouponNotice(ctx, sendRoot context.Context, auto *models.Automation, msg *models.IncomingMessage, mlLinks []string) error {
 	body := msg.Body
 
 	ordered := append([]string(nil), mlLinks...)
@@ -1521,14 +1613,29 @@ func (s *offerGenerateService) relayMLCouponNotice(ctx context.Context, auto *mo
 
 	relayMsg := *msg
 	relayMsg.Body = text.RenderMLCouponNotice(body)
-	return s.processAutomationRelay(ctx, auto, &relayMsg)
+	return s.processAutomationRelayLeased(ctx, sendRoot, auto, &relayMsg)
 }
 
 // processAutomationRelay envia a mensagem original pra cada grupo destino
 // da automação. Resolve chips e dedup do mesmo jeito que processAutomation,
 // só que não monta texto formatado — usa msg.Body + msg.MediaURL/MediaBase64
 // e dispara o método WAHA apropriado por tipo.
+// processAutomationRelay é a ENTRADA direta do relay (mensagem sem link de
+// loja). Adquire a lease e delega — as chamadas internas usam a variante
+// Leased para não pegar uma segunda.
 func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto *models.Automation, msg *models.IncomingMessage) error {
+	lease, fresh, err := s.acquireLease(ctx, auto)
+	if err != nil {
+		return err
+	}
+	if lease == nil {
+		return nil
+	}
+	defer lease.Release()
+	return s.processAutomationRelayLeased(lease.Ctx, lease.SendCtx, fresh, msg)
+}
+
+func (s *offerGenerateService) processAutomationRelayLeased(ctx, sendRoot context.Context, auto *models.Automation, msg *models.IncomingMessage) error {
 	// Time window
 	if auto.StartTime != nil && auto.EndTime != nil {
 		tw := &models.TimeWindow{
@@ -1713,9 +1820,15 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 				// Anti-ban pacing: jittered per-chip delay (honors delay_seconds)
 				// plus an occasional micro-break, keyed on the sending chip —
 				// clamped so this chip's slice still fits the fan-out budget.
-				time.Sleep(pacing.BudgetedGap(
+				// Timer cancelável, não time.Sleep: um sleep surdo acordaria para
+				// enviar mesmo depois de a lease ter sido perdida no meio do fan-out.
+				if !pacing.Sleep(sendRoot, pacing.BudgetedGap(
 					resolved.Pacing.Step(baseDelay)+rt.Pacing.MicroBreak(ctx, dispatchSession, resolved.Pacing),
-					fanoutDeadline, len(groupIDs)-gi))
+					fanoutDeadline, len(groupIDs)-gi)) {
+					s.logger.Warn("offer_generate: dispatch lease lost mid fan-out, stopping",
+						zap.String("automationID", auto.ID))
+					return
+				}
 
 				// Marca o body+mídia como nosso próprio outgoing pra que o
 				// webhook FromMe que retorna seja distinguido de um chip user
@@ -1731,7 +1844,10 @@ func (s *offerGenerateService) processAutomationRelay(ctx context.Context, auto 
 				// mesmo body): corta cadeia espelho → espelho no modo relay.
 				selfsend.Mark(ctx, s.cache, groupID, msg.Body)
 
-				sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				// Raiz do envio: Background quando não há gate (o cancelamento do
+				// consumidor de webhook nunca abortou um envio em andamento) e o
+				// contexto da lease quando há — perder a lease PRECISA parar o fan-out.
+				sendCtx, sendCancel := context.WithTimeout(sendRoot, 30*time.Second)
 				// Anti-ban: typing/online/seen choreography before the relay send.
 				// Text is the relayed body (used only to size the typing time — the
 				// relay content itself is forwarded unchanged).

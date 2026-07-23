@@ -26,6 +26,11 @@ const (
 	TypeReconcileChat         = "whatsapp:reconcile:chat"
 	TypeReconcileSession      = "whatsapp:reconcile:session"
 	TypeInstagramPublishStory = "instagram:publish_story"
+	// TypeMonitoringDeferredDispatch executa UM item da fila de cadência do
+	// espelho (Melhoria 7). A task é só um GATILHO: a verdade está no
+	// PostgreSQL, então perder a fila do Redis não perde nenhum envio — o
+	// poller reemite com geração nova.
+	TypeMonitoringDeferredDispatch = "monitoring:deferred_dispatch"
 )
 
 // InstagramStoryJobData is the payload for publishing one Instagram story on
@@ -42,6 +47,22 @@ type InstagramStoryJobData struct {
 	LedgerID    string    `json:"ledgerId"`
 	TraceID     string    `json:"trace_id,omitempty"`
 	EnqueuedAt  time.Time `json:"enqueuedAt"`
+}
+
+// DeferredDispatchJobData aponta para um item da fila de cadência. Repare no
+// que NÃO está aqui: nada do conteúdo da mensagem, nenhum grupo, nenhuma
+// mídia. O payload é uma referência + a prova de posse (geração + token); todo
+// o resto é lido do banco no momento da execução, já revalidado.
+//
+// Generation/Token são o antídoto do ABA: se a lease expirou e o poller
+// reemitiu, a task antiga chega com a geração velha, o CAS falha e ela vira
+// no-op — em vez de despachar duas vezes.
+type DeferredDispatchJobData struct {
+	PendingID  int64     `json:"pendingId"`
+	Generation int       `json:"generation"`
+	Token      string    `json:"token"`
+	TraceID    string    `json:"trace_id,omitempty"`
+	EnqueuedAt time.Time `json:"enqueuedAt"`
 }
 
 // MessageJobData represents data for a send message job
@@ -277,6 +298,54 @@ func (q *QueueClient) EnqueueMessage(ctx context.Context, data *MessageJobData, 
 func InstagramStoryTaskID(userID, sourceGroup, messageID string) string {
 	sum := sha256.Sum256([]byte(userID + "\x00" + sourceGroup + "\x00" + messageID))
 	return "ig-story:" + hex.EncodeToString(sum[:])
+}
+
+// MonitorDeferredTaskID inclui a GERAÇÃO: reemissões geram IDs diferentes, então
+// uma task nova nunca é engolida como duplicata da antiga — e a antiga, se
+// ressuscitar, não consegue mexer no item (o CAS de geração a barra).
+func MonitorDeferredTaskID(pendingID int64, generation int) string {
+	return fmt.Sprintf("monpending:%d:%d", pendingID, generation)
+}
+
+// EnqueueMonitorDeferredDispatch enfileira o gatilho de um item da cadência.
+//
+// MaxRetry(0) é deliberado: retry de task não é o mecanismo de recuperação
+// desta feature — o ledger é. Se a task morrer, a lease expira e o poller a
+// reemite com geração nova, com o estado do item revalidado no banco. Retry
+// cego do asynq reexecutaria com uma geração que já pode ter sido superada.
+//
+// Conflito de TaskID devolve (nil, nil): o gatilho já existe, o item está
+// atendido.
+func (q *QueueClient) EnqueueMonitorDeferredDispatch(ctx context.Context, pendingID int64, generation int, token string) error {
+	data := &DeferredDispatchJobData{
+		PendingID:  pendingID,
+		Generation: generation,
+		Token:      token,
+		EnqueuedAt: time.Now(),
+	}
+	if span := trace.SpanFromContext(ctx); span.SpanContext().HasTraceID() {
+		data.TraceID = span.SpanContext().TraceID().String()
+	}
+
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	task := asynq.NewTask(TypeMonitoringDeferredDispatch, payload,
+		asynq.Queue("messages"),
+		asynq.MaxRetry(0),
+		asynq.Timeout(5*time.Minute),
+		asynq.Retention(24*time.Hour),
+		asynq.TaskID(MonitorDeferredTaskID(pendingID, generation)),
+	)
+	if _, err := q.client.EnqueueContext(ctx, task); err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // EnqueueInstagramStory enqueues a story-publish job on the "default" queue.

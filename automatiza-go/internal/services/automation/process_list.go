@@ -264,16 +264,24 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 	// condition; dead links walked past do not count.
 	delivered := 0
 
-	// Pre-fetch CTA entities. Política:
+	// CTA é estritamente opt-in: só entra quando o template EFETIVO do item
+	// (o configurado ou, se vazio, o default da plataforma) traz {cta} — não há
+	// mais append pós-render. Por isso o pool é carregado LAZY, no primeiro item
+	// que realmente autorizar. Política preservada:
 	//   - automation.CTAIDs preenchido → override explícito, busca só esses
 	//   - automation.CTAIDs vazio → pool inteiro de CTAs ativos do user
-	//
-	// Pool inteiro é o caminho default (paridade com affilipro): o user
-	// cadastra CTAs em /ctas e o sistema escolhe automaticamente o que casa
-	// com a plataforma do produto. O override existe pra automations que
-	// querem restringir a um subconjunto curado.
+	// No máximo uma consulta por run (ctaLoadAttempted), inclusive em erro.
+	// Fail-open: erro devolve pool vazio e o build cai nos CTAs inline.
 	var ctaEntities []models.CTA
-	if s.ctaRepo != nil {
+	ctaLoadAttempted := false
+	loadCTAs := func() []models.CTA {
+		if ctaLoadAttempted {
+			return ctaEntities
+		}
+		ctaLoadAttempted = true
+		if s.ctaRepo == nil {
+			return nil
+		}
 		if len(automation.CTAIDs) > 0 {
 			fetched, ctaErr := s.ctaRepo.GetCTAsByIDs(ctx, automation.CTAIDs, automation.UserID)
 			if ctaErr != nil {
@@ -283,16 +291,17 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			} else {
 				ctaEntities = fetched
 			}
-		} else {
-			fetched, ctaErr := s.ctaRepo.GetUserCTAs(ctx, automation.UserID, map[string]interface{}{"is_active": true})
-			if ctaErr != nil {
-				s.logger.Warn("Failed to fetch user CTA pool, falling back to inline CTAs",
-					zap.String("automationID", automation.ID),
-					zap.Error(ctaErr))
-			} else {
-				ctaEntities = fetched
-			}
+			return ctaEntities
 		}
+		fetched, ctaErr := s.ctaRepo.GetUserCTAs(ctx, automation.UserID, map[string]interface{}{"is_active": true})
+		if ctaErr != nil {
+			s.logger.Warn("Failed to fetch user CTA pool, falling back to inline CTAs",
+				zap.String("automationID", automation.ID),
+				zap.Error(ctaErr))
+		} else {
+			ctaEntities = fetched
+		}
+		return ctaEntities
 	}
 
 	// Process each item
@@ -556,8 +565,19 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			}
 		}
 
+		// Gate do CTA sobre o template EFETIVO deste item: com dispatchTemplate
+		// vazio, quem renderiza é o default da plataforma — é nele que {cta}
+		// precisa estar. Itens degradados/pulados acima nunca chegam aqui, então
+		// não custam consulta.
+		effectiveTemplate := resolveListDispatchTemplate(dispatchTemplate, isShopee)
+		useCTA := text.TemplateUsesVariable(effectiveTemplate, text.VarCTA)
+		var itemCTAs []models.CTA
+		if useCTA {
+			itemCTAs = loadCTAs()
+		}
+
 		// Build message for this item
-		message := s.buildListModeMessage(automation, item, preview, shopeeProduct, affiliateURL, dispatchTemplate, isML, isShopee, ctaEntities, couponResult)
+		message := s.buildListModeMessage(automation, item, preview, shopeeProduct, affiliateURL, dispatchTemplate, useCTA, isML, isShopee, itemCTAs, couponResult)
 
 		// Get image URL if available and enabled.
 		// ML delivers .webp which WhatsApp SendImage chokes on; the LinkPreview
@@ -930,6 +950,21 @@ func isTransientShopeeEnrichError(err error) bool {
 	return false
 }
 
+// resolveListDispatchTemplate devolve o template que o LIST vai REALMENTE
+// renderizar: o configurado quando existe, senão o default da plataforma.
+// Reproduz exatamente o branch histórico — qualquer item que não seja Shopee
+// cai no renderer ML, inclusive lojas desconhecidas (passthrough). É o mesmo
+// texto que o gate de CTA inspeciona, para gate e render nunca divergirem.
+func resolveListDispatchTemplate(raw string, isShopee bool) string {
+	if raw != "" {
+		return raw
+	}
+	if isShopee {
+		return text.DefaultShopeeTemplate()
+	}
+	return text.DefaultMLTemplate()
+}
+
 // buildListModeMessage builds the message for a LIST mode item
 func (s *automationService) buildListModeMessage(
 	automation *models.Automation,
@@ -938,17 +973,25 @@ func (s *automationService) buildListModeMessage(
 	shopeeProduct *models.ShopeeOffer,
 	affiliateURL string,
 	dispatchTemplate string,
+	useCTA bool,
 	isML bool,
 	isShopee bool,
 	ctaEntities []models.CTA,
 	couponResult *CouponResult,
 ) string {
-	// Select CTA: filtra ctaEntities pela plataforma do produto antes do
-	// sorteio (ver pickCTAForPlatform). Se não houver CTA com platform
-	// compatível, cai pros CTAs inline da automation.
-	cta := ctapicker.PickByPlatform(ctaEntities, isML, isShopee)
-	if cta == "" && len(automation.CTAs) > 0 {
-		cta = automation.CTAs[rand.IntN(len(automation.CTAs))]
+	// Template efetivo: o mesmo que o caller usou para decidir useCTA.
+	effectiveTemplate := resolveListDispatchTemplate(dispatchTemplate, isShopee)
+
+	// CTA só existe quando o template efetivo a posiciona por {cta} (useCTA).
+	// Autorizada, filtra ctaEntities pela plataforma do produto antes do sorteio
+	// (ver ctapicker.PickByPlatform); sem CTA de platform compatível, cai pros
+	// CTAs inline da automation.
+	cta := ""
+	if useCTA {
+		cta = ctapicker.PickByPlatform(ctaEntities, isML, isShopee)
+		if cta == "" && len(automation.CTAs) > 0 {
+			cta = automation.CTAs[rand.IntN(len(automation.CTAs))]
+		}
 	}
 
 	if isShopee {
@@ -1014,20 +1057,12 @@ func (s *automationService) buildListModeMessage(
 			}
 		}
 
-		var message string
-		if dispatchTemplate != "" {
-			message = text.RenderShopeeOfferTemplate(dispatchTemplate, vars)
-		} else {
-			message = text.RenderShopeeOfferTemplate(text.DefaultShopeeTemplate(), vars)
-		}
-
-		// Auto-append CTA if template doesn't contain {cta} variable
-		if cta != "" && !strings.Contains(dispatchTemplate, "{cta}") {
-			message = message + "\n\n" + cta
-		}
+		message := text.RenderShopeeOfferTemplate(effectiveTemplate, vars)
 
 		// Auto-append coupon text só quando o template não posiciona o cupom por
 		// nenhum placeholder ({cupom_bloco} ou {couponText}) — evita render duplo.
+		// Continua testando o template CRU (não o efetivo): mudar a base dessa
+		// checagem alteraria o comportamento do cupom, que está fora desta melhoria.
 		if couponResult != nil && couponResult.Applied &&
 			!strings.Contains(dispatchTemplate, "{cupom_bloco}") && !strings.Contains(dispatchTemplate, "{couponText}") {
 			message = message + couponResult.CouponText
@@ -1098,19 +1133,10 @@ func (s *automationService) buildListModeMessage(
 		}
 	}
 
-	var message string
-	if dispatchTemplate != "" {
-		message = text.RenderMLOfferTemplate(dispatchTemplate, vars)
-	} else {
-		message = text.RenderMLOfferTemplate(text.DefaultMLTemplate(), vars)
-	}
-
-	// Auto-append CTA if template doesn't contain {cta} variable
-	if cta != "" && !strings.Contains(dispatchTemplate, "{cta}") {
-		message = message + "\n\n" + cta
-	}
+	message := text.RenderMLOfferTemplate(effectiveTemplate, vars)
 
 	// Auto-append coupon text if template doesn't contain {cupom_bloco}
+	// (template CRU, mesma assimetria histórica em relação ao ramo Shopee).
 	if couponResult != nil && couponResult.Applied && !strings.Contains(dispatchTemplate, "{cupom_bloco}") {
 		message = message + couponResult.CouponText
 	}

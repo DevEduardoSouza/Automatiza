@@ -1,0 +1,11 @@
+-- automatiza:migration-mode=transactional
+--
+-- Rollback parcial POR CONSTRUCAO: derruba a garantia, nao ressuscita linhas.
+-- As duplicatas removidas em (a) ficam em _bkp_jobs_dedup_079 e precisam de
+-- reinsercao manual e deliberada — reinserir automaticamente aqui recriaria
+-- exatamente o spam que a migracao existe para impedir.
+--
+-- Depois deste DROP o codigo volta a aceitar criacao duplicada: o
+-- `ON CONFLICT` do repositorio vira no-op (sem indice para inferir, o INSERT
+-- falha). Por isso o rollback real e reverter o commit JUNTO com este DROP.
+DROP INDEX IF EXISTS uq_jobs_pending_logical;

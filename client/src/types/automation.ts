@@ -71,6 +71,13 @@ export interface Automation {
   // MONITORING mode: enviar oferta como imagem anexada (default false) em vez
   // do preview nativo do WhatsApp.
   monitoring_send_as_image?: boolean;
+  // MONITORING mode: intervalo MÍNIMO entre mensagens espelhadas (minutos,
+  // 0..1440). 0 = envio imediato. Diferente de delay_seconds, que é a pausa
+  // entre GRUPOS de destino da MESMA mensagem.
+  monitor_interval_minutes?: number;
+  // Fila da cadência (read-only, vem do backend).
+  monitor_pending_count?: number;
+  monitor_next_scheduled_at?: string;
   // Preferred sender chip (database id of an instance, string form). Set
   // by the form's chip selector and persisted; the worker uses it as the
   // sender for every dispatch from this automation. Empty / null = no

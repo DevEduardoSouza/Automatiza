@@ -1011,6 +1011,9 @@ func (m *mockJobsService) CancelJob(ctx context.Context, jobID string) error { r
 func (m *mockJobsService) CreateJob(ctx context.Context, userID string, job *models.StandaloneJob) (*models.StandaloneJob, error) {
 	return nil, nil
 }
+func (m *mockJobsService) CreateJobs(ctx context.Context, userID string, jobs []*models.StandaloneJob) ([]models.StandaloneJob, int, error) {
+	return nil, 0, nil
+}
 func (m *mockJobsService) GetJob(ctx context.Context, id, userID string) (*models.StandaloneJob, error) {
 	return nil, nil
 }

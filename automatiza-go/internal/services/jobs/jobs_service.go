@@ -30,6 +30,9 @@ type Service interface {
 
 	// New CRUD operations for standalone jobs
 	CreateJob(ctx context.Context, userID string, job *models.StandaloneJob) (*models.StandaloneJob, error)
+	// CreateJobs cria um lote inteiro atomicamente e informa quantos itens já
+	// existiam (agendamento idêntico ainda pendente).
+	CreateJobs(ctx context.Context, userID string, jobs []*models.StandaloneJob) (created []models.StandaloneJob, deduplicated int, err error)
 	GetJob(ctx context.Context, id, userID string) (*models.StandaloneJob, error)
 	ListJobs(ctx context.Context, userID string) ([]models.StandaloneJob, error)
 	ListJobsPaginated(ctx context.Context, params repository.JobListParams) (*repository.JobListResult, error)
@@ -318,11 +321,18 @@ func (s *standaloneJobsService) validateAndResolveWAGroups(
 	return validWAGroupIDs, errorResults
 }
 
-// CreateJob creates a new standalone job.
-func (s *standaloneJobsService) CreateJob(ctx context.Context, userID string, job *models.StandaloneJob) (*models.StandaloneJob, error) {
+// maxJobsPerBatch espelha o MAX_TOTAL_JOBS do modal de agendamento
+// (client/src/components/groups/schedule-multiple-groups.tsx). O servidor
+// precisa do próprio teto: o do cliente é sugestão, não garantia.
+const maxJobsPerBatch = 500
+
+// prepareJob valida e normaliza um job antes da persistência. Extraído de
+// CreateJob para que o caminho em lote passe EXATAMENTE pelas mesmas regras —
+// duas listas de validação divergiriam no primeiro campo novo.
+func prepareJob(userID string, job *models.StandaloneJob) error {
 	// Validate groups
 	if err := ValidateGroups(job.Payload.Groups); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Set user ID
@@ -333,25 +343,25 @@ func (s *standaloneJobsService) CreateJob(ctx context.Context, userID string, jo
 	case models.JobActionSendMessage:
 		if job.Payload.Type == "poll" {
 			if err := ValidatePollOptions(job.Payload.Options); err != nil {
-				return nil, err
+				return err
 			}
 		} else if job.Payload.Message == "" && job.Payload.Media == "" {
-			return nil, fmt.Errorf("mensagem ou midia e obrigatoria")
+			return fmt.Errorf("mensagem ou midia e obrigatoria")
 		}
 	case models.JobActionSendPoll:
 		if err := ValidatePollOptions(job.Payload.Options); err != nil {
-			return nil, err
+			return err
 		}
 		if job.Payload.Question == "" {
-			return nil, fmt.Errorf("pergunta da enquete e obrigatoria")
+			return fmt.Errorf("pergunta da enquete e obrigatoria")
 		}
 	case models.JobActionChangeGroupPhoto:
 		if job.Payload.Image == "" {
-			return nil, fmt.Errorf("imagem e obrigatoria")
+			return fmt.Errorf("imagem e obrigatoria")
 		}
 	case models.JobActionChangeGroupName:
 		if job.Payload.Name == "" {
-			return nil, fmt.Errorf("nome do grupo e obrigatorio")
+			return fmt.Errorf("nome do grupo e obrigatorio")
 		}
 	}
 
@@ -360,12 +370,57 @@ func (s *standaloneJobsService) CreateJob(ctx context.Context, userID string, jo
 		job.MaxRetries = 3
 	}
 
-	created, err := s.jobRepo.Create(ctx, job)
+	return nil
+}
+
+// CreateJob creates a new standalone job.
+//
+// Idempotente: pedir de novo o MESMO agendamento (usuário, ação, horário e
+// payload) enquanto o primeiro ainda está pendente devolve o job original em
+// vez de criar uma segunda linha. É o que transforma um double-click — ou o
+// retry de uma aba com bundle antigo — em uma mensagem só.
+func (s *standaloneJobsService) CreateJob(ctx context.Context, userID string, job *models.StandaloneJob) (*models.StandaloneJob, error) {
+	if err := prepareJob(userID, job); err != nil {
+		return nil, err
+	}
+
+	created, _, err := s.jobRepo.Create(ctx, job)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create job: %w", err)
 	}
 
 	return created, nil
+}
+
+// CreateJobs cria um lote de agendamentos numa única transação.
+//
+// Existe para substituir o loop de N chamadas sequenciais do frontend, que
+// tinha dois defeitos: falhar no meio deixava os primeiros N-1 criados sem
+// desfazer, e a janela de dezenas de segundos com o botão ainda ativo era
+// justamente o que produzia o segundo clique (e o lote duplicado).
+func (s *standaloneJobsService) CreateJobs(ctx context.Context, userID string, jobs []*models.StandaloneJob) ([]models.StandaloneJob, int, error) {
+	if len(jobs) == 0 {
+		return nil, 0, fmt.Errorf("nenhum agendamento informado")
+	}
+	if len(jobs) > maxJobsPerBatch {
+		return nil, 0, fmt.Errorf("limite de %d agendamentos por vez excedido (%d enviados)", maxJobsPerBatch, len(jobs))
+	}
+
+	// Validar TUDO antes de abrir transação: item inválido no meio do lote
+	// desfaz o lote inteiro, então descobrir isso cedo evita trabalho no banco
+	// e devolve o erro apontando o índice do item.
+	for i, job := range jobs {
+		if err := prepareJob(userID, job); err != nil {
+			return nil, 0, fmt.Errorf("agendamento %d: %w", i+1, err)
+		}
+	}
+
+	created, deduplicated, err := s.jobRepo.CreateBatch(ctx, jobs)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create jobs: %w", err)
+	}
+
+	return created, deduplicated, nil
 }
 
 // GetJob retrieves a job by ID (with ownership check).
@@ -450,20 +505,44 @@ func (s *standaloneJobsService) ProcessScheduledJobs(ctx context.Context) (*Proc
 		s.logger.Warn("Reaped stale running jobs (marked failed)", zap.Int64("count", reaped))
 	}
 
-	jobs, err := s.jobRepo.GetPendingDueJobs(ctx, 50)
+	// Claim atômico: os jobs já voltam 'running'. Antes o par
+	// SELECT ... FOR UPDATE (sem transação) + UpdateStatus('running') deixava
+	// uma janela em que o job seguia pending e destravado — dois ticks
+	// sobrepostos enviavam a mesma mensagem duas vezes.
+	jobs, err := s.jobRepo.ClaimPendingDueJobs(ctx, 50)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get pending jobs: %w", err)
+		return nil, fmt.Errorf("failed to claim pending jobs: %w", err)
 	}
 
 	s.logger.Info("Processing standalone jobs", zap.Int("count", len(jobs)))
 
-	for _, job := range jobs {
-		if err := s.jobRepo.UpdateStatus(ctx, job.ID, models.StandaloneJobStatusRunning, nil); err != nil {
-			s.logger.Warn("Failed to mark job as running",
-				zap.String("jobID", job.ID),
-				zap.Error(err))
-			continue
+	for i, job := range jobs {
+		// O ctx do cron tem cap de 5min e um lote grande o estoura. Como o
+		// claim já marcou TODOS como 'running', o que não for executado precisa
+		// voltar para 'pending' — senão só o reaper o resolveria, 30min depois
+		// e como 'failed'. Antes do claim em lote esses jobs simplesmente
+		// continuavam pending e pegavam o tick seguinte; isto preserva isso.
+		if ctx.Err() != nil {
+			remaining := make([]string, 0, len(jobs)-i)
+			for _, pending := range jobs[i:] {
+				remaining = append(remaining, pending.ID)
+			}
+			// Contexto desacoplado: o ctx que devolveríamos já está morto.
+			relCtx, relCancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+			released, relErr := s.jobRepo.ReleaseClaimedJobs(relCtx, remaining)
+			relCancel()
+			if relErr != nil {
+				observability.LogAndCapture(s.logger, sentry.LevelError,
+					"Failed to release claimed jobs after context expiry", relErr,
+					map[string]string{"module": "jobs", "operation": "job-release"})
+			} else {
+				s.logger.Warn("Context expired mid-batch; released claimed jobs back to pending",
+					zap.Int("released", int(released)),
+					zap.Int("remaining", len(remaining)))
+			}
+			break
 		}
+
 		s.notifyJobStatus(job.UserID, job.ID, models.StandaloneJobStatusRunning, nil)
 
 		// Create action history entry for this job
@@ -850,6 +929,11 @@ func (s *legacyJobsService) CancelJob(ctx context.Context, jobID string) error {
 // CreateJob is not supported in legacy jobs service.
 func (s *legacyJobsService) CreateJob(_ context.Context, _ string, _ *models.StandaloneJob) (*models.StandaloneJob, error) {
 	return nil, fmt.Errorf("CreateJob not supported in legacy jobs service; use ScheduleJob instead")
+}
+
+// CreateJobs is not supported in legacy jobs service.
+func (s *legacyJobsService) CreateJobs(_ context.Context, _ string, _ []*models.StandaloneJob) ([]models.StandaloneJob, int, error) {
+	return nil, 0, fmt.Errorf("CreateJobs not supported in legacy jobs service; use ScheduleJob instead")
 }
 
 // GetJob is not supported in legacy jobs service.

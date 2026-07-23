@@ -62,6 +62,30 @@ type MediaDownloader interface {
 	RedownloadMedia(ctx context.Context, sessionName, chatID, messageID string) (*DownloadMediaResult, error)
 }
 
+// DurableMediaFetcher é a interface ESTREITA usada pela cadência do espelho
+// (Melhoria 7) para adquirir bytes que serão PERSISTIDOS. Deliberadamente fora
+// de WhatsAppProvider: quem só espelha na hora não precisa dela, e mantê-la
+// separada evita mexer na assinatura dos downloads usados por outros fluxos.
+//
+// A diferença para MediaDownloader não é o transporte, é o contrato de
+// tamanho: aqui o teto FALHA em vez de truncar. Um JPEG cortado pela metade
+// gravado no banco viraria uma imagem quebrada em todos os grupos, para sempre
+// — enquanto um erro faz a admissão recusar a mensagem, que é o desfecho
+// seguro.
+type DurableMediaFetcher interface {
+	// DownloadMediaByURLLimited baixa a mídia recusando (não truncando) tudo
+	// que passar de maxBytes.
+	DownloadMediaByURLLimited(ctx context.Context, mediaURL string, maxBytes int64) (*DownloadMediaResult, error)
+	// RedownloadMediaLimited re-baixa dos servidores do WhatsApp com o mesmo
+	// contrato de teto. Usado quando a URL local da WAHA já expirou.
+	RedownloadMediaLimited(ctx context.Context, sessionName, chatID, messageID string, maxBytes int64) (*DownloadMediaResult, error)
+}
+
+// ErrMediaTooLarge é devolvido pelo DurableMediaFetcher quando o corpo excede o
+// teto pedido. É erro fechado de propósito: o chamador não deve tentar
+// adivinhar tamanho a partir da mensagem do provedor.
+var ErrMediaTooLarge = errors.New("media exceeds durable size limit")
+
 // DownloadMediaResult contains the downloaded media data with metadata.
 type DownloadMediaResult struct {
 	// Data is the raw media bytes.
@@ -114,6 +138,65 @@ type SessionManager interface {
 	// ClearStatusCache removes a session from the status cache.
 	// Used to force a fresh status fetch from the provider (e.g., when refreshing QR code).
 	ClearStatusCache(sessionName string)
+}
+
+// FreshSessionStatus is the RAW provider view of a session, with no caching and
+// no domain translation.
+//
+// It exists because two of the guarantees the instance-failover feature needs
+// are lost by GetSessionStatus:
+//
+//  1. that call may answer from a cache, and a cached "connected" is not proof
+//     that the chip is live right now — which is exactly what a chip swap must
+//     be sure of;
+//  2. parseWahaStatus collapses every unrecognised status into DISCONNECTED, so
+//     a status the provider added (PASSKEY_REQUIRED, say) becomes
+//     indistinguishable from a genuinely known-bad one. The failover detector
+//     must treat "known bad" and "I don't recognise this" differently: only the
+//     first counts as evidence of unavailability.
+type FreshSessionStatus struct {
+	// Name is the session identifier.
+	Name string
+
+	// RawStatus is the provider string verbatim. Per waha-plus-openapi.json
+	// (components.schemas.SessionInfo.status) the documented set is:
+	// STOPPED, STARTING, SCAN_QR_CODE, PASSKEY_REQUIRED,
+	// PASSKEY_CONFIRMATION_REQUIRED, WORKING, FAILED. There is no BANNED.
+	RawStatus string
+
+	// Known reports whether RawStatus is part of the documented enum.
+	Known bool
+
+	// MeID is me.id (the session's own WhatsApp ID), empty when not paired.
+	// It is the only reliable way to spot "myself" in a participant list.
+	MeID string
+}
+
+// IsWorking reports whether the provider says the session is fully operational.
+func (s *FreshSessionStatus) IsWorking() bool {
+	return s != nil && s.RawStatus == WahaStatusWorking
+}
+
+// Documented WAHA session statuses (waha-plus-openapi.json, SessionInfo/SessionDTO).
+const (
+	WahaStatusStopped                     = "STOPPED"
+	WahaStatusStarting                    = "STARTING"
+	WahaStatusScanQRCode                  = "SCAN_QR_CODE"
+	WahaStatusPasskeyRequired             = "PASSKEY_REQUIRED"
+	WahaStatusPasskeyConfirmationRequired = "PASSKEY_CONFIRMATION_REQUIRED"
+	WahaStatusWorking                     = "WORKING"
+	WahaStatusFailed                      = "FAILED"
+)
+
+// IsKnownWahaStatus reports whether a raw provider status is documented.
+func IsKnownWahaStatus(status string) bool {
+	switch status {
+	case WahaStatusStopped, WahaStatusStarting, WahaStatusScanQRCode,
+		WahaStatusPasskeyRequired, WahaStatusPasskeyConfirmationRequired,
+		WahaStatusWorking, WahaStatusFailed:
+		return true
+	}
+	return false
 }
 
 // GroupManager handles WhatsApp group operations.

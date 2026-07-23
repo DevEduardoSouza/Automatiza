@@ -8,7 +8,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatDelayWithI18n, getModeKey, getModeVariant } from '@/lib/automation-formatters';
+import {
+  formatDelayWithI18n,
+  formatMonitorQueue,
+  getModeKey,
+  getModeVariant,
+} from '@/lib/automation-formatters';
 import type { Automation } from '@/types/automation';
 import { format } from 'date-fns';
 import { FileText, Play, RotateCcw, Trash2 } from 'lucide-react';
@@ -77,7 +82,16 @@ export function AutomationTable({
                   count: auto.stores.length,
                 })}
               </TableCell>
-              <TableCell>{formatDelayWithI18n(auto, t)}</TableCell>
+              <TableCell>
+                <div className="flex flex-col">
+                  <span>{formatDelayWithI18n(auto, t)}</span>
+                  {formatMonitorQueue(auto, t) && (
+                    <span className="text-xs text-muted-foreground">
+                      {formatMonitorQueue(auto, t)}
+                    </span>
+                  )}
+                </div>
+              </TableCell>
               <TableCell className="text-xs xl:text-sm">
                 {auto.start_time} - {auto.end_time}
               </TableCell>

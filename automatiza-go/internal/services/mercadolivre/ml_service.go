@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/commerceurl"
 	"automatiza-go/internal/lib/crypto"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
@@ -36,7 +37,12 @@ type Service interface {
 }
 
 type mlService struct {
-	httpClient    *http.Client
+	httpClient *http.Client
+	// safe é o par de clientes endurecidos usado em TODA busca de página HTML
+	// (preview de produto e página /social de afiliado). httpClient continua
+	// servindo só a API GraphQL de afiliado, cujo endpoint é fixo e
+	// configurado — não vem do texto de um grupo.
+	safe          *safeMLClients
 	cache         *cache.Cache
 	mlCredsRepo   repository.MLCredentialsRepository
 	mlLinkRepo    repository.MLLinkRepository
@@ -57,6 +63,7 @@ func NewMLService(
 			Timeout:   30 * time.Second,
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
+		safe:          newSafeMLClients(commerceurl.ClientOptions{}),
 		cache:         cache,
 		mlCredsRepo:   mlCredsRepo,
 		mlLinkRepo:    mlLinkRepo,
@@ -73,19 +80,18 @@ const (
 )
 
 func (s *mlService) CreateAffiliateLink(ctx context.Context, originURL, userID string) (*models.MLAffiliateLink, error) {
-	// Affiliate short links (meli.la/XXX, mercadolivre.com/sec/XXX) are ALREADY
-	// affiliate links and carry no MLB id in the URL, so ExtractProductID can't
-	// parse them — which previously errored and made offer_generate/monitoring
-	// DROP the whole offer (e.g. meli.la posted in a "grupo gerador" never
-	// relayed). They're already affiliated, so just relay them as-is instead of
-	// trying to re-shorten. (Re-attributing a third party's affiliate short link
-	// to this user would require resolving the product and is out of scope.)
+	// Short links de afiliado (meli.la/XXX, .../sec/XXX) não carregam o MLB id
+	// na URL. A versão anterior devolvia a URL RECEBIDA como se fosse o link
+	// afiliado do usuário — ou seja, repassava a comissão de um terceiro
+	// assinada como nossa. Agora resolvemos o short anonimamente até o produto
+	// e geramos o link DO DONO; se não der para resolver, devolvemos erro
+	// tipado e quem chamou decide (nunca emitir o original).
 	if isAffiliateURL(originURL) {
-		return &models.MLAffiliateLink{
-			OriginalURL:   originURL,
-			AffiliateLink: originURL,
-			ProductID:     affiliateShortCode(originURL),
-		}, nil
+		resolved, err := s.resolveShortLinkToProductURL(ctx, originURL)
+		if err != nil {
+			return nil, err
+		}
+		originURL = resolved
 	}
 
 	// Extract product ID
@@ -371,58 +377,35 @@ func (s *mlService) GetProductPreview(ctx context.Context, originURL, userID str
 		s.logger.Debug("ML credentials not available for preview (optional)", zap.Error(credsErr))
 	}
 
-	// Fetch product page
-	req, err := http.NewRequestWithContext(ctx, "GET", cleanURL, nil)
-	if err != nil {
-		return nil, err
+	// Busca a página de produto pelo cliente ENDURECIDO.
+	//
+	// Duas mudanças de contrato aqui:
+	//  1. cleanURL é revalidada — só um host ML real recebe request, e o cookie
+	//     do usuário só sai para os hosts exatos da allowlist;
+	//  2. não-200 deixou de virar "preview vazio com erro nil". Aquele colapso
+	//     era a origem do falso aviso de cupom: um 429 ou um HTML mudado viravam
+	//     HasProductData=false, que o chamador lia como "então é campanha".
+	//     Agora sai RemoteError tipado e quem chama decide retry × bloqueio.
+	safeURL, urlErr := ResolveSafeMLURL(cleanURL)
+	if urlErr != nil {
+		return nil, urlErr
 	}
 
-	req.Header.Set("Accept", "text/html,application/xhtml+xml")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36")
-	if creds != nil {
-		req.Header.Set("Cookie", creds.Cookie)
-	}
-
-	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("GET "+cleanURL))
+	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("GET mercadolivre product page"))
 	span.SetTag("external_service", "mercadolivre")
 	span.SetTag("endpoint", "productPreview")
-	resp, err := s.httpClient.Do(req)
+	body, finalURL, fetchErr := s.safe.fetchHTML(ctx, safeURL, creds)
 	span.Finish()
-	if err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to fetch ML product preview", err, map[string]string{
+	if fetchErr != nil {
+		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to fetch ML product preview", fetchErr, map[string]string{
 			"external_service": "mercadolivre",
 			"endpoint":         "productPreview",
+			"host":             safeURL.Host,
+			"url_hash":         safeURL.Hash8(),
 		})
-		return nil, fmt.Errorf("failed to fetch product: %w", err)
+		return nil, fetchErr
 	}
-	defer resp.Body.Close()
-
-	// If non-200 or not HTML, return empty preview with short cache
-	if resp.StatusCode != http.StatusOK {
-		emptyPreview := &models.MLProductPreview{
-			ID:        productID,
-			Permalink: cleanURL,
-			Currency:  "BRL",
-		}
-		if s.cache != nil {
-			if cacheErr := s.cache.SetJSON(ctx, cacheKey, emptyPreview, previewCacheTTLEmpty); cacheErr != nil {
-				observability.LogAndCapture(s.logger, sentry.LevelWarning, "Failed to cache empty ML preview", cacheErr, map[string]string{
-					"external_service": "mercadolivre",
-					"endpoint":         "cache_set_preview",
-				})
-			}
-		}
-		return emptyPreview, nil
-	}
-
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 5<<20)) // 5MB limit for HTML pages
-	if readErr != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to read ML product preview response body", readErr, map[string]string{
-			"external_service": "mercadolivre",
-			"endpoint":         "productPreview",
-		})
-		return nil, fmt.Errorf("failed to read product page: %w", readErr)
-	}
+	cleanURL = finalURL.String()
 	htmlContent := string(body)
 
 	// Parse HTML for product info using full extraction logic
@@ -467,11 +450,17 @@ var (
 
 // isAffiliateURL detecta links de afiliado ML (meli.la/XXX, .../sec/XXX), que não
 // têm o MLB id na URL e precisam ser resolvidos pela página /social.
+//
+// Delega ao commerceurl: o strings.Contains anterior casava qualquer URL cujo
+// PATH contivesse "meli.la/", então https://evil.test/meli.la/x era tratado
+// como link de afiliado ML e ia direto para um GET — SSRF com um host
+// arbitrário. Aqui o host é comparado exato sobre a URL já parseada.
 func isAffiliateURL(rawURL string) bool {
-	l := strings.ToLower(rawURL)
-	return strings.Contains(l, "meli.la/") ||
-		strings.Contains(l, "mercadolivre.com/sec/") ||
-		strings.Contains(l, "mercadolivre.com.br/sec/")
+	u, err := commerceurl.Parse(rawURL)
+	if err != nil || u.Store != models.MonitorStoreMercadoLivr {
+		return false
+	}
+	return commerceurl.IsMLShortener(u)
 }
 
 // affiliateShortCode devolve o último segmento do path do link de afiliado
@@ -503,32 +492,26 @@ func (s *mlService) getAffiliateProductPreview(ctx context.Context, affiliateURL
 		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, affiliateURL, nil)
-	if err != nil {
-		return nil, err
+	// Página /social é pública: buscada SEMPRE anonimamente (creds=nil). O
+	// destino de um short link é escolhido por quem postou a mensagem — mandar
+	// o cookie do nosso usuário para lá seria entregar credencial a terceiro.
+	safeURL, urlErr := ResolveSafeMLURL(affiliateURL)
+	if urlErr != nil {
+		return nil, urlErr
 	}
-	req.Header.Set("Accept", "text/html,application/xhtml+xml")
-	req.Header.Set("User-Agent", browserUserAgent)
 
-	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("GET "+affiliateURL))
+	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("GET mercadolivre social page"))
 	span.SetTag("external_service", "mercadolivre")
 	span.SetTag("endpoint", "affiliatePreview")
-	resp, err := s.httpClient.Do(req)
+	body, finalURL, fetchErr := s.safe.fetchHTML(ctx, safeURL, nil)
 	span.Finish()
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch affiliate page: %w", err)
+	if fetchErr != nil {
+		// Não-200 e timeout deixaram de virar "preview vazio, erro nil": o
+		// chamador precisa distinguir transient de permanente, senão ausência
+		// de dados vira campanha.
+		return nil, fetchErr
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		// Não é erro fatal — devolve preview vazio (lista segue sem preço).
-		return &models.MLProductPreview{Permalink: affiliateURL, Currency: "BRL"}, nil
-	}
-
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
-	if readErr != nil {
-		return nil, fmt.Errorf("failed to read affiliate page: %w", readErr)
-	}
+	affiliateURL = finalURL.String()
 
 	preview := parseAffiliateSocialHTML(string(body), affiliateURL)
 	if preview == nil {
@@ -625,15 +608,20 @@ func parseAffiliateSocialHTML(html, finalURL string) *models.MLProductPreview {
 	return preview
 }
 
-// normalizeURL normalizes a URL for consistent caching
+// normalizeURL normaliza uma URL para cache e para emissão.
+//
+// Antes removia SÓ o fragmento, então userinfo, porta e — o que importa
+// comercialmente — os parâmetros de tracking da FONTE sobreviviam até a URL
+// emitida ao grupo. Agora delega ao commerceurl.StripTracking, que remove
+// userinfo, fragmento e os parâmetros de atribuição conhecidos (utm_*, af_*,
+// matt_*, affiliate_*, deal_print_id, tracking_id), preservando parâmetros
+// funcionais como quantity e variation, que não são tracking.
 func normalizeURL(rawURL string) string {
 	u, err := parseURL(rawURL)
 	if err != nil {
 		return strings.TrimSpace(rawURL)
 	}
-	// Remove hash fragment (never reaches server, keep cache stable)
-	u.Fragment = ""
-	return u.String()
+	return commerceurl.StripTracking(u)
 }
 
 // parseURL parses a URL safely

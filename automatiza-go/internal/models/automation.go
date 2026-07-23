@@ -124,6 +124,17 @@ type Automation struct {
 	// and we never touch the field in that path.
 	ChipOverrides map[string]string `json:"chip_overrides,omitempty" db:"chip_overrides"`
 
+	// MonitorIntervalMinutes (MONITORING mode): intervalo MÍNIMO entre
+	// mensagens-fonte espelhadas por esta automação, em minutos (0..1440).
+	// 0 (default) = fluxo imediato, comportamento histórico.
+	//
+	// NÃO confundir com os dois vizinhos:
+	//   - delay_seconds    = pausa ENTRE GRUPOS de destino de UMA mensagem;
+	//   - interval_minutes = scheduler de search/list, nunca lido no monitor.
+	// A cadência é durável (migração 078), não um sleep: a mensagem aceita vira
+	// linha no banco e sobrevive a deploy, crash e limpeza do Redis.
+	MonitorIntervalMinutes *int `json:"monitor_interval_minutes,omitempty" db:"monitor_interval_minutes"`
+
 	// Per-automation opt-out for the global coupon rule engine. Default
 	// TRUE: the worker matches active CouponRules on every dispatch.
 	// Set FALSE when the automation already pulls products from a
@@ -234,6 +245,15 @@ func (a *Automation) GetDelaySeconds() int {
 	return 1
 }
 
+// GetMonitorIntervalMinutes returns the monitor cadence in minutes (0 = off).
+// Só o modo monitoring lê este valor; qualquer outro tipo o ignora.
+func (a *Automation) GetMonitorIntervalMinutes() int {
+	if a.MonitorIntervalMinutes != nil {
+		return *a.MonitorIntervalMinutes
+	}
+	return 0
+}
+
 // GetTargetGroups returns the destination groups for the automation
 func (a *Automation) GetTargetGroups() []string {
 	if len(a.SendGroups) > 0 {
@@ -282,8 +302,10 @@ type CreateAutomationRequest struct {
 	StartTime       *string  `json:"start_time,omitempty"`
 	EndTime         *string  `json:"end_time,omitempty"`
 	IntervalMinutes *int     `json:"interval_minutes,omitempty"`
-	CouponID        *string  `json:"coupon_id,omitempty"`
-	InstanceID      *string  `json:"instance_id,omitempty"`
+	// MonitorIntervalMinutes: cadência do modo monitoring (0..1440, 0 = off).
+	MonitorIntervalMinutes *int    `json:"monitor_interval_minutes,omitempty"`
+	CouponID               *string `json:"coupon_id,omitempty"`
+	InstanceID             *string `json:"instance_id,omitempty"`
 	// InstanceIDs is the multi-chip preference (049). When provided,
 	// supersedes InstanceID — the create handler stores the array and
 	// syncs InstanceID with InstanceIDs[0] for back-compat.
@@ -314,7 +336,10 @@ type UpdateAutomationRequest struct {
 	StartTime       *string  `json:"start_time,omitempty"`
 	EndTime         *string  `json:"end_time,omitempty"`
 	IntervalMinutes *int     `json:"interval_minutes,omitempty"`
-	CouponID        *string  `json:"coupon_id,omitempty"`
+	// MonitorIntervalMinutes: nil = não fornecido (sem alteração); 0 drena a
+	// fila existente e volta ao envio imediato.
+	MonitorIntervalMinutes *int    `json:"monitor_interval_minutes,omitempty"`
+	CouponID               *string `json:"coupon_id,omitempty"`
 	// InstanceID is a tri-state pointer: nil = not provided (no change),
 	// pointer to "" = explicitly clear the preference, otherwise = set.
 	InstanceID *string `json:"instance_id,omitempty"`
@@ -397,6 +422,9 @@ func (r *UpdateAutomationRequest) ToMap() map[string]interface{} {
 	}
 	if r.IntervalMinutes != nil {
 		result["interval_minutes"] = *r.IntervalMinutes
+	}
+	if r.MonitorIntervalMinutes != nil {
+		result["monitor_interval_minutes"] = *r.MonitorIntervalMinutes
 	}
 	if r.CouponID != nil {
 		result["coupon_id"] = *r.CouponID

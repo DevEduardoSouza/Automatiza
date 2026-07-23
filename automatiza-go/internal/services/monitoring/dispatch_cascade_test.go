@@ -19,18 +19,42 @@ import (
 
 // mockCTARepo embute a interface para só implementar o que o pool usa; os
 // métodos não sobrescritos causam panic se chamados (não deveriam neste caminho).
+// Os contadores provam a metade que o corpo renderizado não mostra: que o
+// repositório nem foi CONSULTADO quando o texto de disparo não pede {cta}.
+// Callback nil devolve pool vazio (sem panic opaco) — o contador é que acusa.
 type mockCTARepo struct {
 	repository.CTARepository
 	GetUserCTAsFn  func(ctx context.Context, userID string, filters map[string]interface{}) ([]models.CTA, error)
 	GetCTAsByIDsFn func(ctx context.Context, ctaIDs []string, userID string) ([]models.CTA, error)
+
+	userCalls int
+	idCalls   int
 }
 
 func (m *mockCTARepo) GetUserCTAs(ctx context.Context, userID string, filters map[string]interface{}) ([]models.CTA, error) {
+	m.userCalls++
+	if m.GetUserCTAsFn == nil {
+		return nil, nil
+	}
 	return m.GetUserCTAsFn(ctx, userID, filters)
 }
 
 func (m *mockCTARepo) GetCTAsByIDs(ctx context.Context, ctaIDs []string, userID string) ([]models.CTA, error) {
+	m.idCalls++
+	if m.GetCTAsByIDsFn == nil {
+		return nil, nil
+	}
 	return m.GetCTAsByIDsFn(ctx, ctaIDs, userID)
+}
+
+func (m *mockCTARepo) assertCalls(t *testing.T, wantUser, wantID int) {
+	t.Helper()
+	if m.userCalls != wantUser {
+		t.Errorf("GetUserCTAs chamado %d vez(es), want %d", m.userCalls, wantUser)
+	}
+	if m.idCalls != wantID {
+		t.Errorf("GetCTAsByIDs chamado %d vez(es), want %d", m.idCalls, wantID)
+	}
 }
 
 type mockCouponApplier struct {
@@ -137,7 +161,7 @@ func TestCascade_Template_CardTitleFromProduct(t *testing.T) {
 		captureCard(s, &card, &imageCalled, &textCalled)
 	})
 
-	if err := svc.processAutomation(context.Background(), templateAutomation(), sourceMessage(), sourceLinks, false); err != nil {
+	if err := svc.processAutomation(context.Background(), templateAutomation(), sourceMessage(), sourceLinks, false, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if card == nil {
@@ -173,7 +197,7 @@ func TestCascade_Template_EnrichFails_CardTitleEmpty(t *testing.T) {
 		captureCard(s, &card, &imageCalled, &textCalled)
 	})
 
-	if err := svc.processAutomation(context.Background(), templateAutomation(), sourceMessage(), sourceLinks, false); err != nil {
+	if err := svc.processAutomation(context.Background(), templateAutomation(), sourceMessage(), sourceLinks, false, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if card == nil {
@@ -198,7 +222,7 @@ func TestCascade_NoTemplate_CardTitleFromSource(t *testing.T) {
 	auto := templateAutomation()
 	auto.DispatchTextID = nil // sem texto de disparo → repasse
 
-	if err := svc.processAutomation(context.Background(), auto, sourceMessage(), sourceLinks, false); err != nil {
+	if err := svc.processAutomation(context.Background(), auto, sourceMessage(), sourceLinks, false, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if card == nil {
@@ -221,7 +245,7 @@ func TestCascade_GateOff_IgnoresTemplate(t *testing.T) {
 		captureCard(s, &card, &imageCalled, &textCalled)
 	})
 
-	if err := svc.processAutomation(context.Background(), templateAutomation(), sourceMessage(), sourceLinks, false); err != nil {
+	if err := svc.processAutomation(context.Background(), templateAutomation(), sourceMessage(), sourceLinks, false, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if card == nil {
@@ -243,7 +267,7 @@ func TestCascade_Allowlist_UserOutside(t *testing.T) {
 		captureCard(s, &card, &imageCalled, &textCalled)
 	})
 
-	if err := svc.processAutomation(context.Background(), templateAutomation(), sourceMessage(), sourceLinks, false); err != nil {
+	if err := svc.processAutomation(context.Background(), templateAutomation(), sourceMessage(), sourceLinks, false, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if card == nil || card.Title != "TITULO DA ORIGEM" {
@@ -413,9 +437,10 @@ func TestCoupon_NilHandler(t *testing.T) {
 // CTA pool no monitor (nível render).
 // ---------------------------------------------------------------------------
 
-// Pool ativo com CTA Shopee: auto-append (template sem {cta}).
-func TestCTA_PoolAppended(t *testing.T) {
-	cta := &mockCTARepo{
+// ctaPoolBothPlatforms devolve um pool com um CTA por plataforma, para provar
+// QUAL foi escolhido (ou que nenhum foi).
+func ctaPoolBothPlatforms() *mockCTARepo {
+	return &mockCTARepo{
 		GetUserCTAsFn: func(_ context.Context, _ string, _ map[string]interface{}) ([]models.CTA, error) {
 			return []models.CTA{
 				{Message: "CTA_POOL_SHOPEE", Platform: models.CTAPlatformShopee, IsActive: true},
@@ -423,17 +448,94 @@ func TestCTA_PoolAppended(t *testing.T) {
 			}, nil
 		},
 	}
+}
+
+// Espelho: CTA é opt-in por {cta}. Sem a variável no texto de disparo, nem
+// aparece no corpo nem custa consulta — mesmo com pool cadastrado.
+// (Substitui o antigo TestCTA_PoolAppended, que validava o auto-append.)
+func TestCTA_NoVariableNoCTAAndNoQuery(t *testing.T) {
+	cta := ctaPoolBothPlatforms()
 	out := renderShopeeTemplate(t, "OFERTA {link_afiliado}", shopeeConvertAndEnrich("Produto XYZ", 50.0, 0, false), nil, cta)
-	if !strings.Contains(out.Body, "CTA_POOL_SHOPEE") {
-		t.Errorf("esperava CTA do pool (plataforma Shopee) anexado; got:\n%s", out.Body)
+	if strings.Contains(out.Body, "CTA_POOL_") {
+		t.Errorf("template sem {cta} não pode receber CTA; got:\n%s", out.Body)
+	}
+	cta.assertCalls(t, 0, 0)
+}
+
+// Com {cta}: UMA consulta ao pool e o CTA da plataforma certa, exatamente uma vez.
+func TestCTA_VariableRendersOnceAndQueriesOnce(t *testing.T) {
+	cta := ctaPoolBothPlatforms()
+	out := renderShopeeTemplate(t, "OFERTA {link_afiliado}\n{cta}", shopeeConvertAndEnrich("Produto XYZ", 50.0, 0, false), nil, cta)
+	if n := strings.Count(out.Body, "CTA_POOL_SHOPEE"); n != 1 {
+		t.Errorf("ocorrências do CTA Shopee = %d, want 1; got:\n%s", n, out.Body)
 	}
 	if strings.Contains(out.Body, "CTA_POOL_ML") {
 		t.Errorf("CTA de ML não deveria aparecer num link Shopee; got:\n%s", out.Body)
 	}
+	cta.assertCalls(t, 1, 0)
 }
 
-// Pool falha (repo erro) → fallback para CTAs inline da automation.
+// Duas ocorrências autoradas rendem o MESMO valor duas vezes — nunca três
+// (a terceira seria o append pós-render, que deixou de existir).
+func TestCTA_TwoPlaceholdersRenderTwice(t *testing.T) {
+	cta := ctaPoolBothPlatforms()
+	out := renderShopeeTemplate(t, "{cta}\nOFERTA {link_afiliado}\n{{cta}}",
+		shopeeConvertAndEnrich("Produto XYZ", 50.0, 0, false), nil, cta)
+	if n := strings.Count(out.Body, "CTA_POOL_SHOPEE"); n != 2 {
+		t.Errorf("ocorrências do CTA = %d, want 2; got:\n%s", n, out.Body)
+	}
+	cta.assertCalls(t, 1, 0)
+}
+
+// CTAIDs preenchido + {cta}: só o ramo por IDs, uma vez.
+func TestCTA_WithCTAIDsQueriesByIDsOnly(t *testing.T) {
+	cta := &mockCTARepo{
+		GetCTAsByIDsFn: func(_ context.Context, _ []string, _ string) ([]models.CTA, error) {
+			return []models.CTA{{Message: "CTA_BY_IDS", Platform: models.CTAPlatformShopee, IsActive: true}}, nil
+		},
+	}
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: "OFERTA {link_afiliado}\n{cta}"}}
+		s.dispatchText = parseDispatchTextGate("all")
+		s.shopeeService = shopeeConvertAndEnrich("Produto XYZ", 50.0, 0, false)
+		s.ctaRepo = cta
+	})
+	auto := templateAutomation()
+	auto.CTAIDs = []string{"cta-1"}
+	aff := &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff123", ItemID: 123, ShopID: 456}
+	out := svc.renderMonitorDispatchText(context.Background(), auto, aff, "https://shopee.com.br/prod", "", "", "", false)
+	if n := strings.Count(out.Body, "CTA_BY_IDS"); n != 1 {
+		t.Errorf("ocorrências do CTA por IDs = %d, want 1; got:\n%s", n, out.Body)
+	}
+	cta.assertCalls(t, 0, 1)
+}
+
+// Pool falha (repo erro) → fallback para CTAs inline da automation, com o
+// template autorizando por {cta}. Uma tentativa só; o render continua.
 func TestCTA_PoolErrorFallsBackToInline(t *testing.T) {
+	cta := &mockCTARepo{
+		GetUserCTAsFn: func(_ context.Context, _ string, _ map[string]interface{}) ([]models.CTA, error) {
+			return nil, context.DeadlineExceeded
+		},
+	}
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: "OFERTA {link_afiliado}\n{cta}"}}
+		s.dispatchText = parseDispatchTextGate("all")
+		s.shopeeService = shopeeConvertAndEnrich("Produto XYZ", 50.0, 0, false)
+		s.ctaRepo = cta
+	})
+	auto := templateAutomation()
+	auto.CTAs = []string{"CTA_INLINE_FALLBACK"}
+	aff := &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff123", ItemID: 123, ShopID: 456}
+	out := svc.renderMonitorDispatchText(context.Background(), auto, aff, "https://shopee.com.br/prod", "", "", "", false)
+	if n := strings.Count(out.Body, "CTA_INLINE_FALLBACK"); n != 1 {
+		t.Errorf("ocorrências do fallback inline = %d, want 1; got:\n%s", n, out.Body)
+	}
+	cta.assertCalls(t, 1, 0)
+}
+
+// Pool em erro SEM {cta}: nem tentativa. O erro só é pago por quem pediu CTA.
+func TestCTA_PoolErrorNotEvenAttemptedWithoutVariable(t *testing.T) {
 	cta := &mockCTARepo{
 		GetUserCTAsFn: func(_ context.Context, _ string, _ map[string]interface{}) ([]models.CTA, error) {
 			return nil, context.DeadlineExceeded
@@ -449,9 +551,29 @@ func TestCTA_PoolErrorFallsBackToInline(t *testing.T) {
 	auto.CTAs = []string{"CTA_INLINE_FALLBACK"}
 	aff := &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff123", ItemID: 123, ShopID: 456}
 	out := svc.renderMonitorDispatchText(context.Background(), auto, aff, "https://shopee.com.br/prod", "", "", "", false)
-	if !strings.Contains(out.Body, "CTA_INLINE_FALLBACK") {
-		t.Errorf("esperava fallback para CTA inline quando o pool falha; got:\n%s", out.Body)
+	if strings.Contains(out.Body, "CTA_INLINE_FALLBACK") {
+		t.Errorf("sem {cta} o inline também não entra; got:\n%s", out.Body)
 	}
+	cta.assertCalls(t, 0, 0)
+}
+
+// Guard duro do renderer Shopee (sem itemID/shopID): nem GetProduct nem CTA.
+// Um lookup aqui seria consulta paga por um ramo que devolve corpo vazio.
+func TestCTA_InvalidShopeeAffiliateNeverQueries(t *testing.T) {
+	cta := ctaPoolBothPlatforms()
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: "OFERTA {link_afiliado}\n{cta}"}}
+		s.dispatchText = parseDispatchTextGate("all")
+		s.ctaRepo = cta
+	})
+	auto := templateAutomation()
+	// Afiliado sem os dois IDs → não é produto.
+	aff := &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff123"}
+	out := svc.renderShopeeDispatchTemplate(context.Background(), auto, "OFERTA {link_afiliado}\n{cta}", aff, "https://shopee.com.br/prod")
+	if out.Body != "" {
+		t.Errorf("sem IDs não pode renderizar; got: %q", out.Body)
+	}
+	cta.assertCalls(t, 0, 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -466,6 +588,10 @@ const (
 	productURL     = "https://shopee.com.br/product-i.123.456"
 	productAffURL  = "https://s.shopee.com.br/aff123"
 	couponTemplate = "TEMPLATE_MARKER {nome_produto}\nPor {preco_formatado}\n{link_afiliado}"
+	// No wrapper de cupom Shopee não há RenderTemplate (o corpo é o relay da
+	// fonte), então {cta} aqui é FLAG de opt-in: autoriza a CTA no wrapper sem
+	// ser renderizado como token.
+	couponTemplateWithCTA = couponTemplate + "\n{cta}"
 )
 
 // couponAutomation é a templateAutomation com humanização OFF: text.Vary é
@@ -507,7 +633,7 @@ func TestCascade_ShopeeCouponOnlyUsesCouponNotice(t *testing.T) {
 	var imageCalled, textCalled bool
 	sends := 0
 	svc := newTestService(t, func(s *monitoringService) {
-		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: couponTemplate}}
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: couponTemplateWithCTA}}
 		s.dispatchText = parseDispatchTextGate("all")
 		s.shopeeService = shopeeByURL(map[string]models.ShopeeAffiliateLink{
 			couponURL: {AffiliateLink: couponAffURL},
@@ -524,7 +650,7 @@ func TestCascade_ShopeeCouponOnlyUsesCouponNotice(t *testing.T) {
 	msg := sourceMessage()
 	msg.Body = "CUPOM {SAVE20}\n\nResgate aqui:\n" + couponURL
 
-	if err := svc.processAutomation(context.Background(), couponAutomation(), msg, []string{couponURL}, false); err != nil {
+	if err := svc.processAutomation(context.Background(), couponAutomation(), msg, []string{couponURL}, false, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if card == nil {
@@ -584,7 +710,7 @@ func runMixedCascade(t *testing.T, body string, links []string) *whatsapp.SendLi
 
 	msg := sourceMessage()
 	msg.Body = body
-	if err := svc.processAutomation(context.Background(), couponAutomation(), msg, links, false); err != nil {
+	if err := svc.processAutomation(context.Background(), couponAutomation(), msg, links, false, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if card == nil {
@@ -702,7 +828,7 @@ func TestCascade_MLProductAndShopeeCouponUsesMLTemplate(t *testing.T) {
 	msg := sourceMessage()
 	msg.Body = "CUPOM {SAVE20}\n" + couponURL + "\n\nOFERTA ML\n" + mlURL
 
-	if err := svc.processAutomation(context.Background(), auto, msg, []string{couponURL, mlURL}, false); err != nil {
+	if err := svc.processAutomation(context.Background(), auto, msg, []string{couponURL, mlURL}, false, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if card == nil {
@@ -749,7 +875,7 @@ func TestCascade_CouponRemovedByMonitoringRulesIsNotResurrected(t *testing.T) {
 	msg := sourceMessage()
 	msg.Body = mixedSourceBody(couponURL, productURL)
 
-	if err := svc.processAutomation(context.Background(), auto, msg, []string{couponURL, productURL}, false); err != nil {
+	if err := svc.processAutomation(context.Background(), auto, msg, []string{couponURL, productURL}, false, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if card == nil {
@@ -803,7 +929,7 @@ func TestCascade_NoAPIAccessKeepsPlainRelayWithoutCouponNotice(t *testing.T) {
 	msg := sourceMessage()
 	msg.Body = "CUPOM {SAVE20}\n\nResgate aqui:\n" + couponURL
 
-	if err := svc.processAutomation(context.Background(), couponAutomation(), msg, []string{couponURL}, false); err != nil {
+	if err := svc.processAutomation(context.Background(), couponAutomation(), msg, []string{couponURL}, false, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if card != nil {

@@ -568,8 +568,7 @@ func TestProcessScheduledJobs_WithNotifiers(t *testing.T) {
 		{ID: "db-group-1", WAGroupID: "group1@g.us", IsAdmin: true},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-group-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
@@ -628,8 +627,7 @@ func TestProcessScheduledJobs_AllFailed_WithRetry(t *testing.T) {
 		{ID: "db-group-1", WAGroupID: "group1@g.us", IsAdmin: true},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-group-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("ScheduleRetry", mock.Anything, "job-1", mock.AnythingOfType("time.Time")).Return(nil)
@@ -682,8 +680,7 @@ func TestProcessScheduledJobs_AllFailed_RetriesExhausted(t *testing.T) {
 		{ID: "db-group-1", WAGroupID: "group1@g.us", IsAdmin: true},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-group-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
@@ -737,8 +734,7 @@ func TestProcessScheduledJobs_ScheduleRetryError(t *testing.T) {
 		{ID: "db-group-1", WAGroupID: "group1@g.us", IsAdmin: true},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-group-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("ScheduleRetry", mock.Anything, "job-1", mock.AnythingOfType("time.Time")).Return(errors.New("redis down"))
@@ -768,40 +764,62 @@ func TestProcessScheduledJobs_FetchError(t *testing.T) {
 	svc, jobRepo, _, _, _, _ := newTestService(t)
 	ctx := context.Background()
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(nil, errors.New("database unreachable"))
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(nil, errors.New("database unreachable"))
 
 	result, err := svc.ProcessScheduledJobs(ctx)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "failed to get pending jobs")
+	assert.Contains(t, err.Error(), "failed to claim pending jobs")
 }
 
 // =============================================================================
-// ProcessScheduledJobs — Mark Running Error (Skips Job)
+// ProcessScheduledJobs — Contexto expirado devolve o lote reivindicado
 // =============================================================================
 
-func TestProcessScheduledJobs_MarkRunningError_SkipsJob(t *testing.T) {
+// O claim atômico marca TODOS os jobs do lote como 'running' de uma vez. Como o
+// ctx do cron tem cap de 5min, um lote grande pode ser cortado no meio — e o
+// que não rodou precisa voltar para 'pending', senão só o reaper o resolveria
+// (30min depois, e como 'failed'). Este teste é o que impede essa regressão.
+//
+// Substitui o antigo TestProcessScheduledJobs_MarkRunningError_SkipsJob: o
+// UpdateStatus('running') separado deixou de existir, então a falha que aquele
+// teste cobria é agora estruturalmente impossível.
+func TestProcessScheduledJobs_ContextExpired_ReleasesClaimedJobs(t *testing.T) {
 	svc, jobRepo, _, _, _, _ := newTestService(t)
-	ctx := context.Background()
 
-	pendingJobs := []models.StandaloneJob{
+	ctx, cancel := context.WithCancel(context.Background())
+
+	claimed := []models.StandaloneJob{
 		{
 			ID:         "job-1",
 			UserID:     "user-1",
 			ActionType: models.JobActionSendMessage,
+			Status:     models.StandaloneJobStatusRunning,
 			Payload:    validJobPayload([]string{"group1@g.us"}),
+		},
+		{
+			ID:         "job-2",
+			UserID:     "user-1",
+			ActionType: models.JobActionSendMessage,
+			Status:     models.StandaloneJobStatusRunning,
+			Payload:    validJobPayload([]string{"group2@g.us"}),
 		},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(errors.New("lock conflict"))
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(claimed, nil).Run(func(mock.Arguments) {
+		// O ctx morre logo após o claim: nenhum job chega a ser executado.
+		cancel()
+	})
+	jobRepo.On("ReleaseClaimedJobs", mock.Anything, []string{"job-1", "job-2"}).Return(int64(2), nil)
 
 	result, err := svc.ProcessScheduledJobs(ctx)
 
 	require.NoError(t, err)
 	assert.Equal(t, 0, result.Processed)
 	assert.Equal(t, 0, result.Failed)
+	// A prova: os dois jobs voltaram para a fila em vez de ficarem presos.
+	jobRepo.AssertCalled(t, "ReleaseClaimedJobs", mock.Anything, []string{"job-1", "job-2"})
 }
 
 // =============================================================================
@@ -821,8 +839,7 @@ func TestProcessScheduledJobs_InstanceRepoError(t *testing.T) {
 		},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return(nil, errors.New("instance service unavailable"))
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
 
@@ -851,8 +868,7 @@ func TestProcessScheduledJobs_NoInstances(t *testing.T) {
 		},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{}, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
 
@@ -884,8 +900,7 @@ func TestProcessScheduledJobs_GroupResolutionFails(t *testing.T) {
 		},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-group-1"}).Return(nil, errors.New("group repo error"))
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
@@ -919,8 +934,7 @@ func TestProcessScheduledJobs_GroupNotFound(t *testing.T) {
 		},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-group-nonexistent"}).Return([]models.Group{}, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
@@ -957,8 +971,7 @@ func TestProcessScheduledJobs_UnknownActionType(t *testing.T) {
 		{ID: "db-group-1", WAGroupID: "group1@g.us", IsAdmin: true},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-group-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
@@ -1005,8 +1018,7 @@ func TestProcessScheduledJobs_PartialSuccess(t *testing.T) {
 		{ID: "db-group-2", WAGroupID: "group2@g.us", IsAdmin: true},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-group-1", "db-group-2"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, mock.AnythingOfType("*string")).Return(nil)
@@ -1055,8 +1067,7 @@ func TestProcessScheduledJobs_AllActionTypes(t *testing.T) {
 				{ID: "db-1", WAGroupID: "group1@g.us", IsAdmin: true},
 			}
 
-			jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-			jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+			jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 			instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 			groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 			jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
@@ -1092,9 +1103,7 @@ func TestProcessScheduledJobs_MultipleJobs(t *testing.T) {
 	resolvedGroups1 := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 	resolvedGroups2 := []models.Group{{ID: "db-2", WAGroupID: "g2@g.us", IsAdmin: true}}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-2", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups1, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-2"}).Return(resolvedGroups2, nil)
@@ -1126,8 +1135,7 @@ func TestProcessScheduledJobs_UpdateStatusDoneError(t *testing.T) {
 
 	resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 	// Done update fails — should still count as processed
@@ -1159,8 +1167,7 @@ func TestProcessScheduledJobs_RetriesExhausted_UpdateStatusError(t *testing.T) {
 
 	resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 	// UpdateStatus to failed also fails — observability path
@@ -1187,8 +1194,7 @@ func TestProcessScheduledJobs_InstanceError_UpdateStatusError(t *testing.T) {
 		},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return(nil, errors.New("instance error"))
 	// UpdateStatus to failed also fails
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(errors.New("db error"))
@@ -1275,8 +1281,7 @@ func TestProcessScheduledJobs_HistoryCreateError_StillProcesses(t *testing.T) {
 
 	resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
@@ -1309,8 +1314,7 @@ func TestProcessScheduledJobs_FailActionHistory_NoHistoryRepo(t *testing.T) {
 		},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{}, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
 
@@ -1337,8 +1341,7 @@ func TestProcessScheduledJobs_CompleteHistory_UpdateCountsError(t *testing.T) {
 
 	resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
@@ -1374,8 +1377,7 @@ func TestProcessScheduledJobs_CompleteHistory_UpdateStatusError(t *testing.T) {
 
 	resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
@@ -1413,8 +1415,7 @@ func TestProcessScheduledJobs_FailHistory_MarkFailedError(t *testing.T) {
 		},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{}, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
 
@@ -1452,8 +1453,7 @@ func TestProcessScheduledJobs_HistoryCreateReturnsNil(t *testing.T) {
 
 	resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
@@ -1488,8 +1488,7 @@ func TestProcessScheduledJobs_HistoryUpdateTargetCountError(t *testing.T) {
 
 	resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
@@ -1543,8 +1542,7 @@ func TestProcessScheduledJobs_HistoryMapping_AllTypes(t *testing.T) {
 
 			resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 
-			jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-			jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+			jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 			instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 			groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 			jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
@@ -2279,8 +2277,7 @@ func TestProcessScheduledJobs_ScheduleRetryAndUpdateStatusBothFail(t *testing.T)
 
 	resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 	// ScheduleRetry fails
@@ -2321,8 +2318,7 @@ func TestProcessScheduledJobs_UnknownActionType_WithHistory(t *testing.T) {
 
 	resolvedGroups := []models.Group{{ID: "db-1", WAGroupID: "g1@g.us", IsAdmin: true}}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return([]models.Instance{{InstanceID: "inst-1", Status: "connected"}}, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"db-1"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)

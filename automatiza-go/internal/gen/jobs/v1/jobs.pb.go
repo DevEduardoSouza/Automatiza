@@ -826,6 +826,113 @@ func (x *CreateJobResponse) GetJob() *Job {
 	return nil
 }
 
+// CreateJobsRequest cria um lote inteiro numa unica chamada.
+//
+// Substitui o loop de N `CreateJob` sequenciais do modal de agendamento: com
+// 500 jobs o loop levava dezenas de segundos com o botao ainda clicavel, e o
+// segundo clique duplicava o lote todo. Uma chamada so fecha essa janela.
+//
+// Cap 500 espelha o MAX_TOTAL_JOBS do frontend (schedule-multiple-groups.tsx).
+type CreateJobsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Jobs          []*CreateJobRequest    `protobuf:"bytes,1,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateJobsRequest) Reset() {
+	*x = CreateJobsRequest{}
+	mi := &file_jobs_v1_jobs_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateJobsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateJobsRequest) ProtoMessage() {}
+
+func (x *CreateJobsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_jobs_v1_jobs_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateJobsRequest.ProtoReflect.Descriptor instead.
+func (*CreateJobsRequest) Descriptor() ([]byte, []int) {
+	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CreateJobsRequest) GetJobs() []*CreateJobRequest {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
+type CreateJobsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Um Job por item do request, na MESMA ordem. Item que ja existia devolve o
+	// job original — o cliente nao precisa distinguir criado de reaproveitado.
+	Jobs []*Job `protobuf:"bytes,1,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	// Quantos itens caiam em agendamento identico ja existente. Serve para a UI
+	// dizer "N ja existiam e foram mantidos" em vez de rotular como erro.
+	Deduplicated  int32 `protobuf:"varint,2,opt,name=deduplicated,proto3" json:"deduplicated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateJobsResponse) Reset() {
+	*x = CreateJobsResponse{}
+	mi := &file_jobs_v1_jobs_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateJobsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateJobsResponse) ProtoMessage() {}
+
+func (x *CreateJobsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_jobs_v1_jobs_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateJobsResponse.ProtoReflect.Descriptor instead.
+func (*CreateJobsResponse) Descriptor() ([]byte, []int) {
+	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *CreateJobsResponse) GetJobs() []*Job {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
+func (x *CreateJobsResponse) GetDeduplicated() int32 {
+	if x != nil {
+		return x.Deduplicated
+	}
+	return 0
+}
+
 type UpdateJobRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -838,7 +945,7 @@ type UpdateJobRequest struct {
 
 func (x *UpdateJobRequest) Reset() {
 	*x = UpdateJobRequest{}
-	mi := &file_jobs_v1_jobs_proto_msgTypes[10]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -850,7 +957,7 @@ func (x *UpdateJobRequest) String() string {
 func (*UpdateJobRequest) ProtoMessage() {}
 
 func (x *UpdateJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_jobs_v1_jobs_proto_msgTypes[10]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -863,7 +970,7 @@ func (x *UpdateJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateJobRequest.ProtoReflect.Descriptor instead.
 func (*UpdateJobRequest) Descriptor() ([]byte, []int) {
-	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{10}
+	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *UpdateJobRequest) GetId() string {
@@ -903,7 +1010,7 @@ type UpdateJobResponse struct {
 
 func (x *UpdateJobResponse) Reset() {
 	*x = UpdateJobResponse{}
-	mi := &file_jobs_v1_jobs_proto_msgTypes[11]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -915,7 +1022,7 @@ func (x *UpdateJobResponse) String() string {
 func (*UpdateJobResponse) ProtoMessage() {}
 
 func (x *UpdateJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_jobs_v1_jobs_proto_msgTypes[11]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -928,7 +1035,7 @@ func (x *UpdateJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateJobResponse.ProtoReflect.Descriptor instead.
 func (*UpdateJobResponse) Descriptor() ([]byte, []int) {
-	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{11}
+	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *UpdateJobResponse) GetJob() *Job {
@@ -947,7 +1054,7 @@ type DeleteJobRequest struct {
 
 func (x *DeleteJobRequest) Reset() {
 	*x = DeleteJobRequest{}
-	mi := &file_jobs_v1_jobs_proto_msgTypes[12]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -959,7 +1066,7 @@ func (x *DeleteJobRequest) String() string {
 func (*DeleteJobRequest) ProtoMessage() {}
 
 func (x *DeleteJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_jobs_v1_jobs_proto_msgTypes[12]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -972,7 +1079,7 @@ func (x *DeleteJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteJobRequest.ProtoReflect.Descriptor instead.
 func (*DeleteJobRequest) Descriptor() ([]byte, []int) {
-	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{12}
+	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DeleteJobRequest) GetId() string {
@@ -990,7 +1097,7 @@ type DeleteJobResponse struct {
 
 func (x *DeleteJobResponse) Reset() {
 	*x = DeleteJobResponse{}
-	mi := &file_jobs_v1_jobs_proto_msgTypes[13]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1002,7 +1109,7 @@ func (x *DeleteJobResponse) String() string {
 func (*DeleteJobResponse) ProtoMessage() {}
 
 func (x *DeleteJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_jobs_v1_jobs_proto_msgTypes[13]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1015,7 +1122,7 @@ func (x *DeleteJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteJobResponse.ProtoReflect.Descriptor instead.
 func (*DeleteJobResponse) Descriptor() ([]byte, []int) {
-	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{13}
+	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{15}
 }
 
 type ProcessScheduledJobsRequest struct {
@@ -1026,7 +1133,7 @@ type ProcessScheduledJobsRequest struct {
 
 func (x *ProcessScheduledJobsRequest) Reset() {
 	*x = ProcessScheduledJobsRequest{}
-	mi := &file_jobs_v1_jobs_proto_msgTypes[14]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1038,7 +1145,7 @@ func (x *ProcessScheduledJobsRequest) String() string {
 func (*ProcessScheduledJobsRequest) ProtoMessage() {}
 
 func (x *ProcessScheduledJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_jobs_v1_jobs_proto_msgTypes[14]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1051,7 +1158,7 @@ func (x *ProcessScheduledJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessScheduledJobsRequest.ProtoReflect.Descriptor instead.
 func (*ProcessScheduledJobsRequest) Descriptor() ([]byte, []int) {
-	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{14}
+	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{16}
 }
 
 type ProcessScheduledJobsResponse struct {
@@ -1065,7 +1172,7 @@ type ProcessScheduledJobsResponse struct {
 
 func (x *ProcessScheduledJobsResponse) Reset() {
 	*x = ProcessScheduledJobsResponse{}
-	mi := &file_jobs_v1_jobs_proto_msgTypes[15]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1077,7 +1184,7 @@ func (x *ProcessScheduledJobsResponse) String() string {
 func (*ProcessScheduledJobsResponse) ProtoMessage() {}
 
 func (x *ProcessScheduledJobsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_jobs_v1_jobs_proto_msgTypes[15]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1090,7 +1197,7 @@ func (x *ProcessScheduledJobsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessScheduledJobsResponse.ProtoReflect.Descriptor instead.
 func (*ProcessScheduledJobsResponse) Descriptor() ([]byte, []int) {
-	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{15}
+	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ProcessScheduledJobsResponse) GetProcessed() int32 {
@@ -1122,7 +1229,7 @@ type GetQueueStatusRequest struct {
 
 func (x *GetQueueStatusRequest) Reset() {
 	*x = GetQueueStatusRequest{}
-	mi := &file_jobs_v1_jobs_proto_msgTypes[16]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1134,7 +1241,7 @@ func (x *GetQueueStatusRequest) String() string {
 func (*GetQueueStatusRequest) ProtoMessage() {}
 
 func (x *GetQueueStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_jobs_v1_jobs_proto_msgTypes[16]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1147,7 +1254,7 @@ func (x *GetQueueStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQueueStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetQueueStatusRequest) Descriptor() ([]byte, []int) {
-	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{16}
+	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{18}
 }
 
 type GetQueueStatusResponse struct {
@@ -1161,7 +1268,7 @@ type GetQueueStatusResponse struct {
 
 func (x *GetQueueStatusResponse) Reset() {
 	*x = GetQueueStatusResponse{}
-	mi := &file_jobs_v1_jobs_proto_msgTypes[17]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1173,7 +1280,7 @@ func (x *GetQueueStatusResponse) String() string {
 func (*GetQueueStatusResponse) ProtoMessage() {}
 
 func (x *GetQueueStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_jobs_v1_jobs_proto_msgTypes[17]
+	mi := &file_jobs_v1_jobs_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1186,7 +1293,7 @@ func (x *GetQueueStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQueueStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetQueueStatusResponse) Descriptor() ([]byte, []int) {
-	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{17}
+	return file_jobs_v1_jobs_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetQueueStatusResponse) GetQueue() *QueueMetrics {
@@ -1293,7 +1400,12 @@ const file_jobs_v1_jobs_proto_rawDesc = "" +
 	"\rscheduled_for\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x06\xbaH\x03\xc8\x01\x01R\fscheduledFor\x125\n" +
 	"\apayload\x18\x03 \x01(\v2\x13.jobs.v1.JobPayloadB\x06\xbaH\x03\xc8\x01\x01R\apayload\"3\n" +
 	"\x11CreateJobResponse\x12\x1e\n" +
-	"\x03job\x18\x01 \x01(\v2\f.jobs.v1.JobR\x03job\"\x92\x02\n" +
+	"\x03job\x18\x01 \x01(\v2\f.jobs.v1.JobR\x03job\"O\n" +
+	"\x11CreateJobsRequest\x12:\n" +
+	"\x04jobs\x18\x01 \x03(\v2\x19.jobs.v1.CreateJobRequestB\v\xbaH\b\x92\x01\x05\b\x01\x10\xf4\x03R\x04jobs\"Z\n" +
+	"\x12CreateJobsResponse\x12 \n" +
+	"\x04jobs\x18\x01 \x03(\v2\f.jobs.v1.JobR\x04jobs\x12\"\n" +
+	"\fdeduplicated\x18\x02 \x01(\x05R\fdeduplicated\"\x92\x02\n" +
 	"\x10UpdateJobRequest\x12\x18\n" +
 	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\x12<\n" +
 	"\vaction_type\x18\x02 \x01(\x0e2\x16.jobs.v1.JobActionTypeH\x00R\n" +
@@ -1335,11 +1447,13 @@ const file_jobs_v1_jobs_proto_rawDesc = "" +
 	"\x12JOB_STATUS_RUNNING\x10\x02\x12\x13\n" +
 	"\x0fJOB_STATUS_DONE\x10\x03\x12\x15\n" +
 	"\x11JOB_STATUS_FAILED\x10\x04\x12\x18\n" +
-	"\x14JOB_STATUS_CANCELLED\x10\x052\x8d\x04\n" +
+	"\x14JOB_STATUS_CANCELLED\x10\x052\xd4\x04\n" +
 	"\vJobsService\x12?\n" +
 	"\bListJobs\x12\x18.jobs.v1.ListJobsRequest\x1a\x19.jobs.v1.ListJobsResponse\x129\n" +
 	"\x06GetJob\x12\x16.jobs.v1.GetJobRequest\x1a\x17.jobs.v1.GetJobResponse\x12B\n" +
-	"\tCreateJob\x12\x19.jobs.v1.CreateJobRequest\x1a\x1a.jobs.v1.CreateJobResponse\x12B\n" +
+	"\tCreateJob\x12\x19.jobs.v1.CreateJobRequest\x1a\x1a.jobs.v1.CreateJobResponse\x12E\n" +
+	"\n" +
+	"CreateJobs\x12\x1a.jobs.v1.CreateJobsRequest\x1a\x1b.jobs.v1.CreateJobsResponse\x12B\n" +
 	"\tUpdateJob\x12\x19.jobs.v1.UpdateJobRequest\x1a\x1a.jobs.v1.UpdateJobResponse\x12B\n" +
 	"\tDeleteJob\x12\x19.jobs.v1.DeleteJobRequest\x1a\x1a.jobs.v1.DeleteJobResponse\x12c\n" +
 	"\x14ProcessScheduledJobs\x12$.jobs.v1.ProcessScheduledJobsRequest\x1a%.jobs.v1.ProcessScheduledJobsResponse\x12Q\n" +
@@ -1359,7 +1473,7 @@ func file_jobs_v1_jobs_proto_rawDescGZIP() []byte {
 }
 
 var file_jobs_v1_jobs_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_jobs_v1_jobs_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_jobs_v1_jobs_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_jobs_v1_jobs_proto_goTypes = []any{
 	(JobActionType)(0),                   // 0: jobs.v1.JobActionType
 	(JobStatus)(0),                       // 1: jobs.v1.JobStatus
@@ -1373,54 +1487,60 @@ var file_jobs_v1_jobs_proto_goTypes = []any{
 	(*GetJobResponse)(nil),               // 9: jobs.v1.GetJobResponse
 	(*CreateJobRequest)(nil),             // 10: jobs.v1.CreateJobRequest
 	(*CreateJobResponse)(nil),            // 11: jobs.v1.CreateJobResponse
-	(*UpdateJobRequest)(nil),             // 12: jobs.v1.UpdateJobRequest
-	(*UpdateJobResponse)(nil),            // 13: jobs.v1.UpdateJobResponse
-	(*DeleteJobRequest)(nil),             // 14: jobs.v1.DeleteJobRequest
-	(*DeleteJobResponse)(nil),            // 15: jobs.v1.DeleteJobResponse
-	(*ProcessScheduledJobsRequest)(nil),  // 16: jobs.v1.ProcessScheduledJobsRequest
-	(*ProcessScheduledJobsResponse)(nil), // 17: jobs.v1.ProcessScheduledJobsResponse
-	(*GetQueueStatusRequest)(nil),        // 18: jobs.v1.GetQueueStatusRequest
-	(*GetQueueStatusResponse)(nil),       // 19: jobs.v1.GetQueueStatusResponse
-	(*timestamppb.Timestamp)(nil),        // 20: google.protobuf.Timestamp
+	(*CreateJobsRequest)(nil),            // 12: jobs.v1.CreateJobsRequest
+	(*CreateJobsResponse)(nil),           // 13: jobs.v1.CreateJobsResponse
+	(*UpdateJobRequest)(nil),             // 14: jobs.v1.UpdateJobRequest
+	(*UpdateJobResponse)(nil),            // 15: jobs.v1.UpdateJobResponse
+	(*DeleteJobRequest)(nil),             // 16: jobs.v1.DeleteJobRequest
+	(*DeleteJobResponse)(nil),            // 17: jobs.v1.DeleteJobResponse
+	(*ProcessScheduledJobsRequest)(nil),  // 18: jobs.v1.ProcessScheduledJobsRequest
+	(*ProcessScheduledJobsResponse)(nil), // 19: jobs.v1.ProcessScheduledJobsResponse
+	(*GetQueueStatusRequest)(nil),        // 20: jobs.v1.GetQueueStatusRequest
+	(*GetQueueStatusResponse)(nil),       // 21: jobs.v1.GetQueueStatusResponse
+	(*timestamppb.Timestamp)(nil),        // 22: google.protobuf.Timestamp
 }
 var file_jobs_v1_jobs_proto_depIdxs = []int32{
 	0,  // 0: jobs.v1.Job.action_type:type_name -> jobs.v1.JobActionType
-	20, // 1: jobs.v1.Job.scheduled_for:type_name -> google.protobuf.Timestamp
+	22, // 1: jobs.v1.Job.scheduled_for:type_name -> google.protobuf.Timestamp
 	1,  // 2: jobs.v1.Job.status:type_name -> jobs.v1.JobStatus
 	2,  // 3: jobs.v1.Job.payload:type_name -> jobs.v1.JobPayload
-	20, // 4: jobs.v1.Job.created_at:type_name -> google.protobuf.Timestamp
-	20, // 5: jobs.v1.Job.updated_at:type_name -> google.protobuf.Timestamp
+	22, // 4: jobs.v1.Job.created_at:type_name -> google.protobuf.Timestamp
+	22, // 5: jobs.v1.Job.updated_at:type_name -> google.protobuf.Timestamp
 	3,  // 6: jobs.v1.ListJobsResponse.jobs:type_name -> jobs.v1.Job
 	3,  // 7: jobs.v1.GetJobResponse.job:type_name -> jobs.v1.Job
 	0,  // 8: jobs.v1.CreateJobRequest.action_type:type_name -> jobs.v1.JobActionType
-	20, // 9: jobs.v1.CreateJobRequest.scheduled_for:type_name -> google.protobuf.Timestamp
+	22, // 9: jobs.v1.CreateJobRequest.scheduled_for:type_name -> google.protobuf.Timestamp
 	2,  // 10: jobs.v1.CreateJobRequest.payload:type_name -> jobs.v1.JobPayload
 	3,  // 11: jobs.v1.CreateJobResponse.job:type_name -> jobs.v1.Job
-	0,  // 12: jobs.v1.UpdateJobRequest.action_type:type_name -> jobs.v1.JobActionType
-	20, // 13: jobs.v1.UpdateJobRequest.scheduled_for:type_name -> google.protobuf.Timestamp
-	2,  // 14: jobs.v1.UpdateJobRequest.payload:type_name -> jobs.v1.JobPayload
-	3,  // 15: jobs.v1.UpdateJobResponse.job:type_name -> jobs.v1.Job
-	4,  // 16: jobs.v1.GetQueueStatusResponse.queue:type_name -> jobs.v1.QueueMetrics
-	5,  // 17: jobs.v1.GetQueueStatusResponse.settings:type_name -> jobs.v1.QueueSettings
-	6,  // 18: jobs.v1.JobsService.ListJobs:input_type -> jobs.v1.ListJobsRequest
-	8,  // 19: jobs.v1.JobsService.GetJob:input_type -> jobs.v1.GetJobRequest
-	10, // 20: jobs.v1.JobsService.CreateJob:input_type -> jobs.v1.CreateJobRequest
-	12, // 21: jobs.v1.JobsService.UpdateJob:input_type -> jobs.v1.UpdateJobRequest
-	14, // 22: jobs.v1.JobsService.DeleteJob:input_type -> jobs.v1.DeleteJobRequest
-	16, // 23: jobs.v1.JobsService.ProcessScheduledJobs:input_type -> jobs.v1.ProcessScheduledJobsRequest
-	18, // 24: jobs.v1.JobsService.GetQueueStatus:input_type -> jobs.v1.GetQueueStatusRequest
-	7,  // 25: jobs.v1.JobsService.ListJobs:output_type -> jobs.v1.ListJobsResponse
-	9,  // 26: jobs.v1.JobsService.GetJob:output_type -> jobs.v1.GetJobResponse
-	11, // 27: jobs.v1.JobsService.CreateJob:output_type -> jobs.v1.CreateJobResponse
-	13, // 28: jobs.v1.JobsService.UpdateJob:output_type -> jobs.v1.UpdateJobResponse
-	15, // 29: jobs.v1.JobsService.DeleteJob:output_type -> jobs.v1.DeleteJobResponse
-	17, // 30: jobs.v1.JobsService.ProcessScheduledJobs:output_type -> jobs.v1.ProcessScheduledJobsResponse
-	19, // 31: jobs.v1.JobsService.GetQueueStatus:output_type -> jobs.v1.GetQueueStatusResponse
-	25, // [25:32] is the sub-list for method output_type
-	18, // [18:25] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	10, // 12: jobs.v1.CreateJobsRequest.jobs:type_name -> jobs.v1.CreateJobRequest
+	3,  // 13: jobs.v1.CreateJobsResponse.jobs:type_name -> jobs.v1.Job
+	0,  // 14: jobs.v1.UpdateJobRequest.action_type:type_name -> jobs.v1.JobActionType
+	22, // 15: jobs.v1.UpdateJobRequest.scheduled_for:type_name -> google.protobuf.Timestamp
+	2,  // 16: jobs.v1.UpdateJobRequest.payload:type_name -> jobs.v1.JobPayload
+	3,  // 17: jobs.v1.UpdateJobResponse.job:type_name -> jobs.v1.Job
+	4,  // 18: jobs.v1.GetQueueStatusResponse.queue:type_name -> jobs.v1.QueueMetrics
+	5,  // 19: jobs.v1.GetQueueStatusResponse.settings:type_name -> jobs.v1.QueueSettings
+	6,  // 20: jobs.v1.JobsService.ListJobs:input_type -> jobs.v1.ListJobsRequest
+	8,  // 21: jobs.v1.JobsService.GetJob:input_type -> jobs.v1.GetJobRequest
+	10, // 22: jobs.v1.JobsService.CreateJob:input_type -> jobs.v1.CreateJobRequest
+	12, // 23: jobs.v1.JobsService.CreateJobs:input_type -> jobs.v1.CreateJobsRequest
+	14, // 24: jobs.v1.JobsService.UpdateJob:input_type -> jobs.v1.UpdateJobRequest
+	16, // 25: jobs.v1.JobsService.DeleteJob:input_type -> jobs.v1.DeleteJobRequest
+	18, // 26: jobs.v1.JobsService.ProcessScheduledJobs:input_type -> jobs.v1.ProcessScheduledJobsRequest
+	20, // 27: jobs.v1.JobsService.GetQueueStatus:input_type -> jobs.v1.GetQueueStatusRequest
+	7,  // 28: jobs.v1.JobsService.ListJobs:output_type -> jobs.v1.ListJobsResponse
+	9,  // 29: jobs.v1.JobsService.GetJob:output_type -> jobs.v1.GetJobResponse
+	11, // 30: jobs.v1.JobsService.CreateJob:output_type -> jobs.v1.CreateJobResponse
+	13, // 31: jobs.v1.JobsService.CreateJobs:output_type -> jobs.v1.CreateJobsResponse
+	15, // 32: jobs.v1.JobsService.UpdateJob:output_type -> jobs.v1.UpdateJobResponse
+	17, // 33: jobs.v1.JobsService.DeleteJob:output_type -> jobs.v1.DeleteJobResponse
+	19, // 34: jobs.v1.JobsService.ProcessScheduledJobs:output_type -> jobs.v1.ProcessScheduledJobsResponse
+	21, // 35: jobs.v1.JobsService.GetQueueStatus:output_type -> jobs.v1.GetQueueStatusResponse
+	28, // [28:36] is the sub-list for method output_type
+	20, // [20:28] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_jobs_v1_jobs_proto_init() }
@@ -1431,15 +1551,15 @@ func file_jobs_v1_jobs_proto_init() {
 	file_jobs_v1_jobs_proto_msgTypes[0].OneofWrappers = []any{}
 	file_jobs_v1_jobs_proto_msgTypes[1].OneofWrappers = []any{}
 	file_jobs_v1_jobs_proto_msgTypes[3].OneofWrappers = []any{}
-	file_jobs_v1_jobs_proto_msgTypes[10].OneofWrappers = []any{}
-	file_jobs_v1_jobs_proto_msgTypes[17].OneofWrappers = []any{}
+	file_jobs_v1_jobs_proto_msgTypes[12].OneofWrappers = []any{}
+	file_jobs_v1_jobs_proto_msgTypes[19].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_jobs_v1_jobs_proto_rawDesc), len(file_jobs_v1_jobs_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   18,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

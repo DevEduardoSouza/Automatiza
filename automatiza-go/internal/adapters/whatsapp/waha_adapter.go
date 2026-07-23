@@ -998,6 +998,50 @@ func (a *WahaAdapter) GetSessionStatus(ctx context.Context, sessionName string) 
 	return info, nil
 }
 
+// GetSessionStatusFresh fetches the session status straight from the provider,
+// bypassing the status cache entirely.
+//
+// Deliberately narrow: it neither reads nor writes the shared status cache, and
+// it never calls ClearStatusCache — clearing the global cache to "get something
+// fresh" would make every other reader pay for a stampede of status calls. It
+// answers exactly one question, for exactly one caller (instance failover): what
+// does WAHA say about this session, right now, verbatim.
+//
+// The per-session circuit breaker is still honoured. With it open we cannot know
+// the status, and for a chip swap "cannot know" must block — never be optimistic.
+func (a *WahaAdapter) GetSessionStatusFresh(ctx context.Context, sessionName string) (*FreshSessionStatus, error) {
+	cb := a.getOrCreateCircuitBreaker(sessionName)
+	if !cb.canRequest() {
+		return nil, NewProviderError(ErrCodeCircuitBreakerOpen, "service temporarily unavailable (circuit breaker open)", nil)
+	}
+
+	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	resp, err := a.doRequest(statusCtx, http.MethodGet, "/api/sessions/"+url.PathEscape(sessionName), nil)
+	if err != nil {
+		cb.recordFailure()
+		return nil, fmt.Errorf("failed to get fresh session status: %w", err)
+	}
+
+	var parsed wahaSession
+	if err := json.Unmarshal(resp, &parsed); err != nil {
+		cb.recordFailure()
+		return nil, NewProviderError(ErrCodeProviderError, "failed to parse session response", err)
+	}
+	cb.recordSuccess()
+
+	out := &FreshSessionStatus{
+		Name:      parsed.Name,
+		RawStatus: parsed.Status,
+		Known:     IsKnownWahaStatus(parsed.Status),
+	}
+	if parsed.Me != nil {
+		out.MeID = parsed.Me.ID
+	}
+	return out, nil
+}
+
 // GetQRCode retrieves the QR code for session authentication.
 // Uses format=image to get binary PNG data from WAHA, then base64-encodes it
 // into a data URI suitable for frontend <img src="..."> display.
@@ -2370,6 +2414,19 @@ func safeWAHAMediaPath(mediaURL string) (string, error) {
 // The URL's host is replaced with the adapter's configured API URL so the
 // request goes to the correct endpoint with authentication.
 func (a *WahaAdapter) DownloadMediaByURL(ctx context.Context, mediaURL string) (*DownloadMediaResult, error) {
+	return a.downloadMediaByURL(ctx, mediaURL, maxDownloadBodySize)
+}
+
+// DownloadMediaByURLLimited implements DurableMediaFetcher: mesmo download, mas
+// o teto RECUSA em vez de truncar (ver DurableMediaFetcher).
+func (a *WahaAdapter) DownloadMediaByURLLimited(ctx context.Context, mediaURL string, maxBytes int64) (*DownloadMediaResult, error) {
+	return a.downloadMediaByURL(ctx, mediaURL, maxBytes)
+}
+
+func (a *WahaAdapter) downloadMediaByURL(ctx context.Context, mediaURL string, maxBytes int64) (*DownloadMediaResult, error) {
+	if maxBytes <= 0 {
+		maxBytes = maxDownloadBodySize
+	}
 	if mediaURL == "" {
 		return nil, NewProviderError(ErrCodeInvalidInput, "media URL is required", nil)
 	}
@@ -2405,11 +2462,16 @@ func (a *WahaAdapter) DownloadMediaByURL(ctx context.Context, mediaURL string) (
 	}
 	defer resp.Body.Close()
 
-	// N1: Limit download body size to 50 MB to prevent memory exhaustion
-	limitedBody := http.MaxBytesReader(nil, resp.Body, maxDownloadBodySize)
-	body, err := io.ReadAll(limitedBody)
+	// Teto de memória. LimitReader(max+1): se o byte extra existir, o corpo
+	// passou do limite e a resposta é RECUSADA — nunca truncada. Content-Length
+	// não é consultado de propósito (pode faltar em chunked e pode mentir); o
+	// único juiz é quanto realmente veio no fio.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
-		return nil, NewProviderError(ErrCodeNetworkError, "failed to read media response (may exceed 50MB limit)", err)
+		return nil, NewProviderError(ErrCodeNetworkError, "failed to read media response", err)
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, ErrMediaTooLarge
 	}
 
 	if resp.StatusCode >= 400 {
@@ -2441,6 +2503,16 @@ func (a *WahaAdapter) DownloadMediaByURL(ctx context.Context, mediaURL string) (
 // This bypasses the local WAHA file cache, which may have expired (WHATSAPP_FILES_LIFETIME).
 // WhatsApp retains media on their servers for ~30 days.
 func (a *WahaAdapter) RedownloadMedia(ctx context.Context, sessionName, chatID, messageID string) (*DownloadMediaResult, error) {
+	return a.redownloadMedia(ctx, sessionName, chatID, messageID, maxDownloadBodySize)
+}
+
+// RedownloadMediaLimited implements DurableMediaFetcher. O endpoint devolve uma
+// URL fresca, mas os bytes ainda passam pelo caminho com teto que recusa.
+func (a *WahaAdapter) RedownloadMediaLimited(ctx context.Context, sessionName, chatID, messageID string, maxBytes int64) (*DownloadMediaResult, error) {
+	return a.redownloadMedia(ctx, sessionName, chatID, messageID, maxBytes)
+}
+
+func (a *WahaAdapter) redownloadMedia(ctx context.Context, sessionName, chatID, messageID string, maxBytes int64) (*DownloadMediaResult, error) {
 	if sessionName == "" {
 		return nil, NewProviderError(ErrCodeInvalidInput, "session name is required", nil)
 	}
@@ -2500,7 +2572,7 @@ func (a *WahaAdapter) RedownloadMedia(ctx context.Context, sessionName, chatID, 
 		zap.String("mimetype", mimetype))
 
 	// Download the fresh media using the new URL
-	result, err := a.DownloadMediaByURL(ctx, freshMediaURL)
+	result, err := a.downloadMediaByURL(ctx, freshMediaURL, maxBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download fresh media: %w", err)
 	}

@@ -2,6 +2,7 @@ import { useAuth } from '@/contexts';
 import { getQueueStatus, listJobs } from '@/gen/jobs/v1/jobs-JobsService_connectquery';
 import {
   CreateJobRequestSchema,
+  CreateJobsRequestSchema,
   DeleteJobRequestSchema,
   type GetQueueStatusResponse,
   type Job,
@@ -69,6 +70,18 @@ export interface CreateJobParams {
   action_type: LocalJobActionType;
   scheduled_for: Date;
   payload: LocalJobPayload;
+}
+
+/**
+ * Resultado da criação em lote.
+ *
+ * `deduplicated` conta os itens que já existiam como agendamento idêntico ainda
+ * pendente — o servidor devolve o job original em vez de criar um segundo. Não
+ * é erro: serve para a UI dizer "N já existiam e foram mantidos".
+ */
+export interface BulkJobsResult {
+  jobs: LocalJob[];
+  deduplicated: number;
 }
 
 /**
@@ -265,6 +278,7 @@ export function useJobsConnect(): UseJobsConnectReturn {
   const [pageToken, setPageToken] = useState('');
   const [accumulatedJobs, setAccumulatedJobs] = useState<LocalJob[]>([]);
   const [isAccumulating, setIsAccumulating] = useState(false);
+  const [isBulkCreating, setIsBulkCreating] = useState(false);
 
   const {
     data: jobsResponse,
@@ -440,35 +454,48 @@ export function useJobsConnect(): UseJobsConnectReturn {
   // ============================================================
 
   const createBulkJobs = useCallback(
-    async (jobsList: CreateJobParams[]): Promise<LocalJob[]> => {
+    async (jobsList: CreateJobParams[]): Promise<BulkJobsResult> => {
       if (!user?.id) {
         throw new Error(t('common.errors.notAuthenticated'));
       }
 
-      const client = createClient(JobsService, transport);
-      const createdJobs: LocalJob[] = [];
+      // A guarda de reentrância vive aqui e não no componente porque
+      // `isCreatingJob` só reflete a mutation unária: durante o lote inteiro o
+      // botão continuava habilitado, e o segundo clique disparava a rajada de
+      // novo. Com o estado somado ao `isCreatingJob` exposto, o `disabled` que
+      // as telas já tinham passa a cobrir o lote sem tocar em componente.
+      setIsBulkCreating(true);
+      try {
+        const client = createClient(JobsService, transport);
 
-      for (const params of jobsList) {
-        const response = await client.createJob(
-          create(CreateJobRequestSchema, {
-            actionType: ACTION_TYPE_TO_PROTO[params.action_type],
-            scheduledFor: timestampFromDate(params.scheduled_for),
-            payload: toProtoPayload(params.payload),
+        // Uma chamada só, transacional no servidor. O loop anterior de N RPCs
+        // levava dezenas de segundos e, se falhasse no item N, deixava os
+        // N-1 anteriores criados sem forma de desfazer.
+        const response = await client.createJobs(
+          create(CreateJobsRequestSchema, {
+            jobs: jobsList.map((params) =>
+              create(CreateJobRequestSchema, {
+                actionType: ACTION_TYPE_TO_PROTO[params.action_type],
+                scheduledFor: timestampFromDate(params.scheduled_for),
+                payload: toProtoPayload(params.payload),
+              })
+            ),
           })
         );
 
-        if (response.job) {
-          createdJobs.push(fromProtoJob(response.job));
-        }
+        // Invalidate queries after bulk creation
+        queryClient.invalidateQueries({
+          queryKey: createConnectQueryKey({ schema: listJobs, cardinality: 'finite' }),
+        });
+        queryClient.invalidateQueries({ queryKey: ['jobs'] });
+
+        return {
+          jobs: response.jobs.map(fromProtoJob),
+          deduplicated: response.deduplicated,
+        };
+      } finally {
+        setIsBulkCreating(false);
       }
-
-      // Invalidate queries after bulk creation
-      queryClient.invalidateQueries({
-        queryKey: createConnectQueryKey({ schema: listJobs, cardinality: 'finite' }),
-      });
-      queryClient.invalidateQueries({ queryKey: ['jobs'] });
-
-      return createdJobs;
     },
     [user?.id, transport, queryClient, t]
   );
@@ -567,7 +594,9 @@ export function useJobsConnect(): UseJobsConnectReturn {
     queueStatus,
     loading,
     isPending: processJobsMutation.isPending,
-    isCreatingJob: createJobMutation.isPending,
+    // Soma o lote: as telas já desabilitam o botão com `isCreatingJob`, e era
+    // exatamente a criação em lote que escapava dessa proteção.
+    isCreatingJob: createJobMutation.isPending || isBulkCreating,
     isUpdatingJob: updateJobMutation.isPending,
     isDeletingJob: deleteJobMutation.isPending,
     refetch: () => refetch(),

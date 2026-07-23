@@ -15,6 +15,13 @@ type Metrics struct {
 	WebhookEvents      metric.Int64Counter
 	WorkerTaskDuration metric.Float64Histogram
 	RedirectRequests   metric.Int64Counter
+
+	// Cadência do espelho (Melhoria 7). Rótulos SEMPRE de conjunto fechado —
+	// nunca grupo, telefone, URL ou corpo de mensagem.
+	MonitorCadenceAdmissions  metric.Int64Counter
+	MonitorCadenceEnqueues    metric.Int64Counter
+	MonitorCadenceDestination metric.Int64Counter
+	MonitorCadenceRecovery    metric.Int64Counter
 }
 
 // GlobalMetrics is the singleton instance initialized at startup.
@@ -57,8 +64,78 @@ func InitMetrics(enabled bool) error {
 		return err
 	}
 
+	if m.MonitorCadenceAdmissions, err = meter.Int64Counter("automatiza.monitor.cadence.admissions",
+		metric.WithDescription("Mensagens-fonte avaliadas pela cadência do espelho"),
+		metric.WithUnit("{message}")); err != nil {
+		return err
+	}
+	if m.MonitorCadenceEnqueues, err = meter.Int64Counter("automatiza.monitor.cadence.enqueues",
+		metric.WithDescription("Resultados de enfileiramento do item da fila de cadência"),
+		metric.WithUnit("{item}")); err != nil {
+		return err
+	}
+	if m.MonitorCadenceDestination, err = meter.Int64Counter("automatiza.monitor.cadence.destinations",
+		metric.WithDescription("Desfechos por grupo de destino na cadência do espelho"),
+		metric.WithUnit("{destination}")); err != nil {
+		return err
+	}
+	if m.MonitorCadenceRecovery, err = meter.Int64Counter("automatiza.monitor.cadence.recovery",
+		metric.WithDescription("Ações de recuperação de lease da cadência do espelho"),
+		metric.WithUnit("{action}")); err != nil {
+		return err
+	}
+
 	GlobalMetrics = m
 	return nil
+}
+
+// RecordMonitorCadenceAdmission conta o veredito de UMA mensagem-fonte.
+// Só números: nada aqui identifica grupo, usuário ou conteúdo.
+func RecordMonitorCadenceAdmission(deferred, suppressed int, redelivery bool) {
+	if GlobalMetrics == nil || GlobalMetrics.MonitorCadenceAdmissions == nil {
+		return
+	}
+	ctx := context.Background()
+	result := "accepted"
+	if redelivery {
+		result = "duplicate"
+	}
+	if deferred > 0 {
+		GlobalMetrics.MonitorCadenceAdmissions.Add(ctx, int64(deferred),
+			metric.WithAttributes(attribute.String("result", result)))
+	}
+	if suppressed > 0 {
+		GlobalMetrics.MonitorCadenceAdmissions.Add(ctx, int64(suppressed),
+			metric.WithAttributes(attribute.String("result", "content_duplicate")))
+	}
+}
+
+// RecordMonitorCadenceEnqueue conta o desfecho de um enfileiramento.
+func RecordMonitorCadenceEnqueue(result string) {
+	if GlobalMetrics == nil || GlobalMetrics.MonitorCadenceEnqueues == nil {
+		return
+	}
+	GlobalMetrics.MonitorCadenceEnqueues.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("result", result)))
+}
+
+// RecordMonitorCadenceDestination conta o desfecho de um destino (sent,
+// assumed_sent, skipped, failed, canceled, pending).
+func RecordMonitorCadenceDestination(outcome string) {
+	if GlobalMetrics == nil || GlobalMetrics.MonitorCadenceDestination == nil {
+		return
+	}
+	GlobalMetrics.MonitorCadenceDestination.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("outcome", outcome)))
+}
+
+// RecordMonitorCadenceRecovery conta uma ação de recuperação de lease.
+func RecordMonitorCadenceRecovery(action string, count int) {
+	if GlobalMetrics == nil || GlobalMetrics.MonitorCadenceRecovery == nil || count <= 0 {
+		return
+	}
+	GlobalMetrics.MonitorCadenceRecovery.Add(context.Background(), int64(count),
+		metric.WithAttributes(attribute.String("action", action)))
 }
 
 // RecordRedirectRequest counts one public redirect attempt.

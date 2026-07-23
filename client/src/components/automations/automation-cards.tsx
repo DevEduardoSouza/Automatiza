@@ -1,6 +1,11 @@
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { formatDelayCompact, getModeKey, getModeVariant } from '@/lib/automation-formatters';
+import {
+  formatDelayCompact,
+  formatMonitorQueue,
+  getModeKey,
+  getModeVariant,
+} from '@/lib/automation-formatters';
 import type { Automation } from '@/types/automation';
 import { format } from 'date-fns';
 import { FileText, Play, RotateCcw, Trash2 } from 'lucide-react';
@@ -67,6 +72,11 @@ export function AutomationCards({
               <p className="text-xs mt-2" style={{ color: colors.wineTextMuted }}>
                 {auto.start_time} - {auto.end_time}
               </p>
+              {formatMonitorQueue(auto, t) && (
+                <p className="text-xs" style={{ color: colors.wineTextMuted }}>
+                  {formatMonitorQueue(auto, t)}
+                </p>
+              )}
               {auto.mode !== 'monitor' && auto.next_run_at && (
                 <p className="text-xs" style={{ color: colors.wineTextMuted }}>
                   {t('pages.offerAutomations.table.nextRunLabel')}{' '}

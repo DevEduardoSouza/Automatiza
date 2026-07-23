@@ -43,7 +43,7 @@ func (m *MockJobRepository) GetByUserID(ctx context.Context, userID string, stat
 	return args.Get(0).([]models.StandaloneJob), args.Error(1)
 }
 
-func (m *MockJobRepository) GetPendingDueJobs(ctx context.Context, limit int) ([]models.StandaloneJob, error) {
+func (m *MockJobRepository) ClaimPendingDueJobs(ctx context.Context, limit int) ([]models.StandaloneJob, error) {
 	args := m.Called(ctx, limit)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -51,12 +51,36 @@ func (m *MockJobRepository) GetPendingDueJobs(ctx context.Context, limit int) ([
 	return args.Get(0).([]models.StandaloneJob), args.Error(1)
 }
 
-func (m *MockJobRepository) Create(ctx context.Context, job *models.StandaloneJob) (*models.StandaloneJob, error) {
+func (m *MockJobRepository) ReleaseClaimedJobs(ctx context.Context, ids []string) (int64, error) {
+	args := m.Called(ctx, ids)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockJobRepository) Create(ctx context.Context, job *models.StandaloneJob) (*models.StandaloneJob, bool, error) {
 	args := m.Called(ctx, job)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
+
+	// Aceita as duas aridades de propósito: as expectativas anteriores ao flag
+	// de dedupe usam Return(job, err) e continuam válidas — o flag só importa
+	// nos testes que o exercitam.
+	deduped := false
+	errIndex := 1
+	if len(args) == 3 {
+		deduped = args.Bool(1)
+		errIndex = 2
 	}
-	return args.Get(0).(*models.StandaloneJob), args.Error(1)
+
+	if args.Get(0) == nil {
+		return nil, deduped, args.Error(errIndex)
+	}
+	return args.Get(0).(*models.StandaloneJob), deduped, args.Error(errIndex)
+}
+
+func (m *MockJobRepository) CreateBatch(ctx context.Context, jobs []*models.StandaloneJob) ([]models.StandaloneJob, int, error) {
+	args := m.Called(ctx, jobs)
+	if args.Get(0) == nil {
+		return nil, args.Int(1), args.Error(2)
+	}
+	return args.Get(0).([]models.StandaloneJob), args.Int(1), args.Error(2)
 }
 
 func (m *MockJobRepository) Update(ctx context.Context, id string, updates map[string]interface{}) error {
@@ -1017,7 +1041,7 @@ func TestProcessScheduledJobs_NoPendingJobs(t *testing.T) {
 	svc, jobRepo, _, _, _, _ := newTestService(t)
 	ctx := context.Background()
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return([]models.StandaloneJob{}, nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return([]models.StandaloneJob{}, nil)
 
 	result, err := svc.ProcessScheduledJobs(ctx)
 
@@ -1053,8 +1077,7 @@ func TestProcessScheduledJobs_Success(t *testing.T) {
 		{ID: "group1@g.us", WAGroupID: "group1@g.us", IsAdmin: true},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return(connectedInstance, nil)
 	groupRepo.On("GetGroupsByIDs", ctx, "user-1", []string{"group1@g.us"}).Return(resolvedGroups, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusDone, (*string)(nil)).Return(nil)
@@ -1093,8 +1116,7 @@ func TestProcessScheduledJobs_NoConnectedInstance(t *testing.T) {
 		{InstanceID: "instance-1", Status: "disconnected"},
 	}
 
-	jobRepo.On("GetPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
-	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusRunning, (*string)(nil)).Return(nil)
+	jobRepo.On("ClaimPendingDueJobs", ctx, 50).Return(pendingJobs, nil)
 	instanceRepo.On("GetUserInstances", ctx, "user-1").Return(disconnectedInstances, nil)
 	jobRepo.On("UpdateStatus", mock.Anything, "job-1", models.StandaloneJobStatusFailed, mock.AnythingOfType("*string")).Return(nil)
 

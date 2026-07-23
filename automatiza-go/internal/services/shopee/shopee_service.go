@@ -2,6 +2,8 @@ package shopee
 
 import (
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/commerceurl"
+	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
@@ -37,7 +39,11 @@ type Service interface {
 }
 
 type shopeeService struct {
-	httpClient    *http.Client
+	httpClient *http.Client
+	// safeExpander é o cliente endurecido usado SÓ para expandir short links
+	// vindos do texto de um grupo. httpClient continua servindo o endpoint
+	// GraphQL fixo, que não é escolhido por terceiros.
+	safeExpander  *commerceurl.SafeClient
 	cache         *cache.Cache
 	affiliateRepo repository.AffiliateCredentialsRepository
 	settingsRepo  repository.SettingsRepository
@@ -138,6 +144,11 @@ func NewShopeeService(
 	logger *zap.Logger,
 ) Service {
 	return &shopeeService{
+		safeExpander: commerceurl.NewSafeClient(commerceurl.ClientOptions{
+			Store:           models.MonitorStoreShopee,
+			Timeout:         10 * time.Second,
+			FollowRedirects: true,
+		}),
 		httpClient: &http.Client{
 			// 8s (was 30s): Shopee GraphQL normally responds in <2s. A 30s
 			// timeout means each call to a DOWN Shopee hangs 30s; in the serial
@@ -618,6 +629,16 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 			}
 		}
 
+		// priceDiscountRate é Int! (schema.graphql:440) e vem 0 quando a
+		// Shopee não expõe a taxa, mesmo com priceMax acima do preço atual.
+		// Deriva o percentual dos preços da PRÓPRIA resposta — pré-cupom por
+		// construção, já que o cupom só entra depois, no render. Roda DEPOIS
+		// do filtro MinDiscount de propósito: o filtro continua decidindo
+		// pela taxa oficial, então nenhuma oferta muda de elegibilidade.
+		if discount <= 0 {
+			discount = text.DiscountPercentFromPrices(originalPrice, effectivePrice)
+		}
+
 		// Skip offers with no real discount
 		if effectivePrice > 0 && originalPrice > 0 && effectivePrice >= originalPrice {
 			continue
@@ -669,8 +690,13 @@ func isShopeeShortURL(rawURL string) bool {
 // não carrega o AUTOMATISA. Esse link agora volta pra conversão normal, que
 // re-gera via generateShortLink aplicando o sub_id. Só o link que o PRÓPRIO
 // sistema gerou (tracking + sub_id presentes) pula a API.
-func shouldRelayOwnShortLink(productURL, expandedURL, appID string) bool {
-	return appID != "" && isShopeeShortURL(productURL) &&
+//
+// fromMe é obrigatório (§5.3.7): mesmo que a expansão APARENTE o mesmo app_id,
+// um short recebido de terceiro nunca é repassado opaco — app_id é compartilhado
+// entre contas, então "parece nosso" não prova que a comissão é do tenant. Só o
+// link que o próprio dono postou pode pular a regeração.
+func shouldRelayOwnShortLink(productURL, expandedURL, appID string, fromMe bool) bool {
+	return fromMe && appID != "" && isShopeeShortURL(productURL) &&
 		strings.Contains(expandedURL, "utm_source=an_"+appID) &&
 		strings.Contains(expandedURL, shopeeSubIDDefault)
 }
@@ -755,21 +781,15 @@ func isNonProductShopeeURL(expandedURL string) bool {
 // Mantém path e quaisquer params não-tracking; remove os conhecidos de
 // atribuição (mmp_pid, uls_trackid, smtt) e todo utm_*/af_*. Em erro de parse,
 // devolve a URL original (degradação segura).
-func stripAffiliateAttribution(rawURL string) string {
-	u, err := url.Parse(rawURL)
+func stripAffiliateAttribution(rawURL string) (string, error) {
+	// Erro de parse NÃO devolve mais o original: uma URL que nem parseia é
+	// exatamente aquela cujo tracking não conseguimos garantir que saiu.
+	// "Degradação segura" devolvendo a URL suja era vazamento de comissão.
+	u, err := commerceurl.Parse(rawURL)
 	if err != nil {
-		return rawURL
+		return "", err
 	}
-	q := u.Query()
-	for key := range q {
-		lk := strings.ToLower(key)
-		if lk == "mmp_pid" || lk == "uls_trackid" || lk == "smtt" ||
-			strings.HasPrefix(lk, "utm_") || strings.HasPrefix(lk, "af_") {
-			q.Del(key)
-		}
-	}
-	u.RawQuery = q.Encode()
-	return u.String()
+	return commerceurl.StripTracking(u.Parsed), nil
 }
 
 // generateNonProductAffiliateLink converts non-product Shopee URLs (coupons, campaigns)
@@ -792,7 +812,12 @@ func (s *shopeeService) generateNonProductAffiliateLink(ctx context.Context, ori
 
 	// Remove a atribuição do afiliado da fonte embutida na URL expandida,
 	// senão o novo link curto credita a venda pra ele em vez do nosso usuário.
-	cleanURL := stripAffiliateAttribution(expandedURL)
+	cleanURL, cleanErr := stripAffiliateAttribution(expandedURL)
+	if cleanErr != nil {
+		// Sem garantia de que a atribuição da fonte saiu, não se gera link:
+		// o short resultante creditaria a venda ao afiliado de origem.
+		return nil, cleanErr
+	}
 
 	// Cache por user+página (paridade com o caminho de produto): grupos-fonte
 	// postam a MESMA página de cupom o dia inteiro (medido 14/07: ~900
@@ -948,7 +973,14 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 	// longo próprio passa pelo fluxo normal para sair ENCURTADO (a URL de
 	// tracking gigante no grupo é ilegível). Link de OUTRO afiliado não casa
 	// com o app_id e segue a conversão, que troca o tracking pelo do dono.
-	if shouldRelayOwnShortLink(productURL, expandedURL, appID) {
+	// fromMe=false aqui por contrato (§5.3.7): o serviço Shopee não sabe quem
+	// postou a mensagem, e app_id é COMPARTILHADO entre contas — "a expansão
+	// parece nossa" não prova que a comissão é deste tenant. Enquanto o
+	// planner (que conhece msg.FromMe) não passa esse sinal, a resposta segura
+	// é sempre regerar o short link do dono. Custa uma chamada de
+	// generateShortLink no caso raro do próprio short reimportado; a
+	// alternativa custava a comissão.
+	if shouldRelayOwnShortLink(productURL, expandedURL, appID, false) {
 		own := &models.ShopeeAffiliateLink{
 			OriginalURL:   productURL,
 			AffiliateLink: productURL,
@@ -1286,6 +1318,12 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 		}
 	}
 
+	// Mesmo fallback pré-cupom da busca: sem priceDiscountRate, o percentual
+	// sai dos preços da resposta (priceMax como cheio).
+	if discount <= 0 {
+		discount = text.DiscountPercentFromPrices(originalPrice, effectivePrice)
+	}
+
 	s.logger.Info("GetProduct completed",
 		zap.Int64("itemID", itemID),
 		zap.Float64("price", effectivePrice),
@@ -1371,41 +1409,54 @@ func (s *shopeeService) ExpandURL(ctx context.Context, shortURL string) (string,
 		}
 	}
 
-	// Follow redirects
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return fmt.Errorf("too many redirects")
-			}
-			return nil
-		},
+	// Valida a URL de ENTRADA antes de qualquer I/O. Antes, a URL vinha crua do
+	// texto de um grupo direto para um http.Client sem validação de host, sem
+	// checagem de IP e sem restrição de scheme — SSRF com cinco saltos livres.
+	safeURL, urlErr := commerceurl.Parse(shortURL)
+	if urlErr != nil {
+		return "", urlErr
+	}
+	if safeURL.Store != models.MonitorStoreShopee {
+		return "", &commerceurl.Error{
+			Class:  models.ErrorClassSecurityBlock,
+			Reason: models.ReasonUnsafeHost,
+			Host:   safeURL.Host,
+		}
 	}
 
-	req, reqErr := http.NewRequestWithContext(ctx, "HEAD", shortURL, nil)
-	if reqErr != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to create Shopee ExpandURL request", reqErr, map[string]string{
-			"external_service": "shopee",
-			"endpoint":         "expandURL",
-		})
-		return shortURL, reqErr
-	}
-
-	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("HEAD "+shortURL))
+	span := sentry.StartSpan(ctx, "http.client", sentry.WithDescription("HEAD shopee short link"))
 	span.SetTag("external_service", "shopee")
 	span.SetTag("endpoint", "expandURL")
-	resp, err := client.Do(req)
+	resp, err := s.safeExpander.Get(ctx, safeURL, nil)
 	span.Finish()
 	if err != nil {
+		// Devolver shortURL em erro era um fallback INSEGURO: o chamador via
+		// "expansão ok" e seguia com a URL de terceiro. Agora o erro sobe e o
+		// link é retido.
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Shopee ExpandURL HTTP request failed", err, map[string]string{
 			"external_service": "shopee",
 			"endpoint":         "expandURL",
+			"host":             safeURL.Host,
+			"url_hash":         safeURL.Hash8(),
 		})
-		return shortURL, err
+		return "", err
 	}
 	defer resp.Body.Close()
 
-	finalURL := resp.Request.URL.String()
+	// A URL final também é revalidada: o destino de um redirect é escolhido
+	// pelo servidor remoto, não por nós.
+	finalParsed, finalErr := commerceurl.Parse(resp.Request.URL.String())
+	if finalErr != nil {
+		return "", finalErr
+	}
+	if finalParsed.Store != models.MonitorStoreShopee {
+		return "", &commerceurl.Error{
+			Class:  models.ErrorClassSecurityBlock,
+			Reason: models.ReasonRedirectEscape,
+			Host:   finalParsed.Host,
+		}
+	}
+	finalURL := finalParsed.String()
 
 	// Cache for 24 hours (best effort)
 	if s.cache != nil {
@@ -1427,31 +1478,21 @@ var (
 )
 
 func (s *shopeeService) ExtractProductIDs(productURL string) (shopID, itemID int64, err error) {
-	// Try pattern 1: shopee.com.br/product-name.shopid.itemid
-	matches := shopeeURLRegex.FindStringSubmatch(productURL)
-	if len(matches) == 3 {
-		shopID, _ = strconv.ParseInt(matches[1], 10, 64)
-		itemID, _ = strconv.ParseInt(matches[2], 10, 64)
-		return shopID, itemID, nil
+	// Lê os IDs SOMENTE do path já parseado. Os regexes antigos varriam a URL
+	// inteira, então "?ref=shopee.com.br/x.1.2" e um fragmento com números
+	// classificavam produto — e o produto escolhido não era o link enviado.
+	u, err := commerceurl.Parse(productURL)
+	if err != nil {
+		return 0, 0, err
 	}
-
-	// Try pattern 2: shopee.com.br/product/shopid/itemid
-	matches = shopeeURLRegex2.FindStringSubmatch(productURL)
-	if len(matches) == 3 {
-		shopID, _ = strconv.ParseInt(matches[1], 10, 64)
-		itemID, _ = strconv.ParseInt(matches[2], 10, 64)
-		return shopID, itemID, nil
+	if u.Store != models.MonitorStoreShopee {
+		return 0, 0, fmt.Errorf("could not extract product IDs from URL")
 	}
-
-	// Try pattern 3: shopee.com.br/slug/shopid/itemid (expanded short URLs)
-	matches = shopeeURLRegex3.FindStringSubmatch(productURL)
-	if len(matches) == 3 {
-		shopID, _ = strconv.ParseInt(matches[1], 10, 64)
-		itemID, _ = strconv.ParseInt(matches[2], 10, 64)
-		return shopID, itemID, nil
+	shopID, itemID, ok := commerceurl.ExtractShopeeIDs(u.Parsed)
+	if !ok {
+		return 0, 0, fmt.Errorf("could not extract product IDs from URL")
 	}
-
-	return 0, 0, fmt.Errorf("could not extract product IDs from URL")
+	return shopID, itemID, nil
 }
 
 // parseDiscount parses discount string like "50%" to float64 50.0

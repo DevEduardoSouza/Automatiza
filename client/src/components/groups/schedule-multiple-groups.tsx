@@ -136,6 +136,47 @@ export function ScheduleMultipleGroups() {
     (recurrence === 'once' ? !!scheduledDate : true) &&
     (recurrence === 'weekly' ? weekdays.length > 0 : true);
 
+  // Preview do tamanho real do lote. Quem reportou "27 mensagens" estava vendo
+  // a matriz ocorrências × grupos × ações sem saber que ela existia — mostrar a
+  // conta ANTES de confirmar é o que separa "o sistema multiplicou sozinho" de
+  // "eu pedi 27". O corte por MAX_TOTAL_JOBS aparece porque um teto silencioso
+  // vira "sumiram agendamentos".
+  const batchPreview = useMemo(() => {
+    if (!ready) return null;
+
+    const occurrences = buildOccurrences({
+      recurrence,
+      scheduledDate,
+      timeList: [...times].sort(),
+      weekdays,
+      intervalDays,
+      repeatUntil,
+    });
+    if (occurrences.length === 0) return null;
+
+    const jobsPerOccurrence = selectedGroups.length * actionsCount;
+    const maxOcc = Math.max(1, Math.floor(MAX_TOTAL_JOBS / jobsPerOccurrence));
+    const usedOcc = Math.min(occurrences.length, maxOcc);
+
+    return {
+      total: usedOcc * jobsPerOccurrence,
+      occurrences: usedOcc,
+      groups: selectedGroups.length,
+      actions: actionsCount,
+      truncated: occurrences.length - usedOcc,
+    };
+  }, [
+    ready,
+    recurrence,
+    scheduledDate,
+    times,
+    weekdays,
+    intervalDays,
+    repeatUntil,
+    selectedGroups.length,
+    actionsCount,
+  ]);
+
   const resetForm = () => {
     setSelectedGroups([]);
     setSearchTerm('');
@@ -274,13 +315,20 @@ export function ScheduleMultipleGroups() {
         }
       }
 
-      await createBulkJobs(jobs);
+      const result = await createBulkJobs(jobs);
       toast({
         title: t('pages.groups.schedule.success.scheduled'),
-        description: t('pages.groups.schedule.success.scheduledDescription', {
-          actions: jobs.length,
-          groups: selectedGroups.length,
-        }),
+        description:
+          result.deduplicated > 0
+            ? t('pages.groups.schedule.success.scheduledDeduped', {
+                actions: jobs.length,
+                groups: selectedGroups.length,
+                deduplicated: result.deduplicated,
+              })
+            : t('pages.groups.schedule.success.scheduledDescription', {
+                actions: jobs.length,
+                groups: selectedGroups.length,
+              }),
       });
       resetForm();
     } catch (error) {
@@ -650,6 +698,28 @@ export function ScheduleMultipleGroups() {
             borderRadius: '0 0 20px 20px',
           }}
         >
+          {batchPreview && (
+            <div
+              style={{
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: T.ink,
+                marginBottom: 12,
+                textAlign: 'center',
+              }}
+            >
+              {t('pages.groups.schedule.batchPreview', {
+                total: batchPreview.total,
+                occurrences: batchPreview.occurrences,
+                groups: batchPreview.groups,
+                actions: batchPreview.actions,
+              })}
+              {batchPreview.truncated > 0 &&
+                ` ${t('pages.groups.schedule.batchPreviewTruncated', {
+                  truncated: batchPreview.truncated,
+                })}`}
+            </div>
+          )}
           <button
             type="button"
             onClick={handleSchedule}

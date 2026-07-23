@@ -1305,7 +1305,7 @@ func TestProcessAutomation_NoDestinationGroups(t *testing.T) {
 		InstanceName: "inst1",
 		RemoteJID:    "source@g.us",
 		Body:         "https://shopee.com.br/product",
-	}, []string{"https://shopee.com.br/product"}, false)
+	}, []string{"https://shopee.com.br/product"}, false, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1338,7 +1338,7 @@ func TestProcessAutomation_SameGroupSkipped(t *testing.T) {
 		InstanceName: "inst1",
 		RemoteJID:    "source@g.us",
 		Body:         "https://shopee.com.br/product",
-	}, []string{"https://shopee.com.br/product"}, false)
+	}, []string{"https://shopee.com.br/product"}, false, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1410,7 +1410,7 @@ func TestProcessAutomation_PreviewWithoutSourceTitle(t *testing.T) {
 		RemoteJID:    "source@g.us",
 		Body:         "Mascara Kerastase 200ml\nhttps://shopee.com.br/product-i.123.456",
 		// LinkPreviewTitle intentionally empty (source had no preview)
-	}, []string{"https://shopee.com.br/product-i.123.456"}, false)
+	}, []string{"https://shopee.com.br/product-i.123.456"}, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1475,7 +1475,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         "https://shopee.com.br/product-i.123.456",
-		}, []string{"https://shopee.com.br/product-i.123.456"}, false)
+		}, []string{"https://shopee.com.br/product-i.123.456"}, false, nil)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1509,7 +1509,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         "https://www.mercadolivre.com.br/product/MLB123",
-		}, []string{"https://www.mercadolivre.com.br/product/MLB123"}, false)
+		}, []string{"https://www.mercadolivre.com.br/product/MLB123"}, false, nil)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1543,7 +1543,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         "https://amazon.com.br/product/123",
-		}, []string{"https://amazon.com.br/product/123"}, false)
+		}, []string{"https://amazon.com.br/product/123"}, false, nil)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1589,7 +1589,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         "https://shopee.com.br/product-i.123.456",
-		}, []string{"https://shopee.com.br/product-i.123.456"}, false)
+		}, []string{"https://shopee.com.br/product-i.123.456"}, false, nil)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1623,7 +1623,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         "https://www.mercadolivre.com.br/product/MLB123",
-		}, []string{"https://www.mercadolivre.com.br/product/MLB123"}, false)
+		}, []string{"https://www.mercadolivre.com.br/product/MLB123"}, false, nil)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1672,7 +1672,7 @@ func TestProcessAutomation_StoreFiltering(t *testing.T) {
 			InstanceName: "inst1",
 			RemoteJID:    "source@g.us",
 			Body:         body,
-		}, []string{"https://shopee.com.br/product-i.123.456", "https://amzn.to/3xYzAbC"}, false)
+		}, []string{"https://shopee.com.br/product-i.123.456", "https://amzn.to/3xYzAbC"}, false, nil)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1739,7 +1739,7 @@ func TestProcessAutomation_UsesOwnerSession(t *testing.T) {
 		InstanceName: "other-user-session", // webhook from a different user's session
 		RemoteJID:    "source@g.us",
 		Body:         "https://shopee.com.br/product-i.123.456",
-	}, []string{"https://shopee.com.br/product-i.123.456"}, false)
+	}, []string{"https://shopee.com.br/product-i.123.456"}, false, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1780,7 +1780,7 @@ func TestProcessAutomation_NoConnectedInstance_Skips(t *testing.T) {
 		InstanceName: "inst1",
 		RemoteJID:    "source@g.us",
 		Body:         "https://shopee.com.br/product-i.123.456",
-	}, []string{"https://shopee.com.br/product-i.123.456"}, false)
+	}, []string{"https://shopee.com.br/product-i.123.456"}, false, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1837,7 +1837,7 @@ func TestProcessAutomation_CommissionGate(t *testing.T) {
 			}
 		})
 
-		if err := svc.processAutomation(context.Background(), auto(), msg, links, false); err != nil {
+		if err := svc.processAutomation(context.Background(), auto(), msg, links, false, nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if sent {
@@ -1875,7 +1875,7 @@ func TestProcessAutomation_CommissionGate(t *testing.T) {
 					}
 				})
 
-				if err := svc.processAutomation(context.Background(), auto(), msg, links, false); err != nil {
+				if err := svc.processAutomation(context.Background(), auto(), msg, links, false, nil); err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
 				if !sent {
@@ -1910,7 +1910,7 @@ func TestProcessAutomation_CommissionGate(t *testing.T) {
 			}
 		})
 
-		if err := svc.processAutomation(context.Background(), auto(), msg, links, false); err != nil {
+		if err := svc.processAutomation(context.Background(), auto(), msg, links, false, nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if sent {
@@ -1937,7 +1937,7 @@ func TestProcessAutomation_CommissionGate(t *testing.T) {
 			}
 		})
 
-		if err := svc.processAutomation(context.Background(), auto(), msg, links, false); err != nil {
+		if err := svc.processAutomation(context.Background(), auto(), msg, links, false, nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !sent {
