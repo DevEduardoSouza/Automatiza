@@ -468,6 +468,13 @@ jobs:
           IMAGE_RELAY_MAX_ASPECT=${{ vars.IMAGE_RELAY_MAX_ASPECT }}
           FEATURE_ENFORCE_PLAN_GROUP_LIMITS=${{ vars.FEATURE_ENFORCE_PLAN_GROUP_LIMITS }}
           FEATURE_KIWIFY_STRICT_SIGNATURE=${{ vars.FEATURE_KIWIFY_STRICT_SIGNATURE }}
+          # Chip reserva / failover de instância (Melhoria 5).
+          # ""/ausente = desligado. Ligado, o DispatchGate passa a pegar uma lease
+          # por execução nos TRÊS produtores — custo no caminho quente de envio.
+          # Rollback sem deploy: gh variable set FEATURE_INSTANCE_FAILOVER --body false
+          # + bounce. ATENÇÃO: desligar NÃO reverte automações já trocadas para a
+          # reserva, e não abandona operação em curso (o gate se rearma no boot).
+          FEATURE_INSTANCE_FAILOVER=${{ vars.FEATURE_INSTANCE_FAILOVER }}
           # Texto de disparo no modo monitoramento (reativação gradual da PR #243).
           # ""/ausente/"off" = desligado (default seguro: o espelho repassa o texto
           # do grupo). "all" = todos. "id1,id2" = allowlist de user_ids (canário).
