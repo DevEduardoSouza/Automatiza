@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"io"
 	"net/http"
 	"time"
 
@@ -167,4 +168,67 @@ func (h *InstagramPublicHandler) readSignedRequest(c *gin.Context) (string, bool
 		return "", false
 	}
 	return values[0], true
+}
+
+// webhookMaxBody limita o corpo do webhook. A Meta manda lotes pequenos; um
+// corpo gigante num endpoint público e não autenticado é DoS de graça.
+const webhookMaxBody = 1 << 20 // 1 MiB
+
+// WebhookVerify handles GET /api/v1/instagram/webhook/:token — o handshake que
+// a Meta faz ao salvar a URL no painel do cliente.
+//
+// Responde o hub.challenge em TEXTO PURO: a Meta compara o corpo byte a byte,
+// e devolver JSON faz a verificação falhar sem explicação no painel dela.
+func (h *InstagramPublicHandler) WebhookVerify(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	if h.svc == nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	challenge, err := h.svc.VerifyWebhookChallenge(
+		c.Request.Context(),
+		c.Param("token"),
+		c.Query("hub.mode"),
+		c.Query("hub.verify_token"),
+		c.Query("hub.challenge"),
+	)
+	if err != nil {
+		// 403 é o que a Meta espera quando o verify_token não bate; token de
+		// cliente inexistente responde igual, para não revelar quais existem.
+		c.Status(http.StatusForbidden)
+		return
+	}
+	c.String(http.StatusOK, challenge)
+}
+
+// WebhookReceive handles POST /api/v1/instagram/webhook/:token.
+//
+// Lê o corpo CRU antes de qualquer decodificação: a assinatura da Meta é
+// calculada sobre os bytes exatos, e reserializar o JSON quebraria a conferência.
+func (h *InstagramPublicHandler) WebhookReceive(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	if h.svc == nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, webhookMaxBody))
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	if _, err := h.svc.HandleWebhook(
+		c.Request.Context(),
+		c.Param("token"),
+		body,
+		c.GetHeader("X-Hub-Signature-256"),
+	); err != nil {
+		// Assinatura inválida ou token desconhecido: mesma resposta, sem
+		// detalhe — o endpoint é público e não deve virar oráculo.
+		h.logger.Warn("instagram webhook rejected")
+		c.Status(http.StatusForbidden)
+		return
+	}
+	// 200 rápido: a Meta trata não-200 como falha e reenvia o lote.
+	c.Status(http.StatusOK)
 }

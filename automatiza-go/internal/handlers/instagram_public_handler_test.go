@@ -196,7 +196,7 @@ func newIGHandlerTest(t *testing.T, appSecret string) *igHandlerHarness {
 		BackendBaseURL:  "https://api.example",
 		EncryptionKey:   igTestEncryptionKey,
 		StateSigningKey: igTestStateKey,
-	}, api, creds, igHandlerStoryRepo{}, del, nil /* appsRepo */, c, zap.NewNop())
+	}, api, instagram.ServiceRepositories{Credentials: creds, StoryPosts: igHandlerStoryRepo{}, DataDeletion: del}, nil /* aiGen */, c, zap.NewNop())
 
 	h := NewInstagramPublicHandler(svc, store, "https://app.example", zap.NewNop())
 	r := gin.New()

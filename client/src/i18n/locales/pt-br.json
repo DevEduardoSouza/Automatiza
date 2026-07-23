@@ -2357,7 +2357,8 @@
       "tabs": {
         "app": "Aplicativo",
         "account": "Conta",
-        "activity": "Histórico"
+        "activity": "Histórico",
+        "ai": "IA"
       },
       "app": {
         "title": "Aplicativo da Meta",
@@ -2395,6 +2396,62 @@
           "openMeta": "Abrir o painel da Meta"
         },
         "requiredFirst": "Cadastre seu aplicativo da Meta na aba Aplicativo antes de conectar a conta."
+      },
+      "ai": {
+        "title": "Respostas automáticas",
+        "description": "A IA responde sozinha, em seu nome, usando o que você escrever aqui. Quanto melhor o contexto, melhor a resposta.",
+        "on": "Ligada",
+        "off": "Desligada",
+        "personaLabel": "Como a IA deve falar",
+        "personaPlaceholder": "Ex.: simpática e direta, trata por você, usa no máximo um emoji, nunca promete prazo",
+        "businessLabel": "Sobre o seu negócio",
+        "businessPlaceholder": "Ex.: loja de roupa feminina, entrega para todo o Brasil em até 7 dias, trocas em 30 dias, pagamento por Pix e cartão",
+        "businessHelp": "A IA só pode afirmar o que estiver aqui. Preço, prazo e frete que não estiverem escritos, ela não vai inventar.",
+        "toneLabel": "Tom",
+        "tonePlaceholder": "Ex.: informal e acolhedor",
+        "blockedLabel": "Assuntos proibidos",
+        "blockedPlaceholder": "Ex.: reembolso, processo, concorrente",
+        "blockedHelp": "Separe por vírgula. Se a mensagem citar algum deles, a IA usa a mensagem de reserva em vez de responder.",
+        "fallbackLabel": "Mensagem de reserva",
+        "fallbackPlaceholder": "Ex.: Oi! Me chama no direct que a gente te ajuda 💬",
+        "fallbackHelp": "Usada quando a IA não souber responder ou o assunto for proibido.",
+        "saved": "Configuração salva",
+        "saveFailed": "Não foi possível salvar a configuração",
+        "save": "Salvar configuração",
+        "unavailable": {
+          "title": "Respostas automáticas ainda não liberadas",
+          "description": "Você pode preparar a configuração agora; ela começa a valer quando o recurso for liberado para a sua conta."
+        },
+        "channels": {
+          "title": "Onde a IA responde",
+          "description": "Ligue só os canais que você quer que ela atenda.",
+          "comments": "Comentários nas publicações",
+          "dms": "Mensagens no Direct",
+          "dmsHelp": "O Instagram só permite responder até 24h depois da mensagem. Passou disso, a resposta não é enviada.",
+          "mentions": "Menções em Stories"
+        },
+        "master": {
+          "title": "Ligar as respostas automáticas",
+          "description": "Com isso ligado, a IA responde sozinha, sem você conferir antes. Limite de {{cap}} respostas por dia.",
+          "label": "IA respondendo sozinha",
+          "requirements": "Para ligar, escreva como a IA deve falar e marque pelo menos um canal."
+        }
+      },
+      "activity": {
+        "title": "O que chegou",
+        "empty": "Nada recebido ainda. Assim que alguém comentar ou mandar mensagem, aparece aqui.",
+        "replyPrefix": "Respondido:",
+        "status": {
+          "received": "Recebido",
+          "replied": "Respondido",
+          "skipped": "Ignorado",
+          "failed": "Falhou"
+        },
+        "type": {
+          "comment": "Comentário",
+          "message": "Direct",
+          "mention": "Menção"
+        }
       }
     },
     "affiliatePrograms": {

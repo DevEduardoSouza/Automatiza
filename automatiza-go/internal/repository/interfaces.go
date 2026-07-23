@@ -474,6 +474,43 @@ type InstagramAppRepository interface {
 	Delete(ctx context.Context, userID string) error
 }
 
+// InstagramInboundRepository guarda os eventos que chegam pelo webhook da Meta.
+type InstagramInboundRepository interface {
+	// Create insere o evento. created=false significa que o provider_event_id
+	// já existia — a Meta reenviou, e reprocessar responderia duas vezes o
+	// mesmo comentário.
+	Create(ctx context.Context, e *models.InstagramInboundEvent) (row *models.InstagramInboundEvent, created bool, err error)
+	ListRecentByUser(ctx context.Context, userID string, limit int) ([]models.InstagramInboundEvent, error)
+	MarkStatus(ctx context.Context, id, status, errorCode string) error
+	DeleteOlderThan(ctx context.Context, before time.Time, limit int) (int64, error)
+}
+
+// InstagramAIConfigRepository guarda o treinamento da IA por usuário.
+type InstagramAIConfigRepository interface {
+	Get(ctx context.Context, userID string) (*models.InstagramAIConfig, error)
+	Upsert(ctx context.Context, cfg *models.InstagramAIConfig) (*models.InstagramAIConfig, error)
+}
+
+// InstagramReplyRepository guarda o que a IA respondeu e o custo.
+type InstagramReplyRepository interface {
+	// Claim reserva o direito de responder ESTE evento. created=false significa
+	// que já existe resposta para ele — é a segunda trava contra responder duas
+	// vezes o mesmo comentário (a primeira é o unique do inbound), e aqui o
+	// efeito colateral é público: aparece no perfil do cliente.
+	Claim(ctx context.Context, userID, providerEventID, eventType string) (row *models.InstagramReply, created bool, err error)
+	MarkResult(ctx context.Context, id, status, replyText, errorCode string, promptTokens, completionTokens int) error
+	// CountSince conta respostas ENVIADAS na janela — base da cota diária.
+	CountSince(ctx context.Context, userID string, since time.Time) (int, error)
+	ListRecentByUser(ctx context.Context, userID string, limit int) ([]models.InstagramReply, error)
+}
+
+// InstagramPlanCapRepository expõe a cota diária de resposta do plano do
+// usuário. Interface mínima de propósito: o pacote Instagram não precisa
+// conhecer plano nem perfil, só o teto.
+type InstagramPlanCapRepository interface {
+	MaxAIRepliesPerDay(ctx context.Context, userID string) (int, error)
+}
+
 // InstagramDataDeletionRepository grava os comprovantes de exclusão exigidos
 // pela Meta e executa a exclusão em si.
 type InstagramDataDeletionRepository interface {

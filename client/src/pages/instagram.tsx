@@ -1,9 +1,11 @@
+import { AIConfigForm } from '@/components/instagram/ai-config-form';
 import { MetaAppForm } from '@/components/instagram/meta-app-form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useInstagramAI } from '@/hooks/use-instagram-ai';
 import { useInstagramConnect } from '@/hooks/use-instagram-connect';
 import { useToast } from '@/hooks/use-toast';
 import { Instagram } from 'lucide-react';
@@ -22,6 +24,7 @@ export default function InstagramPage() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { status, loading, connect, disconnect, disconnecting } = useInstagramConnect();
+  const { activity, activityLoading } = useInstagramAI();
 
   // Feedback do redirect OAuth (?connected=1 | ?error=slug).
   useEffect(() => {
@@ -62,6 +65,7 @@ export default function InstagramPage() {
           <TabsList>
             <TabsTrigger value="app">{t('pages.instagram.tabs.app')}</TabsTrigger>
             <TabsTrigger value="account">{t('pages.instagram.tabs.account')}</TabsTrigger>
+            <TabsTrigger value="ai">{t('pages.instagram.tabs.ai')}</TabsTrigger>
             <TabsTrigger value="activity">{t('pages.instagram.tabs.activity')}</TabsTrigger>
           </TabsList>
 
@@ -112,7 +116,60 @@ export default function InstagramPage() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="ai" className="mt-4">
+            <AIConfigForm />
+          </TabsContent>
+
           <TabsContent value="activity" className="mt-4 flex flex-col gap-4">
+            {/* O que chegou pelo webhook e o que a IA respondeu. É aqui que o
+                cliente confere se a IA está falando o que ele espera. */}
+            <Card className="max-w-2xl">
+              <CardHeader>
+                <CardTitle>{t('pages.instagram.activity.title')}</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {activityLoading ? (
+                  <Skeleton className="h-24 w-full" />
+                ) : activity.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t('pages.instagram.activity.empty')}
+                  </p>
+                ) : (
+                  activity.map((a) => (
+                    <div key={a.id} className="flex flex-col gap-1 border-b pb-3 last:border-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {t(`pages.instagram.activity.type.${a.eventType}`, {
+                            defaultValue: a.eventType,
+                          })}{' '}
+                          · {a.receivedAt}
+                        </span>
+                        <Badge
+                          variant={
+                            a.status === 'replied'
+                              ? 'default'
+                              : a.status === 'failed'
+                                ? 'destructive'
+                                : 'secondary'
+                          }
+                        >
+                          {t(`pages.instagram.activity.status.${a.status}`, {
+                            defaultValue: a.status,
+                          })}
+                        </Badge>
+                      </div>
+                      <p className="text-sm">{a.content}</p>
+                      {a.replyText && (
+                        <p className="text-sm text-muted-foreground">
+                          {t('pages.instagram.activity.replyPrefix')} {a.replyText}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
             <Card className="max-w-2xl">
               <CardHeader>
                 <CardTitle>{t('pages.instagram.howItWorks.title')}</CardTitle>

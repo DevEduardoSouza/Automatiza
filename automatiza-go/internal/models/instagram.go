@@ -165,3 +165,96 @@ type InstagramApp struct {
 	CreatedAt   string     `json:"created_at" db:"created_at"`
 	UpdatedAt   string     `json:"updated_at" db:"updated_at"`
 }
+
+// Tipos de evento de entrada do Instagram (espelham o CHECK da migração 078).
+const (
+	InstagramEventComment = "comment"
+	InstagramEventMessage = "message"
+	InstagramEventMention = "mention"
+)
+
+// Estados de um evento de entrada.
+const (
+	InstagramInboundReceived = "received"
+	InstagramInboundReplied  = "replied"
+	InstagramInboundSkipped  = "skipped"
+	InstagramInboundFailed   = "failed"
+)
+
+// InstagramInboundEvent é um evento recebido pelo webhook da Meta.
+//
+// ProviderEventID é a chave de idempotência: a Meta reenvia o mesmo evento
+// quando não recebe o ACK a tempo, e sem essa unicidade o cliente responderia o
+// mesmo comentário duas ou três vezes.
+//
+// Content guarda o texto de terceiro (quem comentou/mandou DM). É o único campo
+// sensível aqui: tem retenção de 30 dias e NUNCA vai para log.
+type InstagramInboundEvent struct {
+	ID              string     `json:"id" db:"id"`
+	UserID          string     `json:"user_id" db:"user_id"`
+	ProviderEventID string     `json:"-" db:"provider_event_id"`
+	EventType       string     `json:"event_type" db:"event_type"`
+	IGAccountID     string     `json:"-" db:"ig_account_id"`
+	SenderID        string     `json:"-" db:"sender_id"`
+	ThreadID        string     `json:"-" db:"thread_id"`
+	Content         string     `json:"content" db:"content"`
+	OccurredAt      *time.Time `json:"-" db:"occurred_at"`
+	ReceivedAt      string     `json:"received_at" db:"received_at"`
+	Status          string     `json:"status" db:"status"`
+	ErrorCode       string     `json:"error_code" db:"error_code"`
+}
+
+// InstagramAIConfig é o "treinamento" que o cliente escreve.
+//
+// Tudo nasce desligado: salvar a configuração não pode, sozinho, fazer a IA
+// começar a responder em nome de alguém.
+type InstagramAIConfig struct {
+	ID              string `json:"id" db:"id"`
+	UserID          string `json:"user_id" db:"user_id"`
+	Persona         string `json:"persona" db:"persona"`
+	BusinessContext string `json:"business_context" db:"business_context"`
+	Tone            string `json:"tone" db:"tone"`
+	BlockedTopics   string `json:"blocked_topics" db:"blocked_topics"`
+	FallbackMessage string `json:"fallback_message" db:"fallback_message"`
+	ReplyComments   bool   `json:"reply_comments" db:"reply_comments"`
+	ReplyDMs        bool   `json:"reply_dms" db:"reply_dms"`
+	ReplyMentions   bool   `json:"reply_mentions" db:"reply_mentions"`
+	IsActive        bool   `json:"is_active" db:"is_active"`
+	CreatedAt       string `json:"created_at" db:"created_at"`
+	UpdatedAt       string `json:"updated_at" db:"updated_at"`
+}
+
+// Estados de uma resposta da IA.
+const (
+	InstagramReplyPending = "pending"
+	InstagramReplySent    = "sent"
+	InstagramReplyFailed  = "failed"
+	InstagramReplySkipped = "skipped"
+)
+
+// Códigos seguros específicos da resposta automática.
+const (
+	InstagramErrAIDisabled      = "ai_disabled"
+	InstagramErrChannelOff      = "channel_off"
+	InstagramErrWindowExpired   = "window_expired"
+	InstagramErrAIFailed        = "ai_failed"
+	InstagramErrEmptyContent    = "empty_content"
+	InstagramErrQuotaDaily      = "quota_daily"
+	InstagramErrSendRejected    = "send_rejected"
+	InstagramErrUnsupportedKind = "unsupported_kind"
+)
+
+// InstagramReply é o que a IA respondeu, e o custo disso.
+type InstagramReply struct {
+	ID               string `json:"id" db:"id"`
+	UserID           string `json:"user_id" db:"user_id"`
+	ProviderEventID  string `json:"-" db:"provider_event_id"`
+	EventType        string `json:"event_type" db:"event_type"`
+	ReplyText        string `json:"reply_text" db:"reply_text"`
+	Status           string `json:"status" db:"status"`
+	ErrorCode        string `json:"error_code" db:"error_code"`
+	PromptTokens     int    `json:"-" db:"prompt_tokens"`
+	CompletionTokens int    `json:"-" db:"completion_tokens"`
+	CreatedAt        string `json:"created_at" db:"created_at"`
+	UpdatedAt        string `json:"updated_at" db:"updated_at"`
+}

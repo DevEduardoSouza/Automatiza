@@ -303,6 +303,11 @@ func SetupRoutes(r *gin.Engine, deps *Dependencies) {
 		api.POST("/instagram/deauthorize", igCallbackRL, igPublic.Deauthorize)
 		api.POST("/instagram/data-deletion", igCallbackRL, igPublic.DataDeletion)
 		api.GET("/instagram/data-deletion/status/:code", igCallbackRL, igPublic.DataDeletionStatus)
+		// Webhook POR CLIENTE: o token no path resolve de quem é o app ANTES
+		// de ler o corpo, que é o que permite validar a assinatura da Meta num
+		// webhook multi-tenant. Rate limit alto — a Meta manda lotes.
+		api.GET("/instagram/webhook/:token", igMediaRL, igPublic.WebhookVerify)
+		api.POST("/instagram/webhook/:token", igMediaRL, igPublic.WebhookReceive)
 	}
 
 	// Instances (internal)

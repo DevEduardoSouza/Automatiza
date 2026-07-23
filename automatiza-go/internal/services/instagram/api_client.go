@@ -487,3 +487,96 @@ func (f *flexString) UnmarshalJSON(data []byte) error {
 	*f = flexString(strings.Trim(s, `"`))
 	return nil
 }
+
+// --- resposta (Fase 3/4) ---
+
+// ReplyToComment publica uma resposta a um comentário.
+//
+// Endpoint oficial: POST /{IG_COMMENT_ID}/replies com `message`. Exige a
+// permissão instagram_business_manage_comments. Sem janela de tempo — por isso
+// comentário é o primeiro canal a ser ligado.
+func (c *APIClient) ReplyToComment(ctx context.Context, commentID, token, message string) (replyID string, err error) {
+	form := url.Values{}
+	form.Set("message", message)
+	form.Set("access_token", token)
+
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := c.do(ctx, http.MethodPost, c.graphURL(commentID, "replies"), form, "reply_comment", &body); err != nil {
+		return "", err
+	}
+	if body.ID == "" {
+		return "", &MetaAPIError{Operation: "reply_comment", SafeCategory: categoryPermanent}
+	}
+	return body.ID, nil
+}
+
+// SendDirectMessage responde uma mensagem no Direct.
+//
+// Endpoint oficial: POST /{IG_ID}/messages com corpo JSON
+// {recipient:{id}, message:{text}} — diferente do resto da API, que é
+// form-urlencoded. O id do PATH é o da conta profissional do cliente; o
+// recipient é o IGSID de quem escreveu, que vem no webhook.
+//
+// A Meta dá 24h para responder. O gate de janela fica no worker, ANTES de
+// chegar aqui: melhor não gastar a chamada do que receber a recusa dela.
+func (c *APIClient) SendDirectMessage(ctx context.Context, igUserID, token, recipientIGSID, text string) (messageID string, err error) {
+	payload := map[string]any{
+		"recipient": map[string]string{"id": recipientIGSID},
+		"message":   map[string]string{"text": text},
+	}
+	var body struct {
+		MessageID string `json:"message_id"`
+		ID        string `json:"id"`
+	}
+	if err := c.doJSON(ctx, c.graphURL(igUserID, "messages"), token, payload, "send_dm", &body); err != nil {
+		return "", err
+	}
+	return firstNonEmptyStr(body.MessageID, body.ID), nil
+}
+
+func firstNonEmptyStr(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// doJSON existe porque o endpoint de mensagens é o único que espera corpo JSON
+// e token no header Authorization, em vez do form-urlencoded com access_token
+// na query que o resto da API usa.
+func (c *APIClient) doJSON(ctx context.Context, urlStr, token string, payload any, op string, out any) error {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return &MetaAPIError{Operation: op, SafeCategory: categoryPermanent}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, urlStr, strings.NewReader(string(raw)))
+	if err != nil {
+		return &MetaAPIError{Operation: op, SafeCategory: categoryPermanent}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return &MetaAPIError{Operation: op, Transient: true, SafeCategory: categoryTransient}
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &MetaAPIError{Operation: op, HTTPStatus: resp.StatusCode, Transient: true, SafeCategory: categoryTransient}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return c.apiError(op, resp.StatusCode, respBody)
+	}
+	if out != nil {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return &MetaAPIError{Operation: op, HTTPStatus: resp.StatusCode, SafeCategory: categoryPermanent}
+		}
+	}
+	return nil
+}

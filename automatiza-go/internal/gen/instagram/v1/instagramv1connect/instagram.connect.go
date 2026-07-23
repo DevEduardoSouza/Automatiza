@@ -51,6 +51,15 @@ const (
 	// InstagramServiceDeleteMetaAppProcedure is the fully-qualified name of the InstagramService's
 	// DeleteMetaApp RPC.
 	InstagramServiceDeleteMetaAppProcedure = "/instagram.v1.InstagramService/DeleteMetaApp"
+	// InstagramServiceGetAIConfigProcedure is the fully-qualified name of the InstagramService's
+	// GetAIConfig RPC.
+	InstagramServiceGetAIConfigProcedure = "/instagram.v1.InstagramService/GetAIConfig"
+	// InstagramServiceSaveAIConfigProcedure is the fully-qualified name of the InstagramService's
+	// SaveAIConfig RPC.
+	InstagramServiceSaveAIConfigProcedure = "/instagram.v1.InstagramService/SaveAIConfig"
+	// InstagramServiceGetActivityProcedure is the fully-qualified name of the InstagramService's
+	// GetActivity RPC.
+	InstagramServiceGetActivityProcedure = "/instagram.v1.InstagramService/GetActivity"
 )
 
 // InstagramServiceClient is a client for the instagram.v1.InstagramService service.
@@ -67,6 +76,12 @@ type InstagramServiceClient interface {
 	SaveMetaApp(context.Context, *connect.Request[v1.SaveMetaAppRequest]) (*connect.Response[v1.SaveMetaAppResponse], error)
 	// DeleteMetaApp removes the client's Meta app registration.
 	DeleteMetaApp(context.Context, *connect.Request[v1.DeleteMetaAppRequest]) (*connect.Response[v1.DeleteMetaAppResponse], error)
+	// GetAIConfig returns this client's AI reply configuration.
+	GetAIConfig(context.Context, *connect.Request[v1.GetAIConfigRequest]) (*connect.Response[v1.GetAIConfigResponse], error)
+	// SaveAIConfig stores it.
+	SaveAIConfig(context.Context, *connect.Request[v1.SaveAIConfigRequest]) (*connect.Response[v1.SaveAIConfigResponse], error)
+	// GetActivity lists received events and the replies sent.
+	GetActivity(context.Context, *connect.Request[v1.GetActivityRequest]) (*connect.Response[v1.GetActivityResponse], error)
 }
 
 // NewInstagramServiceClient constructs a client for the instagram.v1.InstagramService service. By
@@ -116,6 +131,24 @@ func NewInstagramServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(instagramServiceMethods.ByName("DeleteMetaApp")),
 			connect.WithClientOptions(opts...),
 		),
+		getAIConfig: connect.NewClient[v1.GetAIConfigRequest, v1.GetAIConfigResponse](
+			httpClient,
+			baseURL+InstagramServiceGetAIConfigProcedure,
+			connect.WithSchema(instagramServiceMethods.ByName("GetAIConfig")),
+			connect.WithClientOptions(opts...),
+		),
+		saveAIConfig: connect.NewClient[v1.SaveAIConfigRequest, v1.SaveAIConfigResponse](
+			httpClient,
+			baseURL+InstagramServiceSaveAIConfigProcedure,
+			connect.WithSchema(instagramServiceMethods.ByName("SaveAIConfig")),
+			connect.WithClientOptions(opts...),
+		),
+		getActivity: connect.NewClient[v1.GetActivityRequest, v1.GetActivityResponse](
+			httpClient,
+			baseURL+InstagramServiceGetActivityProcedure,
+			connect.WithSchema(instagramServiceMethods.ByName("GetActivity")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -127,6 +160,9 @@ type instagramServiceClient struct {
 	getMetaApp      *connect.Client[v1.GetMetaAppRequest, v1.GetMetaAppResponse]
 	saveMetaApp     *connect.Client[v1.SaveMetaAppRequest, v1.SaveMetaAppResponse]
 	deleteMetaApp   *connect.Client[v1.DeleteMetaAppRequest, v1.DeleteMetaAppResponse]
+	getAIConfig     *connect.Client[v1.GetAIConfigRequest, v1.GetAIConfigResponse]
+	saveAIConfig    *connect.Client[v1.SaveAIConfigRequest, v1.SaveAIConfigResponse]
+	getActivity     *connect.Client[v1.GetActivityRequest, v1.GetActivityResponse]
 }
 
 // GetStatus calls instagram.v1.InstagramService.GetStatus.
@@ -159,6 +195,21 @@ func (c *instagramServiceClient) DeleteMetaApp(ctx context.Context, req *connect
 	return c.deleteMetaApp.CallUnary(ctx, req)
 }
 
+// GetAIConfig calls instagram.v1.InstagramService.GetAIConfig.
+func (c *instagramServiceClient) GetAIConfig(ctx context.Context, req *connect.Request[v1.GetAIConfigRequest]) (*connect.Response[v1.GetAIConfigResponse], error) {
+	return c.getAIConfig.CallUnary(ctx, req)
+}
+
+// SaveAIConfig calls instagram.v1.InstagramService.SaveAIConfig.
+func (c *instagramServiceClient) SaveAIConfig(ctx context.Context, req *connect.Request[v1.SaveAIConfigRequest]) (*connect.Response[v1.SaveAIConfigResponse], error) {
+	return c.saveAIConfig.CallUnary(ctx, req)
+}
+
+// GetActivity calls instagram.v1.InstagramService.GetActivity.
+func (c *instagramServiceClient) GetActivity(ctx context.Context, req *connect.Request[v1.GetActivityRequest]) (*connect.Response[v1.GetActivityResponse], error) {
+	return c.getActivity.CallUnary(ctx, req)
+}
+
 // InstagramServiceHandler is an implementation of the instagram.v1.InstagramService service.
 type InstagramServiceHandler interface {
 	// GetStatus returns feature availability plus this user's connection state.
@@ -173,6 +224,12 @@ type InstagramServiceHandler interface {
 	SaveMetaApp(context.Context, *connect.Request[v1.SaveMetaAppRequest]) (*connect.Response[v1.SaveMetaAppResponse], error)
 	// DeleteMetaApp removes the client's Meta app registration.
 	DeleteMetaApp(context.Context, *connect.Request[v1.DeleteMetaAppRequest]) (*connect.Response[v1.DeleteMetaAppResponse], error)
+	// GetAIConfig returns this client's AI reply configuration.
+	GetAIConfig(context.Context, *connect.Request[v1.GetAIConfigRequest]) (*connect.Response[v1.GetAIConfigResponse], error)
+	// SaveAIConfig stores it.
+	SaveAIConfig(context.Context, *connect.Request[v1.SaveAIConfigRequest]) (*connect.Response[v1.SaveAIConfigResponse], error)
+	// GetActivity lists received events and the replies sent.
+	GetActivity(context.Context, *connect.Request[v1.GetActivityRequest]) (*connect.Response[v1.GetActivityResponse], error)
 }
 
 // NewInstagramServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -218,6 +275,24 @@ func NewInstagramServiceHandler(svc InstagramServiceHandler, opts ...connect.Han
 		connect.WithSchema(instagramServiceMethods.ByName("DeleteMetaApp")),
 		connect.WithHandlerOptions(opts...),
 	)
+	instagramServiceGetAIConfigHandler := connect.NewUnaryHandler(
+		InstagramServiceGetAIConfigProcedure,
+		svc.GetAIConfig,
+		connect.WithSchema(instagramServiceMethods.ByName("GetAIConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instagramServiceSaveAIConfigHandler := connect.NewUnaryHandler(
+		InstagramServiceSaveAIConfigProcedure,
+		svc.SaveAIConfig,
+		connect.WithSchema(instagramServiceMethods.ByName("SaveAIConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instagramServiceGetActivityHandler := connect.NewUnaryHandler(
+		InstagramServiceGetActivityProcedure,
+		svc.GetActivity,
+		connect.WithSchema(instagramServiceMethods.ByName("GetActivity")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/instagram.v1.InstagramService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case InstagramServiceGetStatusProcedure:
@@ -232,6 +307,12 @@ func NewInstagramServiceHandler(svc InstagramServiceHandler, opts ...connect.Han
 			instagramServiceSaveMetaAppHandler.ServeHTTP(w, r)
 		case InstagramServiceDeleteMetaAppProcedure:
 			instagramServiceDeleteMetaAppHandler.ServeHTTP(w, r)
+		case InstagramServiceGetAIConfigProcedure:
+			instagramServiceGetAIConfigHandler.ServeHTTP(w, r)
+		case InstagramServiceSaveAIConfigProcedure:
+			instagramServiceSaveAIConfigHandler.ServeHTTP(w, r)
+		case InstagramServiceGetActivityProcedure:
+			instagramServiceGetActivityHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -263,4 +344,16 @@ func (UnimplementedInstagramServiceHandler) SaveMetaApp(context.Context, *connec
 
 func (UnimplementedInstagramServiceHandler) DeleteMetaApp(context.Context, *connect.Request[v1.DeleteMetaAppRequest]) (*connect.Response[v1.DeleteMetaAppResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instagram.v1.InstagramService.DeleteMetaApp is not implemented"))
+}
+
+func (UnimplementedInstagramServiceHandler) GetAIConfig(context.Context, *connect.Request[v1.GetAIConfigRequest]) (*connect.Response[v1.GetAIConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instagram.v1.InstagramService.GetAIConfig is not implemented"))
+}
+
+func (UnimplementedInstagramServiceHandler) SaveAIConfig(context.Context, *connect.Request[v1.SaveAIConfigRequest]) (*connect.Response[v1.SaveAIConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instagram.v1.InstagramService.SaveAIConfig is not implemented"))
+}
+
+func (UnimplementedInstagramServiceHandler) GetActivity(context.Context, *connect.Request[v1.GetActivityRequest]) (*connect.Response[v1.GetActivityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("instagram.v1.InstagramService.GetActivity is not implemented"))
 }

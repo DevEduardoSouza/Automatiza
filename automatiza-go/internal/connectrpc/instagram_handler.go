@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	instagramv1 "automatiza-go/internal/gen/instagram/v1"
+	"automatiza-go/internal/models"
 	"automatiza-go/internal/services/instagram"
 
 	"connectrpc.com/connect"
@@ -154,5 +155,92 @@ func metaAppToProto(v *instagram.MetaAppView) *instagramv1.MetaApp {
 		RedirectUri: v.RedirectURI,
 		IsVerified:  v.IsVerified,
 		UpdatedAt:   v.UpdatedAt,
+	}
+}
+
+// GetAIConfig returns the caller's AI reply configuration.
+func (h *InstagramHandler) GetAIConfig(
+	ctx context.Context,
+	_ *connect.Request[instagramv1.GetAIConfigRequest],
+) (*connect.Response[instagramv1.GetAIConfigResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	cfg, err := h.svc.GetAIConfig(ctx, user.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to load ai config: %w", err))
+	}
+	return connect.NewResponse(&instagramv1.GetAIConfigResponse{
+		Config:      aiConfigToProto(cfg),
+		AiAvailable: h.svc.AIReplyEnabled(),
+		DailyCap:    int32(h.svc.DailyReplyCap(ctx, user.ID)),
+	}), nil
+}
+
+// SaveAIConfig stores it.
+func (h *InstagramHandler) SaveAIConfig(
+	ctx context.Context,
+	req *connect.Request[instagramv1.SaveAIConfigRequest],
+) (*connect.Response[instagramv1.SaveAIConfigResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	in := req.Msg.GetConfig()
+	if in == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("configuração ausente"))
+	}
+	saved, err := h.svc.SaveAIConfig(ctx, user.ID, &models.InstagramAIConfig{
+		Persona:         in.GetPersona(),
+		BusinessContext: in.GetBusinessContext(),
+		Tone:            in.GetTone(),
+		BlockedTopics:   in.GetBlockedTopics(),
+		FallbackMessage: in.GetFallbackMessage(),
+		ReplyComments:   in.GetReplyComments(),
+		ReplyDMs:        in.GetReplyDms(),
+		ReplyMentions:   in.GetReplyMentions(),
+		IsActive:        in.GetIsActive(),
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to save ai config: %w", err))
+	}
+	return connect.NewResponse(&instagramv1.SaveAIConfigResponse{Config: aiConfigToProto(saved)}), nil
+}
+
+// GetActivity lists received events and the replies sent.
+func (h *InstagramHandler) GetActivity(
+	ctx context.Context,
+	req *connect.Request[instagramv1.GetActivityRequest],
+) (*connect.Response[instagramv1.GetActivityResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	items, err := h.svc.ListActivity(ctx, user.ID, int(req.Msg.GetLimit()))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to load activity: %w", err))
+	}
+	out := make([]*instagramv1.ActivityItem, 0, len(items))
+	for i := range items {
+		it := &items[i]
+		out = append(out, &instagramv1.ActivityItem{
+			Id: it.ID, EventType: it.EventType, Content: it.Content,
+			Status: it.Status, ErrorCode: it.ErrorCode,
+			ReceivedAt: it.ReceivedAt, ReplyText: it.ReplyText,
+		})
+	}
+	return connect.NewResponse(&instagramv1.GetActivityResponse{Items: out}), nil
+}
+
+func aiConfigToProto(c *models.InstagramAIConfig) *instagramv1.AIConfig {
+	if c == nil {
+		return nil
+	}
+	return &instagramv1.AIConfig{
+		Persona: c.Persona, BusinessContext: c.BusinessContext, Tone: c.Tone,
+		BlockedTopics: c.BlockedTopics, FallbackMessage: c.FallbackMessage,
+		ReplyComments: c.ReplyComments, ReplyDms: c.ReplyDMs, ReplyMentions: c.ReplyMentions,
+		IsActive: c.IsActive, UpdatedAt: c.UpdatedAt,
 	}
 }

@@ -298,7 +298,7 @@ func newServiceTest(t *testing.T, o svcOpts) *svcHarness {
 		BackendBaseURL:  "https://api.example",
 		EncryptionKey:   testEncryptionKey,
 		StateSigningKey: stateKey,
-	}, api, creds, story, del, nil /* appsRepo: sem app por cliente, cai no app global */, c, zap.NewNop())
+	}, api, ServiceRepositories{Credentials: creds, StoryPosts: story, DataDeletion: del}, nil /* aiGen */, c, zap.NewNop())
 
 	return &svcHarness{svc: svc, creds: creds, del: del, story: story, cache: c, mr: mr, apiHit: &hits}
 }

@@ -61,6 +61,61 @@ message DeleteMetaAppRequest {}
 
 message DeleteMetaAppResponse {}
 
+// AI reply configuration owned by the client.
+message AIConfig {
+  string persona = 1;
+  string business_context = 2;
+  string tone = 3;
+  string blocked_topics = 4;
+  string fallback_message = 5;
+  bool reply_comments = 6;
+  bool reply_dms = 7;
+  bool reply_mentions = 8;
+  // Master switch for THIS client. Off by default.
+  bool is_active = 9;
+  string updated_at = 10;
+}
+
+message GetAIConfigRequest {}
+
+message GetAIConfigResponse {
+  AIConfig config = 1;
+  // Whether the platform-wide AI reply switch is on. When false the UI shows
+  // the config as unavailable regardless of the client's own switch.
+  bool ai_available = 2;
+  // Daily reply cap from the client's plan (0 = server default).
+  int32 daily_cap = 3;
+}
+
+message SaveAIConfigRequest {
+  AIConfig config = 1;
+}
+
+message SaveAIConfigResponse {
+  AIConfig config = 1;
+}
+
+// One received event plus, when present, what the AI answered.
+message ActivityItem {
+  string id = 1;
+  // comment | message | mention
+  string event_type = 2;
+  string content = 3;
+  // received | replied | skipped | failed
+  string status = 4;
+  string error_code = 5;
+  string received_at = 6;
+  string reply_text = 7;
+}
+
+message GetActivityRequest {
+  int32 limit = 1;
+}
+
+message GetActivityResponse {
+  repeated ActivityItem items = 1;
+}
+
 message GetStatusRequest {}
 
 message GetStatusResponse {
@@ -107,4 +162,10 @@ service InstagramService {
   rpc SaveMetaApp(SaveMetaAppRequest) returns (SaveMetaAppResponse);
   // DeleteMetaApp removes the client's Meta app registration.
   rpc DeleteMetaApp(DeleteMetaAppRequest) returns (DeleteMetaAppResponse);
+  // GetAIConfig returns this client's AI reply configuration.
+  rpc GetAIConfig(GetAIConfigRequest) returns (GetAIConfigResponse);
+  // SaveAIConfig stores it.
+  rpc SaveAIConfig(SaveAIConfigRequest) returns (SaveAIConfigResponse);
+  // GetActivity lists received events and the replies sent.
+  rpc GetActivity(GetActivityRequest) returns (GetActivityResponse);
 }

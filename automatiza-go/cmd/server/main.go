@@ -440,6 +440,16 @@ func main() {
 		config.NewModuleLogger(logger, "ml"),
 	)
 
+	// A IA é criada ANTES do Instagram porque o canal de resposta automática
+	// depende dela (via instagramAIAdapter).
+	aiService := ai.NewAIService(
+		cfg.AIApiURL,
+		cfg.AIApiKey,
+		cfg.AIModel,
+		cacheClient,
+		config.NewModuleLogger(logger, "ai"),
+	)
+
 	// Instagram Stories ({story} tag). Nasce desligado: além de exigir
 	// INSTAGRAM_APP_ID/SECRET, há o kill switch dedicado
 	// INSTAGRAM_STORIES_ENABLED (default false) — provisionar credencial não
@@ -461,12 +471,21 @@ func main() {
 			// URL de callback NOSSA, igual para todos os clientes; cada um a
 			// cola no painel do próprio app da Meta.
 			RedirectURI: instagramRedirectURI,
+			// Kill switch PRÓPRIO da resposta automática.
+			AIReplyEnabled: cfg.InstagramAIReplyEnabled,
 		},
 		instagram.NewAPIClient(cfg.InstagramAppID, cfg.InstagramAppSecret, instagramRedirectURI, config.NewModuleLogger(logger, "instagram")),
-		repos.InstagramCredentials,
-		repos.InstagramStoryPost,
-		repos.InstagramDataDeletion,
-		repos.InstagramApp,
+		instagram.ServiceRepositories{
+			Credentials:  repos.InstagramCredentials,
+			StoryPosts:   repos.InstagramStoryPost,
+			DataDeletion: repos.InstagramDataDeletion,
+			Apps:         repos.InstagramApp,
+			Inbound:      repos.InstagramInbound,
+			AIConfig:     repos.InstagramAIConfig,
+			Replies:      repos.InstagramReply,
+			PlanCap:      repos.InstagramPlanCap,
+		},
+		instagramAIAdapter{aiService},
 		cacheClient,
 		config.NewModuleLogger(logger, "instagram"),
 	)
@@ -478,6 +497,23 @@ func main() {
 			"INSTAGRAM_STORIES_ENABLED=true com configuração incompleta — feature permanece desligada", nil,
 			map[string]string{"module": "instagram", "operation": "startup_config"})
 	}
+	// A ingestão do webhook enfileira a resposta automática. Injetado aqui, e
+	// não no construtor, porque o pacote workers importa o de Instagram — a
+	// dependência inversa entraria como ciclo.
+	instagramService.SetReplyEnqueuer(func(ctx context.Context, ev *models.InstagramInboundEvent) error {
+		_, err := queueClient.EnqueueInstagramReply(ctx, &workers.InstagramReplyJobData{
+			UserID:          ev.UserID,
+			InboundID:       ev.ID,
+			ProviderEventID: ev.ProviderEventID,
+			EventType:       ev.EventType,
+			SenderID:        ev.SenderID,
+			ThreadID:        ev.ThreadID,
+			Content:         ev.Content,
+			OccurredAt:      ev.OccurredAt,
+		})
+		return err
+	})
+
 	// MediaStore só existe com Redis. Antes esta linha lia redisClient.Client
 	// fora de qualquer guarda: sem Redis, o processo entrava em panic no boot
 	// mesmo com a feature desligada.
@@ -485,14 +521,6 @@ func main() {
 	if redisClient != nil {
 		instagramMediaStore = instagram.NewMediaStore(redisClient.Client, config.NewModuleLogger(logger, "instagram-media"))
 	}
-
-	aiService := ai.NewAIService(
-		cfg.AIApiURL,
-		cfg.AIApiKey,
-		cfg.AIModel,
-		cacheClient,
-		config.NewModuleLogger(logger, "ai"),
-	)
 
 	// Create email service (SMTP Gmail) - reads config from database with env fallback
 	var fallbackEmailConfig *email.Config
@@ -977,7 +1005,7 @@ func main() {
 		if redisClient != nil {
 			redisClientForWorker = redisClient.Client
 		}
-		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, offerGenerateService, cacheClient, automationRepo, instagramService, instagramMediaStore, repos.InstagramStoryPost, groupMemberService, logger)
+		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, offerGenerateService, cacheClient, automationRepo, instagramService, instagramMediaStore, repos.InstagramStoryPost, repos.InstagramInbound, repos.InstagramReply, groupMemberService, logger)
 		return
 	}
 
@@ -1670,6 +1698,8 @@ func runWorker(
 	instagramService *instagram.Service,
 	instagramMediaStore *instagram.MediaStore,
 	instagramStoryRepo repository.InstagramStoryPostRepository,
+	instagramInboundRepo repository.InstagramInboundRepository,
+	instagramReplyRepo repository.InstagramReplyRepository,
 	groupMemberService *groupmembers.Service,
 	logger *zap.Logger,
 ) {
@@ -1951,6 +1981,19 @@ func runWorker(
 	queueServer.RegisterHandler(workers.TypeInstagramPublishStory,
 		observability.SentryAsynqMiddleware("instagram_story", asynq.HandlerFunc(instagramStoryWorker.ProcessTask)))
 
+	// Resposta automática do Instagram. Registrado SEMPRE (evita "handler not
+	// found" se sobrar job na fila após desligar a IA); com o kill switch off o
+	// worker marca skip e não chama nem a IA nem a Meta.
+	instagramReplyWorker := workers.NewInstagramReplyWorker(
+		instagramService,
+		instagramInboundRepo,
+		instagramReplyRepo,
+		cacheClient,
+		config.NewModuleLogger(logger, "instagram-reply-worker"),
+	)
+	queueServer.RegisterHandler(workers.TypeInstagramAIReply,
+		observability.SentryAsynqMiddleware("instagram_reply", asynq.HandlerFunc(instagramReplyWorker.ProcessTask)))
+
 	// Register reconciliation handlers if service is available
 	if reconciliationWorker != nil {
 		queueServer.RegisterHandler(workers.TypeReconcileChat, observability.SentryAsynqMiddleware("reconciliation", asynq.HandlerFunc(reconciliationWorker.ProcessChatWrapper())))
@@ -2013,4 +2056,32 @@ func isStdioSyncErr(err error) bool {
 	return strings.Contains(msg, "/dev/stdout") ||
 		strings.Contains(msg, "/dev/stderr") ||
 		strings.Contains(msg, "invalid argument")
+}
+
+// instagramAIAdapter liga o serviço de IA ao pacote Instagram.
+//
+// Existe porque os dois pacotes declaram tipos próprios para o mesmo contrato:
+// assim o pacote Instagram não precisa importar o de IA (e vice-versa), e
+// trocar o provedor de IA no futuro não mexe no Instagram. O custo é esta
+// tradução de nove linhas.
+type instagramAIAdapter struct{ svc ai.Service }
+
+func (a instagramAIAdapter) GenerateInstagramReply(ctx context.Context, req *instagram.AIReplyRequest) (*instagram.AIReplyResult, error) {
+	res, err := a.svc.GenerateInstagramReply(ctx, &ai.InstagramReplyRequest{
+		Persona:         req.Persona,
+		BusinessContext: req.BusinessContext,
+		Tone:            req.Tone,
+		BlockedTopics:   req.BlockedTopics,
+		Channel:         req.Channel,
+		Content:         req.Content,
+		MaxChars:        req.MaxChars,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &instagram.AIReplyResult{
+		Text:             res.Text,
+		PromptTokens:     res.PromptTokens,
+		CompletionTokens: res.CompletionTokens,
+	}, nil
 }

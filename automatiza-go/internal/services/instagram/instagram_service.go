@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -46,6 +47,9 @@ type ServiceConfig struct {
 	BackendBaseURL  string
 	EncryptionKey   string
 	StateSigningKey string
+	// AIReplyEnabled é o kill switch GLOBAL da resposta automática, separado do
+	// de Stories: dá para ter o canal ligado com a IA desligada para todos.
+	AIReplyEnabled bool
 	// RedirectURI é a URL de callback do OAuth. É NOSSA e idêntica para todos
 	// os clientes — cada um só a cola no painel do próprio app da Meta. Quem
 	// diz de qual usuário é o callback é o `state` assinado, não a URL.
@@ -71,31 +75,67 @@ type Service struct {
 	// para o usuário), o service cai no app global de `api` — o modo antigo,
 	// mantido para não quebrar quem já conectou por ele.
 	appsRepo repository.InstagramAppRepository
-	cache    *cache.Cache
-	logger   *zap.Logger
+	// inboundRepo guarda os eventos que chegam pelo webhook (Fase 2).
+	inboundRepo repository.InstagramInboundRepository
+	// Peças da resposta automática (Fase 3/4/5).
+	aiConfigRepo repository.InstagramAIConfigRepository
+	replyRepo    repository.InstagramReplyRepository
+	planCapRepo  repository.InstagramPlanCapRepository
+	aiGen        AIReplyGenerator
+	// enqueueReply é injetado depois da construção porque a fila (workers) já
+	// depende deste pacote — injetar aqui evita o ciclo de importação.
+	enqueueReply func(ctx context.Context, ev *models.InstagramInboundEvent) error
+	cache        *cache.Cache
+	logger       *zap.Logger
+}
+
+// ServiceRepositories agrupa os repositórios do canal.
+//
+// Struct, e não parâmetros posicionais: eram treze argumentos, seis deles
+// interfaces do MESMO formato — trocar dois de lugar compilava e só quebraria
+// em produção, no caminho de credencial de cliente.
+type ServiceRepositories struct {
+	Credentials  repository.InstagramCredentialsRepository
+	StoryPosts   repository.InstagramStoryPostRepository
+	DataDeletion repository.InstagramDataDeletionRepository
+	Apps         repository.InstagramAppRepository
+	Inbound      repository.InstagramInboundRepository
+	AIConfig     repository.InstagramAIConfigRepository
+	Replies      repository.InstagramReplyRepository
+	PlanCap      repository.InstagramPlanCapRepository
 }
 
 // NewService builds the Instagram service.
 func NewService(
 	cfg ServiceConfig,
 	api *APIClient,
-	credsRepo repository.InstagramCredentialsRepository,
-	storyRepo repository.InstagramStoryPostRepository,
-	deletionRepo repository.InstagramDataDeletionRepository,
-	appsRepo repository.InstagramAppRepository,
+	repos ServiceRepositories,
+	aiGen AIReplyGenerator,
 	c *cache.Cache,
 	logger *zap.Logger,
 ) *Service {
 	return &Service{
 		cfg:          cfg,
 		api:          api,
-		credsRepo:    credsRepo,
-		storyRepo:    storyRepo,
-		deletionRepo: deletionRepo,
-		appsRepo:     appsRepo,
+		credsRepo:    repos.Credentials,
+		storyRepo:    repos.StoryPosts,
+		deletionRepo: repos.DataDeletion,
+		appsRepo:     repos.Apps,
+		inboundRepo:  repos.Inbound,
+		aiConfigRepo: repos.AIConfig,
+		replyRepo:    repos.Replies,
+		planCapRepo:  repos.PlanCap,
+		aiGen:        aiGen,
 		cache:        c,
 		logger:       logger,
 	}
+}
+
+// SetReplyEnqueuer liga a ingestão à fila de resposta. Chamado no wiring, após
+// a construção: o pacote workers importa este, então a dependência inversa tem
+// de entrar por injeção.
+func (s *Service) SetReplyEnqueuer(fn func(ctx context.Context, ev *models.InstagramInboundEvent) error) {
+	s.enqueueReply = fn
 }
 
 // --- resolução do app da Meta por cliente ---
@@ -938,4 +978,126 @@ func (s *Service) viewOf(app *models.InstagramApp) *MetaAppView {
 		IsVerified:  app.IsVerified,
 		UpdatedAt:   app.UpdatedAt,
 	}
+}
+
+// --- webhook de entrada (Fase 2) ---
+
+// ErrWebhookNotConfigured: token da URL não corresponde a nenhum cliente.
+var ErrWebhookNotConfigured = errors.New("instagram: unknown webhook token")
+
+// VerifyWebhookChallenge responde ao handshake GET da Meta.
+//
+// A Meta chama a URL com hub.mode=subscribe, hub.verify_token e hub.challenge;
+// só devolvemos o challenge se o verify_token bater com o DAQUELE cliente. O
+// token vive por cliente justamente para um não conseguir validar o webhook do
+// outro.
+func (s *Service) VerifyWebhookChallenge(ctx context.Context, webhookToken, mode, verifyToken, challenge string) (string, error) {
+	if s.appsRepo == nil {
+		return "", ErrWebhookNotConfigured
+	}
+	app, err := s.appsRepo.GetByWebhookToken(ctx, webhookToken)
+	if err != nil {
+		return "", err
+	}
+	if app == nil {
+		return "", ErrWebhookNotConfigured
+	}
+	if mode != "subscribe" {
+		return "", ErrWebhookNotConfigured
+	}
+	// Tempo constante: o verify_token é um segredo compartilhado com a Meta.
+	if subtle.ConstantTimeCompare([]byte(verifyToken), []byte(app.VerifyToken)) != 1 {
+		return "", ErrWebhookNotConfigured
+	}
+	// O handshake bem-sucedido é a prova de que o cliente configurou a URL certa.
+	if err := s.appsRepo.MarkVerified(ctx, app.UserID); err != nil {
+		s.logger.Warn("instagram webhook: mark verified failed", zap.String("userID", app.UserID))
+	}
+	s.logger.Info("instagram webhook verified", zap.String("userID", app.UserID))
+	return challenge, nil
+}
+
+// HandleWebhook valida a assinatura e grava os eventos.
+//
+// Devolve quantos eventos NOVOS entraram (reenvio da Meta não conta). O
+// chamador responde 200 de qualquer forma depois de validar a assinatura: a
+// Meta trata não-200 como falha e reenvia, e reenviar um evento que já
+// gravamos só gasta tráfego.
+func (s *Service) HandleWebhook(ctx context.Context, webhookToken string, rawBody []byte, signature string) (int, error) {
+	if s.appsRepo == nil || s.inboundRepo == nil {
+		return 0, ErrWebhookNotConfigured
+	}
+	client, app, err := s.ClientByWebhookToken(ctx, webhookToken)
+	if err != nil {
+		return 0, ErrWebhookNotConfigured
+	}
+	// Assinatura ANTES de decodificar: o corpo é conteúdo não confiável até aqui.
+	if err := VerifyWebhookSignature(rawBody, signature, client.AppSecret()); err != nil {
+		return 0, err
+	}
+
+	// Conta própria do cliente, para o parser descartar eco/auto-comentário.
+	own := map[string]bool{}
+	if cred, err := s.credsRepo.Get(ctx, app.UserID); err == nil && cred != nil && cred.IGUserID != "" {
+		own[cred.IGUserID] = true
+	}
+
+	events, err := ParseWebhook(rawBody, own)
+	if err != nil {
+		// Payload que não decodifica não vira erro para a Meta: ela reenviaria
+		// para sempre um corpo que nunca vai ser aceito.
+		s.logger.Warn("instagram webhook: undecodable payload", zap.String("userID", app.UserID))
+		return 0, nil
+	}
+
+	created := 0
+	for i := range events {
+		e := &events[i]
+		row, isNew, err := s.inboundRepo.Create(ctx, &models.InstagramInboundEvent{
+			UserID:          app.UserID,
+			ProviderEventID: e.ProviderEventID,
+			EventType:       e.EventType,
+			IGAccountID:     e.IGAccountID,
+			SenderID:        e.SenderID,
+			ThreadID:        e.ThreadID,
+			Content:         e.Content,
+			OccurredAt:      e.OccurredAt,
+		})
+		if err != nil {
+			// Uma linha problemática não pode derrubar as outras do mesmo lote.
+			s.logger.Warn("instagram webhook: persist event failed",
+				zap.String("userID", app.UserID), zap.String("type", e.EventType), zap.Error(err))
+			continue
+		}
+		if !isNew {
+			continue
+		}
+		created++
+		// Enfileira a resposta apenas para evento NOVO. Reenvio da Meta não
+		// pode gerar um segundo job — e o TaskID determinístico é a segunda
+		// barreira, caso gere.
+		if s.enqueueReply != nil {
+			if err := s.enqueueReply(ctx, row); err != nil {
+				// Falha ao enfileirar não invalida a ingestão: o evento está
+				// gravado e visível no histórico. Perder a resposta é ruim;
+				// perder o registro seria pior.
+				s.logger.Warn("instagram webhook: enqueue reply failed",
+					zap.String("userID", app.UserID), zap.String("type", e.EventType))
+			}
+		}
+	}
+	if created > 0 {
+		// Só contagens: o conteúdo é texto de terceiro.
+		s.logger.Info("instagram webhook ingested",
+			zap.String("userID", app.UserID), zap.Int("novos", created), zap.Int("recebidos", len(events)))
+	}
+	return created, nil
+}
+
+// ListInboundEvents devolve o histórico do usuário para a aba Histórico.
+func (s *Service) ListInboundEvents(ctx context.Context, userID string, limit int) ([]models.InstagramInboundEvent, error) {
+	if s.inboundRepo == nil {
+		return nil, nil
+	}
+	return s.inboundRepo.ListRecentByUser(ctx, userID, limit)
 }

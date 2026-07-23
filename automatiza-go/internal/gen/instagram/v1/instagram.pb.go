@@ -467,6 +467,494 @@ func (*DeleteMetaAppResponse) Descriptor() ([]byte, []int) {
 	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{7}
 }
 
+// AI reply configuration owned by the client.
+type AIConfig struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Persona         string                 `protobuf:"bytes,1,opt,name=persona,proto3" json:"persona,omitempty"`
+	BusinessContext string                 `protobuf:"bytes,2,opt,name=business_context,json=businessContext,proto3" json:"business_context,omitempty"`
+	Tone            string                 `protobuf:"bytes,3,opt,name=tone,proto3" json:"tone,omitempty"`
+	BlockedTopics   string                 `protobuf:"bytes,4,opt,name=blocked_topics,json=blockedTopics,proto3" json:"blocked_topics,omitempty"`
+	FallbackMessage string                 `protobuf:"bytes,5,opt,name=fallback_message,json=fallbackMessage,proto3" json:"fallback_message,omitempty"`
+	ReplyComments   bool                   `protobuf:"varint,6,opt,name=reply_comments,json=replyComments,proto3" json:"reply_comments,omitempty"`
+	ReplyDms        bool                   `protobuf:"varint,7,opt,name=reply_dms,json=replyDms,proto3" json:"reply_dms,omitempty"`
+	ReplyMentions   bool                   `protobuf:"varint,8,opt,name=reply_mentions,json=replyMentions,proto3" json:"reply_mentions,omitempty"`
+	// Master switch for THIS client. Off by default.
+	IsActive      bool   `protobuf:"varint,9,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
+	UpdatedAt     string `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AIConfig) Reset() {
+	*x = AIConfig{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AIConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AIConfig) ProtoMessage() {}
+
+func (x *AIConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AIConfig.ProtoReflect.Descriptor instead.
+func (*AIConfig) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *AIConfig) GetPersona() string {
+	if x != nil {
+		return x.Persona
+	}
+	return ""
+}
+
+func (x *AIConfig) GetBusinessContext() string {
+	if x != nil {
+		return x.BusinessContext
+	}
+	return ""
+}
+
+func (x *AIConfig) GetTone() string {
+	if x != nil {
+		return x.Tone
+	}
+	return ""
+}
+
+func (x *AIConfig) GetBlockedTopics() string {
+	if x != nil {
+		return x.BlockedTopics
+	}
+	return ""
+}
+
+func (x *AIConfig) GetFallbackMessage() string {
+	if x != nil {
+		return x.FallbackMessage
+	}
+	return ""
+}
+
+func (x *AIConfig) GetReplyComments() bool {
+	if x != nil {
+		return x.ReplyComments
+	}
+	return false
+}
+
+func (x *AIConfig) GetReplyDms() bool {
+	if x != nil {
+		return x.ReplyDms
+	}
+	return false
+}
+
+func (x *AIConfig) GetReplyMentions() bool {
+	if x != nil {
+		return x.ReplyMentions
+	}
+	return false
+}
+
+func (x *AIConfig) GetIsActive() bool {
+	if x != nil {
+		return x.IsActive
+	}
+	return false
+}
+
+func (x *AIConfig) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
+type GetAIConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAIConfigRequest) Reset() {
+	*x = GetAIConfigRequest{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAIConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAIConfigRequest) ProtoMessage() {}
+
+func (x *GetAIConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAIConfigRequest.ProtoReflect.Descriptor instead.
+func (*GetAIConfigRequest) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{9}
+}
+
+type GetAIConfigResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Config *AIConfig              `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	// Whether the platform-wide AI reply switch is on. When false the UI shows
+	// the config as unavailable regardless of the client's own switch.
+	AiAvailable bool `protobuf:"varint,2,opt,name=ai_available,json=aiAvailable,proto3" json:"ai_available,omitempty"`
+	// Daily reply cap from the client's plan (0 = server default).
+	DailyCap      int32 `protobuf:"varint,3,opt,name=daily_cap,json=dailyCap,proto3" json:"daily_cap,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAIConfigResponse) Reset() {
+	*x = GetAIConfigResponse{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAIConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAIConfigResponse) ProtoMessage() {}
+
+func (x *GetAIConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAIConfigResponse.ProtoReflect.Descriptor instead.
+func (*GetAIConfigResponse) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetAIConfigResponse) GetConfig() *AIConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *GetAIConfigResponse) GetAiAvailable() bool {
+	if x != nil {
+		return x.AiAvailable
+	}
+	return false
+}
+
+func (x *GetAIConfigResponse) GetDailyCap() int32 {
+	if x != nil {
+		return x.DailyCap
+	}
+	return 0
+}
+
+type SaveAIConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Config        *AIConfig              `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveAIConfigRequest) Reset() {
+	*x = SaveAIConfigRequest{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveAIConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveAIConfigRequest) ProtoMessage() {}
+
+func (x *SaveAIConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveAIConfigRequest.ProtoReflect.Descriptor instead.
+func (*SaveAIConfigRequest) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *SaveAIConfigRequest) GetConfig() *AIConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+type SaveAIConfigResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Config        *AIConfig              `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveAIConfigResponse) Reset() {
+	*x = SaveAIConfigResponse{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveAIConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveAIConfigResponse) ProtoMessage() {}
+
+func (x *SaveAIConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveAIConfigResponse.ProtoReflect.Descriptor instead.
+func (*SaveAIConfigResponse) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *SaveAIConfigResponse) GetConfig() *AIConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+// One received event plus, when present, what the AI answered.
+type ActivityItem struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// comment | message | mention
+	EventType string `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	Content   string `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	// received | replied | skipped | failed
+	Status        string `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	ErrorCode     string `protobuf:"bytes,5,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	ReceivedAt    string `protobuf:"bytes,6,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`
+	ReplyText     string `protobuf:"bytes,7,opt,name=reply_text,json=replyText,proto3" json:"reply_text,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActivityItem) Reset() {
+	*x = ActivityItem{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActivityItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActivityItem) ProtoMessage() {}
+
+func (x *ActivityItem) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActivityItem.ProtoReflect.Descriptor instead.
+func (*ActivityItem) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ActivityItem) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ActivityItem) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *ActivityItem) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *ActivityItem) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ActivityItem) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *ActivityItem) GetReceivedAt() string {
+	if x != nil {
+		return x.ReceivedAt
+	}
+	return ""
+}
+
+func (x *ActivityItem) GetReplyText() string {
+	if x != nil {
+		return x.ReplyText
+	}
+	return ""
+}
+
+type GetActivityRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetActivityRequest) Reset() {
+	*x = GetActivityRequest{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetActivityRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetActivityRequest) ProtoMessage() {}
+
+func (x *GetActivityRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetActivityRequest.ProtoReflect.Descriptor instead.
+func (*GetActivityRequest) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetActivityRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type GetActivityResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*ActivityItem        `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetActivityResponse) Reset() {
+	*x = GetActivityResponse{}
+	mi := &file_instagram_v1_instagram_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetActivityResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetActivityResponse) ProtoMessage() {}
+
+func (x *GetActivityResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_instagram_v1_instagram_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetActivityResponse.ProtoReflect.Descriptor instead.
+func (*GetActivityResponse) Descriptor() ([]byte, []int) {
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetActivityResponse) GetItems() []*ActivityItem {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
 type GetStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -475,7 +963,7 @@ type GetStatusRequest struct {
 
 func (x *GetStatusRequest) Reset() {
 	*x = GetStatusRequest{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[8]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -487,7 +975,7 @@ func (x *GetStatusRequest) String() string {
 func (*GetStatusRequest) ProtoMessage() {}
 
 func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[8]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -500,7 +988,7 @@ func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetStatusRequest) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{8}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{16}
 }
 
 type GetStatusResponse struct {
@@ -524,7 +1012,7 @@ type GetStatusResponse struct {
 
 func (x *GetStatusResponse) Reset() {
 	*x = GetStatusResponse{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[9]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -536,7 +1024,7 @@ func (x *GetStatusResponse) String() string {
 func (*GetStatusResponse) ProtoMessage() {}
 
 func (x *GetStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[9]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -549,7 +1037,7 @@ func (x *GetStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetStatusResponse) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{9}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetStatusResponse) GetFeatureEnabled() bool {
@@ -609,7 +1097,7 @@ type GetAuthorizeUrlRequest struct {
 
 func (x *GetAuthorizeUrlRequest) Reset() {
 	*x = GetAuthorizeUrlRequest{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[10]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -621,7 +1109,7 @@ func (x *GetAuthorizeUrlRequest) String() string {
 func (*GetAuthorizeUrlRequest) ProtoMessage() {}
 
 func (x *GetAuthorizeUrlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[10]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -634,7 +1122,7 @@ func (x *GetAuthorizeUrlRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuthorizeUrlRequest.ProtoReflect.Descriptor instead.
 func (*GetAuthorizeUrlRequest) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{10}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{18}
 }
 
 type GetAuthorizeUrlResponse struct {
@@ -646,7 +1134,7 @@ type GetAuthorizeUrlResponse struct {
 
 func (x *GetAuthorizeUrlResponse) Reset() {
 	*x = GetAuthorizeUrlResponse{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[11]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -658,7 +1146,7 @@ func (x *GetAuthorizeUrlResponse) String() string {
 func (*GetAuthorizeUrlResponse) ProtoMessage() {}
 
 func (x *GetAuthorizeUrlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[11]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -671,7 +1159,7 @@ func (x *GetAuthorizeUrlResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuthorizeUrlResponse.ProtoReflect.Descriptor instead.
 func (*GetAuthorizeUrlResponse) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{11}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetAuthorizeUrlResponse) GetUrl() string {
@@ -689,7 +1177,7 @@ type DisconnectRequest struct {
 
 func (x *DisconnectRequest) Reset() {
 	*x = DisconnectRequest{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[12]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -701,7 +1189,7 @@ func (x *DisconnectRequest) String() string {
 func (*DisconnectRequest) ProtoMessage() {}
 
 func (x *DisconnectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[12]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -714,7 +1202,7 @@ func (x *DisconnectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectRequest.ProtoReflect.Descriptor instead.
 func (*DisconnectRequest) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{12}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{20}
 }
 
 type DisconnectResponse struct {
@@ -725,7 +1213,7 @@ type DisconnectResponse struct {
 
 func (x *DisconnectResponse) Reset() {
 	*x = DisconnectResponse{}
-	mi := &file_instagram_v1_instagram_proto_msgTypes[13]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -737,7 +1225,7 @@ func (x *DisconnectResponse) String() string {
 func (*DisconnectResponse) ProtoMessage() {}
 
 func (x *DisconnectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_instagram_v1_instagram_proto_msgTypes[13]
+	mi := &file_instagram_v1_instagram_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -750,7 +1238,7 @@ func (x *DisconnectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectResponse.ProtoReflect.Descriptor instead.
 func (*DisconnectResponse) Descriptor() ([]byte, []int) {
-	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{13}
+	return file_instagram_v1_instagram_proto_rawDescGZIP(), []int{21}
 }
 
 var File_instagram_v1_instagram_proto protoreflect.FileDescriptor
@@ -789,7 +1277,45 @@ const file_instagram_v1_instagram_proto_rawDesc = "" +
 	"\x13SaveMetaAppResponse\x12'\n" +
 	"\x03app\x18\x01 \x01(\v2\x15.instagram.v1.MetaAppR\x03app\"\x16\n" +
 	"\x14DeleteMetaAppRequest\"\x17\n" +
-	"\x15DeleteMetaAppResponse\"\x12\n" +
+	"\x15DeleteMetaAppResponse\"\xdc\x02\n" +
+	"\bAIConfig\x12\x18\n" +
+	"\apersona\x18\x01 \x01(\tR\apersona\x12)\n" +
+	"\x10business_context\x18\x02 \x01(\tR\x0fbusinessContext\x12\x12\n" +
+	"\x04tone\x18\x03 \x01(\tR\x04tone\x12%\n" +
+	"\x0eblocked_topics\x18\x04 \x01(\tR\rblockedTopics\x12)\n" +
+	"\x10fallback_message\x18\x05 \x01(\tR\x0ffallbackMessage\x12%\n" +
+	"\x0ereply_comments\x18\x06 \x01(\bR\rreplyComments\x12\x1b\n" +
+	"\treply_dms\x18\a \x01(\bR\breplyDms\x12%\n" +
+	"\x0ereply_mentions\x18\b \x01(\bR\rreplyMentions\x12\x1b\n" +
+	"\tis_active\x18\t \x01(\bR\bisActive\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\n" +
+	" \x01(\tR\tupdatedAt\"\x14\n" +
+	"\x12GetAIConfigRequest\"\x85\x01\n" +
+	"\x13GetAIConfigResponse\x12.\n" +
+	"\x06config\x18\x01 \x01(\v2\x16.instagram.v1.AIConfigR\x06config\x12!\n" +
+	"\fai_available\x18\x02 \x01(\bR\vaiAvailable\x12\x1b\n" +
+	"\tdaily_cap\x18\x03 \x01(\x05R\bdailyCap\"E\n" +
+	"\x13SaveAIConfigRequest\x12.\n" +
+	"\x06config\x18\x01 \x01(\v2\x16.instagram.v1.AIConfigR\x06config\"F\n" +
+	"\x14SaveAIConfigResponse\x12.\n" +
+	"\x06config\x18\x01 \x01(\v2\x16.instagram.v1.AIConfigR\x06config\"\xce\x01\n" +
+	"\fActivityItem\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\x02 \x01(\tR\teventType\x12\x18\n" +
+	"\acontent\x18\x03 \x01(\tR\acontent\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x05 \x01(\tR\terrorCode\x12\x1f\n" +
+	"\vreceived_at\x18\x06 \x01(\tR\n" +
+	"receivedAt\x12\x1d\n" +
+	"\n" +
+	"reply_text\x18\a \x01(\tR\treplyText\"*\n" +
+	"\x12GetActivityRequest\x12\x14\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\"G\n" +
+	"\x13GetActivityResponse\x120\n" +
+	"\x05items\x18\x01 \x03(\v2\x1a.instagram.v1.ActivityItemR\x05items\"\x12\n" +
 	"\x10GetStatusRequest\"\xa0\x02\n" +
 	"\x11GetStatusResponse\x12'\n" +
 	"\x0ffeature_enabled\x18\x01 \x01(\bR\x0efeatureEnabled\x12\x1c\n" +
@@ -805,7 +1331,7 @@ const file_instagram_v1_instagram_proto_rawDesc = "" +
 	"\x17GetAuthorizeUrlResponse\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\"\x13\n" +
 	"\x11DisconnectRequest\"\x14\n" +
-	"\x12DisconnectResponse2\x90\x04\n" +
+	"\x12DisconnectResponse2\x8f\x06\n" +
 	"\x10InstagramService\x12L\n" +
 	"\tGetStatus\x12\x1e.instagram.v1.GetStatusRequest\x1a\x1f.instagram.v1.GetStatusResponse\x12^\n" +
 	"\x0fGetAuthorizeUrl\x12$.instagram.v1.GetAuthorizeUrlRequest\x1a%.instagram.v1.GetAuthorizeUrlResponse\x12O\n" +
@@ -814,7 +1340,10 @@ const file_instagram_v1_instagram_proto_rawDesc = "" +
 	"\n" +
 	"GetMetaApp\x12\x1f.instagram.v1.GetMetaAppRequest\x1a .instagram.v1.GetMetaAppResponse\x12R\n" +
 	"\vSaveMetaApp\x12 .instagram.v1.SaveMetaAppRequest\x1a!.instagram.v1.SaveMetaAppResponse\x12X\n" +
-	"\rDeleteMetaApp\x12\".instagram.v1.DeleteMetaAppRequest\x1a#.instagram.v1.DeleteMetaAppResponseB\xa8\x01\n" +
+	"\rDeleteMetaApp\x12\".instagram.v1.DeleteMetaAppRequest\x1a#.instagram.v1.DeleteMetaAppResponse\x12R\n" +
+	"\vGetAIConfig\x12 .instagram.v1.GetAIConfigRequest\x1a!.instagram.v1.GetAIConfigResponse\x12U\n" +
+	"\fSaveAIConfig\x12!.instagram.v1.SaveAIConfigRequest\x1a\".instagram.v1.SaveAIConfigResponse\x12R\n" +
+	"\vGetActivity\x12 .instagram.v1.GetActivityRequest\x1a!.instagram.v1.GetActivityResponseB\xa8\x01\n" +
 	"\x10com.instagram.v1B\x0eInstagramProtoP\x01Z3automatiza-go/internal/gen/instagram/v1;instagramv1\xa2\x02\x03IXX\xaa\x02\fInstagram.V1\xca\x02\fInstagram\\V1\xe2\x02\x18Instagram\\V1\\GPBMetadata\xea\x02\rInstagram::V1b\x06proto3"
 
 var (
@@ -829,7 +1358,7 @@ func file_instagram_v1_instagram_proto_rawDescGZIP() []byte {
 	return file_instagram_v1_instagram_proto_rawDescData
 }
 
-var file_instagram_v1_instagram_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_instagram_v1_instagram_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_instagram_v1_instagram_proto_goTypes = []any{
 	(*StoryPost)(nil),               // 0: instagram.v1.StoryPost
 	(*MetaApp)(nil),                 // 1: instagram.v1.MetaApp
@@ -839,34 +1368,52 @@ var file_instagram_v1_instagram_proto_goTypes = []any{
 	(*SaveMetaAppResponse)(nil),     // 5: instagram.v1.SaveMetaAppResponse
 	(*DeleteMetaAppRequest)(nil),    // 6: instagram.v1.DeleteMetaAppRequest
 	(*DeleteMetaAppResponse)(nil),   // 7: instagram.v1.DeleteMetaAppResponse
-	(*GetStatusRequest)(nil),        // 8: instagram.v1.GetStatusRequest
-	(*GetStatusResponse)(nil),       // 9: instagram.v1.GetStatusResponse
-	(*GetAuthorizeUrlRequest)(nil),  // 10: instagram.v1.GetAuthorizeUrlRequest
-	(*GetAuthorizeUrlResponse)(nil), // 11: instagram.v1.GetAuthorizeUrlResponse
-	(*DisconnectRequest)(nil),       // 12: instagram.v1.DisconnectRequest
-	(*DisconnectResponse)(nil),      // 13: instagram.v1.DisconnectResponse
+	(*AIConfig)(nil),                // 8: instagram.v1.AIConfig
+	(*GetAIConfigRequest)(nil),      // 9: instagram.v1.GetAIConfigRequest
+	(*GetAIConfigResponse)(nil),     // 10: instagram.v1.GetAIConfigResponse
+	(*SaveAIConfigRequest)(nil),     // 11: instagram.v1.SaveAIConfigRequest
+	(*SaveAIConfigResponse)(nil),    // 12: instagram.v1.SaveAIConfigResponse
+	(*ActivityItem)(nil),            // 13: instagram.v1.ActivityItem
+	(*GetActivityRequest)(nil),      // 14: instagram.v1.GetActivityRequest
+	(*GetActivityResponse)(nil),     // 15: instagram.v1.GetActivityResponse
+	(*GetStatusRequest)(nil),        // 16: instagram.v1.GetStatusRequest
+	(*GetStatusResponse)(nil),       // 17: instagram.v1.GetStatusResponse
+	(*GetAuthorizeUrlRequest)(nil),  // 18: instagram.v1.GetAuthorizeUrlRequest
+	(*GetAuthorizeUrlResponse)(nil), // 19: instagram.v1.GetAuthorizeUrlResponse
+	(*DisconnectRequest)(nil),       // 20: instagram.v1.DisconnectRequest
+	(*DisconnectResponse)(nil),      // 21: instagram.v1.DisconnectResponse
 }
 var file_instagram_v1_instagram_proto_depIdxs = []int32{
 	1,  // 0: instagram.v1.GetMetaAppResponse.app:type_name -> instagram.v1.MetaApp
 	1,  // 1: instagram.v1.SaveMetaAppResponse.app:type_name -> instagram.v1.MetaApp
-	0,  // 2: instagram.v1.GetStatusResponse.recent_stories:type_name -> instagram.v1.StoryPost
-	8,  // 3: instagram.v1.InstagramService.GetStatus:input_type -> instagram.v1.GetStatusRequest
-	10, // 4: instagram.v1.InstagramService.GetAuthorizeUrl:input_type -> instagram.v1.GetAuthorizeUrlRequest
-	12, // 5: instagram.v1.InstagramService.Disconnect:input_type -> instagram.v1.DisconnectRequest
-	2,  // 6: instagram.v1.InstagramService.GetMetaApp:input_type -> instagram.v1.GetMetaAppRequest
-	4,  // 7: instagram.v1.InstagramService.SaveMetaApp:input_type -> instagram.v1.SaveMetaAppRequest
-	6,  // 8: instagram.v1.InstagramService.DeleteMetaApp:input_type -> instagram.v1.DeleteMetaAppRequest
-	9,  // 9: instagram.v1.InstagramService.GetStatus:output_type -> instagram.v1.GetStatusResponse
-	11, // 10: instagram.v1.InstagramService.GetAuthorizeUrl:output_type -> instagram.v1.GetAuthorizeUrlResponse
-	13, // 11: instagram.v1.InstagramService.Disconnect:output_type -> instagram.v1.DisconnectResponse
-	3,  // 12: instagram.v1.InstagramService.GetMetaApp:output_type -> instagram.v1.GetMetaAppResponse
-	5,  // 13: instagram.v1.InstagramService.SaveMetaApp:output_type -> instagram.v1.SaveMetaAppResponse
-	7,  // 14: instagram.v1.InstagramService.DeleteMetaApp:output_type -> instagram.v1.DeleteMetaAppResponse
-	9,  // [9:15] is the sub-list for method output_type
-	3,  // [3:9] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	8,  // 2: instagram.v1.GetAIConfigResponse.config:type_name -> instagram.v1.AIConfig
+	8,  // 3: instagram.v1.SaveAIConfigRequest.config:type_name -> instagram.v1.AIConfig
+	8,  // 4: instagram.v1.SaveAIConfigResponse.config:type_name -> instagram.v1.AIConfig
+	13, // 5: instagram.v1.GetActivityResponse.items:type_name -> instagram.v1.ActivityItem
+	0,  // 6: instagram.v1.GetStatusResponse.recent_stories:type_name -> instagram.v1.StoryPost
+	16, // 7: instagram.v1.InstagramService.GetStatus:input_type -> instagram.v1.GetStatusRequest
+	18, // 8: instagram.v1.InstagramService.GetAuthorizeUrl:input_type -> instagram.v1.GetAuthorizeUrlRequest
+	20, // 9: instagram.v1.InstagramService.Disconnect:input_type -> instagram.v1.DisconnectRequest
+	2,  // 10: instagram.v1.InstagramService.GetMetaApp:input_type -> instagram.v1.GetMetaAppRequest
+	4,  // 11: instagram.v1.InstagramService.SaveMetaApp:input_type -> instagram.v1.SaveMetaAppRequest
+	6,  // 12: instagram.v1.InstagramService.DeleteMetaApp:input_type -> instagram.v1.DeleteMetaAppRequest
+	9,  // 13: instagram.v1.InstagramService.GetAIConfig:input_type -> instagram.v1.GetAIConfigRequest
+	11, // 14: instagram.v1.InstagramService.SaveAIConfig:input_type -> instagram.v1.SaveAIConfigRequest
+	14, // 15: instagram.v1.InstagramService.GetActivity:input_type -> instagram.v1.GetActivityRequest
+	17, // 16: instagram.v1.InstagramService.GetStatus:output_type -> instagram.v1.GetStatusResponse
+	19, // 17: instagram.v1.InstagramService.GetAuthorizeUrl:output_type -> instagram.v1.GetAuthorizeUrlResponse
+	21, // 18: instagram.v1.InstagramService.Disconnect:output_type -> instagram.v1.DisconnectResponse
+	3,  // 19: instagram.v1.InstagramService.GetMetaApp:output_type -> instagram.v1.GetMetaAppResponse
+	5,  // 20: instagram.v1.InstagramService.SaveMetaApp:output_type -> instagram.v1.SaveMetaAppResponse
+	7,  // 21: instagram.v1.InstagramService.DeleteMetaApp:output_type -> instagram.v1.DeleteMetaAppResponse
+	10, // 22: instagram.v1.InstagramService.GetAIConfig:output_type -> instagram.v1.GetAIConfigResponse
+	12, // 23: instagram.v1.InstagramService.SaveAIConfig:output_type -> instagram.v1.SaveAIConfigResponse
+	15, // 24: instagram.v1.InstagramService.GetActivity:output_type -> instagram.v1.GetActivityResponse
+	16, // [16:25] is the sub-list for method output_type
+	7,  // [7:16] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_instagram_v1_instagram_proto_init() }
@@ -880,7 +1427,7 @@ func file_instagram_v1_instagram_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_instagram_v1_instagram_proto_rawDesc), len(file_instagram_v1_instagram_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -105,6 +105,11 @@ type Config struct {
 	// propósito: reaproveitar a chave HMAC de tokens faria um vazamento do state
 	// virar comprometimento de sessão. Mínimo de 32 bytes.
 	InstagramStateSigningKey string `mapstructure:"INSTAGRAM_STATE_SIGNING_KEY"`
+	// InstagramAIReplyEnabled é o kill switch GLOBAL da resposta automática,
+	// SEPARADO do de Stories: permite ter o canal ligado (cliente conectando
+	// conta, publicando Story) com a IA desligada para todo mundo. Default
+	// false — a IA responder em nome de um cliente é decisão explícita.
+	InstagramAIReplyEnabled bool `mapstructure:"INSTAGRAM_AI_REPLY_ENABLED"`
 
 	// Web Push (PWA). Vazio => feature desligada: o service responde
 	// enabled=false, a UI esconde o opt-in e os ganchos de evento viram no-op.
@@ -207,6 +212,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("LOG_LEVEL", "info")
 	// Kill switch da publicação de Stories: desligado até alguém decidir ligar.
 	viper.SetDefault("INSTAGRAM_STORIES_ENABLED", false)
+	viper.SetDefault("INSTAGRAM_AI_REPLY_ENABLED", false)
 	viper.SetDefault("LINK_SAFETY_MODE", "off")
 	viper.SetDefault("TZ", "America/Sao_Paulo")
 	viper.SetDefault("OTEL_ENABLED", false)

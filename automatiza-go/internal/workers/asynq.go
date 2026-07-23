@@ -26,6 +26,7 @@ const (
 	TypeReconcileChat         = "whatsapp:reconcile:chat"
 	TypeReconcileSession      = "whatsapp:reconcile:session"
 	TypeInstagramPublishStory = "instagram:publish_story"
+	TypeInstagramAIReply      = "instagram:ai_reply"
 	// TypeMonitoringDeferredDispatch executa UM item da fila de cadência do
 	// espelho (Melhoria 7). A task é só um GATILHO: a verdade está no
 	// PostgreSQL, então perder a fila do Redis não perde nenhum envio — o
@@ -641,4 +642,60 @@ func (l *asynqLogger) Fatal(args ...interface{}) {
 
 func formatTaskID(dispatchLogID int) string {
 	return "dispatch:" + strconv.Itoa(dispatchLogID)
+}
+
+// InstagramReplyJobData é o payload da resposta automática do Instagram.
+//
+// Carrega o conteúdo recebido para o worker não precisar reler o banco no
+// caminho quente. É texto de terceiro: por isso o worker nunca arquiva o job
+// (ver o contrato de retorno em instagram_reply_worker.go).
+type InstagramReplyJobData struct {
+	UserID          string     `json:"userId"`
+	InboundID       string     `json:"inboundId"`
+	ProviderEventID string     `json:"providerEventId"`
+	EventType       string     `json:"eventType"`
+	SenderID        string     `json:"senderId,omitempty"`
+	ThreadID        string     `json:"threadId,omitempty"`
+	Content         string     `json:"content,omitempty"`
+	OccurredAt      *time.Time `json:"occurredAt,omitempty"`
+	TraceID         string     `json:"trace_id,omitempty"`
+	EnqueuedAt      time.Time  `json:"enqueuedAt"`
+}
+
+// InstagramReplyTaskID deriva o id do EVENTO, não de um aleatório: duas
+// entregas do mesmo comentário produzem o mesmo id e o asynq recusa a segunda.
+// O hash evita PII no Redis e no dashboard do asynq.
+func InstagramReplyTaskID(userID, providerEventID string) string {
+	sum := sha256.Sum256([]byte(userID + "\x00" + providerEventID))
+	return "ig-reply:" + hex.EncodeToString(sum[:])
+}
+
+// EnqueueInstagramReply enfileira a resposta automática na fila "default".
+// Conflito de TaskID devolve (nil, nil): o evento já está atendido.
+func (q *QueueClient) EnqueueInstagramReply(ctx context.Context, data *InstagramReplyJobData) (*asynq.TaskInfo, error) {
+	if data.TraceID == "" {
+		if span := trace.SpanFromContext(ctx); span.SpanContext().HasTraceID() {
+			data.TraceID = span.SpanContext().TraceID().String()
+		}
+	}
+	data.EnqueuedAt = time.Now()
+
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	task := asynq.NewTask(TypeInstagramAIReply, payload,
+		asynq.Queue("default"),
+		asynq.MaxRetry(3),
+		asynq.Timeout(90*time.Second),
+		asynq.TaskID(InstagramReplyTaskID(data.UserID, data.ProviderEventID)),
+	)
+	info, err := q.client.EnqueueContext(ctx, task)
+	if err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return info, nil
 }
