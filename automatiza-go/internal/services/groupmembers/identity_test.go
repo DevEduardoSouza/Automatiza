@@ -210,12 +210,23 @@ func TestParsePayloadTimestamp(t *testing.T) {
 	assert.Equal(t, int64(1666943582), frac.Unix())
 	assert.Equal(t, 500_000_000, frac.Nanosecond())
 
-	// Magnitude de MS no payload envenenaria ordem e bucket diário.
-	_, err = ParsePayloadTimestamp(1634567890123)
-	assert.ErrorIs(t, err, ErrInvalidPayloadTime)
+	// MILISSEGUNDOS no payload: é o que o engine GOWS realmente emite.
+	// Valor real capturado da fila de produção em 23/07/2026 (o envelope do
+	// mesmo evento trazia 1784785154371, 1ms depois).
+	gows, err := ParsePayloadTimestamp(1784785154370)
+	require.NoError(t, err, "GOWS manda ms no payload; rejeitar descartava 100% dos eventos")
+	assert.Equal(t, int64(1784785154370), gows.UnixMilli())
 
-	for _, bad := range []float64{0, -1, math.NaN(), math.Inf(1), math.Inf(-1)} {
+	// A mesma instante em segundos precisa dar o mesmo segundo.
+	secs, err := ParsePayloadTimestamp(1784785154)
+	require.NoError(t, err)
+	assert.Equal(t, gows.Unix(), secs.Unix(), "as duas magnitudes convergem no mesmo instante")
+
+	for _, bad := range []float64{
+		0, -1, math.NaN(), math.Inf(1), math.Inf(-1),
+		1e15, // absurdo mesmo lido como ms (ano 33658+)
+	} {
 		_, err := ParsePayloadTimestamp(bad)
-		assert.ErrorIs(t, err, ErrInvalidPayloadTime)
+		assert.ErrorIs(t, err, ErrInvalidPayloadTime, "valor=%v", bad)
 	}
 }

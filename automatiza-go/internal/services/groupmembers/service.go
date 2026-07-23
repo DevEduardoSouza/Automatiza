@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -343,10 +344,14 @@ func (s *Service) ReconcileMemberships(ctx context.Context) error {
 	}
 
 	var (
-		wg           sync.WaitGroup
-		sem          = make(chan struct{}, reconcileConcurrency)
-		mu           sync.Mutex
-		failures     []error
+		wg  sync.WaitGroup
+		sem = make(chan struct{}, reconcileConcurrency)
+		mu  sync.Mutex
+		// failures conta por CLASSE de erro, não guarda os erros inteiros: o
+		// corpo de um 500 do WAHA traz stack trace JS completa, e um
+		// errors.Join de 27 deles vira uma linha de ~20KB no log E um evento
+		// gigante no Sentry, toda hora. Classe + contagem diz a mesma coisa.
+		failures     = map[string]int{}
 		reconciled   int
 		failed       int
 		participants int
@@ -375,7 +380,7 @@ func (s *Service) ReconcileMemberships(ctx context.Context) error {
 			defer mu.Unlock()
 			if err != nil {
 				failed++
-				failures = append(failures, err)
+				failures[errorClass(err)]++
 				return
 			}
 			reconciled++
@@ -392,10 +397,58 @@ func (s *Service) ReconcileMemberships(ctx context.Context) error {
 		zap.Duration("duration", s.now().Sub(start)))
 
 	if len(failures) > 0 {
-		return fmt.Errorf("reconciliação de membros: %d de %d grupos falharam: %w",
-			failed, len(candidates), errors.Join(failures...))
+		return fmt.Errorf("reconciliação de membros: %d de %d grupos falharam (%s)",
+			failed, len(candidates), formatFailureClasses(failures))
 	}
 	return nil
+}
+
+// errorClass reduz um erro à sua CLASSE, descartando o corpo do provedor.
+// Um 500 do WAHA carrega o JSON inteiro com stack trace JS; agregar 27 desses
+// produzia ~20KB por rodada em log e Sentry, toda hora, sem informação nova.
+func errorClass(err error) string {
+	s := err.Error()
+	// O corpo do provedor começa no primeiro '{' — tudo dali pra frente é ruído.
+	if i := strings.IndexByte(s, '{'); i >= 0 {
+		s = s[:i]
+	}
+	// Identificadores de grupo/sessão viram ruído na agregação por classe.
+	if i := strings.IndexByte(s, '('); i >= 0 {
+		if j := strings.IndexByte(s[i:], ')'); j >= 0 {
+			s = s[:i] + s[i+j+1:]
+		}
+	}
+	s = strings.TrimSpace(strings.Trim(strings.TrimSpace(s), ":"))
+	if len(s) > 120 {
+		s = s[:120]
+	}
+	return s
+}
+
+// formatFailureClasses rende "classe xN; classe xM", limitado às 3 mais comuns.
+func formatFailureClasses(classes map[string]int) string {
+	type kv struct {
+		class string
+		n     int
+	}
+	all := make([]kv, 0, len(classes))
+	for c, n := range classes {
+		all = append(all, kv{c, n})
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].n != all[j].n {
+			return all[i].n > all[j].n
+		}
+		return all[i].class < all[j].class
+	})
+	if len(all) > 3 {
+		all = all[:3]
+	}
+	parts := make([]string, 0, len(all))
+	for _, e := range all {
+		parts = append(parts, fmt.Sprintf("%s x%d", e.class, e.n))
+	}
+	return strings.Join(parts, "; ")
 }
 
 // reconcileOne reconcilia um grupo. Devolve a quantidade de participantes

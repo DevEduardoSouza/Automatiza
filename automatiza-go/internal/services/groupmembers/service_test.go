@@ -277,6 +277,30 @@ func TestProcessGroupEvent_TwoParticipantsOneBatch(t *testing.T) {
 	assert.Equal(t, "120000000000000001@g.us", repo.batches[0].WAGroupID)
 }
 
+// Guard de regressão do incidente 23/07/2026: o engine GOWS manda o timestamp
+// do payload em MILISSEGUNDOS (o exemplo do OpenAPI é em segundos). O parser
+// rejeitava essa magnitude e descartou 100% dos eventos reais de produção.
+func TestProcessGroupEvent_GowsMillisecondPayloadTimestamp(t *testing.T) {
+	repo := &fakeRepo{tenant: defaultTenant()}
+	s := newTestService(t, repo, &fakeFetcher{}, strings.Repeat("s", minSecretLen))
+
+	// Valores REAIS capturados da fila de produção (payload 1ms antes do envelope).
+	payload := validPayload(participant(synthPhoneBR+"@c.us", "", "participant"))
+	payload["type"] = "leave"
+	payload["timestamp"] = float64(1784785154370)
+
+	err := s.ProcessGroupEvent(context.Background(), "session-a", EventTypeParticipants,
+		"evt_01ky6qrca26ybmdyhrmztq64cr", 1784785154371, payload)
+	require.NoError(t, err)
+
+	require.Len(t, repo.batches, 1, "o evento real do GOWS precisa ser ACEITO")
+	got := repo.batches[0]
+	assert.Equal(t, int64(1784785154370), got.OccurredAt.UnixMilli())
+	assert.Equal(t, int64(1784785154371), got.ProviderCreatedAt.UnixMilli())
+	assert.Equal(t, models.GroupMemberEventLeave, got.EventType)
+	assert.Equal(t, "evt_01ky6qrca26ybmdyhrmztq64cr", got.ProviderEventID)
+}
+
 func TestProcessGroupEvent_DedupesRepeatedParticipant(t *testing.T) {
 	repo := &fakeRepo{tenant: defaultTenant()}
 	s := newTestService(t, repo, &fakeFetcher{}, strings.Repeat("s", minSecretLen))
@@ -336,11 +360,6 @@ func TestProcessGroupEvent_MalformedPayloadWritesNothing(t *testing.T) {
 		"type fora do enum": func() map[string]interface{} {
 			p := validPayload(valid)
 			p["type"] = "kick"
-			return p
-		}(),
-		"timestamp em ms no payload": func() map[string]interface{} {
-			p := validPayload(valid)
-			p["timestamp"] = float64(1774267200000)
 			return p
 		}(),
 		"timestamp negativo": func() map[string]interface{} {

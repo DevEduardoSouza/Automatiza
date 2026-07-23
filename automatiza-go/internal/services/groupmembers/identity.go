@@ -117,18 +117,40 @@ func ParseEnvelopeTimestamp(ms int64) (time.Time, error) {
 	return time.UnixMilli(ms).UTC(), nil
 }
 
-// ParsePayloadTimestamp converte o timestamp (s) do payload. Aceita fração de
-// segundo e rejeita magnitude de milissegundos — ms no payload seria um valor
-// ~1000× no futuro, que envenenaria a ordem total e o bucket diário.
-func ParsePayloadTimestamp(seconds float64) (time.Time, error) {
-	if math.IsNaN(seconds) || math.IsInf(seconds, 0) {
+// ParsePayloadTimestamp converte o timestamp do payload, aceitando SEGUNDOS ou
+// MILISSEGUNDOS.
+//
+// O contrato descreve "Unix timestamp" com exemplo em segundos
+// (waha-plus-openapi.json, GroupV2ParticipantsEvent.timestamp: 1666943582), mas
+// o engine GOWS emite MILISSEGUNDOS em produção — capturado da fila em
+// 23/07/2026: payload 1784785154370 contra envelope 1784785154371, 1ms de
+// diferença. Rejeitar a magnitude de ms (como o exemplo da doc sugeria)
+// descartava 100% dos eventos reais.
+//
+// 1e12 separa as duas magnitudes sem ambiguidade: como segundos seria o ano
+// 33658, como ms é 2001 — nenhum evento de WhatsApp (2009+) cai na zona errada.
+func ParsePayloadTimestamp(value float64) (time.Time, error) {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 {
 		return time.Time{}, ErrInvalidPayloadTime
 	}
-	if seconds <= 0 || seconds >= msMagnitude {
+
+	// Normaliza para milissegundos com aritmética INTEIRA: dividir o valor em ms
+	// por 1000 em float64 e remontar via nanossegundos perdia 1ms por
+	// arredondamento (1784785154370 virava ...369), o que envenenaria o
+	// desempate da ordem total.
+	var ms int64
+	if value >= msMagnitude {
+		ms = int64(math.Round(value))
+	} else {
+		ms = int64(math.Round(value * 1000))
+	}
+
+	// Absurdo mesmo lido como ms (ano 33658+): não é timestamp.
+	if ms >= int64(msMagnitude)*1000 {
 		return time.Time{}, ErrInvalidPayloadTime
 	}
-	sec, frac := math.Modf(seconds)
-	return time.Unix(int64(sec), int64(math.Round(frac*1e9))).UTC(), nil
+
+	return time.UnixMilli(ms).UTC(), nil
 }
 
 // splitParticipantID separa "<dígitos>@c.us" ou "<dígitos>@lid" em (dígitos,
