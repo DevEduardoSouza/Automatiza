@@ -513,6 +513,13 @@ jobs:
           # (<32 bytes) = Configured() false e a feature NAO liga, mesmo com o
           # switch acima em true.
           INSTAGRAM_STATE_SIGNING_KEY=${{ secrets.INSTAGRAM_STATE_SIGNING_KEY }}
+          # Kill switch GLOBAL da resposta automática, SEPARADO do de Stories:
+          # permite o canal ligado (cliente conectando conta, publicando Story)
+          # com a IA desligada para todos. Mesmo em true, cada cliente ainda
+          # precisa ligar o próprio instagram_ai_configs.is_active — que nasce
+          # false. Rollout/rollback sem deploy: gh variable set
+          # INSTAGRAM_AI_REPLY_ENABLED --body true|false + bounce.
+          INSTAGRAM_AI_REPLY_ENABLED=${{ vars.INSTAGRAM_AI_REPLY_ENABLED }}
           # App GLOBAL da Meta: opcional e normalmente VAZIO. Desde a Fase 1
           # cada cliente registra o proprio app (instagram_apps), que e o que
           # dispensa o App Review da Meta. Estas duas existem so como fallback
