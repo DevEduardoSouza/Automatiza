@@ -3765,6 +3765,191 @@ func (x *DddDistributionEntry) GetMembers() int32 {
 	return 0
 }
 
+// *
+// Um grupo grande o bastante para merecer atenção.
+// NÃO há percentual de lotação: groups.member_limit está zerado em produção e
+// o WAHA não expõe o teto por grupo, então qualquer % seria inventada.
+type GroupCapacityEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	GroupId       string                 `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	GroupName     string                 `protobuf:"bytes,2,opt,name=group_name,json=groupName,proto3" json:"group_name,omitempty"`
+	Members       int32                  `protobuf:"varint,3,opt,name=members,proto3" json:"members,omitempty"`
+	Net           int32                  `protobuf:"varint,4,opt,name=net,proto3" json:"net,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GroupCapacityEntry) Reset() {
+	*x = GroupCapacityEntry{}
+	mi := &file_groups_v1_groups_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupCapacityEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupCapacityEntry) ProtoMessage() {}
+
+func (x *GroupCapacityEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_groups_v1_groups_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupCapacityEntry.ProtoReflect.Descriptor instead.
+func (*GroupCapacityEntry) Descriptor() ([]byte, []int) {
+	return file_groups_v1_groups_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *GroupCapacityEntry) GetGroupId() string {
+	if x != nil {
+		return x.GroupId
+	}
+	return ""
+}
+
+func (x *GroupCapacityEntry) GetGroupName() string {
+	if x != nil {
+		return x.GroupName
+	}
+	return ""
+}
+
+func (x *GroupCapacityEntry) GetMembers() int32 {
+	if x != nil {
+		return x.Members
+	}
+	return 0
+}
+
+func (x *GroupCapacityEntry) GetNet() int32 {
+	if x != nil {
+		return x.Net
+	}
+	return 0
+}
+
+// *
+// Raio-X de um grupo: quem está lá, de onde vem e como se move.
+type GroupXRayEntry struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	GroupId   string                 `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	GroupName string                 `protobuf:"bytes,2,opt,name=group_name,json=groupName,proto3" json:"group_name,omitempty"`
+	Active    int32                  `protobuf:"varint,3,opt,name=active,proto3" json:"active,omitempty"`
+	Joins     int32                  `protobuf:"varint,4,opt,name=joins,proto3" json:"joins,omitempty"`
+	Leaves    int32                  `protobuf:"varint,5,opt,name=leaves,proto3" json:"leaves,omitempty"`
+	Net       int32                  `protobuf:"varint,6,opt,name=net,proto3" json:"net,omitempty"`
+	// Vazio quando nenhum membro do grupo tem telefone identificado.
+	TopDdd        string `protobuf:"bytes,7,opt,name=top_ddd,json=topDdd,proto3" json:"top_ddd,omitempty"`
+	TopDddMembers int32  `protobuf:"varint,8,opt,name=top_ddd_members,json=topDddMembers,proto3" json:"top_ddd_members,omitempty"`
+	// Cliques vindos de saved_redirect_links; 0 quando o grupo não usa link
+	// encurtado da plataforma.
+	Clicks        int32 `protobuf:"varint,9,opt,name=clicks,proto3" json:"clicks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GroupXRayEntry) Reset() {
+	*x = GroupXRayEntry{}
+	mi := &file_groups_v1_groups_proto_msgTypes[59]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupXRayEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupXRayEntry) ProtoMessage() {}
+
+func (x *GroupXRayEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_groups_v1_groups_proto_msgTypes[59]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupXRayEntry.ProtoReflect.Descriptor instead.
+func (*GroupXRayEntry) Descriptor() ([]byte, []int) {
+	return file_groups_v1_groups_proto_rawDescGZIP(), []int{59}
+}
+
+func (x *GroupXRayEntry) GetGroupId() string {
+	if x != nil {
+		return x.GroupId
+	}
+	return ""
+}
+
+func (x *GroupXRayEntry) GetGroupName() string {
+	if x != nil {
+		return x.GroupName
+	}
+	return ""
+}
+
+func (x *GroupXRayEntry) GetActive() int32 {
+	if x != nil {
+		return x.Active
+	}
+	return 0
+}
+
+func (x *GroupXRayEntry) GetJoins() int32 {
+	if x != nil {
+		return x.Joins
+	}
+	return 0
+}
+
+func (x *GroupXRayEntry) GetLeaves() int32 {
+	if x != nil {
+		return x.Leaves
+	}
+	return 0
+}
+
+func (x *GroupXRayEntry) GetNet() int32 {
+	if x != nil {
+		return x.Net
+	}
+	return 0
+}
+
+func (x *GroupXRayEntry) GetTopDdd() string {
+	if x != nil {
+		return x.TopDdd
+	}
+	return ""
+}
+
+func (x *GroupXRayEntry) GetTopDddMembers() int32 {
+	if x != nil {
+		return x.TopDddMembers
+	}
+	return 0
+}
+
+func (x *GroupXRayEntry) GetClicks() int32 {
+	if x != nil {
+		return x.Clicks
+	}
+	return 0
+}
+
 type GetGroupMemberMetricsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Janela em dias. 0 => default do servidor (30). Teto de 90.
@@ -3777,7 +3962,7 @@ type GetGroupMemberMetricsRequest struct {
 
 func (x *GetGroupMemberMetricsRequest) Reset() {
 	*x = GetGroupMemberMetricsRequest{}
-	mi := &file_groups_v1_groups_proto_msgTypes[58]
+	mi := &file_groups_v1_groups_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3789,7 +3974,7 @@ func (x *GetGroupMemberMetricsRequest) String() string {
 func (*GetGroupMemberMetricsRequest) ProtoMessage() {}
 
 func (x *GetGroupMemberMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_groups_v1_groups_proto_msgTypes[58]
+	mi := &file_groups_v1_groups_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3802,7 +3987,7 @@ func (x *GetGroupMemberMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGroupMemberMetricsRequest.ProtoReflect.Descriptor instead.
 func (*GetGroupMemberMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_groups_v1_groups_proto_rawDescGZIP(), []int{58}
+	return file_groups_v1_groups_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *GetGroupMemberMetricsRequest) GetDays() int32 {
@@ -3832,13 +4017,26 @@ type GetGroupMemberMetricsResponse struct {
 	TopGrowth       []*GroupMemberRankingEntry `protobuf:"bytes,6,rep,name=top_growth,json=topGrowth,proto3" json:"top_growth,omitempty"`
 	TopLoss         []*GroupMemberRankingEntry `protobuf:"bytes,7,rep,name=top_loss,json=topLoss,proto3" json:"top_loss,omitempty"`
 	DddDistribution []*DddDistributionEntry    `protobuf:"bytes,8,rep,name=ddd_distribution,json=dddDistribution,proto3" json:"ddd_distribution,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Leads ÚNICOS: conta PESSOAS, não participações — a mesma pessoa em vários
+	// grupos conta uma vez. Ausente enquanto não houver cobertura.
+	UniqueLeads *int32 `protobuf:"varint,9,opt,name=unique_leads,json=uniqueLeads,proto3,oneof" json:"unique_leads,omitempty"`
+	// Leads QUALIFICADOS: exclui quem entrou e saiu no mesmo dia. Substitui o
+	// "CPL real" do painel de referência — custo não existe no sistema, então
+	// CPL não é calculável e não será inventado.
+	QualifiedLeads *int32 `protobuf:"varint,10,opt,name=qualified_leads,json=qualifiedLeads,proto3,oneof" json:"qualified_leads,omitempty"`
+	// Retenção e recorrência exigem TEMPO: ficam ausentes até existir coorte
+	// com idade suficiente. Ausente nunca significa zero.
+	RetentionPct  *float64              `protobuf:"fixed64,11,opt,name=retention_pct,json=retentionPct,proto3,oneof" json:"retention_pct,omitempty"`
+	RecurringPct  *float64              `protobuf:"fixed64,12,opt,name=recurring_pct,json=recurringPct,proto3,oneof" json:"recurring_pct,omitempty"`
+	Capacity      []*GroupCapacityEntry `protobuf:"bytes,13,rep,name=capacity,proto3" json:"capacity,omitempty"`
+	Xray          []*GroupXRayEntry     `protobuf:"bytes,14,rep,name=xray,proto3" json:"xray,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetGroupMemberMetricsResponse) Reset() {
 	*x = GetGroupMemberMetricsResponse{}
-	mi := &file_groups_v1_groups_proto_msgTypes[59]
+	mi := &file_groups_v1_groups_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3850,7 +4048,7 @@ func (x *GetGroupMemberMetricsResponse) String() string {
 func (*GetGroupMemberMetricsResponse) ProtoMessage() {}
 
 func (x *GetGroupMemberMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_groups_v1_groups_proto_msgTypes[59]
+	mi := &file_groups_v1_groups_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3863,7 +4061,7 @@ func (x *GetGroupMemberMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGroupMemberMetricsResponse.ProtoReflect.Descriptor instead.
 func (*GetGroupMemberMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_groups_v1_groups_proto_rawDescGZIP(), []int{59}
+	return file_groups_v1_groups_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *GetGroupMemberMetricsResponse) GetStatus() MemberDataStatus {
@@ -3918,6 +4116,48 @@ func (x *GetGroupMemberMetricsResponse) GetTopLoss() []*GroupMemberRankingEntry 
 func (x *GetGroupMemberMetricsResponse) GetDddDistribution() []*DddDistributionEntry {
 	if x != nil {
 		return x.DddDistribution
+	}
+	return nil
+}
+
+func (x *GetGroupMemberMetricsResponse) GetUniqueLeads() int32 {
+	if x != nil && x.UniqueLeads != nil {
+		return *x.UniqueLeads
+	}
+	return 0
+}
+
+func (x *GetGroupMemberMetricsResponse) GetQualifiedLeads() int32 {
+	if x != nil && x.QualifiedLeads != nil {
+		return *x.QualifiedLeads
+	}
+	return 0
+}
+
+func (x *GetGroupMemberMetricsResponse) GetRetentionPct() float64 {
+	if x != nil && x.RetentionPct != nil {
+		return *x.RetentionPct
+	}
+	return 0
+}
+
+func (x *GetGroupMemberMetricsResponse) GetRecurringPct() float64 {
+	if x != nil && x.RecurringPct != nil {
+		return *x.RecurringPct
+	}
+	return 0
+}
+
+func (x *GetGroupMemberMetricsResponse) GetCapacity() []*GroupCapacityEntry {
+	if x != nil {
+		return x.Capacity
+	}
+	return nil
+}
+
+func (x *GetGroupMemberMetricsResponse) GetXray() []*GroupXRayEntry {
+	if x != nil {
+		return x.Xray
 	}
 	return nil
 }
@@ -4234,11 +4474,28 @@ const file_groups_v1_groups_proto_rawDesc = "" +
 	"\x0e_members_count\"B\n" +
 	"\x14DddDistributionEntry\x12\x10\n" +
 	"\x03ddd\x18\x01 \x01(\tR\x03ddd\x12\x18\n" +
-	"\amembers\x18\x02 \x01(\x05R\amembers\"_\n" +
+	"\amembers\x18\x02 \x01(\x05R\amembers\"z\n" +
+	"\x12GroupCapacityEntry\x12\x19\n" +
+	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12\x1d\n" +
+	"\n" +
+	"group_name\x18\x02 \x01(\tR\tgroupName\x12\x18\n" +
+	"\amembers\x18\x03 \x01(\x05R\amembers\x12\x10\n" +
+	"\x03net\x18\x04 \x01(\x05R\x03net\"\xfb\x01\n" +
+	"\x0eGroupXRayEntry\x12\x19\n" +
+	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12\x1d\n" +
+	"\n" +
+	"group_name\x18\x02 \x01(\tR\tgroupName\x12\x16\n" +
+	"\x06active\x18\x03 \x01(\x05R\x06active\x12\x14\n" +
+	"\x05joins\x18\x04 \x01(\x05R\x05joins\x12\x16\n" +
+	"\x06leaves\x18\x05 \x01(\x05R\x06leaves\x12\x10\n" +
+	"\x03net\x18\x06 \x01(\x05R\x03net\x12\x17\n" +
+	"\atop_ddd\x18\a \x01(\tR\x06topDdd\x12&\n" +
+	"\x0ftop_ddd_members\x18\b \x01(\x05R\rtopDddMembers\x12\x16\n" +
+	"\x06clicks\x18\t \x01(\x05R\x06clicks\"_\n" +
 	"\x1cGetGroupMemberMetricsRequest\x12\x12\n" +
 	"\x04days\x18\x01 \x01(\x05R\x04days\x12\x1e\n" +
 	"\bgroup_id\x18\x02 \x01(\tH\x00R\agroupId\x88\x01\x01B\v\n" +
-	"\t_group_id\"\xe8\x03\n" +
+	"\t_group_id\"\xc5\x06\n" +
 	"\x1dGetGroupMemberMetricsResponse\x123\n" +
 	"\x06status\x18\x01 \x01(\x0e2\x1b.groups.v1.MemberDataStatusR\x06status\x12!\n" +
 	"\fgroups_total\x18\x02 \x01(\x05R\vgroupsTotal\x12(\n" +
@@ -4248,8 +4505,19 @@ const file_groups_v1_groups_proto_rawDesc = "" +
 	"\n" +
 	"top_growth\x18\x06 \x03(\v2\".groups.v1.GroupMemberRankingEntryR\ttopGrowth\x12=\n" +
 	"\btop_loss\x18\a \x03(\v2\".groups.v1.GroupMemberRankingEntryR\atopLoss\x12J\n" +
-	"\x10ddd_distribution\x18\b \x03(\v2\x1f.groups.v1.DddDistributionEntryR\x0fdddDistributionB\x11\n" +
-	"\x0f_active_members*r\n" +
+	"\x10ddd_distribution\x18\b \x03(\v2\x1f.groups.v1.DddDistributionEntryR\x0fdddDistribution\x12&\n" +
+	"\funique_leads\x18\t \x01(\x05H\x01R\vuniqueLeads\x88\x01\x01\x12,\n" +
+	"\x0fqualified_leads\x18\n" +
+	" \x01(\x05H\x02R\x0equalifiedLeads\x88\x01\x01\x12(\n" +
+	"\rretention_pct\x18\v \x01(\x01H\x03R\fretentionPct\x88\x01\x01\x12(\n" +
+	"\rrecurring_pct\x18\f \x01(\x01H\x04R\frecurringPct\x88\x01\x01\x129\n" +
+	"\bcapacity\x18\r \x03(\v2\x1d.groups.v1.GroupCapacityEntryR\bcapacity\x12-\n" +
+	"\x04xray\x18\x0e \x03(\v2\x19.groups.v1.GroupXRayEntryR\x04xrayB\x11\n" +
+	"\x0f_active_membersB\x0f\n" +
+	"\r_unique_leadsB\x12\n" +
+	"\x10_qualified_leadsB\x10\n" +
+	"\x0e_retention_pctB\x10\n" +
+	"\x0e_recurring_pct*r\n" +
 	"\vGroupStatus\x12\x1c\n" +
 	"\x18GROUP_STATUS_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11GROUP_STATUS_OPEN\x10\x01\x12\x17\n" +
@@ -4306,7 +4574,7 @@ func file_groups_v1_groups_proto_rawDescGZIP() []byte {
 }
 
 var file_groups_v1_groups_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_groups_v1_groups_proto_msgTypes = make([]protoimpl.MessageInfo, 60)
+var file_groups_v1_groups_proto_msgTypes = make([]protoimpl.MessageInfo, 62)
 var file_groups_v1_groups_proto_goTypes = []any{
 	(GroupStatus)(0),                       // 0: groups.v1.GroupStatus
 	(MemberDataStatus)(0),                  // 1: groups.v1.MemberDataStatus
@@ -4368,8 +4636,10 @@ var file_groups_v1_groups_proto_goTypes = []any{
 	(*GroupMemberDailyPoint)(nil),          // 57: groups.v1.GroupMemberDailyPoint
 	(*GroupMemberRankingEntry)(nil),        // 58: groups.v1.GroupMemberRankingEntry
 	(*DddDistributionEntry)(nil),           // 59: groups.v1.DddDistributionEntry
-	(*GetGroupMemberMetricsRequest)(nil),   // 60: groups.v1.GetGroupMemberMetricsRequest
-	(*GetGroupMemberMetricsResponse)(nil),  // 61: groups.v1.GetGroupMemberMetricsResponse
+	(*GroupCapacityEntry)(nil),             // 60: groups.v1.GroupCapacityEntry
+	(*GroupXRayEntry)(nil),                 // 61: groups.v1.GroupXRayEntry
+	(*GetGroupMemberMetricsRequest)(nil),   // 62: groups.v1.GetGroupMemberMetricsRequest
+	(*GetGroupMemberMetricsResponse)(nil),  // 63: groups.v1.GetGroupMemberMetricsResponse
 }
 var file_groups_v1_groups_proto_depIdxs = []int32{
 	0,  // 0: groups.v1.Group.status:type_name -> groups.v1.GroupStatus
@@ -4389,65 +4659,67 @@ var file_groups_v1_groups_proto_depIdxs = []int32{
 	58, // 14: groups.v1.GetGroupMemberMetricsResponse.top_growth:type_name -> groups.v1.GroupMemberRankingEntry
 	58, // 15: groups.v1.GetGroupMemberMetricsResponse.top_loss:type_name -> groups.v1.GroupMemberRankingEntry
 	59, // 16: groups.v1.GetGroupMemberMetricsResponse.ddd_distribution:type_name -> groups.v1.DddDistributionEntry
-	3,  // 17: groups.v1.GroupsService.ListGroups:input_type -> groups.v1.ListGroupsRequest
-	5,  // 18: groups.v1.GroupsService.GetGroup:input_type -> groups.v1.GetGroupRequest
-	7,  // 19: groups.v1.GroupsService.GetGroupsByIds:input_type -> groups.v1.GetGroupsByIdsRequest
-	9,  // 20: groups.v1.GroupsService.CreateGroup:input_type -> groups.v1.CreateGroupRequest
-	11, // 21: groups.v1.GroupsService.UpdateGroup:input_type -> groups.v1.UpdateGroupRequest
-	13, // 22: groups.v1.GroupsService.ToggleGroupFavorite:input_type -> groups.v1.ToggleGroupFavoriteRequest
-	15, // 23: groups.v1.GroupsService.SyncGroups:input_type -> groups.v1.SyncGroupsRequest
-	42, // 24: groups.v1.GroupsService.GetSyncStatus:input_type -> groups.v1.GetSyncStatusRequest
-	17, // 25: groups.v1.GroupsService.DeleteGroup:input_type -> groups.v1.DeleteGroupRequest
-	19, // 26: groups.v1.GroupsService.BulkUpdateGroups:input_type -> groups.v1.BulkUpdateGroupsRequest
-	21, // 27: groups.v1.GroupsService.SendGroupMessage:input_type -> groups.v1.SendGroupMessageRequest
-	23, // 28: groups.v1.GroupsService.SendGroupAudio:input_type -> groups.v1.SendGroupAudioRequest
-	25, // 29: groups.v1.GroupsService.SendGroupImage:input_type -> groups.v1.SendGroupImageRequest
-	27, // 30: groups.v1.GroupsService.SendGroupPoll:input_type -> groups.v1.SendGroupPollRequest
-	29, // 31: groups.v1.GroupsService.UpdateGroupSubject:input_type -> groups.v1.UpdateGroupSubjectRequest
-	31, // 32: groups.v1.GroupsService.UpdateGroupDescription:input_type -> groups.v1.UpdateGroupDescriptionRequest
-	33, // 33: groups.v1.GroupsService.UpdateGroupPicture:input_type -> groups.v1.UpdateGroupPictureRequest
-	35, // 34: groups.v1.GroupsService.UpdateGroupPictures:input_type -> groups.v1.UpdateGroupPicturesRequest
-	38, // 35: groups.v1.GroupsService.UpdateGroupSettings:input_type -> groups.v1.UpdateGroupSettingsRequest
-	40, // 36: groups.v1.GroupsService.GetGroupInviteCode:input_type -> groups.v1.GetGroupInviteCodeRequest
-	45, // 37: groups.v1.GroupsService.GetGroupParticipants:input_type -> groups.v1.GetGroupParticipantsRequest
-	47, // 38: groups.v1.GroupsService.AddGroupMember:input_type -> groups.v1.AddGroupMemberRequest
-	49, // 39: groups.v1.GroupsService.RemoveGroupMember:input_type -> groups.v1.RemoveGroupMemberRequest
-	51, // 40: groups.v1.GroupsService.LeaveGroup:input_type -> groups.v1.LeaveGroupRequest
-	53, // 41: groups.v1.GroupsService.PromoteMember:input_type -> groups.v1.PromoteMemberRequest
-	55, // 42: groups.v1.GroupsService.DemoteMember:input_type -> groups.v1.DemoteMemberRequest
-	60, // 43: groups.v1.GroupsService.GetGroupMemberMetrics:input_type -> groups.v1.GetGroupMemberMetricsRequest
-	4,  // 44: groups.v1.GroupsService.ListGroups:output_type -> groups.v1.ListGroupsResponse
-	6,  // 45: groups.v1.GroupsService.GetGroup:output_type -> groups.v1.GetGroupResponse
-	8,  // 46: groups.v1.GroupsService.GetGroupsByIds:output_type -> groups.v1.GetGroupsByIdsResponse
-	10, // 47: groups.v1.GroupsService.CreateGroup:output_type -> groups.v1.CreateGroupResponse
-	12, // 48: groups.v1.GroupsService.UpdateGroup:output_type -> groups.v1.UpdateGroupResponse
-	14, // 49: groups.v1.GroupsService.ToggleGroupFavorite:output_type -> groups.v1.ToggleGroupFavoriteResponse
-	16, // 50: groups.v1.GroupsService.SyncGroups:output_type -> groups.v1.SyncGroupsResponse
-	43, // 51: groups.v1.GroupsService.GetSyncStatus:output_type -> groups.v1.GetSyncStatusResponse
-	18, // 52: groups.v1.GroupsService.DeleteGroup:output_type -> groups.v1.DeleteGroupResponse
-	20, // 53: groups.v1.GroupsService.BulkUpdateGroups:output_type -> groups.v1.BulkUpdateGroupsResponse
-	22, // 54: groups.v1.GroupsService.SendGroupMessage:output_type -> groups.v1.SendGroupMessageResponse
-	24, // 55: groups.v1.GroupsService.SendGroupAudio:output_type -> groups.v1.SendGroupAudioResponse
-	26, // 56: groups.v1.GroupsService.SendGroupImage:output_type -> groups.v1.SendGroupImageResponse
-	28, // 57: groups.v1.GroupsService.SendGroupPoll:output_type -> groups.v1.SendGroupPollResponse
-	30, // 58: groups.v1.GroupsService.UpdateGroupSubject:output_type -> groups.v1.UpdateGroupSubjectResponse
-	32, // 59: groups.v1.GroupsService.UpdateGroupDescription:output_type -> groups.v1.UpdateGroupDescriptionResponse
-	34, // 60: groups.v1.GroupsService.UpdateGroupPicture:output_type -> groups.v1.UpdateGroupPictureResponse
-	37, // 61: groups.v1.GroupsService.UpdateGroupPictures:output_type -> groups.v1.UpdateGroupPicturesResponse
-	39, // 62: groups.v1.GroupsService.UpdateGroupSettings:output_type -> groups.v1.UpdateGroupSettingsResponse
-	41, // 63: groups.v1.GroupsService.GetGroupInviteCode:output_type -> groups.v1.GetGroupInviteCodeResponse
-	46, // 64: groups.v1.GroupsService.GetGroupParticipants:output_type -> groups.v1.GetGroupParticipantsResponse
-	48, // 65: groups.v1.GroupsService.AddGroupMember:output_type -> groups.v1.AddGroupMemberResponse
-	50, // 66: groups.v1.GroupsService.RemoveGroupMember:output_type -> groups.v1.RemoveGroupMemberResponse
-	52, // 67: groups.v1.GroupsService.LeaveGroup:output_type -> groups.v1.LeaveGroupResponse
-	54, // 68: groups.v1.GroupsService.PromoteMember:output_type -> groups.v1.PromoteMemberResponse
-	56, // 69: groups.v1.GroupsService.DemoteMember:output_type -> groups.v1.DemoteMemberResponse
-	61, // 70: groups.v1.GroupsService.GetGroupMemberMetrics:output_type -> groups.v1.GetGroupMemberMetricsResponse
-	44, // [44:71] is the sub-list for method output_type
-	17, // [17:44] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	60, // 17: groups.v1.GetGroupMemberMetricsResponse.capacity:type_name -> groups.v1.GroupCapacityEntry
+	61, // 18: groups.v1.GetGroupMemberMetricsResponse.xray:type_name -> groups.v1.GroupXRayEntry
+	3,  // 19: groups.v1.GroupsService.ListGroups:input_type -> groups.v1.ListGroupsRequest
+	5,  // 20: groups.v1.GroupsService.GetGroup:input_type -> groups.v1.GetGroupRequest
+	7,  // 21: groups.v1.GroupsService.GetGroupsByIds:input_type -> groups.v1.GetGroupsByIdsRequest
+	9,  // 22: groups.v1.GroupsService.CreateGroup:input_type -> groups.v1.CreateGroupRequest
+	11, // 23: groups.v1.GroupsService.UpdateGroup:input_type -> groups.v1.UpdateGroupRequest
+	13, // 24: groups.v1.GroupsService.ToggleGroupFavorite:input_type -> groups.v1.ToggleGroupFavoriteRequest
+	15, // 25: groups.v1.GroupsService.SyncGroups:input_type -> groups.v1.SyncGroupsRequest
+	42, // 26: groups.v1.GroupsService.GetSyncStatus:input_type -> groups.v1.GetSyncStatusRequest
+	17, // 27: groups.v1.GroupsService.DeleteGroup:input_type -> groups.v1.DeleteGroupRequest
+	19, // 28: groups.v1.GroupsService.BulkUpdateGroups:input_type -> groups.v1.BulkUpdateGroupsRequest
+	21, // 29: groups.v1.GroupsService.SendGroupMessage:input_type -> groups.v1.SendGroupMessageRequest
+	23, // 30: groups.v1.GroupsService.SendGroupAudio:input_type -> groups.v1.SendGroupAudioRequest
+	25, // 31: groups.v1.GroupsService.SendGroupImage:input_type -> groups.v1.SendGroupImageRequest
+	27, // 32: groups.v1.GroupsService.SendGroupPoll:input_type -> groups.v1.SendGroupPollRequest
+	29, // 33: groups.v1.GroupsService.UpdateGroupSubject:input_type -> groups.v1.UpdateGroupSubjectRequest
+	31, // 34: groups.v1.GroupsService.UpdateGroupDescription:input_type -> groups.v1.UpdateGroupDescriptionRequest
+	33, // 35: groups.v1.GroupsService.UpdateGroupPicture:input_type -> groups.v1.UpdateGroupPictureRequest
+	35, // 36: groups.v1.GroupsService.UpdateGroupPictures:input_type -> groups.v1.UpdateGroupPicturesRequest
+	38, // 37: groups.v1.GroupsService.UpdateGroupSettings:input_type -> groups.v1.UpdateGroupSettingsRequest
+	40, // 38: groups.v1.GroupsService.GetGroupInviteCode:input_type -> groups.v1.GetGroupInviteCodeRequest
+	45, // 39: groups.v1.GroupsService.GetGroupParticipants:input_type -> groups.v1.GetGroupParticipantsRequest
+	47, // 40: groups.v1.GroupsService.AddGroupMember:input_type -> groups.v1.AddGroupMemberRequest
+	49, // 41: groups.v1.GroupsService.RemoveGroupMember:input_type -> groups.v1.RemoveGroupMemberRequest
+	51, // 42: groups.v1.GroupsService.LeaveGroup:input_type -> groups.v1.LeaveGroupRequest
+	53, // 43: groups.v1.GroupsService.PromoteMember:input_type -> groups.v1.PromoteMemberRequest
+	55, // 44: groups.v1.GroupsService.DemoteMember:input_type -> groups.v1.DemoteMemberRequest
+	62, // 45: groups.v1.GroupsService.GetGroupMemberMetrics:input_type -> groups.v1.GetGroupMemberMetricsRequest
+	4,  // 46: groups.v1.GroupsService.ListGroups:output_type -> groups.v1.ListGroupsResponse
+	6,  // 47: groups.v1.GroupsService.GetGroup:output_type -> groups.v1.GetGroupResponse
+	8,  // 48: groups.v1.GroupsService.GetGroupsByIds:output_type -> groups.v1.GetGroupsByIdsResponse
+	10, // 49: groups.v1.GroupsService.CreateGroup:output_type -> groups.v1.CreateGroupResponse
+	12, // 50: groups.v1.GroupsService.UpdateGroup:output_type -> groups.v1.UpdateGroupResponse
+	14, // 51: groups.v1.GroupsService.ToggleGroupFavorite:output_type -> groups.v1.ToggleGroupFavoriteResponse
+	16, // 52: groups.v1.GroupsService.SyncGroups:output_type -> groups.v1.SyncGroupsResponse
+	43, // 53: groups.v1.GroupsService.GetSyncStatus:output_type -> groups.v1.GetSyncStatusResponse
+	18, // 54: groups.v1.GroupsService.DeleteGroup:output_type -> groups.v1.DeleteGroupResponse
+	20, // 55: groups.v1.GroupsService.BulkUpdateGroups:output_type -> groups.v1.BulkUpdateGroupsResponse
+	22, // 56: groups.v1.GroupsService.SendGroupMessage:output_type -> groups.v1.SendGroupMessageResponse
+	24, // 57: groups.v1.GroupsService.SendGroupAudio:output_type -> groups.v1.SendGroupAudioResponse
+	26, // 58: groups.v1.GroupsService.SendGroupImage:output_type -> groups.v1.SendGroupImageResponse
+	28, // 59: groups.v1.GroupsService.SendGroupPoll:output_type -> groups.v1.SendGroupPollResponse
+	30, // 60: groups.v1.GroupsService.UpdateGroupSubject:output_type -> groups.v1.UpdateGroupSubjectResponse
+	32, // 61: groups.v1.GroupsService.UpdateGroupDescription:output_type -> groups.v1.UpdateGroupDescriptionResponse
+	34, // 62: groups.v1.GroupsService.UpdateGroupPicture:output_type -> groups.v1.UpdateGroupPictureResponse
+	37, // 63: groups.v1.GroupsService.UpdateGroupPictures:output_type -> groups.v1.UpdateGroupPicturesResponse
+	39, // 64: groups.v1.GroupsService.UpdateGroupSettings:output_type -> groups.v1.UpdateGroupSettingsResponse
+	41, // 65: groups.v1.GroupsService.GetGroupInviteCode:output_type -> groups.v1.GetGroupInviteCodeResponse
+	46, // 66: groups.v1.GroupsService.GetGroupParticipants:output_type -> groups.v1.GetGroupParticipantsResponse
+	48, // 67: groups.v1.GroupsService.AddGroupMember:output_type -> groups.v1.AddGroupMemberResponse
+	50, // 68: groups.v1.GroupsService.RemoveGroupMember:output_type -> groups.v1.RemoveGroupMemberResponse
+	52, // 69: groups.v1.GroupsService.LeaveGroup:output_type -> groups.v1.LeaveGroupResponse
+	54, // 70: groups.v1.GroupsService.PromoteMember:output_type -> groups.v1.PromoteMemberResponse
+	56, // 71: groups.v1.GroupsService.DemoteMember:output_type -> groups.v1.DemoteMemberResponse
+	63, // 72: groups.v1.GroupsService.GetGroupMemberMetrics:output_type -> groups.v1.GetGroupMemberMetricsResponse
+	46, // [46:73] is the sub-list for method output_type
+	19, // [19:46] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_groups_v1_groups_proto_init() }
@@ -4472,15 +4744,15 @@ func file_groups_v1_groups_proto_init() {
 	file_groups_v1_groups_proto_msgTypes[41].OneofWrappers = []any{}
 	file_groups_v1_groups_proto_msgTypes[55].OneofWrappers = []any{}
 	file_groups_v1_groups_proto_msgTypes[56].OneofWrappers = []any{}
-	file_groups_v1_groups_proto_msgTypes[58].OneofWrappers = []any{}
-	file_groups_v1_groups_proto_msgTypes[59].OneofWrappers = []any{}
+	file_groups_v1_groups_proto_msgTypes[60].OneofWrappers = []any{}
+	file_groups_v1_groups_proto_msgTypes[61].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_groups_v1_groups_proto_rawDesc), len(file_groups_v1_groups_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   60,
+			NumMessages:   62,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

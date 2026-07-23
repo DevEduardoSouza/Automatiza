@@ -707,6 +707,36 @@ message DddDistributionEntry {
   int32 members = 2;
 }
 
+/**
+ * Um grupo grande o bastante para merecer atenção.
+ * NÃO há percentual de lotação: groups.member_limit está zerado em produção e
+ * o WAHA não expõe o teto por grupo, então qualquer % seria inventada.
+ */
+message GroupCapacityEntry {
+  string group_id = 1;
+  string group_name = 2;
+  int32 members = 3;
+  int32 net = 4;
+}
+
+/**
+ * Raio-X de um grupo: quem está lá, de onde vem e como se move.
+ */
+message GroupXRayEntry {
+  string group_id = 1;
+  string group_name = 2;
+  int32 active = 3;
+  int32 joins = 4;
+  int32 leaves = 5;
+  int32 net = 6;
+  // Vazio quando nenhum membro do grupo tem telefone identificado.
+  string top_ddd = 7;
+  int32 top_ddd_members = 8;
+  // Cliques vindos de saved_redirect_links; 0 quando o grupo não usa link
+  // encurtado da plataforma.
+  int32 clicks = 9;
+}
+
 message GetGroupMemberMetricsRequest {
   // Janela em dias. 0 => default do servidor (30). Teto de 90.
   int32 days = 1;
@@ -726,6 +756,20 @@ message GetGroupMemberMetricsResponse {
   repeated GroupMemberRankingEntry top_growth = 6;
   repeated GroupMemberRankingEntry top_loss = 7;
   repeated DddDistributionEntry ddd_distribution = 8;
+
+  // Leads ÚNICOS: conta PESSOAS, não participações — a mesma pessoa em vários
+  // grupos conta uma vez. Ausente enquanto não houver cobertura.
+  optional int32 unique_leads = 9;
+  // Leads QUALIFICADOS: exclui quem entrou e saiu no mesmo dia. Substitui o
+  // "CPL real" do painel de referência — custo não existe no sistema, então
+  // CPL não é calculável e não será inventado.
+  optional int32 qualified_leads = 10;
+  // Retenção e recorrência exigem TEMPO: ficam ausentes até existir coorte
+  // com idade suficiente. Ausente nunca significa zero.
+  optional double retention_pct = 11;
+  optional double recurring_pct = 12;
+  repeated GroupCapacityEntry capacity = 13;
+  repeated GroupXRayEntry xray = 14;
 }
 
 // ============================================================

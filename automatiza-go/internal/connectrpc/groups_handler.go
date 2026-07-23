@@ -1701,5 +1701,34 @@ func (h *GroupsHandler) GetGroupMemberMetrics(
 		})
 	}
 
+	// Métricas ampliadas. Cada ponteiro nil permanece AUSENTE no wire — é o que
+	// deixa a tela distinguir "ainda não dá para saber" de "é zero".
+	if metrics.UniqueLeads != nil {
+		resp.UniqueLeads = proto.Int32(int32(*metrics.UniqueLeads))
+	}
+	if metrics.QualifiedLeads != nil {
+		resp.QualifiedLeads = proto.Int32(int32(*metrics.QualifiedLeads))
+	}
+	if metrics.RetentionPct != nil {
+		resp.RetentionPct = proto.Float64(*metrics.RetentionPct)
+	}
+	if metrics.RecurringPct != nil {
+		resp.RecurringPct = proto.Float64(*metrics.RecurringPct)
+	}
+	for _, c := range metrics.Capacity {
+		resp.Capacity = append(resp.Capacity, &groupsv1.GroupCapacityEntry{
+			GroupId: c.GroupID, GroupName: c.GroupName,
+			Members: int32(c.Members), Net: int32(c.Net),
+		})
+	}
+	for _, x := range metrics.XRay {
+		resp.Xray = append(resp.Xray, &groupsv1.GroupXRayEntry{
+			GroupId: x.GroupID, GroupName: x.GroupName,
+			Active: int32(x.Active), Joins: int32(x.Joins), Leaves: int32(x.Leaves),
+			Net: int32(x.Net), TopDdd: x.TopDDD, TopDddMembers: int32(x.TopDDDQty),
+			Clicks: int32(x.Clicks),
+		})
+	}
+
 	return connect.NewResponse(resp), nil
 }

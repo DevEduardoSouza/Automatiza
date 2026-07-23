@@ -1,6 +1,6 @@
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { useGroupMemberMetrics } from '@/hooks/use-group-member-metrics';
-import type { MemberRankingRow } from '@/hooks/use-group-member-metrics';
+import type { CapacityRow, MemberRankingRow, XRayRow } from '@/hooks/use-group-member-metrics';
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, XAxis, YAxis } from 'recharts';
 
 // Mesma paleta wine da página de grupos, para a seção não parecer enxertada.
@@ -125,6 +125,101 @@ function RankingList({
   );
 }
 
+/** Tile de número com legenda. `null` vira travessão, nunca zero. */
+function Stat({ label, value, hint }: { label: string; value: string | null; hint: string }) {
+  return (
+    <Panel title={label}>
+      <p className="text-2xl xs:text-3xl font-semibold tabular-nums">{value ?? '\u2014'}</p>
+      <p className="mt-1 text-[11px] xs:text-xs" style={{ color: wine.textMuted }}>
+        {hint}
+      </p>
+    </Panel>
+  );
+}
+
+/** Grupos maiores + crescimento no período. */
+function CapacityList({ rows }: { rows: CapacityRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-xs xs:text-sm" style={{ color: wine.textMuted }}>
+        Nenhum grupo mapeado ainda.
+      </p>
+    );
+  }
+  const max = Math.max(...rows.map((r) => r.members), 1);
+  return (
+    <ul className="space-y-2.5">
+      {rows.map((r) => (
+        <li key={r.groupId}>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="truncate text-xs xs:text-sm" title={r.groupName}>
+              {r.groupName}
+            </span>
+            <span className="shrink-0 text-xs xs:text-sm font-semibold tabular-nums">
+              {r.members.toLocaleString('pt-BR')}
+            </span>
+          </div>
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-black/5">
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${(r.members / max) * 100}%`, backgroundColor: HUE_MEMBERS }}
+            />
+          </div>
+          <p className="mt-0.5 text-[11px]" style={{ color: wine.textMuted }}>
+            {r.net > 0 ? `+${r.net}` : r.net} no período
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Raio-X por grupo: ativos, movimenta\u00e7\u00e3o, DDD dominante e cliques. */
+function XRayTable({ rows }: { rows: XRayRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-xs xs:text-sm" style={{ color: wine.textMuted }}>
+        Nenhum grupo mapeado ainda.
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[520px] text-xs xs:text-sm">
+        <thead>
+          <tr style={{ color: wine.textMuted }} className="text-left">
+            <th className="pb-2 font-medium">Grupo</th>
+            <th className="pb-2 text-right font-medium">Ativos</th>
+            <th className="pb-2 text-right font-medium">Entradas</th>
+            <th className="pb-2 text-right font-medium">Sa\u00eddas</th>
+            <th className="pb-2 text-right font-medium">DDD</th>
+            <th className="pb-2 text-right font-medium">Cliques</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((x) => (
+            <tr key={x.groupId} className="border-t" style={{ borderColor: wine.border }}>
+              <td className="max-w-[220px] truncate py-2" title={x.groupName}>
+                {x.groupName}
+              </td>
+              <td className="py-2 text-right tabular-nums">{x.active.toLocaleString('pt-BR')}</td>
+              <td className="py-2 text-right tabular-nums">{x.joins.toLocaleString('pt-BR')}</td>
+              <td className="py-2 text-right tabular-nums">{x.leaves.toLocaleString('pt-BR')}</td>
+              <td className="py-2 text-right tabular-nums">
+                {/* Vazio quando ningu\u00e9m do grupo tem telefone identificado. */}
+                {x.topDdd ? `${x.topDdd} (${x.topDddMembers})` : '\u2014'}
+              </td>
+              <td className="py-2 text-right tabular-nums">
+                {x.clicks > 0 ? x.clicks.toLocaleString('pt-BR') : '\u2014'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /**
  * Seção de métricas históricas de membros dos grupos.
  *
@@ -153,8 +248,42 @@ export function GroupMemberMetrics() {
 
   const hasFlow = m.series.some((p) => p.joins > 0 || p.leaves > 0);
 
+  const pct = (v: number | null) => (v === null ? null : `${v.toFixed(0)}%`);
+
   return (
     <div className="space-y-3 xs:space-y-4">
+      {/* Números de pessoas. Cada um vira travessão — nunca 0 — quando ainda
+          não dá para afirmar: leads dependem de cobertura, retenção e
+          recorrência dependem de TEMPO (coorte com idade mínima). */}
+      <div className="grid gap-3 xs:gap-4 grid-cols-2 lg:grid-cols-4">
+        <Stat
+          label="Leads únicos"
+          value={m.uniqueLeads?.toLocaleString('pt-BR') ?? null}
+          hint="pessoas distintas, sem contar quem está em vários grupos"
+        />
+        <Stat
+          label="Leads qualificados"
+          value={m.qualifiedLeads?.toLocaleString('pt-BR') ?? null}
+          hint="exclui quem entrou e saiu no mesmo dia"
+        />
+        <Stat
+          label="Retenção (7 dias)"
+          value={pct(m.retentionPct)}
+          hint={
+            m.retentionPct === null
+              ? 'precisa de 7 dias de coleta'
+              : 'entraram e continuam no grupo'
+          }
+        />
+        <Stat
+          label="Recorrentes (30 dias)"
+          value={pct(m.recurringPct)}
+          hint={
+            m.recurringPct === null ? 'precisa de 30 dias de coleta' : 'ativos há mais de um mês'
+          }
+        />
+      </div>
+
       {/* Hero: o número mais importante, sem gráfico em volta. */}
       <div className="grid gap-3 xs:gap-4 grid-cols-1 sm:grid-cols-3">
         <Panel title="Membros ativos">
@@ -333,6 +462,24 @@ export function GroupMemberMetrics() {
             Nenhum membro com telefone identificado ainda.
           </p>
         )}
+      </Panel>
+
+      <Panel
+        title="Grupos maiores"
+        // Sem "% de lotação" de propósito: groups.member_limit está zerado nos
+        // 28 mil grupos de produção e o WAHA não expõe o teto por grupo, então
+        // qualquer porcentagem seria inventada. Há grupo com 2.997 membros em
+        // produção, então nem um teto "conhecido" de 2.000 se sustentaria.
+        hint="Tamanho e crescimento no período — é o sinal de que talvez seja hora de abrir outro grupo."
+      >
+        <CapacityList rows={m.capacity} />
+      </Panel>
+
+      <Panel
+        title="Raio-X por grupo"
+        hint="Ativos, movimentação, DDD dominante e cliques nos links encurtados da plataforma."
+      >
+        <XRayTable rows={m.xray} />
       </Panel>
     </div>
   );

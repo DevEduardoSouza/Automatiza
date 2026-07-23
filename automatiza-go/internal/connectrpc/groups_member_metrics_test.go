@@ -156,3 +156,67 @@ func TestGetGroupMemberMetrics_MapsRankingAndDdd(t *testing.T) {
 	assert.Equal(t, "11", msg.GetDddDistribution()[0].GetDdd())
 	assert.Equal(t, int32(900), msg.GetDddDistribution()[0].GetMembers())
 }
+
+// =============================================================================
+// Métricas ampliadas — o contrato "ausente ≠ zero" nos campos novos
+// =============================================================================
+
+// Cobertura zero: leads, retenção e recorrência ficam AUSENTES. Devolver 0
+// afirmaria "esta conta não tem lead nenhum e ninguém ficou", o que é falso —
+// só ainda não foi medido.
+func TestGetGroupMemberMetrics_ExtendedFieldsAbsentWhenUnknown(t *testing.T) {
+	repo := &fakeMetricsRepo{metrics: &models.GroupMemberMetrics{
+		GroupsTotal:    28022,
+		GroupsWithData: 0,
+	}}
+	h := &GroupsHandler{groupMemberRepo: repo}
+
+	msg := callMetrics(t, h, 0)
+	assert.Nil(t, msg.UniqueLeads)
+	assert.Nil(t, msg.QualifiedLeads)
+	assert.Nil(t, msg.RetentionPct, "retenção exige tempo; ausente nunca é 0%")
+	assert.Nil(t, msg.RecurringPct)
+	assert.Empty(t, msg.GetCapacity())
+	assert.Empty(t, msg.GetXray())
+}
+
+func TestGetGroupMemberMetrics_ExtendedFieldsMapped(t *testing.T) {
+	unique, qualified := 148631, 148377
+	ret, rec := 82.5, 41.0
+	repo := &fakeMetricsRepo{metrics: &models.GroupMemberMetrics{
+		GroupsTotal:    100,
+		GroupsWithData: 90,
+		UniqueLeads:    &unique,
+		QualifiedLeads: &qualified,
+		RetentionPct:   &ret,
+		RecurringPct:   &rec,
+		Capacity: []models.GroupCapacityRow{
+			{GroupID: "g1", GroupName: "TRÁFEGO VOE", Members: 2997, Net: 12},
+		},
+		XRay: []models.GroupXRayRow{
+			{GroupID: "g1", GroupName: "TRÁFEGO VOE", Active: 2997, Joins: 20, Leaves: 8,
+				Net: 12, TopDDD: "11", TopDDDQty: 400, Clicks: 1378},
+			// Grupo sem telefone identificado e sem link encurtado: DDD vazio e
+			// zero cliques precisam sobreviver ao mapeamento.
+			{GroupID: "g2", GroupName: "Sem telefone", Active: 10},
+		},
+	}}
+	h := &GroupsHandler{groupMemberRepo: repo}
+
+	msg := callMetrics(t, h, 30)
+
+	assert.Equal(t, int32(148631), msg.GetUniqueLeads())
+	assert.Equal(t, int32(148377), msg.GetQualifiedLeads())
+	assert.InDelta(t, 82.5, msg.GetRetentionPct(), 0.001)
+	assert.InDelta(t, 41.0, msg.GetRecurringPct(), 0.001)
+
+	require.Len(t, msg.GetCapacity(), 1)
+	// 2.997 > 2.000: nenhum teto fixo de lotação sobreviveria a este dado real.
+	assert.Equal(t, int32(2997), msg.GetCapacity()[0].GetMembers())
+
+	require.Len(t, msg.GetXray(), 2)
+	assert.Equal(t, "11", msg.GetXray()[0].GetTopDdd())
+	assert.Equal(t, int32(1378), msg.GetXray()[0].GetClicks())
+	assert.Empty(t, msg.GetXray()[1].GetTopDdd(), "sem telefone identificado, DDD fica vazio")
+	assert.Zero(t, msg.GetXray()[1].GetClicks())
+}

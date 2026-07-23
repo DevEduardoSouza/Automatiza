@@ -159,4 +159,49 @@ type GroupMemberMetrics struct {
 	TopGrowth       []GroupMemberRankingEntry
 	TopLoss         []GroupMemberRankingEntry
 	DDDDistribution []DDDDistributionEntry
+
+	// UniqueLeads conta PESSOAS, não participações: o participant_hash não
+	// inclui o grupo, então a mesma pessoa em 3 grupos conta 1. É o "leads
+	// únicos reais" do painel de referência.
+	UniqueLeads *int
+	// QualifiedLeads exclui quem entrou e saiu no MESMO dia local — entrada
+	// que não virou permanência não é lead. Substitui o "CPL real": custo não
+	// existe em lugar nenhum do sistema, então CPL não é calculável.
+	QualifiedLeads *int
+	// RetentionPct: % de quem entrou há >=7 dias e continua ativo.
+	RetentionPct *float64
+	// RecurringPct: % de ativos com permanência >=30 dias.
+	RecurringPct *float64
+	Capacity     []GroupCapacityRow
+	XRay         []GroupXRayRow
+}
+
+// =============================================================================
+// Métricas ampliadas (paridade com o painel de referência)
+// =============================================================================
+
+// GroupCapacityRow é um grupo grande o bastante para merecer atenção.
+//
+// NÃO existe percentual de lotação: `groups.member_limit` está ZERADO nos
+// 28.024 grupos de produção e o WAHA não expõe o teto por grupo — qualquer %
+// seria inventada. Mostramos o número absoluto e o crescimento no período,
+// que é o que responde de verdade "está na hora de abrir outro grupo?".
+type GroupCapacityRow struct {
+	GroupID   string
+	GroupName string
+	Members   int
+	Net       int
+}
+
+// GroupXRayRow é o raio-X de um grupo: quem está lá, de onde vem e como se move.
+type GroupXRayRow struct {
+	GroupID   string
+	GroupName string
+	Active    int
+	Joins     int
+	Leaves    int
+	Net       int
+	TopDDD    string
+	TopDDDQty int
+	Clicks    int
 }

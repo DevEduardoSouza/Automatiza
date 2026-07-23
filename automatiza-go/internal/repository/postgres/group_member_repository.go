@@ -825,5 +825,187 @@ func (r *groupMemberRepository) GetMemberMetrics(
 		return nil, fmt.Errorf("group member metrics ddd rows: %w", err)
 	}
 
+	// Métricas ampliadas. Deliberadamente sem propagar erro: se algum bloco
+	// novo falhar, a tela perde só aquele painel — as métricas básicas, que já
+	// estão em produção e verificadas, continuam de pé.
+	r.loadExtendedMetrics(ctx, userID, days, out)
+
 	return out, nil
+}
+
+// =============================================================================
+// Métricas ampliadas — paridade com o painel de referência
+// =============================================================================
+
+// Tetos de exibição. Listas longas não são lidas.
+const (
+	metricsCapacityLimit = 8
+	metricsXRayLimit     = 10
+	// metricsRetentionDays: entrou há pelo menos isto e continua ativo.
+	metricsRetentionDays = 7
+	// metricsRecurringDays: permanência que caracteriza "recorrente".
+	metricsRecurringDays = 30
+)
+
+// loadExtendedMetrics preenche leads únicos/qualificados, retenção,
+// recorrentes, grupos grandes e o raio-X por grupo.
+//
+// Cada bloco falha em si mesmo: um erro aqui NÃO derruba as métricas básicas
+// que já funcionam — a tela de grupos degrada, não quebra.
+func (r *groupMemberRepository) loadExtendedMetrics(
+	ctx context.Context,
+	userID string,
+	days int,
+	out *models.GroupMemberMetrics,
+) {
+	// 1. Leads ÚNICOS e QUALIFICADOS.
+	//
+	// Únicos conta PESSOAS: participant_hash não inclui o grupo, então a mesma
+	// pessoa em 3 grupos conta 1 (medido em produção: 1,9% de sobreposição).
+	// Qualificados remove quem entrou e saiu no MESMO dia local — entrada que
+	// não virou permanência não é lead.
+	const leadsQ = `
+		WITH mesmo_dia AS (
+			SELECT participant_hash
+			FROM group_member_events
+			WHERE user_id = $1 AND event_type IN ('join','leave')
+			GROUP BY participant_hash, wa_group_id,
+			         (occurred_at AT TIME ZONE $2)::date
+			HAVING count(DISTINCT event_type) = 2
+		)
+		SELECT count(DISTINCT participant_hash)::int,
+		       count(DISTINCT participant_hash)
+		         FILTER (WHERE participant_hash NOT IN (SELECT participant_hash FROM mesmo_dia))::int
+		FROM group_memberships
+		WHERE user_id = $1 AND is_active`
+
+	var unique, qualified int
+	if err := r.db.QueryRow(ctx, leadsQ, userID, snapshotTZ).Scan(&unique, &qualified); err != nil {
+		r.logger.Warn("group member metrics: leads indisponíveis", zap.Error(err))
+	} else {
+		out.UniqueLeads = &unique
+		out.QualifiedLeads = &qualified
+	}
+
+	// 2. Retenção e recorrentes.
+	//
+	// Ambas exigem TEMPO, não código: joined_at só existe para quem entrou por
+	// webhook (a reconciliação não inventa data de entrada), e o tracking é
+	// recente. Enquanto não houver coorte com idade suficiente, os dois campos
+	// ficam nil — nunca 0, que afirmaria "ninguém ficou".
+	const cohortQ = `
+		SELECT
+			count(*) FILTER (WHERE joined_at IS NOT NULL AND joined_at < now() - ($2 || ' days')::interval)::int,
+			count(*) FILTER (WHERE joined_at IS NOT NULL AND joined_at < now() - ($2 || ' days')::interval AND is_active)::int,
+			count(*) FILTER (WHERE joined_at IS NOT NULL AND joined_at < now() - ($3 || ' days')::interval)::int,
+			count(*) FILTER (WHERE joined_at IS NOT NULL AND joined_at < now() - ($3 || ' days')::interval AND is_active)::int
+		FROM group_memberships
+		WHERE user_id = $1`
+
+	var retBase, retAlive, recBase, recAlive int
+	if err := r.db.QueryRow(ctx, cohortQ, userID, metricsRetentionDays, metricsRecurringDays).
+		Scan(&retBase, &retAlive, &recBase, &recAlive); err != nil {
+		r.logger.Warn("group member metrics: coortes indisponíveis", zap.Error(err))
+	} else {
+		if retBase > 0 {
+			p := 100.0 * float64(retAlive) / float64(retBase)
+			out.RetentionPct = &p
+		}
+		if recBase > 0 {
+			p := 100.0 * float64(recAlive) / float64(recBase)
+			out.RecurringPct = &p
+		}
+	}
+
+	// 3. Grupos grandes ("hora de abrir outro?").
+	//
+	// SEM percentual de lotação: groups.member_limit está ZERADO nos 28.024
+	// grupos de produção e o WAHA não expõe o teto (confirmado no OpenAPI).
+	// Qualquer % seria inventada. Mostramos tamanho + crescimento, que é o que
+	// de fato responde a pergunta — e há grupo com 2.997 membros em produção,
+	// então nem um teto "conhecido" de 2000 se sustentaria.
+	const capacityQ = `
+		SELECT g.id::text, g.name,
+		       count(DISTINCT m.participant_hash)::int AS ativos,
+		       coalesce((SELECT sum(s.joins_count) - sum(s.leaves_count)
+		                 FROM group_member_daily_snapshots s
+		                 WHERE s.user_id = $1 AND s.group_id = g.id
+		                   AND s.snapshot_date >= ((now() AT TIME ZONE $2)::date - $3::int)), 0)::int AS net
+		FROM group_memberships m
+		JOIN groups g ON g.id = m.group_id
+		WHERE m.user_id = $1 AND m.is_active
+		GROUP BY g.id, g.name
+		ORDER BY ativos DESC
+		LIMIT $4`
+
+	if rows, err := r.db.Query(ctx, capacityQ, userID, snapshotTZ, days, metricsCapacityLimit); err != nil {
+		r.logger.Warn("group member metrics: capacidade indisponível", zap.Error(err))
+	} else {
+		for rows.Next() {
+			var c models.GroupCapacityRow
+			if err := rows.Scan(&c.GroupID, &c.GroupName, &c.Members, &c.Net); err != nil {
+				break
+			}
+			out.Capacity = append(out.Capacity, c)
+		}
+		rows.Close()
+	}
+
+	// 4. Raio-X por grupo: ativos, movimentação, DDD dominante e cliques.
+	//
+	// Os cliques vêm de saved_redirect_links.group_clicks (jsonb chaveado por
+	// wa_group_id) — dado que JÁ existe em produção e nunca foi exposto.
+	const xrayQ = `
+		WITH cliques AS (
+			SELECT e.k AS wa_group_id, sum(e.v::int)::int AS total
+			FROM saved_redirect_links l, jsonb_each_text(l.group_clicks) AS e(k, v)
+			WHERE l.user_id = $1
+			GROUP BY e.k
+		),
+		mov AS (
+			SELECT group_id,
+			       coalesce(sum(joins_count), 0)::int AS joins,
+			       coalesce(sum(leaves_count), 0)::int AS leaves
+			FROM group_member_daily_snapshots
+			WHERE user_id = $1
+			  AND snapshot_date >= ((now() AT TIME ZONE $2)::date - $3::int)
+			  AND group_id IS NOT NULL
+			GROUP BY group_id
+		),
+		ddd_top AS (
+			SELECT DISTINCT ON (group_id) group_id, ddd, count(*)::int AS qtd
+			FROM group_memberships
+			WHERE user_id = $1 AND is_active AND ddd IS NOT NULL AND group_id IS NOT NULL
+			GROUP BY group_id, ddd
+			ORDER BY group_id, qtd DESC, ddd
+		)
+		SELECT g.id::text, g.name,
+		       count(DISTINCT m.participant_hash)::int,
+		       coalesce(mov.joins, 0), coalesce(mov.leaves, 0),
+		       coalesce(mov.joins, 0) - coalesce(mov.leaves, 0),
+		       coalesce(d.ddd, ''), coalesce(d.qtd, 0),
+		       coalesce(c.total, 0)
+		FROM group_memberships m
+		JOIN groups g ON g.id = m.group_id
+		LEFT JOIN mov ON mov.group_id = g.id
+		LEFT JOIN ddd_top d ON d.group_id = g.id
+		LEFT JOIN cliques c ON c.wa_group_id = g.wa_group_id
+		WHERE m.user_id = $1 AND m.is_active
+		GROUP BY g.id, g.name, mov.joins, mov.leaves, d.ddd, d.qtd, c.total
+		ORDER BY 3 DESC
+		LIMIT $4`
+
+	if rows, err := r.db.Query(ctx, xrayQ, userID, snapshotTZ, days, metricsXRayLimit); err != nil {
+		r.logger.Warn("group member metrics: raio-X indisponível", zap.Error(err))
+	} else {
+		for rows.Next() {
+			var x models.GroupXRayRow
+			if err := rows.Scan(&x.GroupID, &x.GroupName, &x.Active, &x.Joins, &x.Leaves,
+				&x.Net, &x.TopDDD, &x.TopDDDQty, &x.Clicks); err != nil {
+				break
+			}
+			out.XRay = append(out.XRay, x)
+		}
+		rows.Close()
+	}
 }

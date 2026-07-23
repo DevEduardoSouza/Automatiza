@@ -35,6 +35,25 @@ export interface MemberDddRow {
   members: number;
 }
 
+export interface CapacityRow {
+  groupId: string;
+  groupName: string;
+  members: number;
+  net: number;
+}
+
+export interface XRayRow {
+  groupId: string;
+  groupName: string;
+  active: number;
+  joins: number;
+  leaves: number;
+  net: number;
+  topDdd: string;
+  topDddMembers: number;
+  clicks: number;
+}
+
 export interface GroupMemberMetrics {
   loading: boolean;
   error: Error | null;
@@ -50,6 +69,15 @@ export interface GroupMemberMetrics {
   ddd: MemberDddRow[];
   /** Série curta demais para uma linha ter significado (< 2 dias). */
   seriesTooShort: boolean;
+  /** Conta PESSOAS, não participações. null enquanto não há cobertura. */
+  uniqueLeads: number | null;
+  /** Exclui quem entrou e saiu no mesmo dia. Substitui o CPL (sem custo no sistema). */
+  qualifiedLeads: number | null;
+  /** null — nunca 0 — enquanto não existir coorte com idade suficiente. */
+  retentionPct: number | null;
+  recurringPct: number | null;
+  capacity: CapacityRow[];
+  xray: XRayRow[];
 }
 
 /**
@@ -118,6 +146,27 @@ export function useGroupMemberMetrics(days = 30, groupId?: string): GroupMemberM
       topLoss: toRows(data?.topLoss ?? []),
       ddd: (data?.dddDistribution ?? []).map((d) => ({ ddd: d.ddd, members: d.members })),
       seriesTooShort: observedDays < 2,
+      uniqueLeads: data?.uniqueLeads ?? null,
+      qualifiedLeads: data?.qualifiedLeads ?? null,
+      retentionPct: data?.retentionPct ?? null,
+      recurringPct: data?.recurringPct ?? null,
+      capacity: (data?.capacity ?? []).map((c) => ({
+        groupId: c.groupId,
+        groupName: c.groupName,
+        members: c.members,
+        net: c.net,
+      })),
+      xray: (data?.xray ?? []).map((x) => ({
+        groupId: x.groupId,
+        groupName: x.groupName,
+        active: x.active,
+        joins: x.joins,
+        leaves: x.leaves,
+        net: x.net,
+        topDdd: x.topDdd,
+        topDddMembers: x.topDddMembers,
+        clicks: x.clicks,
+      })),
     };
   }, [data, isLoading, error]);
 }
