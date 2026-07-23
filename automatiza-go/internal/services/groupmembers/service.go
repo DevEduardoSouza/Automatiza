@@ -166,7 +166,17 @@ func (s *Service) ProcessGroupEvent(
 				zap.String("result", "tenant_ambiguous"))
 			return nil
 		}
-		// Transitório (inclui "tracking tenant unavailable"): o worker retenta.
+		if errors.Is(err, repository.ErrUnknownTrackingTenant) {
+			// Sessão sem linha em `instances` (órfã): não existe tenant para
+			// descobrir num retry. Retentar aqui só queima slot do worker e
+			// enche o DLQ — a WAHA entrega esses eventos indefinidamente.
+			s.logger.Warn("group member tracking: sessão sem instância, evento descartado",
+				zap.String("session", sessionName),
+				zap.String("provider_event_id", eventID),
+				zap.String("result", "tenant_unknown"))
+			return nil
+		}
+		// Erro de banco (pool/timeout): genuinamente transitório, o worker retenta.
 		return err
 	}
 

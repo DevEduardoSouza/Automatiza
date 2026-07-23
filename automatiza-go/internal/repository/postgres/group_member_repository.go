@@ -69,10 +69,10 @@ func (r *groupMemberRepository) ResolveWebhookTenant(ctx context.Context, sessio
 
 	switch len(found) {
 	case 0:
-		// "unavailable" é substring retryable no matcher do worker: a
-		// instância pode estar sendo criada agora (webhook chega antes do
-		// commit da linha).
-		return nil, errors.New("tracking tenant unavailable")
+		// Sessão sem linha em `instances` — dominantemente uma ÓRFÃ (viva na
+		// WAHA, sem registro). Não há tenant a descobrir depois: sentinela
+		// próprio para o chamador PULAR em vez de retentar 4× até o DLQ.
+		return nil, repository.ErrUnknownTrackingTenant
 	case 1:
 		return &found[0], nil
 	default:

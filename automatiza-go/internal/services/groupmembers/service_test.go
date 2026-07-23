@@ -440,15 +440,27 @@ func TestProcessGroupEvent_InvalidEnvelopeIdentityWritesNothing(t *testing.T) {
 // Casos 9-11: tenant e erro de banco
 // =============================================================================
 
-func TestProcessGroupEvent_MissingTenantIsRetryable(t *testing.T) {
-	repo := &fakeRepo{tenantErr: errors.New("tracking tenant unavailable")}
+// Sessão sem linha em `instances` (órfã) é condição PERMANENTE: retentar não
+// descobre tenant nenhum, só queima slot do worker até o DLQ. Em 23/07/2026
+// esse retry despejou 359 eventos/hora no DLQ.
+func TestProcessGroupEvent_UnknownTenantIsSkippedNotRetried(t *testing.T) {
+	repo := &fakeRepo{tenantErr: repository.ErrUnknownTrackingTenant}
+	s := newTestService(t, repo, &fakeFetcher{}, strings.Repeat("s", minSecretLen))
+
+	err := process(t, s, validPayload(participant(synthPhoneBR+"@c.us", "", "participant")))
+	require.NoError(t, err, "evento de sessão órfã é descartado, não retentado")
+	assert.Zero(t, repo.writeCalls(), "e nada é escrito")
+}
+
+// A contrapartida: erro de BANCO (pool/timeout) continua subindo para o worker
+// retentar. É o que separa "não existe tenant" de "não consegui perguntar".
+func TestProcessGroupEvent_TenantLookupDatabaseErrorIsRetryable(t *testing.T) {
+	repo := &fakeRepo{tenantErr: errors.New("resolve tracking tenant: timeout")}
 	s := newTestService(t, repo, &fakeFetcher{}, strings.Repeat("s", minSecretLen))
 
 	err := process(t, s, validPayload(participant(synthPhoneBR+"@c.us", "", "participant")))
 	require.Error(t, err)
-	// "unavailable" é a substring que o matcher do worker classifica como
-	// retryable — a instância pode estar sendo criada agora.
-	assert.Contains(t, err.Error(), "tracking tenant unavailable")
+	assert.Contains(t, err.Error(), "timeout")
 	assert.Zero(t, repo.writeCalls())
 }
 
