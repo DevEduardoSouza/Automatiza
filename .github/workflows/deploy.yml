@@ -532,7 +532,7 @@ jobs:
           echo "=== Draining worker (graceful, overlapped with migrations) ==="
           docker compose stop worker &
           WORKER_STOP=$!
-          trap 'docker compose up -d worker >/dev/null 2>&1 || true' EXIT
+          trap 'docker compose up -d --no-deps worker >/dev/null 2>&1 || true' EXIT
 
           echo "=== Running migrations ==="
           # -T + </dev/null: belt and suspenders against stdin/TTY capture.
@@ -557,7 +557,15 @@ jobs:
 
           echo "=== Rolling out new images ==="
           docker compose up -d --no-recreate postgres redis waha waha-2
-          docker compose up -d server frontend waha-router
+          # --no-deps e OBRIGATORIO aqui, nao estilo. `up -d <svc>` tambem sobe
+          # as DEPENDENCIAS do servico, e sem --no-deps ele as RECRIA quando
+          # estao config-dirty — anulando o --no-recreate da linha acima.
+          # waha-router depends_on waha/waha-2; server depends_on postgres/redis.
+          # Incidente 23/07/2026 (deploy aba9244): uma mudanca em
+          # WHATSAPP_HOOK_EVENTS deixou os dois shards dirty e este comando
+          # recriou ambos, parando ~724 sessoes pareadas (recuperadas pelo
+          # auto-start, mas ~15min de chips fora e ~40 envios perdidos).
+          docker compose up -d --no-deps server frontend waha-router
 
           echo "=== Waiting for backend health ==="
           HEALTHY=0
@@ -571,7 +579,8 @@ jobs:
           done
 
           echo "=== Restarting worker ==="
-          docker compose up -d worker
+          # --no-deps: worker depends_on postgres/redis (stateful). Ver acima.
+          docker compose up -d --no-deps worker
           trap - EXIT
 
           if [ "$FULL_RESTART" != "true" ]; then
