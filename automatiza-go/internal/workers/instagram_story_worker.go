@@ -1,40 +1,59 @@
 package workers
 
 import (
-	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
-	"image/jpeg"
 	"strings"
 	"time"
 
-	// Decoders for re-encoding non-JPEG WhatsApp media to the JPEG that the
-	// Instagram Story API requires (stickers arrive as webp, some images png).
-	_ "image/gif"
-	_ "image/png"
-
-	_ "golang.org/x/image/webp"
-
+	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/imagerender"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/instagram"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
 )
 
-// storyDailyCap is a local guard below Instagram's ~100 posts/24h limit. The
-// authoritative source is GetPublishingLimit, but a cheap local count avoids
-// wasting a container create when we already published a lot for this user.
-const storyDailyCap = 90
+const (
+	// storyDailyCap is a local guard below Instagram's 100 posts/24h limit. A
+	// fonte autoritativa é GetPublishingLimit; a contagem local só evita gastar
+	// uma criação de container quando já publicamos muito para este usuário.
+	storyDailyCap = 90
+	// storyMetaQuotaCap é o limite oficial da janela móvel de 24h por conta.
+	storyMetaQuotaCap = 100
 
-// InstagramStoryPublisher is the slice of the Instagram service the worker needs.
+	// accountLockTTL > timeout da task (90s), para o lock não expirar embaixo de
+	// um job ainda em execução. staleLeaseAfter usa o mesmo valor: passado esse
+	// tempo, o dono anterior comprovadamente não está mais vivo.
+	accountLockTTL  = 2 * time.Minute
+	staleLeaseAfter = 2 * time.Minute
+
+	containerPollEvery  = 3 * time.Second
+	containerPollBudget = 60 * time.Second
+)
+
+// errStoryLockBusy: outra task da MESMA conta está publicando. Transitório —
+// o asynq tenta de novo depois.
+var errStoryLockBusy = errors.New("instagram story: account busy")
+
+// InstagramStoryPublisher is the slice of the Instagram service the worker
+// needs. Repare que nenhum método devolve token: o worker manda userID e o
+// service resolve a credencial internamente.
 type InstagramStoryPublisher interface {
-	PublishStoryImage(ctx context.Context, userID, publicImageURL string) (string, error)
+	FeatureEnabled() bool
+	GetPublishingLimit(ctx context.Context, userID string) (int, error)
+	EnsureStoryContainer(ctx context.Context, userID, publicImageURL, existingContainerID string) (string, error)
+	GetStoryContainerStatus(ctx context.Context, userID, containerID string) (string, error)
+	PublishStoryContainer(ctx context.Context, userID, containerID string) (string, error)
 }
 
 // InstagramStoryWorker consumes instagram:publish_story tasks: it materializes
@@ -44,8 +63,21 @@ type InstagramStoryWorker struct {
 	svc           InstagramStoryPublisher
 	store         *instagram.MediaStore
 	storyRepo     repository.InstagramStoryPostRepository
+	cache         *cache.Cache
 	publicBaseURL string
 	logger        *zap.Logger
+
+	// retryState existe como campo, e não como chamada direta ao asynq, porque
+	// o contexto que carrega retry/max vem de um pacote INTERNO do asynq e não
+	// pode ser construído de fora. Sem esta costura, a regra mais importante do
+	// worker — virar terminal na última tentativa — ficaria sem teste.
+	retryState func(ctx context.Context) (retried, maxRetry int, ok bool)
+}
+
+func asynqRetryState(ctx context.Context) (int, int, bool) {
+	retried, okR := asynq.GetRetryCount(ctx)
+	maxRetry, okM := asynq.GetMaxRetry(ctx)
+	return retried, maxRetry, okR && okM
 }
 
 // NewInstagramStoryWorker builds the worker.
@@ -53,6 +85,7 @@ func NewInstagramStoryWorker(
 	svc InstagramStoryPublisher,
 	store *instagram.MediaStore,
 	storyRepo repository.InstagramStoryPostRepository,
+	c *cache.Cache,
 	publicBaseURL string,
 	logger *zap.Logger,
 ) *InstagramStoryWorker {
@@ -60,117 +93,377 @@ func NewInstagramStoryWorker(
 		svc:           svc,
 		store:         store,
 		storyRepo:     storyRepo,
+		cache:         c,
 		publicBaseURL: strings.TrimRight(publicBaseURL, "/"),
 		logger:        logger,
+		retryState:    asynqRetryState,
 	}
 }
 
 // ProcessTask implements the asynq handler.
+//
+// Contrato de retorno: erro devolvido ao asynq SOMENTE em falha transitória
+// antes da última tentativa. Todo desfecho terminal é gravado no ledger e
+// retorna nil — o job Instagram não deve ir para a fila de arquivados, porque
+// seu payload pode conter o texto da mensagem do cliente.
 func (w *InstagramStoryWorker) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	var data InstagramStoryJobData
 	if err := json.Unmarshal(t.Payload(), &data); err != nil {
-		// Malformed payload never becomes valid — don't retry.
-		return fmt.Errorf("instagram story: bad payload: %v: %w", err, asynq.SkipRetry)
+		// Payload malformado nunca vira válido e não há ledger para marcar.
+		w.logger.Error("instagram story: undecodable payload")
+		return nil
+	}
+	if data.LedgerID == "" || data.UserID == "" {
+		w.logger.Error("instagram story: payload missing ledger or user")
+		return nil
 	}
 
-	// Local daily-cap guard (permanent for this run).
-	if n, err := w.storyRepo.CountPublishedSince(ctx, data.UserID, time.Now().Add(-24*time.Hour)); err == nil && n >= storyDailyCap {
-		w.finishFailed(ctx, data.LedgerID, "limite diário de stories atingido")
-		return fmt.Errorf("instagram story: daily cap reached (%d): %w", n, asynq.SkipRetry)
-	}
-
-	reuseKey, jpegBytes, err := w.prepareImage(ctx, &data)
+	ledger, err := w.storyRepo.GetByID(ctx, data.LedgerID)
 	if err != nil {
-		if errors.Is(err, instagram.ErrMediaNotFound) {
-			w.finishFailed(ctx, data.LedgerID, "mídia expirou antes da publicação")
-			return fmt.Errorf("instagram story: media expired: %w", asynq.SkipRetry)
+		return fmt.Errorf("instagram story: load ledger: %w", err) // transitório
+	}
+	if ledger == nil {
+		// Ledger sumiu (retenção) — nada a publicar nem a registrar.
+		w.logger.Warn("instagram story: ledger row not found", zap.String("ledgerID", data.LedgerID))
+		return nil
+	}
+	// O ledger é a autoridade; o payload é apenas transporte. Divergência
+	// significa job adulterado ou id trocado — publicar aqui postaria o
+	// conteúdo de um evento na conta de outro.
+	if ledger.UserID != data.UserID ||
+		(data.SourceGroup != "" && ledger.SourceGroup != data.SourceGroup) ||
+		(data.MessageID != "" && ledger.MessageID != data.MessageID) {
+		if err := w.finish(ctx, ledger.ID, models.InstagramStoryStatusFailed, "", models.InstagramErrInvalidPayload, false); err != nil {
+			return w.persistFailure(ctx, ledger.ID, err)
 		}
-		// Render/decode failures are permanent for this payload.
-		w.finishFailed(ctx, data.LedgerID, "falha ao preparar imagem: "+err.Error())
-		return fmt.Errorf("instagram story: prepare image: %v: %w", err, asynq.SkipRetry)
+		return nil
+	}
+	if ledger.Status != models.InstagramStoryStatusPending {
+		return nil // já terminal: idempotente
 	}
 
-	// Resolve the public serving key. When the mirrored image is already JPEG
-	// we serve the shared MediaKey DIRECTLY and never delete it — it is shared
-	// across every owner of the source group and expires by TTL. Deleting it
-	// here made the second owner's job fail with "media expired". Only a key we
-	// created ourselves (rendered text / re-encoded non-JPEG) is deleted.
-	servingKey := reuseKey
-	if servingKey == "" {
-		servingKey, err = w.store.Put(ctx, jpegBytes, "image/jpeg", storyMediaTTL)
-		if err != nil {
-			return fmt.Errorf("instagram story: store serving image: %w", err) // transient
-		}
-		defer w.store.Delete(context.WithoutCancel(ctx), servingKey)
-	}
-
-	publicURL := w.publicBaseURL + "/api/v1/public/story-media/" + servingKey
-	mediaID, err := w.svc.PublishStoryImage(ctx, data.UserID, publicURL)
+	// Lock por conta ANTES do lease: dois Stories da mesma conta correndo juntos
+	// competem pela mesma cota e podem gravar o ledger fora de ordem.
+	release, err := w.acquireAccountLock(ctx, data.UserID)
 	if err != nil {
-		if errors.Is(err, instagram.ErrInstagramAuth) {
-			w.finishFailed(ctx, data.LedgerID, "conta Instagram precisa reconectar: "+err.Error())
-			return fmt.Errorf("instagram story: auth error: %v: %w", err, asynq.SkipRetry)
-		}
-		return fmt.Errorf("instagram story: publish: %w", err) // transient → asynq retries
+		// claimed=false: NÃO temos lease. Chamar ReleaseProcessing aqui
+		// apagaria o lease de quem está de fato publicando.
+		return w.handleFailure(ctx, ledger.ID, err, false, time.Time{})
+	}
+	defer release()
+
+	claimed, lease, err := w.storyRepo.TryStartProcessing(ctx, ledger.ID, time.Now().Add(-staleLeaseAfter))
+	if err != nil {
+		return w.handleFailure(ctx, ledger.ID, fmt.Errorf("instagram story: claim lease: %w", err), false, time.Time{})
+	}
+	if !claimed {
+		// Lease fresco de outro executor, ou linha já terminal.
+		return nil
 	}
 
-	// Persist success with a context that survives task cancellation.
-	if err := w.storyRepo.MarkResult(context.WithoutCancel(ctx), data.LedgerID,
-		models.InstagramStoryStatusPublished, mediaID, ""); err != nil {
-		w.logger.Warn("instagram story: mark published failed", zap.String("ledgerID", data.LedgerID), zap.Error(err))
+	if err := w.publish(ctx, &data, ledger); err != nil {
+		return w.handleFailure(ctx, ledger.ID, err, true, lease)
 	}
-	w.logger.Info("instagram story published",
-		zap.String("userID", data.UserID),
-		zap.String("igMediaId", mediaID),
-		zap.String("sourceGroup", data.SourceGroup),
-		zap.String("mediaSource", sourceOf(&data)))
 	return nil
 }
 
-// prepareImage resolves the story image. It returns EITHER a non-empty reuseKey
-// (the shared MediaKey is already a servable JPEG — serve it directly, never
-// delete it: it is shared across the group's owners and expires by TTL) OR
-// jpegBytes to be stored under a fresh, worker-owned key. Errors here are
-// permanent for the payload (expired media, undecodable image, empty text).
-func (w *InstagramStoryWorker) prepareImage(ctx context.Context, data *InstagramStoryJobData) (reuseKey string, jpegBytes []byte, err error) {
-	if data.MediaKey != "" {
-		raw, mime, err := w.store.Get(ctx, data.MediaKey)
+// publish roda o caminho feliz. Qualquer erro devolvido é classificado por
+// handleFailure — esta função não decide terminalidade.
+func (w *InstagramStoryWorker) publish(ctx context.Context, data *InstagramStoryJobData, ledger *models.InstagramStoryPost) error {
+	// Kill switch relido IMEDIATAMENTE antes da primeira chamada externa: o job
+	// pode ter ficado na fila enquanto alguém desligava a feature.
+	if !w.svc.FeatureEnabled() {
+		return w.finish(ctx, ledger.ID, models.InstagramStoryStatusFailed, "", models.InstagramErrFeatureDisabled, false)
+	}
+
+	// Guard local barato antes de qualquer request.
+	n, err := w.storyRepo.CountPublishedSince(ctx, data.UserID, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		// Não é fatal (a cota da Meta logo abaixo é a fonte autoritativa e é
+		// fail-closed), mas silenciar esconderia um Postgres degradado.
+		w.logger.Warn("instagram story: local quota lookup failed", zap.String("ledgerID", ledger.ID), zap.Error(err))
+	} else if n >= storyDailyCap {
+		return w.finish(ctx, ledger.ID, models.InstagramStoryStatusFailed, "", models.InstagramErrQuotaLocal, false)
+	}
+
+	// Fonte oficial da cota. Falhar aqui é transitório de propósito: criar um
+	// container sem saber a cota é o que gera erro caro do lado da Meta.
+	used, err := w.svc.GetPublishingLimit(ctx, data.UserID)
+	if err != nil {
+		return err
+	}
+	if used >= storyMetaQuotaCap {
+		return w.finish(ctx, ledger.ID, models.InstagramStoryStatusFailed, "", models.InstagramErrQuotaMeta, false)
+	}
+
+	containerID := ledger.ContainerID
+	if containerID == "" {
+		// A imagem só é preparada quando NÃO há container. Com container já
+		// criado, a publicação não depende mais dos bytes — e a mídia efêmera
+		// pode ter expirado, o que transformaria um retry recuperável em falha.
+		servingKey, cleanup, err := w.resolveServingKey(ctx, data)
 		if err != nil {
+			return err
+		}
+		if cleanup != nil {
+			defer cleanup()
+		}
+
+		publicURL := w.publicBaseURL + "/api/v1/public/story-media/" + servingKey
+		containerID, err = w.svc.EnsureStoryContainer(ctx, data.UserID, publicURL, "")
+		if err != nil {
+			return err
+		}
+		// Persistir ANTES de qualquer polling/publicação: se o processo morrer
+		// no próximo passo, o retry reaproveita este container em vez de criar
+		// um segundo e publicar o Story duplicado.
+		if err := w.storyRepo.SaveContainerID(ctx, ledger.ID, containerID); err != nil {
+			return err
+		}
+	}
+
+	status, err := w.waitForContainer(ctx, data.UserID, containerID)
+	if err != nil {
+		return err
+	}
+
+	switch status {
+	case "PUBLISHED":
+		// A Meta já publicou (aceite anterior cujo retorno se perdeu). Não
+		// republicar: reconciliar. O media id não é conhecido neste caminho.
+		if err := w.finish(ctx, ledger.ID, models.InstagramStoryStatusPublished, "", "", true); err != nil {
+			return err
+		}
+		w.logger.Info("instagram story reconciled as published",
+			zap.String("userID", data.UserID), zap.String("ledgerID", ledger.ID))
+		return nil
+	case "ERROR":
+		return w.finish(ctx, ledger.ID, models.InstagramStoryStatusFailed, "", models.InstagramErrContainerError, false)
+	case "EXPIRED":
+		return w.finish(ctx, ledger.ID, models.InstagramStoryStatusFailed, "", models.InstagramErrContainerExpired, false)
+	case "FINISHED":
+		// segue para publicação
+	default:
+		// Status vazio/desconhecido: não decidir nada sobre ele.
+		return fmt.Errorf("instagram story: unexpected container status: %w", instagram.ErrInstagramTransient)
+	}
+
+	mediaID, err := w.svc.PublishStoryContainer(ctx, data.UserID, containerID)
+	if err != nil {
+		// Timeout/transitório DEPOIS de a Meta possivelmente ter aceitado:
+		// conferir o status uma vez antes de devolver erro, senão o retry
+		// publicaria de novo.
+		if st, stErr := w.svc.GetStoryContainerStatus(ctx, data.UserID, containerID); stErr == nil && st == "PUBLISHED" {
+			if ferr := w.finish(ctx, ledger.ID, models.InstagramStoryStatusPublished, "", "", true); ferr != nil {
+				return ferr
+			}
+			w.logger.Info("instagram story reconciled after publish timeout",
+				zap.String("userID", data.UserID), zap.String("ledgerID", ledger.ID))
+			return nil
+		}
+		return err
+	}
+	if mediaID == "" {
+		return fmt.Errorf("instagram story: empty media id: %w", instagram.ErrInstagramTransient)
+	}
+
+	if err := w.finish(ctx, ledger.ID, models.InstagramStoryStatusPublished, mediaID, "", false); err != nil {
+		return err
+	}
+	w.logger.Info("instagram story published",
+		zap.String("userID", data.UserID),
+		zap.String("ledgerID", ledger.ID),
+		zap.String("mediaSource", sourceOf(data)))
+	return nil
+}
+
+// waitForContainer consulta o status até sair de IN_PROGRESS, dentro de um
+// orçamento fixo. Sem busy-loop: intervalo constante e teto bem abaixo do
+// timeout da task, para o retry do asynq assumir em vez de estourar o job.
+func (w *InstagramStoryWorker) waitForContainer(ctx context.Context, userID, containerID string) (string, error) {
+	deadline := time.Now().Add(containerPollBudget)
+	for {
+		status, err := w.svc.GetStoryContainerStatus(ctx, userID, containerID)
+		if err != nil {
+			return "", err
+		}
+		if status != "IN_PROGRESS" {
+			return status, nil
+		}
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("instagram story: container still in progress: %w", instagram.ErrInstagramTransient)
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(containerPollEvery):
+		}
+	}
+}
+
+// resolveServingKey devolve a chave pública da imagem.
+//
+// Quando o payload traz MediaKey, os bytes já foram normalizados e guardados
+// pelo trigger e são COMPARTILHADOS entre todos os donos do grupo-fonte: servir
+// direto e NUNCA apagar (expira por TTL). Apagar ali fazia o job do segundo
+// dono falhar com "mídia expirou". Só a chave que este worker cria é apagada.
+func (w *InstagramStoryWorker) resolveServingKey(ctx context.Context, data *InstagramStoryJobData) (string, func(), error) {
+	if data.MediaKey != "" {
+		if _, err := w.store.Get(ctx, data.MediaKey); err != nil {
 			return "", nil, err
 		}
-		if strings.Contains(strings.ToLower(mime), "jpeg") || strings.Contains(strings.ToLower(mime), "jpg") {
-			return data.MediaKey, nil, nil
-		}
-		b, err := reencodeJPEG(raw)
-		return "", b, err
+		return data.MediaKey, nil, nil
 	}
 	if strings.TrimSpace(data.Text) == "" {
-		return "", nil, errors.New("empty story text")
+		return "", nil, instagram.ErrMediaInvalid
 	}
-	b, err := imagerender.RenderStoryImage(data.Text, imagerender.Options{})
-	return "", b, err
-}
-
-func reencodeJPEG(raw []byte) ([]byte, error) {
-	img, _, err := image.Decode(bytes.NewReader(raw))
+	rendered, err := imagerender.RenderStoryImage(data.Text, imagerender.Options{})
 	if err != nil {
-		return nil, fmt.Errorf("decode media: %w", err)
+		return "", nil, instagram.ErrMediaInvalid
 	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 88}); err != nil {
-		return nil, fmt.Errorf("encode jpeg: %w", err)
+	jpegBytes, err := instagram.NormalizeJPEG(rendered)
+	if err != nil {
+		return "", nil, err
 	}
-	return buf.Bytes(), nil
+	key, err := w.store.Put(ctx, jpegBytes, storyMediaTTL)
+	if err != nil {
+		return "", nil, err
+	}
+	return key, func() { w.store.Delete(context.WithoutCancel(ctx), key) }, nil
 }
 
-func (w *InstagramStoryWorker) finishFailed(ctx context.Context, ledgerID, msg string) {
-	if ledgerID == "" {
-		return
+// handleFailure classifica o erro e decide entre terminal e retry.
+//
+// claimed diz se ESTA execução detém o lease. Só quem o detém pode devolvê-lo:
+// liberar um lease alheio soltaria a linha para um terceiro worker enquanto o
+// dono legítimo ainda está publicando.
+func (w *InstagramStoryWorker) handleFailure(ctx context.Context, ledgerID string, err error, claimed bool, lease time.Time) error {
+	if code, terminal := terminalCodeFor(err); terminal {
+		if ferr := w.finish(ctx, ledgerID, models.InstagramStoryStatusFailed, "", code, false); ferr != nil {
+			return w.persistFailure(ctx, ledgerID, ferr)
+		}
+		w.logger.Warn("instagram story failed permanently",
+			zap.String("ledgerID", ledgerID), zap.String("code", code))
+		return nil
 	}
-	if err := w.storyRepo.MarkResult(context.WithoutCancel(ctx), ledgerID,
-		models.InstagramStoryStatusFailed, "", msg); err != nil {
-		w.logger.Warn("instagram story: mark failed error", zap.String("ledgerID", ledgerID), zap.Error(err))
+
+	// Transitório. Na ÚLTIMA tentativa o ledger precisa virar terminal, senão a
+	// linha fica presa em pending para sempre e some do radar. Retornar nil
+	// junto evita que o asynq arquive o job — o payload pode conter o texto da
+	// mensagem do cliente.
+	retried, maxRetry, ok := w.retryState(ctx)
+	if ok && retried >= maxRetry {
+		if ferr := w.finish(ctx, ledgerID, models.InstagramStoryStatusFailed, "", models.InstagramErrTransientExhausted, false); ferr != nil {
+			return w.persistFailure(ctx, ledgerID, ferr)
+		}
+		w.logger.Warn("instagram story: transient retries exhausted", zap.String("ledgerID", ledgerID))
+		return nil
 	}
+
+	if claimed {
+		// Libera o lease para o retry poder reivindicar a linha imediatamente —
+		// e SOMENTE se ele ainda for o nosso (ver ReleaseProcessing).
+		if relErr := w.storyRepo.ReleaseProcessing(context.WithoutCancel(ctx), ledgerID, lease); relErr != nil {
+			w.logger.Warn("instagram story: release lease failed", zap.String("ledgerID", ledgerID), zap.Error(relErr))
+		}
+	}
+	w.logger.Warn("instagram story transient failure",
+		zap.String("ledgerID", ledgerID), zap.Int("retried", retried))
+	return err
+}
+
+// terminalCodeFor mapeia o erro para um código seguro quando ele for definitivo.
+// A decisão é só por errors.Is — nunca por texto, que muda ao sabor da Meta.
+func terminalCodeFor(err error) (string, bool) {
+	switch {
+	case errors.Is(err, instagram.ErrInstagramFeatureDisabled):
+		return models.InstagramErrFeatureDisabled, true
+	case errors.Is(err, instagram.ErrInstagramTokenExpired):
+		return models.InstagramErrTokenExpired, true
+	case errors.Is(err, instagram.ErrInstagramAuth):
+		return models.InstagramErrAuthRequired, true
+	case errors.Is(err, instagram.ErrInstagramRateLimit):
+		return models.InstagramErrQuotaMeta, true
+	case errors.Is(err, instagram.ErrMediaNotFound):
+		return models.InstagramErrMediaExpired, true
+	case errors.Is(err, instagram.ErrMediaTooLarge):
+		return models.InstagramErrMediaTooLarge, true
+	case errors.Is(err, instagram.ErrMediaInvalid):
+		return models.InstagramErrMediaInvalid, true
+	case errors.Is(err, instagram.ErrInstagramPermanent):
+		return models.InstagramErrPublishRejected, true
+	default:
+		return "", false
+	}
+}
+
+// finish grava o desfecho terminal com contexto que sobrevive ao cancelamento
+// da task — perder a gravação deixaria a linha pending sobre um Story publicado.
+//
+// DEVOLVE erro de propósito. Engolir a falha aqui era o pior desfecho possível:
+// o Story sai publicado no Instagram, o job volta `nil` ao asynq e some, e a
+// linha fica `pending` para sempre — a auditoria registrando o oposto do que
+// aconteceu. Com o erro propagado, o retry reencontra o container em status
+// PUBLISHED e reconcilia.
+func (w *InstagramStoryWorker) finish(ctx context.Context, ledgerID, status, mediaID, code string, reconciled bool) error {
+	if err := w.storyRepo.MarkResult(context.WithoutCancel(ctx), ledgerID, status, mediaID,
+		code, models.InstagramSafeErrorMessage(code), reconciled); err != nil {
+		w.logger.Error("instagram story: persist terminal state failed",
+			zap.String("ledgerID", ledgerID), zap.String("code", code), zap.Error(err))
+		return fmt.Errorf("instagram story: persist terminal state: %w", err)
+	}
+	return nil
+}
+
+// persistFailure decide o que fazer quando NEM o desfecho terminal conseguiu ser
+// gravado: enquanto houver retry, devolve o erro; na última tentativa registra
+// em observabilidade e desiste — devolver erro ali arquivaria o job, cujo
+// payload pode conter o texto da mensagem do cliente.
+func (w *InstagramStoryWorker) persistFailure(ctx context.Context, ledgerID string, err error) error {
+	if retried, maxRetry, ok := w.retryState(ctx); ok && retried >= maxRetry {
+		observability.LogAndCapture(w.logger, sentry.LevelError,
+			"instagram story: ledger ficou pendente — persistência do estado terminal falhou até o fim", err,
+			map[string]string{"module": "instagram", "operation": "story_worker", "ledgerID": ledgerID})
+		return nil
+	}
+	return err
+}
+
+// acquireAccountLock serializa as publicações de uma MESMA conta profissional.
+//
+// Fail-closed: sem Redis não há lock, e sem lock duas tasks concorreriam pela
+// cota e pela ordem de escrita do ledger. Melhor adiar do que publicar torto.
+func (w *InstagramStoryWorker) acquireAccountLock(ctx context.Context, userID string) (func(), error) {
+	// Operational, e não apenas "cache != nil": com APP_CACHE desligado o
+	// SetNX devolve true SEM gravar nada, e o lock viraria um no-op que
+	// deixaria duas tasks da mesma conta publicarem juntas.
+	if !w.cache.Operational() {
+		return nil, fmt.Errorf("instagram story: lock store unavailable: %w", instagram.ErrInstagramTransient)
+	}
+	// O UUID do cliente não vai em claro para o Redis.
+	sum := sha256.Sum256([]byte(userID))
+	key := "ig_story_account_lock:" + hex.EncodeToString(sum[:])
+
+	tokenBytes := make([]byte, 16)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return nil, err
+	}
+	token := hex.EncodeToString(tokenBytes)
+
+	ok, err := w.cache.SetNX(ctx, key, token, accountLockTTL)
+	if err != nil {
+		return nil, fmt.Errorf("instagram story: lock error: %w", instagram.ErrInstagramTransient)
+	}
+	if !ok {
+		return nil, errStoryLockBusy
+	}
+	return func() {
+		// compare-and-delete: um DEL cru apagaria o lock que OUTRO worker já
+		// readquiriu depois de o nosso ter expirado por TTL.
+		if _, err := w.cache.CompareAndDelete(context.WithoutCancel(ctx), key, token); err != nil {
+			w.logger.Warn("instagram story: lock release failed", zap.Error(err))
+		}
+	}, nil
 }
 
 func sourceOf(data *InstagramStoryJobData) string {

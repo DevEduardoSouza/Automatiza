@@ -96,6 +96,15 @@ type Config struct {
 	InstagramAppID       string `mapstructure:"INSTAGRAM_APP_ID"`
 	InstagramAppSecret   string `mapstructure:"INSTAGRAM_APP_SECRET"`
 	InstagramRedirectURI string `mapstructure:"INSTAGRAM_REDIRECT_URI"`
+	// InstagramStoriesEnabled é o kill switch DEDICADO da publicação. Existe
+	// porque, sem ele, só provisionar app id/secret já ligava UI, gatilho e
+	// worker — provisionar credencial vira ativação acidental. Default false:
+	// ligar a feature é decisão operacional explícita.
+	InstagramStoriesEnabled bool `mapstructure:"INSTAGRAM_STORIES_ENABLED"`
+	// InstagramStateSigningKey assina o state do OAuth. Segredo SEPARADO de
+	// propósito: reaproveitar a chave HMAC de tokens faria um vazamento do state
+	// virar comprometimento de sessão. Mínimo de 32 bytes.
+	InstagramStateSigningKey string `mapstructure:"INSTAGRAM_STATE_SIGNING_KEY"`
 
 	// Web Push (PWA). Vazio => feature desligada: o service responde
 	// enabled=false, a UI esconde o opt-in e os ganchos de evento viram no-op.
@@ -196,6 +205,8 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("PRODUCER_BACKPRESSURE_DELAY_MS", 15000)
 	viper.SetDefault("PRODUCER_USER_MAX_ENQUEUED_10MIN", 200)
 	viper.SetDefault("LOG_LEVEL", "info")
+	// Kill switch da publicação de Stories: desligado até alguém decidir ligar.
+	viper.SetDefault("INSTAGRAM_STORIES_ENABLED", false)
 	viper.SetDefault("LINK_SAFETY_MODE", "off")
 	viper.SetDefault("TZ", "America/Sao_Paulo")
 	viper.SetDefault("OTEL_ENABLED", false)

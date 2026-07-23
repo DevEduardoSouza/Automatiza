@@ -714,8 +714,8 @@ func TestDisabledAndNilRedis_Parity(t *testing.T) {
 
 	// Both disabled=true and redis=nil should behave identically for redis-dependent ops
 	caches := map[string]*Cache{
-		"disabled_true":  newDisabledCache("p"),
-		"redis_nil":      newDisabledCacheWithRedis("p"),
+		"disabled_true": newDisabledCache("p"),
+		"redis_nil":     newDisabledCacheWithRedis("p"),
 	}
 
 	for name, c := range caches {
@@ -2511,4 +2511,128 @@ func TestMiniredis_Set_OverwriteExisting(t *testing.T) {
 			t.Errorf("expected 'second', got %q", val)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// GetDel / CompareAndDelete — primitivas de uso único e de lock.
+// ---------------------------------------------------------------------------
+
+func newRedisBackedCache(t *testing.T) (*Cache, *miniredis.Miniredis) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	return NewCache(rdb, "test", false), mr
+}
+
+func TestGetDel_ReadsAndRemovesAtomically(t *testing.T) {
+	c, _ := newRedisBackedCache(t)
+	ctx := context.Background()
+
+	if err := c.Set(ctx, "nonce", "user-1", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.GetDel(ctx, "nonce")
+	if err != nil {
+		t.Fatalf("GetDel: %v", err)
+	}
+	if got != "user-1" {
+		t.Errorf("valor = %q, want user-1", got)
+	}
+	if _, err := c.GetDel(ctx, "nonce"); err == nil {
+		t.Error("segunda leitura deveria falhar: a chave foi consumida")
+	}
+}
+
+// A propriedade que importa: sob concorrência, exatamente UM chamador recebe o
+// valor. É isto que impede o replay do callback OAuth.
+func TestGetDel_ExactlyOneWinnerUnderConcurrency(t *testing.T) {
+	c, _ := newRedisBackedCache(t)
+	ctx := context.Background()
+	if err := c.Set(ctx, "nonce", "user-1", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	winners := 0
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if v, err := c.GetDel(ctx, "nonce"); err == nil && v == "user-1" {
+				mu.Lock()
+				winners++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if winners != 1 {
+		t.Fatalf("exatamente 1 chamador deveria consumir o nonce, got %d", winners)
+	}
+}
+
+// Cache desligado NÃO pode devolver sucesso: "não consegui verificar" jamais
+// vale como "nonce válido".
+func TestGetDel_DisabledCacheIsNotSuccess(t *testing.T) {
+	c := newDisabledCache("test")
+	if _, err := c.GetDel(context.Background(), "nonce"); err == nil {
+		t.Fatal("cache desligado deveria falhar, não devolver sucesso vazio")
+	}
+}
+
+func TestCompareAndDelete_OnlyDeletesMatchingValue(t *testing.T) {
+	c, mr := newRedisBackedCache(t)
+	ctx := context.Background()
+	if err := c.Set(ctx, "lock", "token-A", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+
+	// Token errado não apaga — este é o caso do lock que OUTRO worker já
+	// readquiriu depois de o nosso expirar.
+	deleted, err := c.CompareAndDelete(ctx, "lock", "token-B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted {
+		t.Fatal("não deveria apagar lock de outro dono")
+	}
+	if v, _ := mr.Get("test:lock"); v != "token-A" {
+		t.Fatalf("valor foi alterado: %q", v)
+	}
+
+	// Token certo apaga.
+	deleted, err = c.CompareAndDelete(ctx, "lock", "token-A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !deleted {
+		t.Fatal("deveria apagar o próprio lock")
+	}
+	if mr.Exists("test:lock") {
+		t.Error("chave deveria ter sido removida")
+	}
+}
+
+func TestCompareAndDelete_MissingKeyIsNoop(t *testing.T) {
+	c, _ := newRedisBackedCache(t)
+	deleted, err := c.CompareAndDelete(context.Background(), "ausente", "qualquer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted {
+		t.Error("chave inexistente não deveria reportar deleção")
+	}
+}
+
+func TestCompareAndDelete_DisabledCacheReportsNoDeletion(t *testing.T) {
+	c := newDisabledCache("test")
+	deleted, err := c.CompareAndDelete(context.Background(), "lock", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted {
+		t.Error("cache desligado não apagou nada e não pode dizer que apagou")
+	}
 }

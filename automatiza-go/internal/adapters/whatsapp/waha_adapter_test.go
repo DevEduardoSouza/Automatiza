@@ -13,6 +13,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"path"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -2248,4 +2250,128 @@ func TestMapper_SendLinkPreviewToWaha_HighQuality(t *testing.T) {
 	b, err := json.Marshal(req)
 	require.NoError(t, err)
 	assert.Contains(t, string(b), `"linkPreviewHighQuality":true`)
+}
+
+// ---------------------------------------------------------------------------
+// safeWAHAMediaPath — allowlist do path de download de mídia.
+//
+// O host informado já era descartado, mas o PATH vinha inteiro de fora e a
+// request carrega a X-Api-Key. Sem allowlist, um path forjado num evento de
+// webhook faria o servidor chamar qualquer endpoint autenticado da WAHA com a
+// nossa própria credencial.
+// ---------------------------------------------------------------------------
+
+func TestSafeWAHAMediaPath_AcceptsRealMediaURLs(t *testing.T) {
+	// Forma confirmada na doc oficial (waha-plus-openapi.json:8846).
+	cases := map[string]string{
+		"absoluta":                "http://localhost:3000/api/files/false_11111111111@c.us_AAAAAAAAAAAAAAAAAAAA.oga",
+		"relativa":                "/api/files/false_5511999999999@c.us_ABCDEF.jpeg",
+		"host externo é ignorado": "https://cdn.example.com/api/files/session_x/foto.jpeg",
+		"subdiretório de sessão":  "/api/files/session_01abc/false_123@g.us_XYZ.jpeg",
+	}
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := safeWAHAMediaPath(in)
+			if err != nil {
+				t.Fatalf("URL legítima recusada: %v", err)
+			}
+			if !strings.HasPrefix(got, "/api/files/") {
+				t.Errorf("path = %q, deveria começar com /api/files/", got)
+			}
+			if strings.Contains(got, "://") {
+				t.Errorf("path não pode conter host: %q", got)
+			}
+		})
+	}
+}
+
+func TestSafeWAHAMediaPath_RejectsDangerousPaths(t *testing.T) {
+	cases := map[string]string{
+		"vazio":                  "",
+		"outro endpoint da WAHA": "http://localhost:3000/api/sessions",
+		"unpair de sessão":       "/api/sessions/session_x/logout",
+		"traversal simples":      "/api/files/../sessions/session_x/logout",
+		"traversal para a raiz":  "/api/files/../../admin",
+		"barra codificada":       "/api/files/..%2f..%2fapi%2fsessions",
+		"ponto codificado":       "/api/files/%2e%2e/sessions",
+		"backslash":              `/api/files/..\..\api\sessions`,
+		"prefixo parecido":       "/api/filesX/segredo",
+		"prefixo sem arquivo":    "/api/files/",
+		"com query":              "/api/files/x.jpeg?apikey=roubada",
+		"com fragmento":          "/api/files/x.jpeg#/../sessions",
+		"com userinfo":           "http://user:senha@localhost:3000/api/files/x.jpeg",
+		"barra dupla":            "/api/files//../sessions",
+		"raiz":                   "/",
+	}
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := safeWAHAMediaPath(in)
+			if err == nil {
+				t.Fatalf("path perigoso foi ACEITO: %q -> %q", in, got)
+			}
+		})
+	}
+}
+
+// Nome de arquivo com caractere escapado NÃO pode ser recusado: este é o
+// caminho quente do espelhamento de imagem (monitoring e offer_generate), e o
+// fallback RedownloadMedia passa pela mesma allowlist — recusar aqui derrubaria
+// os DOIS caminhos de download e o espelho cairia para o thumbnail.
+func TestSafeWAHAMediaPath_AcceptsEscapedFilenames(t *testing.T) {
+	cases := map[string]string{
+		"espaço codificado": "/api/files/foto%20do%20dia.jpeg",
+		"espaço literal":    "/api/files/foto do dia.jpeg",
+		"acento codificado": "/api/files/promo%C3%A7%C3%A3o.jpeg",
+		"arroba codificado": "/api/files/false_123%40g.us_ABC.jpeg",
+		"parênteses":        "/api/files/foto(1).jpeg",
+		"host + codificado": "http://localhost:3000/api/files/a%20b.jpeg",
+	}
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := safeWAHAMediaPath(in)
+			if err != nil {
+				t.Fatalf("nome de arquivo legítimo foi RECUSADO (regressão no espelho): %v", err)
+			}
+			if !strings.HasPrefix(got, "/api/files/") {
+				t.Errorf("path fora da allowlist: %q", got)
+			}
+			// A saída é reescapada, então pode ser concatenada à base sem
+			// reinterpretação.
+			if strings.Contains(got, " ") {
+				t.Errorf("path de saída deveria estar escapado, got %q", got)
+			}
+		})
+	}
+}
+
+// Regressão de invariante: TODA entrada da lista abaixo é aceita, e toda aceita
+// resolve para dentro de /api/files/. O `require` no fim é o que impede este
+// teste de virar tautologia — sem ele, uma função que recusasse tudo passaria.
+func TestSafeWAHAMediaPath_AcceptedPathsNeverEscapeMediaPrefix(t *testing.T) {
+	inputs := []string{
+		"http://x/api/files/a.jpeg",
+		"/api/files/b/c/d.jpeg",
+		"https://y.z/api/files/nome%20com%20espaco.jpeg",
+		"/api/files/foto@grupo.jpeg",
+	}
+	accepted := 0
+	for _, in := range inputs {
+		got, err := safeWAHAMediaPath(in)
+		if err != nil {
+			t.Errorf("entrada legítima recusada: %q -> %v", in, err)
+			continue
+		}
+		accepted++
+		if !strings.HasPrefix(got, "/api/files/") {
+			t.Errorf("entrada %q produziu path fora da allowlist: %q", in, got)
+		}
+		// O path devolvido, uma vez decodificado, precisa continuar canônico.
+		decoded, derr := url.PathUnescape(got)
+		if derr != nil || path.Clean(decoded) != decoded {
+			t.Errorf("entrada %q produziu path não canônico: %q", in, got)
+		}
+	}
+	if accepted != len(inputs) {
+		t.Fatalf("apenas %d de %d entradas legítimas foram aceitas", accepted, len(inputs))
+	}
 }

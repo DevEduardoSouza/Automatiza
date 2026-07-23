@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
-	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
@@ -23,6 +22,7 @@ const storyMediaTTL = 30 * time.Minute
 
 // igStoryService is the slice of the Instagram service the trigger needs.
 type igStoryService interface {
+	FeatureEnabled() bool
 	HasCredentials(ctx context.Context, userID string) bool
 }
 
@@ -36,7 +36,6 @@ type StoryTrigger struct {
 	waProvider     whatsapp.WhatsAppProvider
 	mediaStore     *instagram.MediaStore
 	queue          *QueueClient
-	cache          *cache.Cache
 	logger         *zap.Logger
 }
 
@@ -48,7 +47,6 @@ func NewStoryTrigger(
 	waProvider whatsapp.WhatsAppProvider,
 	mediaStore *instagram.MediaStore,
 	queue *QueueClient,
-	c *cache.Cache,
 	logger *zap.Logger,
 ) *StoryTrigger {
 	return &StoryTrigger{
@@ -58,14 +56,26 @@ func NewStoryTrigger(
 		waProvider:     waProvider,
 		mediaStore:     mediaStore,
 		queue:          queue,
-		cache:          c,
 		logger:         logger,
 	}
 }
 
 // HandleStoryMessage resolves the owning accounts of the source group, prepares
-// the media once, and enqueues one publish job per connected owner (deduped).
+// the media once, and enqueues one publish job per connected owner.
+//
+// A dedupe NÃO mora mais no Redis: o índice único do ledger decide quem publica.
+// O claim antigo tinha TTL de 1h e falhava aberto, então redelivery tardio,
+// corrida entre chips ou Redis fora do ar publicavam o mesmo Story duas vezes.
 func (t *StoryTrigger) HandleStoryMessage(ctx context.Context, msg *models.IncomingMessage) {
+	if !t.igService.FeatureEnabled() {
+		return
+	}
+	// MessageID vazio não participa do índice único parcial — sem ele não há
+	// idempotência possível, então o evento simplesmente não é elegível.
+	if msg == nil || msg.RemoteJID == "" || msg.MessageID == "" {
+		return
+	}
+
 	owners := t.connectedOwners(ctx, msg.RemoteJID)
 	if len(owners) == 0 {
 		return
@@ -78,25 +88,34 @@ func (t *StoryTrigger) HandleStoryMessage(ctx context.Context, msg *models.Incom
 	// Prepare the media ONCE — shared across every owner of this group.
 	var mediaKey, text, mediaSource string
 	switch {
+	case isVideo:
+		// Vídeo fora do v1: o Story só publica imagem por enquanto.
+		// Identificadores de grupo/mensagem ficam FORA do log: a lista permitida
+		// é userID, ledgerID, operação, classe/código e contagens.
+		t.logger.Info("story trigger: video not supported yet, skipping",
+			zap.Int("owners", len(owners)))
+		return
 	case isImage:
-		data, mime := t.fetchImage(ctx, msg)
+		data, _ := t.fetchImage(ctx, msg)
 		if len(data) == 0 {
 			t.logger.Warn("story trigger: could not fetch image, skipping story",
-				zap.String("group", msg.RemoteJID), zap.String("messageID", msg.MessageID))
+				zap.Int("owners", len(owners)))
 			return
 		}
-		key, err := t.mediaStore.Put(ctx, data, mime, storyMediaTTL)
+		// Converte para JPEG AQUI, uma vez para todos os donos: o store só
+		// aceita JPEG e a rota pública sempre serve image/jpeg.
+		jpegBytes, err := instagram.NormalizeJPEG(data)
+		if err != nil {
+			t.logger.Warn("story trigger: image rejected", zap.String("class", "media_invalid"))
+			return
+		}
+		key, err := t.mediaStore.Put(ctx, jpegBytes, storyMediaTTL)
 		if err != nil {
 			t.capture("story media put failed", err, msg)
 			return
 		}
 		mediaKey = key
 		mediaSource = models.InstagramMediaSourceImage
-	case isVideo:
-		// Vídeo fora do v1: o Story só publica imagem por enquanto.
-		t.logger.Info("story trigger: video not supported yet, skipping",
-			zap.String("group", msg.RemoteJID), zap.String("messageID", msg.MessageID))
-		return
 	default:
 		text = strings.TrimSpace(msg.Body)
 		if text == "" {
@@ -106,31 +125,43 @@ func (t *StoryTrigger) HandleStoryMessage(ctx context.Context, msg *models.Incom
 	}
 
 	for _, userID := range owners {
-		if !t.claim(ctx, userID, msg) {
-			continue // outro chip/automação do mesmo dono já disparou este story
-		}
-		ledgerID, err := t.storyRepo.Create(ctx, &models.InstagramStoryPost{
-			UserID:      userID,
-			SourceGroup: msg.RemoteJID,
-			MessageID:   msg.MessageID,
-			MediaSource: mediaSource,
-			Status:      models.InstagramStoryStatusPending,
-		})
-		if err != nil {
-			t.capture("story ledger create failed", err, msg)
-			continue
-		}
-		if _, err := t.queue.EnqueueInstagramStory(ctx, &InstagramStoryJobData{
-			UserID:      userID,
-			MediaKey:    mediaKey,
-			Text:        text,
-			SourceGroup: msg.RemoteJID,
-			MessageID:   msg.MessageID,
-			LedgerID:    ledgerID,
-		}); err != nil {
-			t.capture("story enqueue failed", err, msg)
-			_ = t.storyRepo.MarkResult(ctx, ledgerID, models.InstagramStoryStatusFailed, "", "enqueue failed: "+err.Error())
-		}
+		t.dispatchForOwner(ctx, userID, mediaKey, text, mediaSource, msg)
+	}
+}
+
+// dispatchForOwner grava o evento no ledger e enfileira o job — só quando ESTA
+// chamada criou a linha. Linha preexistente significa que outro chip/automação
+// do mesmo dono já atendeu o evento.
+func (t *StoryTrigger) dispatchForOwner(ctx context.Context, userID, mediaKey, text, mediaSource string, msg *models.IncomingMessage) {
+	row, created, err := t.storyRepo.GetOrCreate(ctx, &models.InstagramStoryPost{
+		UserID:      userID,
+		SourceGroup: msg.RemoteJID,
+		MessageID:   msg.MessageID,
+		MediaSource: mediaSource,
+		Status:      models.InstagramStoryStatusPending,
+	})
+	if err != nil {
+		t.capture("story ledger get-or-create failed", err, msg)
+		return
+	}
+	if !created {
+		return
+	}
+
+	if _, err := t.queue.EnqueueInstagramStory(ctx, &InstagramStoryJobData{
+		UserID:      userID,
+		MediaKey:    mediaKey,
+		Text:        text,
+		SourceGroup: msg.RemoteJID,
+		MessageID:   msg.MessageID,
+		LedgerID:    row.ID,
+	}); err != nil {
+		// Falha REAL de enqueue (conflito de id já volta como sucesso). O ledger
+		// recebe um código enumerado; o erro cru fica só no log estruturado.
+		t.capture("story enqueue failed", err, msg)
+		_ = t.storyRepo.MarkResult(ctx, row.ID, models.InstagramStoryStatusFailed, "",
+			models.InstagramErrEnqueueFailed,
+			models.InstagramSafeErrorMessage(models.InstagramErrEnqueueFailed), false)
 	}
 }
 
@@ -183,24 +214,11 @@ func (t *StoryTrigger) fetchImage(ctx context.Context, msg *models.IncomingMessa
 	return nil, ""
 }
 
-// claim dedups one story per (owner, group, message) for 1h — the same message
-// arrives via multiple chips and via multiple automations. Fail-open.
-func (t *StoryTrigger) claim(ctx context.Context, userID string, msg *models.IncomingMessage) bool {
-	if t.cache == nil {
-		return true
-	}
-	key := "ig_story_claim:" + userID + ":" + msg.RemoteJID + ":" + msg.MessageID
-	ok, err := t.cache.SetNX(ctx, key, "1", time.Hour)
-	if err != nil {
-		return true // fail-open: prefer a possible dup over dropping the story
-	}
-	return ok
-}
-
 func (t *StoryTrigger) capture(what string, err error, msg *models.IncomingMessage) {
+	// A tag do grupo saiu daqui: o JID identifica um grupo de cliente e o Sentry
+	// é um destino externo.
 	observability.LogAndCapture(t.logger, sentry.LevelWarning, "instagram story: "+what, err, map[string]string{
-		"module":      "instagram",
-		"operation":   "story_trigger",
-		"sourceGroup": msg.RemoteJID,
+		"module":    "instagram",
+		"operation": "story_trigger",
 	})
 }

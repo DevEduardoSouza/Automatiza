@@ -431,23 +431,47 @@ func main() {
 		config.NewModuleLogger(logger, "ml"),
 	)
 
-	// Instagram Stories ({story} tag). Nasce desligado sem INSTAGRAM_APP_ID:
-	// APIClient.Enabled()==false → tudo vira no-op. Token cifrado com a mesma
-	// chave do ML; state OAuth assinado com a chave HMAC de tokens.
+	// Instagram Stories ({story} tag). Nasce desligado: além de exigir
+	// INSTAGRAM_APP_ID/SECRET, há o kill switch dedicado
+	// INSTAGRAM_STORIES_ENABLED (default false) — provisionar credencial não
+	// deve, sozinho, ligar UI, gatilho e worker.
 	instagramRedirectURI := cfg.InstagramRedirectURI
 	if instagramRedirectURI == "" {
 		instagramRedirectURI = cfg.BackendPublicURL + "/api/v1/instagram/oauth/callback"
 	}
 	instagramService := instagram.NewService(
+		instagram.ServiceConfig{
+			StoriesEnabled:  cfg.InstagramStoriesEnabled,
+			FrontendBaseURL: cfg.PublicBaseURL,
+			BackendBaseURL:  cfg.BackendPublicURL,
+			EncryptionKey:   cfg.MLCredentialsEncryptionKey,
+			// Segredo SEPARADO do HMAC de tokens de propósito: reaproveitar
+			// aquela chave faria um vazamento do state virar comprometimento
+			// de sessão.
+			StateSigningKey: cfg.InstagramStateSigningKey,
+		},
 		instagram.NewAPIClient(cfg.InstagramAppID, cfg.InstagramAppSecret, instagramRedirectURI, config.NewModuleLogger(logger, "instagram")),
 		repos.InstagramCredentials,
 		repos.InstagramStoryPost,
-		cfg.MLCredentialsEncryptionKey,
-		string(cfg.GetTokenHMACKey()),
+		repos.InstagramDataDeletion,
 		cacheClient,
 		config.NewModuleLogger(logger, "instagram"),
 	)
-	instagramMediaStore := instagram.NewMediaStore(redisClient.Client, config.NewModuleLogger(logger, "instagram-media"))
+	// Flag ligada com configuração incompleta NÃO derruba o processo: registra
+	// e segue desligada. Derrubar o servidor por causa de uma feature opcional
+	// mal configurada custaria muito mais que a feature vale.
+	if cfg.InstagramStoriesEnabled && !instagramService.Configured() {
+		observability.LogAndCapture(logger, sentry.LevelWarning,
+			"INSTAGRAM_STORIES_ENABLED=true com configuração incompleta — feature permanece desligada", nil,
+			map[string]string{"module": "instagram", "operation": "startup_config"})
+	}
+	// MediaStore só existe com Redis. Antes esta linha lia redisClient.Client
+	// fora de qualquer guarda: sem Redis, o processo entrava em panic no boot
+	// mesmo com a feature desligada.
+	var instagramMediaStore *instagram.MediaStore
+	if redisClient != nil {
+		instagramMediaStore = instagram.NewMediaStore(redisClient.Client, config.NewModuleLogger(logger, "instagram-media"))
+	}
 
 	aiService := ai.NewAIService(
 		cfg.AIApiURL,
@@ -579,10 +603,17 @@ func main() {
 	})
 
 	// Renova os tokens de longa duração do Instagram (~60d) que expiram nos
-	// próximos 30d. No-op quando a feature está desligada. Só roda no server
-	// (cronService.Start()).
+	// próximos 30d. Roda mesmo com o kill switch de publicação DESLIGADO: uma
+	// semana com a feature off não pode vencer silenciosamente a credencial de
+	// quem já conectou. No-op quando o app não está configurado.
 	cronService.RegisterTask("instagram_token_refresh", 24*time.Hour, func(ctx context.Context) error {
 		return instagramService.RefreshExpiring(ctx)
+	})
+
+	// Retenção de 30 dias do ledger de Stories e dos comprovantes de exclusão.
+	// Em lotes limitados; no-op quando os repositórios não estão prontos.
+	cronService.RegisterTask("instagram_retention_cleanup", 24*time.Hour, func(ctx context.Context) error {
+		return instagramService.CleanupExpired(ctx, time.Now().UTC())
 	})
 
 	// Reconciliador de 'queued' órfão (não-LIST-item): fecha o gap deixado pelo
@@ -1571,10 +1602,11 @@ func runWorker(
 		)
 		messageProcessor = monitoringProcessor
 
-		// {story}: liga o disparo de Story do Instagram no fan-out. Só quando a
-		// feature está configurada (INSTAGRAM_APP_ID presente) — sem isso o
-		// trigger nem é instalado e o strip da tag segue sendo um no-op.
-		if instagramService.FeatureEnabled() {
+		// {story}: liga o disparo de Story do Instagram no fan-out. Exige a
+		// feature LIGADA (kill switch + configuração completa) e o media store
+		// presente — sem isso o trigger nem é instalado e o strip da tag segue
+		// sendo um no-op.
+		if instagramService.FeatureEnabled() && instagramMediaStore != nil {
 			storyTrigger := workers.NewStoryTrigger(
 				automationRepo,
 				instagramService,
@@ -1582,7 +1614,6 @@ func runWorker(
 				wahaAdapter,
 				instagramMediaStore,
 				queueClient,
-				cacheClient,
 				config.NewModuleLogger(logger, "instagram-story-trigger"),
 			)
 			monitoringProcessor.SetStoryTrigger(storyTrigger)
@@ -1759,6 +1790,7 @@ func runWorker(
 		instagramService,
 		instagramMediaStore,
 		instagramStoryRepo,
+		cacheClient,
 		cfg.BackendPublicURL,
 		config.NewModuleLogger(logger, "instagram-story-worker"),
 	)

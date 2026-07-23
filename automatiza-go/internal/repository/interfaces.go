@@ -410,22 +410,62 @@ type MLCredentialsRepository interface {
 	Save(ctx context.Context, userID, encryptedData string) error
 }
 
+// ErrInstagramAccountAlreadyConnected indica que a conta profissional (ou o id
+// app-scoped) já pertence a OUTRO usuário local. Só as violações dos dois
+// índices únicos de instagram_credentials viram este sentinel — qualquer outro
+// 23505 continua subindo cru, para não mascarar defeito de schema.
+var ErrInstagramAccountAlreadyConnected = errors.New("instagram account already connected to another user")
+
 // InstagramCredentialsRepository handles per-user Instagram tokens (encrypted).
 type InstagramCredentialsRepository interface {
 	Get(ctx context.Context, userID string) (*models.InstagramCredentialsDB, error)
-	Save(ctx context.Context, userID, encryptedData, igUserID, username string, expiresAt time.Time) error
+	// GetByAppScopedUserID resolve a credencial a partir do id que o
+	// signed_request da Meta carrega (deauthorize / data deletion).
+	GetByAppScopedUserID(ctx context.Context, appScopedUserID string) (*models.InstagramCredentialsDB, error)
+	Save(ctx context.Context, userID, encryptedData, appScopedUserID, igUserID, username string, expiresAt time.Time) error
 	Delete(ctx context.Context, userID string) error
+	DeleteByAppScopedUserID(ctx context.Context, appScopedUserID string) error
 	// ListExpiring returns credentials whose token expires before `before`
 	// (used by the refresh cron to renew ~30d ahead).
 	ListExpiring(ctx context.Context, before time.Time) ([]models.InstagramCredentialsDB, error)
 }
 
 // InstagramStoryPostRepository handles the story-publish ledger.
+//
+// O ledger — não o Redis — é a fonte de verdade da idempotência: GetOrCreate é
+// atômico contra o índice único (user_id, source_group, message_id), então
+// redelivery, corrida entre chips e Redis indisponível não conseguem publicar
+// o mesmo Story duas vezes.
 type InstagramStoryPostRepository interface {
-	Create(ctx context.Context, p *models.InstagramStoryPost) (string, error)
-	MarkResult(ctx context.Context, id, status, igMediaID, errMsg string) error
+	// GetOrCreate insere a linha do evento ou devolve a existente. created=true
+	// somente quando ESTA chamada inseriu — é o sinal de "posso enfileirar".
+	GetOrCreate(ctx context.Context, p *models.InstagramStoryPost) (row *models.InstagramStoryPost, created bool, err error)
+	GetByID(ctx context.Context, id string) (*models.InstagramStoryPost, error)
+	// TryStartProcessing reivindica o lease da linha num único UPDATE. Só pega
+	// linha pending cujo lease esteja ausente ou mais velho que staleBefore.
+	// Devolve o carimbo do lease adquirido — ele é o TOKEN de posse: só quem o
+	// tem pode devolver o lease depois.
+	TryStartProcessing(ctx context.Context, id string, staleBefore time.Time) (claimed bool, lease time.Time, err error)
+	// ReleaseProcessing só libera se o lease ainda for o que `lease` descreve.
+	// Sem isso, um worker zumbi (contexto cancelado no timeout, goroutine viva)
+	// libera o lease de quem o tomou legitimamente depois dele.
+	ReleaseProcessing(ctx context.Context, id string, lease time.Time) error
+	SaveContainerID(ctx context.Context, id, containerID string) error
+	MarkResult(ctx context.Context, id, status, igMediaID, errorCode, safeMessage string, reconciled bool) error
 	ListRecentByUser(ctx context.Context, userID string, limit int) ([]models.InstagramStoryPost, error)
 	CountPublishedSince(ctx context.Context, userID string, since time.Time) (int, error)
+	DeleteOlderThan(ctx context.Context, before time.Time, limit int) (int64, error)
+}
+
+// InstagramDataDeletionRepository grava os comprovantes de exclusão exigidos
+// pela Meta e executa a exclusão em si.
+type InstagramDataDeletionRepository interface {
+	// Process apaga ledger + credencial do sujeito e grava o comprovante NUMA
+	// ÚNICA transação. Sujeito desconhecido também recebe comprovante concluído
+	// — responder diferente revelaria se a conta existe aqui.
+	Process(ctx context.Context, appScopedUserID, subjectHash, candidateConfirmationCode string, expiresAt time.Time) (*models.InstagramDataDeletionRequest, error)
+	GetByConfirmationCode(ctx context.Context, confirmationCode string, now time.Time) (*models.InstagramDataDeletionRequest, error)
+	DeleteExpired(ctx context.Context, before time.Time, limit int) (int64, error)
 }
 
 // WebPushSubscriptionRepository handles browser push subscriptions (PWA).

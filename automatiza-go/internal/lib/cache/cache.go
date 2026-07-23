@@ -246,9 +246,63 @@ func (c *Cache) SetNX(ctx context.Context, key, value string, ttl time.Duration)
 	return c.redis.SetNX(ctx, c.fullKey(key), value, ttl).Result()
 }
 
+// GetDel lê e apaga a chave ATOMICAMENTE (comando GETDEL, Redis >= 6.2).
+//
+// Existe porque Get-e-depois-Delete não é single-use: dois callbacks OAuth
+// concorrentes podiam ler o mesmo nonce antes de qualquer um apagá-lo e ambos
+// seguirem adiante (replay). Diferente de SetNX, NÃO falha aberto: cache
+// desligado devolve redis.Nil, porque "não consegui verificar" jamais pode
+// valer como "nonce válido".
+func (c *Cache) GetDel(ctx context.Context, key string) (string, error) {
+	fullKey := c.fullKey(key)
+	c.localCache.Delete(fullKey)
+
+	if c.disabled || c.redis == nil {
+		return "", redis.Nil
+	}
+	return c.redis.GetDel(ctx, fullKey).Result()
+}
+
+// compareAndDeleteScript apaga a chave somente se o valor for exatamente o
+// esperado. É a liberação correta de um lock: um DEL cru apagaria o lock que
+// OUTRO worker já readquiriu depois de o nosso ter expirado por TTL.
+var compareAndDeleteScript = redis.NewScript(`
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	return redis.call("DEL", KEYS[1])
+end
+return 0
+`)
+
+// CompareAndDelete apaga a chave apenas se ela ainda contiver `expected`.
+// Retorna se apagou. Cache desligado retorna false (nada foi liberado).
+func (c *Cache) CompareAndDelete(ctx context.Context, key, expected string) (bool, error) {
+	fullKey := c.fullKey(key)
+	c.localCache.Delete(fullKey)
+
+	if c.disabled || c.redis == nil {
+		return false, nil
+	}
+	n, err := compareAndDeleteScript.Run(ctx, c.redis, []string{fullKey}, expected).Int64()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // ClearLocal clears the local cache
 func (c *Cache) ClearLocal() {
 	c.localCache = &sync.Map{}
+}
+
+// Operational diz se este cache REALMENTE fala com o Redis.
+//
+// Existe porque `GetRedisClient() != nil` não basta: com APP_CACHE desligado
+// (DisableAppRedisCache) o cliente continua presente, mas SetNX passa a
+// devolver `true` sem gravar nada — fail-open. Isso é aceitável para cache,
+// e inaceitável para lock ou nonce de uso único, onde "não verifiquei" jamais
+// pode valer como "verificado".
+func (c *Cache) Operational() bool {
+	return c != nil && !c.disabled && c.redis != nil
 }
 
 // GetRedisClient returns the underlying Redis client

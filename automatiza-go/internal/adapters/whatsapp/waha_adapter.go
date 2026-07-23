@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -2296,6 +2297,74 @@ func (a *WahaAdapter) DownloadMedia(ctx context.Context, input DownloadMediaInpu
 	}, nil
 }
 
+// wahaMediaPathPrefix é a ÚNICA família de paths que DownloadMediaByURL pode
+// alcançar. Confirmado na doc oficial (waha-plus-openapi.json:8846, exemplo
+// "http://localhost:3000/api/files/false_...oga"); com WAHA_S3_PROXY_FILES=True
+// a própria WAHA proxia o S3 por esta rota, então é o que produção usa.
+const wahaMediaPathPrefix = "/api/files/"
+
+// errUnsafeMediaPath é a saída única de rejeição — não vale detalhar qual regra
+// reprovou para quem manda a URL.
+var errUnsafeMediaPath = errors.New("media URL path not allowed")
+
+// safeWAHAMediaPath extrai o path de uma URL de mídia e só o devolve se for
+// inequivocamente um arquivo de mídia da WAHA.
+//
+// O host de entrada já era descartado (a request sai contra a.apiURL), mas o
+// PATH vinha inteiro de fora e a request carrega a X-Api-Key. Sem allowlist,
+// um path forjado num evento de webhook faria o servidor chamar qualquer
+// endpoint autenticado da WAHA — inclusive os que mexem em sessão pareada —
+// com a nossa própria credencial.
+func safeWAHAMediaPath(mediaURL string) (string, error) {
+	parsed, err := url.Parse(mediaURL)
+	if err != nil {
+		return "", err
+	}
+	// Credencial embutida na URL nunca é legítima aqui.
+	if parsed.User != nil {
+		return "", errUnsafeMediaPath
+	}
+	// Fragmento e query não existem numa URL de arquivo da WAHA; presença
+	// indica URL construída, não recebida do provedor.
+	if parsed.Fragment != "" || parsed.RawQuery != "" {
+		return "", errUnsafeMediaPath
+	}
+	// A validação roda sobre o path DECODIFICADO (parsed.Path) e o que sai é o
+	// path REESCAPADO (EscapedPath). Isso é o que dá segurança sem recusar nome
+	// de arquivo legítimo:
+	//
+	//   "/api/files/..%2f..%2fapi%2fsessions" decodifica para
+	//   "/api/files/../../api/sessions", que path.Clean muda -> RECUSADO.
+	//   "/api/files/foto do dia.jpeg" (ou %20) decodifica limpo e dentro do
+	//   prefixo -> ACEITO, e sai reescapado corretamente.
+	//
+	// Recusar toda URL percent-encodada (checando RawPath != "") seria seguro,
+	// porém quebraria o espelhamento de imagem — caminho quente compartilhado
+	// com monitoring e offer_generate — para qualquer arquivo com caractere
+	// escapado no nome.
+	decoded := parsed.Path
+	if strings.ContainsAny(decoded, `\`) {
+		return "", errUnsafeMediaPath
+	}
+	// path.Clean pega "..", "." e barras duplicadas de uma vez: se limpar muda
+	// alguma coisa, o path não estava na forma canônica.
+	if decoded != path.Clean(decoded) {
+		return "", errUnsafeMediaPath
+	}
+	if !strings.HasPrefix(decoded, wahaMediaPathPrefix) || len(decoded) <= len(wahaMediaPathPrefix) {
+		return "", errUnsafeMediaPath
+	}
+
+	escaped := parsed.EscapedPath()
+	// Cinto e suspensório: a forma escapada tem de continuar dentro do prefixo.
+	// Sem isto, um "%2f" logo após o prefixo poderia mudar o alvo do lado do
+	// servidor mesmo com o decodificado parecendo bem-comportado.
+	if !strings.HasPrefix(escaped, wahaMediaPathPrefix) {
+		return "", errUnsafeMediaPath
+	}
+	return escaped, nil
+}
+
 // DownloadMediaByURL implements MediaDownloader.DownloadMediaByURL.
 // Downloads media from an internal WAHA file URL (e.g. http://localhost:3000/api/files/...).
 // The URL's host is replaced with the adapter's configured API URL so the
@@ -2305,18 +2374,20 @@ func (a *WahaAdapter) DownloadMediaByURL(ctx context.Context, mediaURL string) (
 		return nil, NewProviderError(ErrCodeInvalidInput, "media URL is required", nil)
 	}
 
-	// Parse the media URL to extract the path
-	parsed, err := url.Parse(mediaURL)
+	// O host informado é IGNORADO — a request sempre sai contra a.apiURL. Mas
+	// isso sozinho não bastava: o PATH continuava vindo de fora, e a request
+	// leva a X-Api-Key. Um path controlado podia, assim, alcançar QUALQUER
+	// endpoint autenticado da WAHA (inclusive os que mexem em sessão) usando a
+	// nossa credencial. Daí a allowlist abaixo.
+	safePath, err := safeWAHAMediaPath(mediaURL)
 	if err != nil {
 		return nil, NewProviderError(ErrCodeInvalidInput, "invalid media URL", err)
 	}
 
-	// Rewrite to use the adapter's configured API base URL
-	reqURL := a.apiURL + parsed.Path
+	reqURL := a.apiURL + safePath
 
-	a.logger.Debug("Downloading media by URL",
-		zap.String("originalURL", mediaURL),
-		zap.String("rewrittenURL", reqURL))
+	// A URL original não vai para o log: pode conter query com token do provedor.
+	a.logger.Debug("Downloading media by URL", zap.String("path", safePath))
 
 	// N2: 30s timeout for download operations
 	dlCtx, cancel := context.WithTimeout(ctx, 30*time.Second)

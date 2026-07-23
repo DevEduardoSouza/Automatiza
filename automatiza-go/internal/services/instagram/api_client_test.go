@@ -12,9 +12,23 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestExchangeCode cobre o code->short token com user_id vindo como number E
-// como string (os dois formatos que o Instagram devolve conforme o endpoint).
-func TestExchangeCode(t *testing.T) {
+func testClient(t *testing.T, handler http.HandlerFunc) (*APIClient, *httptest.Server) {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	c := NewAPIClient("appid", "appsecret", "https://cb.example/redirect", zap.NewNop())
+	c.baseAPI = srv.URL
+	c.baseGraph = srv.URL
+	return c, srv
+}
+
+// TestExchangeCode cobre o ENVELOPE OFICIAL data[] do Business Login, com
+// user_id vindo como number E como string (os dois formatos que a API devolve).
+//
+// Confirmado em 23/07/2026 na doc oficial de Business Login: a troca do code
+// responde {"data":[{"access_token":...,"user_id":...,"permissions":...}]}.
+// O código antigo decodificava o TOPO da resposta e por isso lia campos vazios.
+func TestExchangeCode_OfficialDataEnvelope(t *testing.T) {
 	cases := []struct {
 		name       string
 		userIDJSON string
@@ -25,7 +39,7 @@ func TestExchangeCode(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/oauth/access_token" {
 					t.Errorf("path = %q, want /oauth/access_token", r.URL.Path)
 				}
@@ -36,31 +50,131 @@ func TestExchangeCode(t *testing.T) {
 				if got := r.FormValue("code"); got != "AUTHCODE" {
 					t.Errorf("code = %q", got)
 				}
-				fmt.Fprintf(w, `{"access_token":"SHORTTOKEN","user_id":%s,"permissions":["instagram_business_basic"]}`, tc.userIDJSON)
-			}))
-			defer srv.Close()
+				fmt.Fprintf(w, `{"data":[{"access_token":"SHORTTOKEN","user_id":%s,"permissions":"instagram_business_basic"}]}`, tc.userIDJSON)
+			})
 
-			c := NewAPIClient("appid", "appsecret", "https://cb.example/redirect", zap.NewNop())
-			c.baseAPI = srv.URL
-
-			short, uid, err := c.ExchangeCode(context.Background(), "AUTHCODE")
+			short, appScoped, err := c.ExchangeCode(context.Background(), "AUTHCODE")
 			if err != nil {
 				t.Fatalf("ExchangeCode: %v", err)
 			}
 			if short != "SHORTTOKEN" {
 				t.Errorf("shortToken = %q, want SHORTTOKEN", short)
 			}
-			if uid != tc.want {
-				t.Errorf("igUserID = %q, want %q", uid, tc.want)
+			if appScoped != tc.want {
+				t.Errorf("appScopedUserID = %q, want %q", appScoped, tc.want)
 			}
 		})
+	}
+}
+
+// Envelope vazio, múltiplo, sem token ou sem id: nenhum deles pode "passar
+// meio certo" — adivinhar aqui persiste o identificador errado.
+func TestExchangeCode_RejectsMalformedEnvelopes(t *testing.T) {
+	cases := map[string]string{
+		"data vazio":     `{"data":[]}`,
+		"data múltiplo":  `{"data":[{"access_token":"a","user_id":"1"},{"access_token":"b","user_id":"2"}]}`,
+		"token vazio":    `{"data":[{"access_token":"","user_id":"1"}]}`,
+		"sem app-scoped": `{"data":[{"access_token":"a","user_id":""}]}`,
+		"topo antigo":    `{"access_token":"a","user_id":"1"}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, body)
+			})
+			if _, _, err := c.ExchangeCode(context.Background(), "X"); err == nil {
+				t.Fatal("esperava erro, veio nil")
+			}
+		})
+	}
+}
+
+// GetMe também responde em data[] e devolve o id PROFISSIONAL — diferente do
+// app-scoped da troca. Publicar com o id errado posta no objeto errado.
+func TestGetMe_ReturnsProfessionalID(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("fields"); !strings.Contains(got, "user_id") {
+			t.Errorf("fields = %q", got)
+		}
+		fmt.Fprint(w, `{"data":[{"user_id":"PROFISSIONAL999","username":"loja","account_type":"BUSINESS"}]}`)
+	})
+
+	igID, username, accountType, err := c.GetMe(context.Background(), "TOKEN")
+	if err != nil {
+		t.Fatalf("GetMe: %v", err)
+	}
+	if igID != "PROFISSIONAL999" {
+		t.Errorf("igUserID = %q, want PROFISSIONAL999", igID)
+	}
+	if username != "loja" {
+		t.Errorf("username = %q", username)
+	}
+	if accountType != "BUSINESS" {
+		t.Errorf("accountType = %q", accountType)
+	}
+}
+
+// A doc mostra "Business"/"Media_Creator"; outros endpoints já devolveram caixa
+// alta. Ambos precisam passar, e conta pessoal precisa ser recusada.
+func TestGetMe_AccountTypeHandling(t *testing.T) {
+	cases := map[string]bool{
+		"Business":      true,
+		"BUSINESS":      true,
+		"Media_Creator": true,
+		"MEDIA_CREATOR": true,
+		"":              true, // ausente no envelope oficial: não reprova
+		"PERSONAL":      false,
+		"Creator":       false, // fora do contrato: só Business e Media_Creator
+	}
+	for accountType, wantOK := range cases {
+		t.Run("tipo_"+accountType, func(t *testing.T) {
+			c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, `{"data":[{"user_id":"IG1","username":"u","account_type":%q}]}`, accountType)
+			})
+			_, _, _, err := c.GetMe(context.Background(), "TOKEN")
+			if wantOK && err != nil {
+				t.Fatalf("account_type %q deveria ser aceito: %v", accountType, err)
+			}
+			if !wantOK && err == nil {
+				t.Fatalf("account_type %q deveria ser recusado", accountType)
+			}
+		})
+	}
+}
+
+func TestGetMe_RejectsEmptyEnvelope(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"data":[]}`)
+	})
+	if _, _, _, err := c.GetMe(context.Background(), "TOKEN"); err == nil {
+		t.Fatal("envelope vazio deveria falhar")
+	}
+}
+
+// expires_in <= 0 é resposta inútil. Antes o service "corrigia" isso inventando
+// 60 dias — a credencial parecia válida por dois meses e todo envio falhava.
+func TestTokenResponses_RejectNonPositiveExpiry(t *testing.T) {
+	for _, body := range []string{
+		`{"access_token":"T","token_type":"bearer","expires_in":0}`,
+		`{"access_token":"T","token_type":"bearer","expires_in":-5}`,
+		`{"access_token":"","token_type":"bearer","expires_in":5183944}`,
+	} {
+		c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, body)
+		})
+		if _, _, err := c.ExchangeLongLived(context.Background(), "SHORT"); err == nil {
+			t.Errorf("ExchangeLongLived deveria recusar %s", body)
+		}
+		if _, _, err := c.RefreshLongLived(context.Background(), "LONG"); err == nil {
+			t.Errorf("RefreshLongLived deveria recusar %s", body)
+		}
 	}
 }
 
 // TestStoryPublishFlow cobre o caminho feliz create -> status(FINISHED) -> publish.
 func TestStoryPublishFlow(t *testing.T) {
 	var createHit, statusHit, publishHit bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/media_publish"):
 			publishHit = true
@@ -88,11 +202,7 @@ func TestStoryPublishFlow(t *testing.T) {
 		default:
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
-	}))
-	defer srv.Close()
-
-	c := NewAPIClient("appid", "appsecret", "cb", zap.NewNop())
-	c.baseGraph = srv.URL
+	})
 	ctx := context.Background()
 
 	cid, err := c.CreateStoryContainer(ctx, "IG123", "TOKEN", "https://img.example/x.jpg")
@@ -124,47 +234,123 @@ func TestStoryPublishFlow(t *testing.T) {
 	}
 }
 
-// TestExchangeCodeAuthError garante que um 400 com envelope de erro (code 190)
-// é classificado como ErrInstagramAuth (permanente -> SkipRetry no worker).
-func TestExchangeCodeAuthError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":{"message":"Invalid platform app","type":"OAuthException","code":190,"error_subcode":458}}`)
-	}))
-	defer srv.Close()
-
-	c := NewAPIClient("appid", "appsecret", "cb", zap.NewNop())
-	c.baseAPI = srv.URL
-
-	_, _, err := c.ExchangeCode(context.Background(), "BADCODE")
-	if err == nil {
-		t.Fatal("esperava erro, veio nil")
+// Classificação por code/subcode/status. Antes, TODO 400 virava erro de
+// autenticação: erro de processamento pedia "reconecte sua conta" e ainda
+// perdia o retry.
+func TestClassifyMetaError(t *testing.T) {
+	cases := []struct {
+		name     string
+		status   int
+		body     string
+		wantIs   error
+		wantNotv error
+	}{
+		{"code 190 é auth", http.StatusBadRequest,
+			`{"error":{"message":"Invalid platform app","code":190,"error_subcode":458}}`,
+			ErrInstagramAuth, nil},
+		{"400 genérico NÃO é auth", http.StatusBadRequest,
+			`{"error":{"message":"bad param","code":100}}`,
+			ErrInstagramPermanent, ErrInstagramAuth},
+		{"401 é auth", http.StatusUnauthorized, `{"error":{"message":"x"}}`, ErrInstagramAuth, nil},
+		{"403 é auth", http.StatusForbidden, `{"error":{"message":"x"}}`, ErrInstagramAuth, nil},
+		{"is_transient vence 403", http.StatusForbidden,
+			`{"error":{"message":"x","is_transient":true}}`, ErrInstagramTransient, ErrInstagramAuth},
+		{"429 é transitório", http.StatusTooManyRequests, `{"error":{"message":"x"}}`, ErrInstagramTransient, nil},
+		{"500 é transitório", http.StatusInternalServerError, `{"error":{"message":"x","code":1}}`, ErrInstagramTransient, ErrInstagramAuth},
+		{"code -1 é transitório", http.StatusBadRequest, `{"error":{"message":"x","code":-1}}`, ErrInstagramTransient, nil},
+		{"code -2 é transitório", http.StatusBadRequest, `{"error":{"message":"x","code":-2}}`, ErrInstagramTransient, nil},
+		{"subcode 2207003 é transitório", http.StatusBadRequest,
+			`{"error":{"message":"x","code":9004,"error_subcode":2207003}}`, ErrInstagramTransient, nil},
+		{"subcode 2207032 é transitório", http.StatusBadRequest,
+			`{"error":{"message":"x","error_subcode":2207032}}`, ErrInstagramTransient, nil},
+		{"subcode 2207053 é transitório", http.StatusBadRequest,
+			`{"error":{"message":"x","error_subcode":2207053}}`, ErrInstagramTransient, nil},
+		{"subcode 2207008 é transitório", http.StatusBadRequest,
+			`{"error":{"message":"x","error_subcode":2207008}}`, ErrInstagramTransient, nil},
+		{"subcode 2207027 é transitório", http.StatusBadRequest,
+			`{"error":{"message":"x","error_subcode":2207027}}`, ErrInstagramTransient, nil},
+		{"code 9 é cota", http.StatusBadRequest,
+			`{"error":{"message":"x","code":9}}`, ErrInstagramRateLimit, ErrInstagramAuth},
+		{"subcode 2207042 é cota", http.StatusBadRequest,
+			`{"error":{"message":"x","error_subcode":2207042}}`, ErrInstagramRateLimit, ErrInstagramAuth},
 	}
-	if !errors.Is(err, ErrInstagramAuth) {
-		t.Fatalf("esperava ErrInstagramAuth, veio: %v", err)
-	}
-	if !strings.Contains(err.Error(), "Invalid platform app") {
-		t.Errorf("erro deveria conter a mensagem do envelope: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			})
+			_, err := c.GetContainerStatus(context.Background(), "CONTAINER123", "TOKEN")
+			if err == nil {
+				t.Fatal("esperava erro, veio nil")
+			}
+			if !errors.Is(err, tc.wantIs) {
+				t.Errorf("esperava %v, veio %v", tc.wantIs, err)
+			}
+			if tc.wantNotv != nil && errors.Is(err, tc.wantNotv) {
+				t.Errorf("NÃO deveria ser %v: %v", tc.wantNotv, err)
+			}
+		})
 	}
 }
 
-// TestTransientErrorNotAuth garante que 5xx NÃO carrega ErrInstagramAuth
-// (transitório -> o worker pode reprocessar).
-func TestTransientErrorNotAuth(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, `{"error":{"message":"temporary","type":"Internal","code":1}}`)
-	}))
-	defer srv.Close()
-
-	c := NewAPIClient("appid", "appsecret", "cb", zap.NewNop())
-	c.baseGraph = srv.URL
-
-	_, err := c.GetContainerStatus(context.Background(), "CONTAINER123", "TOKEN")
+// O erro tipado não pode carregar mensagem, corpo ou token: ele acaba em log
+// e a mensagem da Meta pode conter URL da mídia e ids.
+func TestMetaAPIError_DoesNotLeakProviderDetail(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"message":"token SEGREDO123 invalido em https://cdn/x.jpg?sig=abc","code":100}}`)
+	})
+	_, err := c.GetContainerStatus(context.Background(), "CONTAINER123", "TOKEN-SECRETO")
 	if err == nil {
-		t.Fatal("esperava erro, veio nil")
+		t.Fatal("esperava erro")
+	}
+	for _, leak := range []string{"SEGREDO123", "https://cdn", "sig=abc", "TOKEN-SECRETO", "invalido"} {
+		if strings.Contains(err.Error(), leak) {
+			t.Errorf("erro vaza %q: %s", leak, err.Error())
+		}
+	}
+	var metaErr *MetaAPIError
+	if !errors.As(err, &metaErr) {
+		t.Fatal("erro deveria ser *MetaAPIError")
+	}
+	if metaErr.Code != 100 || metaErr.HTTPStatus != http.StatusBadRequest {
+		t.Errorf("metadados perdidos: %+v", metaErr)
+	}
+}
+
+// Falha de rede (servidor fechado) é transitória — nunca auth.
+func TestNetworkFailureIsTransient(t *testing.T) {
+	c := NewAPIClient("appid", "appsecret", "cb", zap.NewNop())
+	c.baseGraph = "http://127.0.0.1:1" // porta fechada
+
+	_, err := c.GetContainerStatus(context.Background(), "C1", "TOKEN")
+	if err == nil {
+		t.Fatal("esperava erro de rede")
+	}
+	if !errors.Is(err, ErrInstagramTransient) {
+		t.Errorf("falha de rede deveria ser transitória, got %v", err)
 	}
 	if errors.Is(err, ErrInstagramAuth) {
-		t.Fatalf("5xx não deveria ser ErrInstagramAuth: %v", err)
+		t.Error("falha de rede não pode ser auth")
+	}
+}
+
+// O escopo pedido é o mínimo da entrega: nada de messages/comments, que
+// implicariam capacidade de inbound que não existe.
+func TestAuthorizeURL_RequestsOnlyPublishScopes(t *testing.T) {
+	c := NewAPIClient("appid", "appsecret", "https://cb.example/redirect", zap.NewNop())
+	u := c.AuthorizeURL("STATE123")
+
+	if !strings.Contains(u, "instagram_business_basic") || !strings.Contains(u, "instagram_business_content_publish") {
+		t.Errorf("escopos de publicação ausentes: %s", u)
+	}
+	for _, forbidden := range []string{"manage_messages", "manage_comments"} {
+		if strings.Contains(u, forbidden) {
+			t.Errorf("escopo %q não pertence a esta entrega: %s", forbidden, u)
+		}
+	}
+	if !strings.Contains(u, "state=STATE123") {
+		t.Errorf("state ausente: %s", u)
 	}
 }

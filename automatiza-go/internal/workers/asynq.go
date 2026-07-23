@@ -2,6 +2,8 @@ package workers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -265,10 +267,25 @@ func (q *QueueClient) EnqueueMessage(ctx context.Context, data *MessageJobData, 
 	return info, nil
 }
 
+// InstagramStoryTaskID deriva o id da task do EVENTO de origem (dono + grupo +
+// mensagem), não de um id aleatório. Duas entregas do mesmo evento produzem o
+// mesmo id e o asynq recusa a segunda — segunda barreira de idempotência, atrás
+// do índice único do ledger.
+//
+// O hash não é enfeite: o id da task fica visível no Redis e no dashboard do
+// asynq, e o material cru é UUID de cliente + JID de grupo + id de mensagem.
+func InstagramStoryTaskID(userID, sourceGroup, messageID string) string {
+	sum := sha256.Sum256([]byte(userID + "\x00" + sourceGroup + "\x00" + messageID))
+	return "ig-story:" + hex.EncodeToString(sum[:])
+}
+
 // EnqueueInstagramStory enqueues a story-publish job on the "default" queue.
 // Story publishing has no ≤1min SLA, so it must not compete with webhooks(4)
-// or the mirror's own message sends(3). Failures retry a few times; permanent
-// auth/permission errors are turned into asynq.SkipRetry by the worker.
+// or the mirror's own message sends(3).
+//
+// Conflito de TaskID devolve (nil, nil): o job JÁ está na fila, então o evento
+// está atendido. Tratar isso como erro faria o chamador marcar o ledger como
+// falho enquanto a publicação seguia normalmente.
 func (q *QueueClient) EnqueueInstagramStory(ctx context.Context, data *InstagramStoryJobData) (*asynq.TaskInfo, error) {
 	if data.TraceID == "" {
 		if span := trace.SpanFromContext(ctx); span.SpanContext().HasTraceID() {
@@ -286,9 +303,15 @@ func (q *QueueClient) EnqueueInstagramStory(ctx context.Context, data *Instagram
 		asynq.Queue("default"),
 		asynq.MaxRetry(4),
 		asynq.Timeout(90*time.Second),
+		asynq.TaskID(InstagramStoryTaskID(data.UserID, data.SourceGroup, data.MessageID)),
 	)
 	info, err := q.client.EnqueueContext(ctx, task)
 	if err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {
+			q.logger.Info("Instagram story already enqueued (idempotent)",
+				zap.String("userID", data.UserID))
+			return nil, nil
+		}
 		return nil, err
 	}
 	q.logger.Info("Instagram story enqueued",

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -19,52 +20,136 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
 const (
-	stateTTL            = 10 * time.Minute
-	containerPollEvery  = 3 * time.Second
-	containerPollBudget = 60 * time.Second
+	stateTTL = 10 * time.Minute
+	// minStateKeyBytes: 32 bytes é o piso para uma chave HMAC-SHA256 fazer
+	// sentido. Chave curta = state forjável = callback forjável.
+	minStateKeyBytes = 32
+	// retentionWindow / retentionBatch / retentionMaxBatches: a limpeza diária
+	// é limitada de propósito. Um DELETE sem teto no ledger seguraria lock em
+	// cima do caminho quente; sobra fica para o dia seguinte.
+	retentionWindow     = 30 * 24 * time.Hour
+	retentionBatch      = 1000
+	retentionMaxBatches = 10
 )
 
+// ServiceConfig reúne o que o service precisa saber do ambiente. Agrupado num
+// struct para o construtor não virar uma fila de strings posicionais onde
+// trocar duas por engano compila e quebra em produção.
+type ServiceConfig struct {
+	StoriesEnabled  bool
+	FrontendBaseURL string
+	BackendBaseURL  string
+	EncryptionKey   string
+	StateSigningKey string
+}
+
+// DataDeletionResponse é o corpo que a Meta espera do callback de exclusão.
+type DataDeletionResponse struct {
+	URL              string `json:"url"`
+	ConfirmationCode string `json:"confirmation_code"`
+}
+
 // Service orchestrates the per-user Instagram connection and story publishing.
-// It is safe to construct even when the feature is disabled (api.Enabled()
-// false): every entry point degrades to a no-op / not-connected answer.
+// It is safe to construct even when the feature is disabled: every entry point
+// degrades to a no-op / not-connected answer.
 type Service struct {
-	api             *APIClient
-	credsRepo       repository.InstagramCredentialsRepository
-	storyRepo       repository.InstagramStoryPostRepository
-	encryptionKey   string
-	stateSigningKey string
-	cache           *cache.Cache
-	logger          *zap.Logger
+	cfg          ServiceConfig
+	api          *APIClient
+	credsRepo    repository.InstagramCredentialsRepository
+	storyRepo    repository.InstagramStoryPostRepository
+	deletionRepo repository.InstagramDataDeletionRepository
+	cache        *cache.Cache
+	logger       *zap.Logger
 }
 
 // NewService builds the Instagram service.
 func NewService(
+	cfg ServiceConfig,
 	api *APIClient,
 	credsRepo repository.InstagramCredentialsRepository,
 	storyRepo repository.InstagramStoryPostRepository,
-	encryptionKey, stateSigningKey string,
+	deletionRepo repository.InstagramDataDeletionRepository,
 	c *cache.Cache,
 	logger *zap.Logger,
 ) *Service {
 	return &Service{
-		api:             api,
-		credsRepo:       credsRepo,
-		storyRepo:       storyRepo,
-		encryptionKey:   encryptionKey,
-		stateSigningKey: stateSigningKey,
-		cache:           c,
-		logger:          logger,
+		cfg:          cfg,
+		api:          api,
+		credsRepo:    credsRepo,
+		storyRepo:    storyRepo,
+		deletionRepo: deletionRepo,
+		cache:        c,
+		logger:       logger,
 	}
 }
 
-// FeatureEnabled reports whether the server has Instagram credentials configured.
-func (s *Service) FeatureEnabled() bool {
-	return s != nil && s.api != nil && s.api.Enabled() && s.encryptionKey != ""
+// --- prontidão e kill switch ---
+
+// redisReady exige Redis REAL e OPERACIONAL. Cache meramente presente não
+// serve para state: com APP_CACHE desligado, Set vira no-op silencioso e o
+// nonce nunca chegaria a existir.
+func (s *Service) redisReady() bool {
+	return s != nil && s.cache.Operational()
 }
+
+func isHTTPSURL(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "https" && u.Host != ""
+}
+
+// Configured diz se TODA a configuração necessária para o fluxo OAuth+publicação
+// está presente e segura. Separado do kill switch: assim uma configuração
+// incompleta nunca é confundida com "alguém desligou de propósito".
+func (s *Service) Configured() bool {
+	return s != nil &&
+		s.api.Enabled() &&
+		s.cfg.EncryptionKey != "" &&
+		len(s.cfg.StateSigningKey) >= minStateKeyBytes &&
+		s.redisReady() &&
+		isHTTPSURL(s.api.RedirectURI()) &&
+		isHTTPSURL(s.cfg.BackendBaseURL) &&
+		isHTTPSURL(s.cfg.FrontendBaseURL) &&
+		s.credsRepo != nil &&
+		s.storyRepo != nil
+}
+
+// TokenMaintenanceConfigured é deliberadamente mais frouxo que Configured: o
+// cron de refresh precisa continuar renovando tokens JÁ CONCEDIDOS mesmo com o
+// kill switch de publicação desligado — senão desligar a feature por uma semana
+// venceria silenciosamente a credencial de todo mundo.
+func (s *Service) TokenMaintenanceConfigured() bool {
+	return s != nil && s.api.Enabled() && s.cfg.EncryptionKey != "" && s.credsRepo != nil
+}
+
+// DeauthorizeConfigured é mais frouxo que DataDeletionConfigured de propósito:
+// revogar não devolve URL de status, então não depende de BACKEND_PUBLIC_URL.
+// Exigir a URL aqui faria a Meta receber 503 numa revogação legítima —
+// ou seja, o app continuaria com credencial de quem já removeu o acesso.
+func (s *Service) DeauthorizeConfigured() bool {
+	return s != nil && s.api.AppSecret() != "" && s.credsRepo != nil
+}
+
+// DataDeletionConfigured: os callbacks da Meta são um contrato de plataforma e
+// precisam responder mesmo com a publicação desligada. Aqui a URL do backend É
+// necessária, porque a resposta carrega o link de status.
+func (s *Service) DataDeletionConfigured() bool {
+	return s != nil && s.api.AppSecret() != "" && s.deletionRepo != nil && isHTTPSURL(s.cfg.BackendBaseURL)
+}
+
+// FeatureEnabled combina configuração completa E decisão explícita de ligar.
+func (s *Service) FeatureEnabled() bool {
+	return s != nil && s.cfg.StoriesEnabled && s.Configured()
+}
+
+// --- status ---
 
 // Status is the connection snapshot for the frontend.
 type Status struct {
@@ -86,7 +171,10 @@ func (s *Service) Status(ctx context.Context, userID string) (*Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cred != nil {
+	// Linha presente NÃO significa conectado: um token vencido é uma conexão
+	// morta. Mostrá-la como ativa fazia a UI dizer "conectado" enquanto todo
+	// envio falhava.
+	if cred != nil && credentialUsable(cred, time.Now()) {
 		out.Connected = true
 		out.Username = cred.Username
 		out.IGUserID = cred.IGUserID
@@ -100,61 +188,136 @@ func (s *Service) Status(ctx context.Context, userID string) (*Status, error) {
 	return out, nil
 }
 
+// credentialUsable exige expiry PRESENTE e no futuro. Expiry nulo é credencial
+// de origem desconhecida — tratá-la como eterna é o erro que se quer evitar.
+func credentialUsable(cred *models.InstagramCredentialsDB, now time.Time) bool {
+	return cred != nil &&
+		cred.TokenExpiresAt != nil &&
+		cred.TokenExpiresAt.After(now) &&
+		cred.IGUserID != ""
+}
+
+// --- OAuth ---
+
 // BuildAuthorizeURL returns the Instagram OAuth URL with a signed, single-use
-// state (userID + nonce + expiry). The nonce is stored in Redis so the callback
-// can enforce single use even though it carries no session.
+// state. O state carrega APENAS nonce + expiração: o id do usuário local fica
+// no Redis, sob o nonce. Antes o UUID ia dentro do state, ou seja, trafegava
+// pela Meta e pelo histórico do navegador de quem conecta.
 func (s *Service) BuildAuthorizeURL(ctx context.Context, userID string) (string, error) {
 	if !s.FeatureEnabled() {
-		return "", errors.New("instagram: feature not enabled")
+		return "", ErrInstagramFeatureDisabled
 	}
-	nonce, err := randomToken(16)
+	if _, err := uuid.Parse(userID); err != nil {
+		return "", errors.New("instagram: invalid user id")
+	}
+	nonce, err := randomToken(32)
 	if err != nil {
 		return "", err
 	}
-	if s.cache != nil {
-		if err := s.cache.Set(ctx, nonceKey(nonce), userID, stateTTL); err != nil {
-			return "", err
-		}
+	if err := s.cache.Set(ctx, nonceKey(nonce), userID, stateTTL); err != nil {
+		return "", err
 	}
 	exp := time.Now().Add(stateTTL).Unix()
-	state := s.signState(userID, nonce, exp)
-	return s.api.AuthorizeURL(state), nil
+	return s.api.AuthorizeURL(s.signState(nonce, exp)), nil
 }
 
-// HandleCallback validates the state, exchanges the code for a long-lived token,
-// fetches the profile, encrypts and stores it. Returns a frontend redirect path.
-func (s *Service) HandleCallback(ctx context.Context, code, state string) (string, error) {
+// Códigos de redirect do callback. Fixos e sem detalhe técnico: a página de
+// destino é pública e o valor cai no histórico do navegador.
+const (
+	redirectDisabled        = "/instagram?error=disabled"
+	redirectInvalidState    = "/instagram?error=invalid_state"
+	redirectDenied          = "/instagram?error=denied"
+	redirectNoCode          = "/instagram?error=no_code"
+	redirectExchangeFailed  = "/instagram?error=exchange_failed"
+	redirectProfileFailed   = "/instagram?error=profile_failed"
+	redirectAlreadyLinked   = "/instagram?error=already_connected"
+	redirectSaveFailed      = "/instagram?error=save_failed"
+	redirectConnectedOK     = "/instagram?connected=1"
+	instagramCallbackOpName = "oauth_callback"
+)
+
+// HandleCallback valida o state, troca o code por um token de longa duração,
+// consulta o perfil, cifra e persiste. Devolve o path de redirect do frontend.
+//
+// A ordem é fixa e o state é consumido PRIMEIRO, inclusive quando a Meta manda
+// ?error= — antes esse ramo nem validava state, então o callback de negação era
+// um endpoint sem autenticação nenhuma, repetível à vontade.
+func (s *Service) HandleCallback(ctx context.Context, code, state, providerError string) (string, error) {
 	if !s.FeatureEnabled() {
-		return "/instagram?error=disabled", errors.New("instagram: feature not enabled")
+		return redirectDisabled, ErrInstagramFeatureDisabled
 	}
-	userID, err := s.verifyState(ctx, state)
+	userID, err := s.consumeState(ctx, state)
 	if err != nil {
-		s.logger.Warn("instagram callback: invalid state", zap.Error(err))
-		return "/instagram?error=invalid_state", err
+		s.logger.Warn("instagram callback: invalid state", zap.String("operation", instagramCallbackOpName))
+		return redirectInvalidState, err
+	}
+	if providerError != "" {
+		// O valor cru não é logado nem refletido: vem de fora e vira conteúdo
+		// de log/redirect. Basta saber que houve negação.
+		s.logger.Info("instagram callback: consent denied", zap.String("userID", userID))
+		return redirectDenied, errors.New("instagram: consent denied")
 	}
 	if code == "" {
-		return "/instagram?error=no_code", errors.New("instagram: empty code")
+		return redirectNoCode, errors.New("instagram: empty code")
 	}
 
-	shortToken, igUserID, err := s.api.ExchangeCode(ctx, code)
+	shortToken, appScopedUserID, err := s.api.ExchangeCode(ctx, code)
 	if err != nil {
-		return "/instagram?error=exchange_failed", err
+		s.logCallbackErr("exchange_code", userID, err)
+		return redirectExchangeFailed, err
 	}
 	longToken, expiresIn, err := s.api.ExchangeLongLived(ctx, shortToken)
 	if err != nil {
-		return "/instagram?error=exchange_failed", err
+		s.logCallbackErr("exchange_long_lived", userID, err)
+		return redirectExchangeFailed, err
 	}
-	// Prefer the id/username from /me (authoritative); fall back to the id the
-	// exchange returned.
-	meID, username, err := s.api.GetMe(ctx, longToken)
-	if err == nil && meID != "" {
-		igUserID = meID
+	if expiresIn <= 0 {
+		return redirectExchangeFailed, errors.New("instagram: non-positive token expiry")
 	}
 
-	if err := s.saveTokens(ctx, userID, igUserID, username, longToken, expiresIn); err != nil {
-		return "/instagram?error=save_failed", err
+	// /me é OBRIGATÓRIO: só ele devolve o id PROFISSIONAL. Antes havia fallback
+	// para o id da troca (app-scoped) — publicar com ele erra o objeto.
+	igUserID, username, _, err := s.api.GetMe(ctx, longToken)
+	if err != nil || igUserID == "" {
+		s.logCallbackErr("get_me", userID, err)
+		return redirectProfileFailed, errors.New("instagram: profile lookup failed")
 	}
-	return "/instagram?connected=1", nil
+
+	if err := s.saveTokens(ctx, userID, appScopedUserID, igUserID, username, longToken, expiresIn); err != nil {
+		if errors.Is(err, repository.ErrInstagramAccountAlreadyConnected) {
+			return redirectAlreadyLinked, err
+		}
+		s.logCallbackErr("save", userID, err)
+		return redirectSaveFailed, err
+	}
+	return redirectConnectedOK, nil
+}
+
+// logCallbackErr registra classe do erro, nunca o erro cru (que carrega URL com
+// access_token na query).
+func (s *Service) logCallbackErr(step, userID string, err error) {
+	s.logger.Warn("instagram callback step failed",
+		zap.String("operation", instagramCallbackOpName),
+		zap.String("step", step),
+		zap.String("userID", userID),
+		zap.String("class", errorClass(err)))
+}
+
+func errorClass(err error) string {
+	switch {
+	case err == nil:
+		return "none"
+	case errors.Is(err, ErrInstagramAuth):
+		return categoryAuth
+	case errors.Is(err, ErrInstagramRateLimit):
+		return categoryRateLimit
+	case errors.Is(err, ErrInstagramTransient):
+		return categoryTransient
+	case errors.Is(err, ErrInstagramPermanent):
+		return categoryPermanent
+	default:
+		return "internal"
+	}
 }
 
 // Disconnect removes the user's stored credentials.
@@ -165,82 +328,125 @@ func (s *Service) Disconnect(ctx context.Context, userID string) error {
 	return s.credsRepo.Delete(ctx, userID)
 }
 
-// AccessToken returns the decrypted long-lived token and IG user id for a user.
-// Returns ("", "", nil) when the user has not connected (so callers can skip
-// fail-open).
+// AccessToken devolve o token decriptado e o id profissional do usuário.
+//
+// Só decripta DEPOIS de conferir dono e validade — decriptar antes gastaria a
+// chave num blob que não vai ser usado e abriria caminho para devolver token
+// vencido a quem não deveria recebê-lo.
 func (s *Service) AccessToken(ctx context.Context, userID string) (string, string, error) {
+	if s.credsRepo == nil {
+		return "", "", errors.New("instagram: credentials repository not configured")
+	}
 	cred, err := s.credsRepo.Get(ctx, userID)
-	if err != nil || cred == nil {
+	if err != nil {
 		return "", "", err
 	}
+	if cred == nil {
+		return "", "", nil // não conectado — o chamador decide o que fazer
+	}
+	// Isolamento entre contas: a linha veio da query por user_id, mas conferir
+	// de novo custa nada e trava qualquer regressão de query no futuro.
+	if cred.UserID != userID {
+		return "", "", errors.New("instagram: credential owner mismatch")
+	}
+	if !credentialUsable(cred, time.Now()) {
+		return "", "", ErrInstagramTokenExpired
+	}
+
 	var blob crypto.EncryptedBlobV1
 	if err := json.Unmarshal([]byte(cred.EncryptedData), &blob); err != nil {
 		return "", "", err
 	}
 	var tokens models.InstagramTokens
-	if err := crypto.DecryptJSONV1(&blob, s.encryptionKey, &tokens); err != nil {
+	if err := crypto.DecryptJSONV1(&blob, s.cfg.EncryptionKey, &tokens); err != nil {
 		return "", "", err
+	}
+	if tokens.AccessToken == "" {
+		return "", "", ErrInstagramTokenExpired
 	}
 	return tokens.AccessToken, cred.IGUserID, nil
 }
 
-// HasCredentials reports whether a user has connected an Instagram account
-// (cheap check used by the story trigger before enqueuing work).
+// HasCredentials reports whether a user has a USABLE Instagram connection
+// (cheap check used by the story trigger before enqueuing work). Credencial
+// vencida conta como não conectado: enfileirar ali só criaria job condenado.
 func (s *Service) HasCredentials(ctx context.Context, userID string) bool {
 	if s.credsRepo == nil {
 		return false
 	}
 	cred, err := s.credsRepo.Get(ctx, userID)
-	return err == nil && cred != nil
+	if err != nil || cred == nil {
+		return false
+	}
+	return cred.UserID == userID && credentialUsable(cred, time.Now())
 }
 
-// PublishStoryImage runs the container -> poll -> publish flow for a public
-// JPEG URL and returns the published media id.
-func (s *Service) PublishStoryImage(ctx context.Context, userID, publicImageURL string) (string, error) {
-	token, igUserID, err := s.AccessToken(ctx, userID)
+// --- publicação (wrappers que resolvem a credencial; nenhum token sai daqui) ---
+
+// GetPublishingLimit devolve quantas publicações a conta já gastou na janela
+// móvel de 24h, segundo a própria Meta.
+func (s *Service) GetPublishingLimit(ctx context.Context, userID string) (int, error) {
+	token, igUserID, err := s.resolveCredential(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	return s.api.GetPublishingLimit(ctx, igUserID, token)
+}
+
+// EnsureStoryContainer devolve o container existente SEM chamar a Meta quando
+// já houver um. É o que impede o retry de criar um segundo container (e
+// publicar o Story duas vezes) depois de um timeout.
+func (s *Service) EnsureStoryContainer(ctx context.Context, userID, publicImageURL, existingContainerID string) (string, error) {
+	if existingContainerID != "" {
+		return existingContainerID, nil
+	}
+	token, igUserID, err := s.resolveCredential(ctx, userID)
 	if err != nil {
 		return "", err
+	}
+	return s.api.CreateStoryContainer(ctx, igUserID, token, publicImageURL)
+}
+
+// GetStoryContainerStatus consulta o status_code do container.
+func (s *Service) GetStoryContainerStatus(ctx context.Context, userID, containerID string) (string, error) {
+	token, _, err := s.resolveCredential(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	return s.api.GetContainerStatus(ctx, containerID, token)
+}
+
+// PublishStoryContainer publica um container pronto e devolve o media id.
+func (s *Service) PublishStoryContainer(ctx context.Context, userID, containerID string) (string, error) {
+	token, igUserID, err := s.resolveCredential(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	return s.api.PublishContainer(ctx, igUserID, token, containerID)
+}
+
+// resolveCredential centraliza "kill switch ligado + credencial válida". O
+// pacote workers nunca vê um token: ele passa userID e recebe resultado.
+func (s *Service) resolveCredential(ctx context.Context, userID string) (token, igUserID string, err error) {
+	if !s.FeatureEnabled() {
+		return "", "", ErrInstagramFeatureDisabled
+	}
+	token, igUserID, err = s.AccessToken(ctx, userID)
+	if err != nil {
+		return "", "", err
 	}
 	if token == "" || igUserID == "" {
-		return "", errors.New("instagram: user not connected")
+		return "", "", ErrInstagramTokenExpired
 	}
-
-	creationID, err := s.api.CreateStoryContainer(ctx, igUserID, token, publicImageURL)
-	if err != nil {
-		return "", err
-	}
-
-	// Poll until FINISHED. Images finish almost immediately; the budget stays
-	// well under the worker's task timeout so a stuck container fails transient
-	// and the asynq retry picks it up later.
-	deadline := time.Now().Add(containerPollBudget)
-	for {
-		status, err := s.api.GetContainerStatus(ctx, creationID, token)
-		if err != nil {
-			return "", err
-		}
-		switch status {
-		case "FINISHED", "PUBLISHED":
-			return s.api.PublishContainer(ctx, igUserID, token, creationID)
-		case "ERROR", "EXPIRED":
-			return "", fmt.Errorf("instagram: container %s status %s", creationID, status)
-		}
-		if time.Now().After(deadline) {
-			return "", fmt.Errorf("instagram: container %s not ready within budget (last status %s)", creationID, status)
-		}
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-time.After(containerPollEvery):
-		}
-	}
+	return token, igUserID, nil
 }
 
-// RefreshExpiring renews long-lived tokens that expire within ~30 days. Meta
-// requires the token to be at least 24h old and still valid; both hold here
-// (we only connect tokens fresh, and refresh well before the 60d expiry).
+// --- refresh ---
+
+// RefreshExpiring renova os long-lived tokens que vencem em ~30 dias. Roda com
+// TokenMaintenanceConfigured (não com FeatureEnabled): ver o comentário lá.
 func (s *Service) RefreshExpiring(ctx context.Context) error {
-	if !s.FeatureEnabled() {
+	if !s.TokenMaintenanceConfigured() {
 		return nil
 	}
 	before := time.Now().Add(30 * 24 * time.Hour)
@@ -250,25 +456,38 @@ func (s *Service) RefreshExpiring(ctx context.Context) error {
 	}
 	for i := range creds {
 		cred := &creds[i]
+		// Uma conta com problema não pode interromper a renovação das outras.
 		token, _, err := s.AccessToken(ctx, cred.UserID)
 		if err != nil || token == "" {
-			s.logger.Warn("instagram refresh: cannot read token", zap.String("userID", cred.UserID), zap.Error(err))
+			s.logger.Warn("instagram refresh: cannot read token",
+				zap.String("userID", cred.UserID), zap.String("class", errorClass(err)))
 			continue
 		}
 		newToken, expiresIn, err := s.api.RefreshLongLived(ctx, token)
 		if err != nil {
-			s.logger.Warn("instagram refresh failed", zap.String("userID", cred.UserID), zap.Error(err))
+			s.logger.Warn("instagram refresh failed",
+				zap.String("userID", cred.UserID), zap.String("class", errorClass(err)))
 			continue
 		}
-		if err := s.saveTokens(ctx, cred.UserID, cred.IGUserID, cred.Username, newToken, expiresIn); err != nil {
-			s.logger.Warn("instagram refresh: save failed", zap.String("userID", cred.UserID), zap.Error(err))
+		if newToken == "" || expiresIn <= 0 {
+			s.logger.Warn("instagram refresh: unusable token response", zap.String("userID", cred.UserID))
+			continue
+		}
+		if err := s.saveTokens(ctx, cred.UserID, cred.AppScopedUserID, cred.IGUserID, cred.Username, newToken, expiresIn); err != nil {
+			s.logger.Warn("instagram refresh: save failed",
+				zap.String("userID", cred.UserID), zap.String("class", errorClass(err)))
 		}
 	}
 	return nil
 }
 
-func (s *Service) saveTokens(ctx context.Context, userID, igUserID, username, token string, expiresIn time.Duration) error {
-	blob, err := crypto.EncryptJSONV1(models.InstagramTokens{AccessToken: token}, s.encryptionKey)
+// saveTokens cifra SÓ o token e grava os dois identificadores separados.
+func (s *Service) saveTokens(ctx context.Context, userID, appScopedUserID, igUserID, username, token string, expiresIn time.Duration) error {
+	if expiresIn <= 0 {
+		// Sem fallback inventado: expiry desconhecido é erro, não 60 dias.
+		return errors.New("instagram: refusing to store credential without expiry")
+	}
+	blob, err := crypto.EncryptJSONV1(models.InstagramTokens{AccessToken: token}, s.cfg.EncryptionKey)
 	if err != nil {
 		return err
 	}
@@ -276,55 +495,191 @@ func (s *Service) saveTokens(ctx context.Context, userID, igUserID, username, to
 	if err != nil {
 		return err
 	}
-	if expiresIn <= 0 {
-		expiresIn = 60 * 24 * time.Hour
+	return s.credsRepo.Save(ctx, userID, string(raw), appScopedUserID, igUserID, username, time.Now().Add(expiresIn))
+}
+
+// --- desautorização e exclusão de dados (callbacks da Meta) ---
+
+// Deauthorize apaga a credencial do sujeito do signed_request. NÃO apaga o
+// ledger: remover o app é revogar acesso, não pedir exclusão de histórico —
+// para isso existe o callback de data deletion.
+func (s *Service) Deauthorize(ctx context.Context, signedRequest string, now time.Time) error {
+	if s.credsRepo == nil || s.api.AppSecret() == "" {
+		return errors.New("instagram: deauthorize not configured")
 	}
-	return s.credsRepo.Save(ctx, userID, string(raw), igUserID, username, time.Now().Add(expiresIn))
+	payload, err := ParseSignedRequest(signedRequest, s.api.AppSecret(), now)
+	if err != nil {
+		return err
+	}
+	if err := s.credsRepo.DeleteByAppScopedUserID(ctx, payload.UserID); err != nil {
+		return err
+	}
+	s.logger.Info("instagram: account deauthorized")
+	return nil
 }
 
-// --- signed single-use state ---
+// RequestDataDeletion executa a exclusão e devolve o comprovante que a Meta
+// exige (URL de status + código de confirmação).
+func (s *Service) RequestDataDeletion(ctx context.Context, signedRequest string, now time.Time) (*DataDeletionResponse, error) {
+	if !s.DataDeletionConfigured() {
+		return nil, errors.New("instagram: data deletion not configured")
+	}
+	payload, err := ParseSignedRequest(signedRequest, s.api.AppSecret(), now)
+	if err != nil {
+		return nil, err
+	}
 
-func (s *Service) signState(userID, nonce string, exp int64) string {
-	payload := fmt.Sprintf("%s|%s|%d", userID, nonce, exp)
+	// subject_hash é HMAC do id app-scoped: identifica o sujeito de forma
+	// estável (repetição devolve o mesmo comprovante) sem guardar o id bruto.
+	subjectHash := s.subjectHash(payload.UserID)
+	// O código de confirmação é ALEATÓRIO, não derivado do sujeito — derivá-lo
+	// deixaria qualquer um com o id app-scoped consultar o status alheio.
+	candidate, err := randomToken(32)
+	if err != nil {
+		return nil, err
+	}
+
+	receipt, err := s.deletionRepo.Process(ctx, payload.UserID, subjectHash, candidate, now.Add(retentionWindow))
+	if err != nil {
+		return nil, err
+	}
+	s.logger.Info("instagram: data deletion processed")
+	return &DataDeletionResponse{
+		URL:              strings.TrimRight(s.cfg.BackendBaseURL, "/") + "/api/v1/instagram/data-deletion/status/" + receipt.ConfirmationCode,
+		ConfirmationCode: receipt.ConfirmationCode,
+	}, nil
+}
+
+// DataDeletionStatus diz se o código corresponde a uma exclusão concluída e
+// ainda dentro da validade do comprovante.
+func (s *Service) DataDeletionStatus(ctx context.Context, confirmationCode string, now time.Time) (bool, error) {
+	if s.deletionRepo == nil {
+		return false, nil
+	}
+	if !isHex64(confirmationCode) {
+		return false, nil
+	}
+	receipt, err := s.deletionRepo.GetByConfirmationCode(ctx, confirmationCode, now)
+	if err != nil {
+		return false, err
+	}
+	return receipt != nil, nil
+}
+
+func (s *Service) subjectHash(appScopedUserID string) string {
+	mac := hmac.New(sha256.New, []byte(s.api.AppSecret()))
+	mac.Write([]byte("instagram-data-deletion:" + appScopedUserID))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// --- retenção ---
+
+// CleanupExpired apaga ledger antigo e comprovantes vencidos, em lotes
+// limitados. Guardar identificadores de grupo/mensagem para sempre é retenção
+// sem finalidade — e custo.
+func (s *Service) CleanupExpired(ctx context.Context, now time.Time) error {
+	cutoff := now.Add(-retentionWindow)
+	var firstErr error
+
+	if s.storyRepo != nil {
+		total := int64(0)
+		for i := 0; i < retentionMaxBatches; i++ {
+			n, err := s.storyRepo.DeleteOlderThan(ctx, cutoff, retentionBatch)
+			if err != nil {
+				firstErr = err
+				break
+			}
+			total += n
+			if n < retentionBatch {
+				break
+			}
+		}
+		if total > 0 {
+			s.logger.Info("instagram retention: story ledger pruned", zap.Int64("rows", total))
+		}
+	}
+
+	if s.deletionRepo != nil {
+		total := int64(0)
+		for i := 0; i < retentionMaxBatches; i++ {
+			n, err := s.deletionRepo.DeleteExpired(ctx, now, retentionBatch)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				break
+			}
+			total += n
+			if n < retentionBatch {
+				break
+			}
+		}
+		if total > 0 {
+			s.logger.Info("instagram retention: deletion receipts pruned", zap.Int64("rows", total))
+		}
+	}
+	return firstErr
+}
+
+// --- state assinado e de uso único ---
+
+// signState monta base64url(nonce|exp).hex(hmac). Sem id de usuário dentro.
+func (s *Service) signState(nonce string, exp int64) string {
+	payload := fmt.Sprintf("%s|%d", nonce, exp)
 	enc := base64.RawURLEncoding.EncodeToString([]byte(payload))
-	mac := s.hmac(enc)
-	return enc + "." + mac
+	return enc + "." + s.hmac(enc)
 }
 
-func (s *Service) verifyState(ctx context.Context, state string) (string, error) {
-	parts := strings.SplitN(state, ".", 2)
-	if len(parts) != 2 {
+// consumeState valida assinatura/prazo e CONSOME o nonce atomicamente.
+//
+// O GETDEL é o ponto central: com Get-depois-Delete, dois callbacks concorrentes
+// liam o mesmo nonce e ambos passavam — replay do callback, duas trocas de code
+// e duas persistências correndo entre si.
+func (s *Service) consumeState(ctx context.Context, state string) (string, error) {
+	if !s.redisReady() {
+		return "", errors.New("instagram: state store unavailable")
+	}
+	enc, sig, found := strings.Cut(state, ".")
+	if !found || enc == "" || sig == "" {
 		return "", errors.New("instagram: malformed state")
 	}
-	if !hmac.Equal([]byte(parts[1]), []byte(s.hmac(parts[0]))) {
+	if !hmac.Equal([]byte(sig), []byte(s.hmac(enc))) {
 		return "", errors.New("instagram: bad state signature")
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
+	raw, err := base64.RawURLEncoding.DecodeString(enc)
 	if err != nil {
-		return "", err
-	}
-	fields := strings.Split(string(raw), "|")
-	if len(fields) != 3 {
 		return "", errors.New("instagram: malformed state payload")
 	}
-	userID, nonce, expStr := fields[0], fields[1], fields[2]
+	nonce, expStr, found := strings.Cut(string(raw), "|")
+	if !found || nonce == "" {
+		return "", errors.New("instagram: malformed state payload")
+	}
 	exp, err := strconv.ParseInt(expStr, 10, 64)
-	if err != nil || time.Now().Unix() > exp {
+	if err != nil {
+		return "", errors.New("instagram: malformed state expiry")
+	}
+	now := time.Now()
+	if now.Unix() > exp {
 		return "", errors.New("instagram: state expired")
 	}
-	// Single use: the nonce must still exist and belong to this user; consume it.
-	if s.cache != nil {
-		stored, err := s.cache.Get(ctx, nonceKey(nonce))
-		if err != nil || stored != userID {
-			return "", errors.New("instagram: state nonce already used or unknown")
-		}
-		_ = s.cache.Delete(ctx, nonceKey(nonce))
+	// Teto futuro: um state assinado com validade de anos seria eterno se a
+	// chave vazasse. O nosso nunca passa de stateTTL.
+	if time.Unix(exp, 0).After(now.Add(stateTTL)) {
+		return "", errors.New("instagram: state expiry too far in the future")
+	}
+
+	userID, err := s.cache.GetDel(ctx, nonceKey(nonce))
+	if err != nil || userID == "" {
+		return "", errors.New("instagram: state nonce already used or unknown")
+	}
+	if _, err := uuid.Parse(userID); err != nil {
+		return "", errors.New("instagram: state nonce maps to invalid user")
 	}
 	return userID, nil
 }
 
 func (s *Service) hmac(msg string) string {
-	h := hmac.New(sha256.New, []byte(s.stateSigningKey))
+	h := hmac.New(sha256.New, []byte(s.cfg.StateSigningKey))
 	h.Write([]byte(msg))
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -337,4 +692,19 @@ func randomToken(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// isHex64 valida o formato do código de confirmação ANTES de qualquer consulta,
+// para um id malformado não virar tráfego de banco.
+func isHex64(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }

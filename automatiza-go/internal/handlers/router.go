@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"net/url"
+	"time"
 
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
@@ -25,6 +26,7 @@ import (
 	"automatiza-go/internal/workers"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -263,15 +265,44 @@ func SetupRoutes(r *gin.Engine, deps *Dependencies) {
 	}
 
 	// Instagram (public) — OAuth callback (no session; state is signed),
-	// ephemeral story-media fetch (unguessable id) and Meta deauthorize /
-	// data-deletion stubs. Registered even when the feature is off so Meta's
-	// configured callbacks never 404.
+	// ephemeral story-media fetch (unguessable id) e os callbacks obrigatórios
+	// da Meta (autenticados por signed_request). Registrados mesmo com a feature
+	// desligada, para os callbacks configurados no app da Meta nunca darem 404.
+	//
+	// O rate limit aqui é backstop de abuso, NÃO autenticação: a autenticação
+	// real é o state HMAC (OAuth), o signed_request (callbacks) e a capability
+	// no id (mídia/status).
 	{
 		igPublic := NewInstagramPublicHandler(deps.InstagramService, deps.InstagramMediaStore, deps.Config.PublicBaseURL, deps.Logger)
-		api.GET("/instagram/oauth/callback", igPublic.OAuthCallback)
-		api.GET("/public/story-media/:id", igPublic.ServeStoryMedia)
-		api.POST("/instagram/deauthorize", igPublic.Deauthorize)
-		api.POST("/instagram/data-deletion", igPublic.DataDeletion)
+
+		var igRedis *redis.Client
+		if deps.Cache != nil {
+			igRedis = deps.Cache.GetRedisClient()
+		}
+		// Logger nil de propósito nestas instâncias: o log do limiter inclui o
+		// IP do chamador, e aqui o chamador é usuário final ou crawler da Meta.
+		igCallbackRL := middleware.WebhookRateLimitMiddleware(&middleware.WebhookRateLimiterConfig{
+			MaxRequests: 300,
+			WindowSize:  time.Minute,
+			UseRedis:    igRedis != nil,
+			RedisClient: igRedis,
+			KeyPrefix:   deps.Config.AppCachePrefix + ":instagram_callback_rl",
+		})
+		// Teto bem mais alto na mídia: o crawler da Meta busca a imagem durante
+		// o processamento, e várias contas publicam em paralelo.
+		igMediaRL := middleware.WebhookRateLimitMiddleware(&middleware.WebhookRateLimiterConfig{
+			MaxRequests: 2000,
+			WindowSize:  time.Minute,
+			UseRedis:    igRedis != nil,
+			RedisClient: igRedis,
+			KeyPrefix:   deps.Config.AppCachePrefix + ":instagram_media_rl",
+		})
+
+		api.GET("/instagram/oauth/callback", igCallbackRL, igPublic.OAuthCallback)
+		api.GET("/public/story-media/:id", igMediaRL, igPublic.ServeStoryMedia)
+		api.POST("/instagram/deauthorize", igCallbackRL, igPublic.Deauthorize)
+		api.POST("/instagram/data-deletion", igCallbackRL, igPublic.DataDeletion)
+		api.GET("/instagram/data-deletion/status/:code", igCallbackRL, igPublic.DataDeletionStatus)
 	}
 
 	// Instances (internal)
