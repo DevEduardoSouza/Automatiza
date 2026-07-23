@@ -480,6 +480,15 @@ jobs:
           # do grupo). "all" = todos. "id1,id2" = allowlist de user_ids (canário).
           # Rollout sem novo deploy: gh variable set MONITOR_DISPATCH_TEXT --body <valor>.
           MONITOR_DISPATCH_TEXT=${{ vars.MONITOR_DISPATCH_TEXT }}
+          # Cadência durável entre mensagens espelhadas (Melhoria 7, migração 078).
+          # ""/ausente/"false" = INERTE: a admissão retorna antes de tocar o banco e
+          # o espelho segue imediato. "true" = ligada — cada mensagem monitorada com
+          # link passa a custar uma consulta a mais no caminho quente do webhook, e
+          # automações com monitor_interval_minutes > 0 passam a enfileirar.
+          # Rollback sem deploy: gh variable set FEATURE_MONITOR_DISPATCH_CADENCE
+          # --body false + bounce. Desligar NÃO descarta fila: poller, worker e
+          # manutenção continuam registrados para drenar em ordem o que já entrou.
+          FEATURE_MONITOR_DISPATCH_CADENCE=${{ vars.FEATURE_MONITOR_DISPATCH_CADENCE }}
           # Rollout dos cupons v2 (desempate official_only-first + cupom na BUSCA).
           # ""/ausente/"off" = desligado (default seguro: matcher mantém a ordem
           # antiga por min_price; busca NÃO aplica cupom). "all" = todos.

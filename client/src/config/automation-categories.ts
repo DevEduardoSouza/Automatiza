@@ -1256,4 +1256,4 @@ export const translateShopeeAffiliateError = (
  * independente deste — os dois precisam estar ligados, e é o backend que
  * recusa de verdade.
  */
-export const ENABLE_MONITOR_DISPATCH_CADENCE_UI = false;
+export const ENABLE_MONITOR_DISPATCH_CADENCE_UI = true;
