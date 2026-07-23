@@ -226,6 +226,10 @@ func (h *TestableWAHAWebhookHandler) HandleWebhook(c *gin.Context) {
 		Engine:     event.Engine,
 		Payload:    event.Payload,
 		ReceivedAt: time.Now().UnixMilli(),
+		// Espelha o handler real: ID e timestamp ORIGINAIS do provedor, nunca
+		// o eventID (que pode ser fallback gerado por nós).
+		ProviderEventID:   event.ID,
+		ProviderTimestamp: int64(event.Timestamp),
 	}
 
 	enqueueCtx, enqueueCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -2133,4 +2137,105 @@ func TestGenerateTraceID_RandSuccess_Returns32HexChars(t *testing.T) {
 	if len(result) != 32 {
 		t.Errorf("expected 32-char trace ID, got %d chars: %q", len(result), result)
 	}
+}
+
+// =============================================================================
+// Envelope group.v2.participants — ID e timestamp originais do provedor
+// =============================================================================
+
+// v2ParticipantsEnvelope monta um envelope conforme WebhookGroupV2Participants
+// (waha-plus-openapi.json). Identificadores sintéticos, não reais.
+func v2ParticipantsEnvelope(id string, timestamp interface{}) []byte {
+	event := map[string]interface{}{
+		"id":      id,
+		"event":   "group.v2.participants",
+		"session": "test-session",
+		"engine":  "GOWS",
+		"payload": map[string]interface{}{
+			"type":      "join",
+			"timestamp": 1774267200,
+			"group":     map[string]interface{}{"id": "120000000000000001@g.us"},
+			"participants": []map[string]interface{}{
+				{"id": "5511000000000@c.us", "role": "participant"},
+			},
+			"_data": map[string]interface{}{},
+		},
+	}
+	if timestamp != nil {
+		event["timestamp"] = timestamp
+	}
+	data, _ := json.Marshal(event)
+	return data
+}
+
+func TestWAHAWebhookHandler_GroupV2PreservesProviderEnvelope(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	const hmacKey = "test-secret-key"
+	const providerID = "evt_01aaaaaaaaaaaaaaaaaaaaaaaa"
+	handler, _, queue := newTestHandler(hmacKey)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = createWebhookRequest(v2ParticipantsEnvelope(providerID, 1774267200123), hmacKey)
+
+	handler.HandleWebhook(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, queue.EnqueueCalls, 1)
+	job := queue.EnqueueCalls[0]
+
+	assert.Equal(t, providerID, job.ProviderEventID, "o ULID do provedor precisa chegar intacto ao worker")
+	assert.Equal(t, int64(1774267200123), job.ProviderTimestamp, "timestamp em ms do envelope preservado")
+	assert.Equal(t, "group.v2.participants", job.Event)
+}
+
+// Envelope sem ID: o EventID interno continua com o fallback (a fila precisa
+// dele), mas ProviderEventID fica VAZIO — um fallback nosso não pode virar
+// chave idempotente de fato de membro.
+func TestWAHAWebhookHandler_GroupV2WithoutIDLeavesProviderEmpty(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	const hmacKey = "test-secret-key"
+	handler, _, queue := newTestHandler(hmacKey)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = createWebhookRequest(v2ParticipantsEnvelope("", 1774267200123), hmacKey)
+
+	handler.HandleWebhook(c)
+
+	require.Len(t, queue.EnqueueCalls, 1)
+	job := queue.EnqueueCalls[0]
+
+	assert.Empty(t, job.ProviderEventID)
+	assert.NotEmpty(t, job.EventID, "a dedup da fila continua funcionando com o fallback interno")
+	assert.Contains(t, job.EventID, "group.v2.participants")
+}
+
+// O envelope inteiro NÃO pode morrer por causa do timestamp: se o provedor
+// mandar um número fracionário, o Unmarshal do struct precisa sobreviver — caso
+// contrário o evento se perderia no caminho quente.
+func TestWAHAWebhookEvent_FractionalTimestampDoesNotBreakParse(t *testing.T) {
+	t.Parallel()
+
+	var event WAHAWebhookEvent
+	err := json.Unmarshal(v2ParticipantsEnvelope("evt_01aaaaaaaaaaaaaaaaaaaaaaaa", 1774267200123.5), &event)
+	require.NoError(t, err, "timestamp fracionário não pode derrubar o parse do envelope")
+
+	assert.Equal(t, "group.v2.participants", event.Event)
+	assert.Equal(t, int64(1774267200123), int64(event.Timestamp))
+	assert.NotNil(t, event.Payload)
+}
+
+// Envelope sem o campo timestamp: parse OK, provider timestamp zero.
+func TestWAHAWebhookEvent_MissingTimestampParsesToZero(t *testing.T) {
+	t.Parallel()
+
+	var event WAHAWebhookEvent
+	require.NoError(t, json.Unmarshal(v2ParticipantsEnvelope("evt_01aaaaaaaaaaaaaaaaaaaaaaaa", nil), &event))
+	assert.Zero(t, event.Timestamp)
+	assert.Equal(t, "group.v2.participants", event.Event)
 }

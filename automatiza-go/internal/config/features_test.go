@@ -3,6 +3,9 @@ package config
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadFeatureFlags_Defaults(t *testing.T) {
@@ -155,4 +158,54 @@ func TestGetFeatureFlags_Singleton(t *testing.T) {
 
 	// Cleanup
 	os.Unsetenv("FEATURE_USE_GO_DISPATCH_LOGS")
+}
+
+// =============================================================================
+// GROUP_MEMBER_TRACKING_ENABLED
+// =============================================================================
+
+func TestGroupMemberTrackingEnabled(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string // "" = variável não definida
+		set   bool
+		want  bool
+	}{
+		{name: "não definida = desligada", set: false, want: false},
+		{name: "false explícito", value: "false", set: true, want: false},
+		{name: "true explícito", value: "true", set: true, want: true},
+		{name: "1 liga", value: "1", set: true, want: true},
+		{name: "0 desliga", value: "0", set: true, want: false},
+		// Valor inválido cai no default seguro (desligado): uma variável mal
+		// digitada não pode ligar escrita nova em produção sem querer.
+		{name: "inválido cai no default", value: "talvez", set: true, want: false},
+		{name: "string vazia cai no default", value: "", set: true, want: false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.set {
+				t.Setenv("GROUP_MEMBER_TRACKING_ENABLED", c.value)
+			} else {
+				t.Setenv("GROUP_MEMBER_TRACKING_ENABLED", "")
+			}
+			ResetFeatureFlags()
+			t.Cleanup(ResetFeatureFlags)
+
+			assert.Equal(t, c.want, GroupMemberTrackingEnabled())
+		})
+	}
+}
+
+// ResetFeatureFlags precisa re-ler o ambiente: sem isso um teste que liga a
+// flag contaminaria todos os seguintes (a flag é sync.OnceValue).
+func TestGroupMemberTracking_ResetFeatureFlagsRereadsEnv(t *testing.T) {
+	t.Setenv("GROUP_MEMBER_TRACKING_ENABLED", "true")
+	ResetFeatureFlags()
+	require.True(t, GroupMemberTrackingEnabled())
+
+	t.Setenv("GROUP_MEMBER_TRACKING_ENABLED", "false")
+	ResetFeatureFlags()
+	t.Cleanup(ResetFeatureFlags)
+	assert.False(t, GroupMemberTrackingEnabled())
 }

@@ -208,8 +208,13 @@ type mockGroupEventProcessor struct {
 	mock.Mock
 }
 
-func (m *mockGroupEventProcessor) ProcessGroupEvent(ctx context.Context, sessionName, eventType string, payload map[string]interface{}) error {
-	args := m.Called(ctx, sessionName, eventType, payload)
+func (m *mockGroupEventProcessor) ProcessGroupEvent(
+	ctx context.Context,
+	sessionName, eventType, providerEventID string,
+	providerTimestamp int64,
+	payload map[string]interface{},
+) error {
+	args := m.Called(ctx, sessionName, eventType, providerEventID, providerTimestamp, payload)
 	return args.Error(0)
 }
 
@@ -540,16 +545,47 @@ func TestRouteEvent_GroupEvent(t *testing.T) {
 	ctx := context.Background()
 	data := &WebhookJobData{
 		EventID: "evt-group",
-		Event:   "group.v2.join",
+		Event:   "group.v2.participants",
 		Session: "session-1",
 		Payload: map[string]interface{}{"groupId": "group-123"},
+		// ID e timestamp ORIGINAIS do provedor: precisam chegar intactos ao
+		// processor — são a chave idempotente e o desempate da ordem total.
+		ProviderEventID:   "evt_01aaaaaaaaaaaaaaaaaaaaaaaa",
+		ProviderTimestamp: 1774267200000,
 	}
 
-	groupProcessor.On("ProcessGroupEvent", ctx, "session-1", "group.v2.join", data.Payload).Return(nil)
+	groupProcessor.On("ProcessGroupEvent", ctx, "session-1", "group.v2.participants",
+		"evt_01aaaaaaaaaaaaaaaaaaaaaaaa", int64(1774267200000), data.Payload).Return(nil)
 
 	err := worker.routeEvent(ctx, data)
 
 	assert.NoError(t, err)
+	groupProcessor.AssertExpectations(t)
+}
+
+// Task enfileirada por um produtor ANTERIOR aos campos de provedor: o
+// consumidor precisa tratá-la como "sem ID", nunca inventar um.
+func TestRouteEvent_GroupEventLegacyTaskWithoutProviderFields(t *testing.T) {
+	groupProcessor := new(mockGroupEventProcessor)
+
+	worker := NewWebhookConsumerWorker(WebhookConsumerWorkerConfig{
+		WebhookEventsRepo:   new(mockWebhookEventsRepo),
+		GroupEventProcessor: groupProcessor,
+		Logger:              zap.NewNop(),
+	})
+
+	ctx := context.Background()
+	data := &WebhookJobData{
+		EventID: "evt-legacy",
+		Event:   "group.v2.participants",
+		Session: "session-1",
+		Payload: map[string]interface{}{},
+	}
+
+	groupProcessor.On("ProcessGroupEvent", ctx, "session-1", "group.v2.participants",
+		"", int64(0), data.Payload).Return(nil)
+
+	assert.NoError(t, worker.routeEvent(ctx, data))
 	groupProcessor.AssertExpectations(t)
 }
 
@@ -1244,11 +1280,13 @@ func TestRouteEvent_GroupEventPrefixes(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test various group event types
+	// Test various group event types. TODOS continuam roteados ao mesmo
+	// processor (que decide sozinho quais geram fato) — o roteamento não muda.
 	groupEvents := []string{
 		"group.v2.join",
 		"group.v2.leave",
 		"group.v2.update",
+		"group.v2.participants",
 		"group.join",
 		"group.leave",
 	}
@@ -1256,13 +1294,16 @@ func TestRouteEvent_GroupEventPrefixes(t *testing.T) {
 	for _, eventType := range groupEvents {
 		t.Run(eventType, func(t *testing.T) {
 			data := &WebhookJobData{
-				EventID: "evt-" + eventType,
-				Event:   eventType,
-				Session: "session-1",
-				Payload: map[string]interface{}{},
+				EventID:           "evt-" + eventType,
+				Event:             eventType,
+				Session:           "session-1",
+				Payload:           map[string]interface{}{},
+				ProviderEventID:   "evt_01aaaaaaaaaaaaaaaaaaaaaaaa",
+				ProviderTimestamp: 1774267200000,
 			}
 
-			groupProcessor.On("ProcessGroupEvent", ctx, "session-1", eventType, data.Payload).Return(nil).Once()
+			groupProcessor.On("ProcessGroupEvent", ctx, "session-1", eventType,
+				"evt_01aaaaaaaaaaaaaaaaaaaaaaaa", int64(1774267200000), data.Payload).Return(nil).Once()
 
 			err := worker.routeEvent(ctx, data)
 

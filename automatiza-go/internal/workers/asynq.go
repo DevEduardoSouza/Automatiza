@@ -96,6 +96,12 @@ type WebhookJobData struct {
 	Payload    map[string]interface{} `json:"payload"`
 	ReceivedAt int64                  `json:"received_at"`
 	TraceID    string                 `json:"trace_id,omitempty"` // For distributed tracing
+	// ProviderEventID/ProviderTimestamp são o ID (ULID) e o timestamp (ms) do
+	// envelope WAHA, preservados como vieram. `omitempty` mantém a
+	// compatibilidade com tasks enfileiradas por produtores anteriores: elas
+	// desserializam com zero-value e o consumidor as trata como "sem ID".
+	ProviderEventID   string `json:"provider_event_id,omitempty"`
+	ProviderTimestamp int64  `json:"provider_timestamp,omitempty"`
 }
 
 // QueueClient wraps asynq client for enqueueing jobs

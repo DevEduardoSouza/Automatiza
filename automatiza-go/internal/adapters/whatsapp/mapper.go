@@ -294,11 +294,15 @@ func (m *Mapper) ParticipantInfoFromWaha(w *wahaParticipant) ParticipantInfo {
 	}
 
 	phoneNumber := w.PhoneNumber
-	if phoneNumber == "" {
-		phoneNumber = ExtractPhoneFromID(w.ID)
-	} else {
+	if phoneNumber != "" {
 		// PhoneNumber may come as "5511999999999@c.us", strip the suffix
 		phoneNumber = ExtractPhoneFromID(phoneNumber)
+	} else if strings.HasSuffix(w.ID, "@c.us") {
+		// Telefone só é derivável do id quando o id É um telefone (@c.us).
+		// Um "@lid" é identificador OPACO: aplicar ExtractPhoneFromID nele
+		// colocava os dígitos do LID em PhoneNumber e podia fabricar um DDD
+		// brasileiro a partir de um número que nunca existiu.
+		phoneNumber = ExtractPhoneFromID(w.ID)
 	}
 
 	return ParticipantInfo{

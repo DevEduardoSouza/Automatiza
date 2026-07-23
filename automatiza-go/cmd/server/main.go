@@ -61,6 +61,7 @@ import (
 	"automatiza-go/internal/services/ctas"
 	"automatiza-go/internal/services/dashboard"
 	"automatiza-go/internal/services/email"
+	"automatiza-go/internal/services/groupmembers"
 	"automatiza-go/internal/services/instagram"
 	"automatiza-go/internal/services/jobs"
 	"automatiza-go/internal/services/kiwify"
@@ -267,6 +268,11 @@ func main() {
 	}
 
 	var wahaAdapter whatsapp.WhatsAppProvider
+	// trackingFetcher aponta para o adapter CONCRETO: GetGroupParticipantsForTracking
+	// não faz parte da interface WhatsAppProvider (é uma variante interna que
+	// não resolve LID). Fica nil quando não há WAHA configurada — a
+	// reconciliação vira no-op, sem panic.
+	var trackingFetcher groupmembers.ParticipantFetcher
 	if wahaAPIURL != "" && wahaAPIKey != "" {
 		// W27: Validate WebhookSecret is not empty in production
 		if cfg.IsProduction() && cfg.WebhookSecret == "" {
@@ -289,6 +295,7 @@ func main() {
 			os.Exit(1)
 		}
 		wahaAdapter = adapter
+		trackingFetcher = adapter
 
 		// Media-upload pacer: spaces WhatsApp media uploads per session so they
 		// stay under the media-server rate limit that surfaces as wrapped
@@ -317,6 +324,18 @@ func main() {
 	} else {
 		logger.Warn("WAHA not configured, WhatsApp adapter disabled")
 	}
+
+	// Tracking histórico de membros de grupo (Melhoria 2, Fase A). UM serviço
+	// para os dois processos: no worker ele consome group.v2.participants; no
+	// server ele roda a reconciliação e a retenção. Inerte por default
+	// (GROUP_MEMBER_TRACKING_ENABLED=false) e também quando o segredo é
+	// inválido — nesse caso nasce no-op em vez de derrubar o processo.
+	groupMemberService := groupmembers.NewService(
+		repos.GroupMember,
+		trackingFetcher,
+		cfg.GroupMemberHashSecret,
+		config.NewModuleLogger(logger, "group-members"),
+	)
 
 	// Anti-ban runtime: presence choreographer (typing/online/seen) + Redis-backed
 	// reputation and pacing (micro-break) limiter. Read process-wide via
@@ -589,6 +608,19 @@ func main() {
 		return nil
 	})
 
+	// Reconciliação e retenção do tracking histórico de membros. Só no server
+	// (é aqui que cronService.Start() roda) e ambos no-op com a flag desligada.
+	// NÃO existe cron de "snapshot diário": o agregado é mantido
+	// transacionalmente pelos dois writers legítimos (webhook e reconciliação),
+	// o que elimina a janela falsa de contar membros num instante arbitrário e
+	// chamar isso de "fechamento do dia".
+	cronService.RegisterTask("reconcile_group_memberships", 1*time.Hour, func(ctx context.Context) error {
+		return groupMemberService.ReconcileMemberships(ctx)
+	})
+	cronService.RegisterTask("cleanup_group_member_tracking", 24*time.Hour, func(ctx context.Context) error {
+		return groupMemberService.CleanupTracking(ctx)
+	})
+
 	// Register WAHA failed session cleanup job (P0: reclaims RAM from zombie sessions)
 	if concreteAdapter, ok := wahaAdapter.(*whatsapp.WahaAdapter); ok {
 		// Protege números reais da limpeza: um chip PAREADO que esteja
@@ -798,7 +830,7 @@ func main() {
 		if redisClient != nil {
 			redisClientForWorker = redisClient.Client
 		}
-		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, offerGenerateService, cacheClient, automationRepo, instagramService, instagramMediaStore, repos.InstagramStoryPost, logger)
+		runWorker(cfg, redisAddr, db, wahaAdapter, urlSafetyService, instanceRepo, groupRepo, actionHistoryRepo, dispatchLogRepo, repos.WebhookEvents, queueClient, redisClientForWorker, monitoringService, offerGenerateService, cacheClient, automationRepo, instagramService, instagramMediaStore, repos.InstagramStoryPost, groupMemberService, logger)
 		return
 	}
 
@@ -1460,6 +1492,7 @@ func runWorker(
 	instagramService *instagram.Service,
 	instagramMediaStore *instagram.MediaStore,
 	instagramStoryRepo repository.InstagramStoryPostRepository,
+	groupMemberService *groupmembers.Service,
 	logger *zap.Logger,
 ) {
 	logger.Info("Starting worker mode",
@@ -1654,6 +1687,9 @@ func runWorker(
 		Logger:            config.NewModuleLogger(logger, "webhook-consumer"),
 		StatusProcessor:   statusProcessor,  // SSE notifications for status changes
 		MessageProcessor:  messageProcessor, // MONITOR mode automation processing
+		// Tracking histórico de membros: só group.v2.participants gera fato;
+		// todo o resto de group.* segue no-op como sempre foi.
+		GroupEventProcessor: groupMemberService,
 		// Rejeita eventos session.status atrasados/fora de ordem confirmando
 		// o status vivo no WAHA antes de rebaixar (evita instância travada
 		// em 'pending' por race de WORKING vs STARTING).

@@ -313,11 +313,13 @@ func (p *wahaParticipant) UnmarshalJSON(data []byte) error {
 	}
 
 	if errCount > 0 {
+		// SEM o identificador do participante nas tags: é identificador de
+		// pessoa (telefone ou LID) e o Sentry não é lugar de PII. A contagem
+		// de campos já basta para diagnosticar mudança de schema do provedor.
 		observability.CaptureMessage(sentry.LevelWarning,
 			fmt.Sprintf("wahaParticipant UnmarshalJSON: %d field(s) failed to unmarshal", errCount),
 			map[string]string{
 				"module": "whatsapp", "operation": "waha_participant_unmarshal",
-				"participant_id": p.ID,
 			})
 	}
 

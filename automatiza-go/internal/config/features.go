@@ -162,6 +162,26 @@ func WebhookLeanPersist() bool {
 	return webhookLeanPersistFlag()
 }
 
+// groupMemberTrackingFlag: gate da fundação histórica de membros de grupo
+// (Melhoria 2, Fase A). Default FALSE = ZERO escrita nova, zero chamada WAHA de
+// reconciliação e zero efeito de negócio: o processor devolve nil antes de
+// parse/tenant/banco, e reconciliação e cleanup retornam antes de qualquer I/O.
+//
+// Atenção ao que a flag NÃO cobre: ligar group.v2.participants na config das
+// sessões WAHA aumenta o tráfego de webhook independentemente dela — os
+// envelopes novos ainda atravessam handler/fila e terminam em no-op aqui.
+var groupMemberTrackingFlag = sync.OnceValue(loadGroupMemberTracking)
+
+func loadGroupMemberTracking() bool {
+	return getEnvBool("GROUP_MEMBER_TRACKING_ENABLED", false)
+}
+
+// GroupMemberTrackingEnabled reporta se o tracking histórico de membros está
+// ligado. Ver groupMemberTrackingFlag.
+func GroupMemberTrackingEnabled() bool {
+	return groupMemberTrackingFlag()
+}
+
 // getEnvBool reads a boolean value from an environment variable.
 // Returns the default value if the variable is not set or cannot be parsed.
 // Accepted values: "true", "false", "1", "0", "yes", "no" (case-insensitive)
@@ -194,4 +214,5 @@ func ResetFeatureFlags() {
 	// Flags standalone (sync.OnceValue) também re-leem o ambiente no próximo
 	// acesso — necessário para testes cobrirem os dois lados da flag.
 	webhookLeanPersistFlag = sync.OnceValue(loadWebhookLeanPersist)
+	groupMemberTrackingFlag = sync.OnceValue(loadGroupMemberTracking)
 }

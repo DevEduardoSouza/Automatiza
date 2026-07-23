@@ -881,13 +881,7 @@ func (a *WahaAdapter) CreateSession(ctx context.Context, input CreateSessionInpu
 	if webhookURL != "" {
 		events := input.WebhookEvents
 		if len(events) == 0 {
-			// MESMO conjunto do WHATSAPP_HOOK_EVENTS do compose de produção.
-			// A config por-sessão SOBRESCREVE a global do container: o default
-			// antigo ("message", sem fromMe) fazia toda sessão criada pelo app
-			// perder mensagens fromMe (gatilho do offer_generate quando o dono
-			// posta do próprio celular) e os eventos de grupo — em silêncio.
-			// "message.any" é o superset com fromMe (waha-plus-openapi.json).
-			events = []string{"message.any", "message.ack", "session.status", "group.join", "group.leave"}
+			events = DefaultWebhookEvents()
 		}
 
 		wh := map[string]interface{}{
@@ -1128,27 +1122,89 @@ func (a *WahaAdapter) GetGroups(ctx context.Context, sessionName string) ([]Grou
 	return a.mapper.GroupInfosFromWaha(wahaGroups), nil
 }
 
+// DefaultWebhookEvents devolve uma CÓPIA da lista canônica de eventos que
+// assinamos no WAHA. É a única fonte da lista em Go: adapter (default de
+// CreateSession) e AdminHandler.EnsureWebhooks leem daqui, para que reaplicar
+// webhooks nunca remova um evento que o backend depende.
+//
+// A config por-sessão SOBRESCREVE a global do container, então esta lista
+// precisa ser o superset do WHATSAPP_HOOK_EVENTS dos composes.
+//
+//   - "message.any" (não "message") é o superset COM fromMe — gatilho do
+//     offer_generate quando o dono posta do próprio celular;
+//   - group.join/group.leave continuam assinados durante a transição: o
+//     contrato os marca deprecated, não removidos;
+//   - group.v2.participants é o evento NÃO deprecated que carrega o lote de
+//     participantes (join/leave/promote/demote) e alimenta o tracking
+//     histórico. Só ele gera fato — coexistir com os legados não duplica nada.
+func DefaultWebhookEvents() []string {
+	return []string{
+		"message.any",
+		"message.ack",
+		"session.status",
+		"group.join",
+		"group.leave",
+		"group.v2.participants",
+	}
+}
+
+// TrackingParticipant é a projeção CRUA de um participante devolvido por
+// GET /api/{session}/groups/{id}/participants/v2 (schema GroupParticipant:
+// `id` e `role` obrigatórios, `pn` opcional).
+//
+// Existe para o tracking histórico de membros, que precisa do enum `role`
+// exato (inclusive "left") — ParticipantInfo só expõe IsAdmin/IsSuperAdmin
+// derivados. Estes campos são identificadores brutos: quem consome DEVE
+// pseudonimizá-los imediatamente e nunca persistir/logar o valor.
+type TrackingParticipant struct {
+	ID   string `json:"id"`
+	PN   string `json:"pn"`
+	Role string `json:"role"`
+}
+
+// fetchGroupParticipantsRaw faz a chamada ao endpoint oficial de participantes
+// e devolve o corpo cru. Fatorado para que as duas variantes (a pública, que
+// resolve LID, e a de tracking, que não) compartilhem exatamente um request.
+func (a *WahaAdapter) fetchGroupParticipantsRaw(ctx context.Context, sessionName, groupID string) ([]byte, error) {
+	path := "/api/" + url.PathEscape(sessionName) + "/groups/" + url.PathEscape(groupID) + "/participants/v2"
+	return a.doRequest(ctx, http.MethodGet, path, nil)
+}
+
+// GetGroupParticipantsForTracking retorna a fotografia atual de participantes
+// SEM resolver LID.
+//
+// A identidade do tracking deriva do `id` obrigatório, não do telefone, então
+// o lookup em /lids seria uma consulta global de mappings por grupo
+// reconciliado — puro desperdício. Exatamente UMA chamada WAHA por grupo.
+func (a *WahaAdapter) GetGroupParticipantsForTracking(ctx context.Context, sessionName, groupID string) ([]TrackingParticipant, error) {
+	resp, err := a.fetchGroupParticipantsRaw(ctx, sessionName, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get group participants: %w", err)
+	}
+
+	var participants []TrackingParticipant
+	if err := json.Unmarshal(resp, &participants); err != nil {
+		return nil, NewProviderError(ErrCodeProviderError, "failed to parse participants response", err)
+	}
+	return participants, nil
+}
+
 // GetGroupParticipants retrieves participants for a specific group.
 // Uses the v2 endpoint which returns the pn (phone number) field alongside id.
 // For participants with empty pn (common with LID-based IDs), resolves phone numbers
 // via the WAHA LID mapping endpoint.
 func (a *WahaAdapter) GetGroupParticipants(ctx context.Context, sessionName, groupID string) ([]ParticipantInfo, error) {
-	path := "/api/" + url.PathEscape(sessionName) + "/groups/" + url.PathEscape(groupID) + "/participants/v2"
-	resp, err := a.doRequest(ctx, http.MethodGet, path, nil)
+	resp, err := a.fetchGroupParticipantsRaw(ctx, sessionName, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get group participants: %w", err)
 	}
 
-	// Log raw response for debugging admin detection
-	if len(resp) < 2000 {
-		a.logger.Debug("participants/v2 raw response",
-			zap.String("groupID", groupID),
-			zap.String("body", string(resp)))
-	} else {
-		a.logger.Debug("participants/v2 raw response (truncated)",
-			zap.String("groupID", groupID),
-			zap.String("body", string(resp[:2000])))
-	}
+	// O corpo cru NÃO pode ir para o log: ele contém id/pn de todo participante
+	// do grupo (PII). Tamanho e contagem pós-parse dão o mesmo sinal de
+	// diagnóstico sem vazar nada.
+	a.logger.Debug("participants/v2 response",
+		zap.String("groupID", groupID),
+		zap.Int("response_bytes", len(resp)))
 
 	var wahaParticipants []wahaParticipant
 	if err := json.Unmarshal(resp, &wahaParticipants); err != nil {
@@ -1895,6 +1951,14 @@ func (a *WahaAdapter) SendDocument(ctx context.Context, input SendDocumentInput)
 // WAHA configures webhooks via session update (PUT /api/sessions/{session}),
 // not via a separate webhook endpoint.
 func (a *WahaAdapter) SetWebhook(ctx context.Context, input SetWebhookInput) error {
+	// HMAC não pode SUMIR num update: a config por-sessão substitui a anterior
+	// inteira, então um caller que não informa a chave deixaria a sessão
+	// enviando webhooks sem assinatura — e o handler os rejeitaria com 401.
+	// Quando o caller não define, reaplicamos o segredo configurado no adapter.
+	if input.HMACKey == "" {
+		input.HMACKey = a.webhookSecret
+	}
+
 	webhookConfig := a.mapper.SetWebhookToWahaConfig(&input)
 
 	updatePayload := &wahaUpdateSessionRequest{

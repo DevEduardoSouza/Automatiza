@@ -70,6 +70,14 @@ type WAHAWebhookEvent struct {
 	Session string                 `json:"session"` // Session name
 	Engine  string                 `json:"engine"`  // Engine (GOWS, NOWEB, etc.)
 	Payload map[string]interface{} `json:"payload"` // Event-specific data
+	// Timestamp é a criação do evento no provedor, em MILISSEGUNDOS
+	// (waha-plus-openapi.json: "Unix timestamp (ms) for when the event was
+	// created", obrigatório no envelope). Preservado separadamente do payload
+	// porque é o 2º critério de desempate da ordem total do tracking de
+	// membros. float64 (não int64) de propósito: um número JSON com fração
+	// faria o Unmarshal do envelope INTEIRO falhar e derrubaria o evento no
+	// caminho quente.
+	Timestamp float64 `json:"timestamp"`
 }
 
 // WAHAWebhookHandler handles incoming WAHA webhooks.
@@ -329,6 +337,12 @@ func (h *WAHAWebhookHandler) HandleWebhook(c *gin.Context) {
 		Payload:    event.Payload,
 		ReceivedAt: time.Now().UnixMilli(),
 		TraceID:    traceID, // Propagate trace ID to worker
+		// ID e timestamp ORIGINAIS do provedor, preservados separadamente do
+		// EventID interno: quando o envelope vem sem ID, o EventID acima é um
+		// fallback gerado por nós, que serve à dedup da fila mas NÃO pode
+		// identificar um fato de membro (dois fatos legítimos colidiriam).
+		ProviderEventID:   event.ID,
+		ProviderTimestamp: int64(event.Timestamp),
 	}
 
 	// Use background context for enqueue since we already ACKed.

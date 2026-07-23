@@ -43,6 +43,15 @@ type Config struct {
 	// If not set, falls back to JWT_SECRET for backward compatibility.
 	TokenHMACKey string `mapstructure:"TOKEN_HMAC_KEY"`
 
+	// GroupMemberHashSecret é o segredo DEDICADO do tracking histórico de
+	// membros de grupo (mín. 32 bytes). Sem fallback para JWT_SECRET ou
+	// TOKEN_HMAC_KEY de propósito: o mesmo segredo em dois domínios permitiria
+	// correlacionar identidades entre sistemas. Não é obrigatório globalmente —
+	// ausente ou curto, o serviço nasce em no-op (a flag decide o resto).
+	// Imutável após o primeiro rollout com escrita: os valores brutos não são
+	// armazenados, então trocá-lo criaria identidades novas.
+	GroupMemberHashSecret string `mapstructure:"GROUP_MEMBER_HASH_SECRET"`
+
 	// Server
 	Port       string `mapstructure:"PORT"`
 	NodeEnv    string `mapstructure:"NODE_ENV"`

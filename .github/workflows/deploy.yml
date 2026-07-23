@@ -432,6 +432,17 @@ jobs:
           # caminho enxuto (MarkProcessedEnsure). Rollout/rollback sem deploy:
           # gh variable set WEBHOOK_LEAN_PERSIST --body true|false + bounce.
           WEBHOOK_LEAN_PERSIST=${{ vars.WEBHOOK_LEAN_PERSIST }}
+          # Tracking historico de membros de grupo (migracao 076).
+          # ""/ausente/"false" = INERTE: zero escrita nova, zero chamada WAHA de
+          # reconciliacao. Rollout/rollback sem deploy: gh variable set
+          # GROUP_MEMBER_TRACKING_ENABLED --body true|false + bounce.
+          GROUP_MEMBER_TRACKING_ENABLED=${{ vars.GROUP_MEMBER_TRACKING_ENABLED }}
+          # Segredo DEDICADO dos hashes de identidade (min 32 bytes). Sem
+          # fallback pra JWT_SECRET/TOKEN_HMAC_KEY de proposito. IMUTAVEL apos o
+          # primeiro rollout com escrita: os valores brutos nao sao armazenados,
+          # entao troca-lo criaria identidades novas. Ausente/curto com a flag
+          # ligada = servico inerte + um unico erro de inicializacao.
+          GROUP_MEMBER_HASH_SECRET=${{ secrets.GROUP_MEMBER_HASH_SECRET }}
           # Image pins: o compose usa ${BACKEND_IMAGE:-...latest}. Sem estes pins no
           # .env, qualquer `docker compose up` MANUAL no box (fora do CI) derruba a
           # build pra :latest. O CI ja passa os tags inline; isto protege ops manuais.

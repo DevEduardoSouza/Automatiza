@@ -89,9 +89,17 @@ type StatusWebhookProcessor interface {
 type GroupEventWebhookProcessor interface {
 	// ProcessGroupEvent handles a group event (join, leave, update, etc.).
 	// sessionName is the WAHA session identifier.
-	// eventType is the specific group event type (e.g., "group.v2.join", "group.v2.leave").
+	// eventType is the specific group event type (e.g., "group.v2.participants").
+	// providerEventID/providerTimestamp são o ID (ULID) e o timestamp (ms) do
+	// envelope WAHA como vieram — vazios/zero quando o produtor da task é
+	// anterior a este campo ou o envelope chegou sem ID.
 	// payload contains the raw event data from the webhook.
-	ProcessGroupEvent(ctx context.Context, sessionName, eventType string, payload map[string]interface{}) error
+	ProcessGroupEvent(
+		ctx context.Context,
+		sessionName, eventType, providerEventID string,
+		providerTimestamp int64,
+		payload map[string]interface{},
+	) error
 }
 
 // SessionStatusChecker re-reads the live session status from the WhatsApp
@@ -663,7 +671,8 @@ func (w *WebhookConsumerWorker) handleGroupEvent(ctx context.Context, data *Webh
 		return nil
 	}
 
-	return w.groupEventProcessor.ProcessGroupEvent(ctx, data.Session, data.Event, data.Payload)
+	return w.groupEventProcessor.ProcessGroupEvent(
+		ctx, data.Session, data.Event, data.ProviderEventID, data.ProviderTimestamp, data.Payload)
 }
 
 // handleMessageAckEvent processes message acknowledgment events.

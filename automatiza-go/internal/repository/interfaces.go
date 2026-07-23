@@ -3,6 +3,7 @@ package repository
 import (
 	"automatiza-go/internal/models"
 	"context"
+	"errors"
 	"time"
 )
 
@@ -818,4 +819,57 @@ type CTARepository interface {
 	CreateCTA(ctx context.Context, userID string, data *models.CTA) (*models.CTA, error)
 	UpdateCTA(ctx context.Context, ctaID, userID string, updates map[string]interface{}) error
 	DeleteCTA(ctx context.Context, ctaID, userID string) error
+}
+
+// ErrAmbiguousTrackingTenant é devolvido quando o nome da sessão WAHA resolve
+// para MAIS de uma instância. `instances` só garante UNIQUE(user_id,
+// instance_id), então nomes repetidos entre usuários são possíveis: resolver
+// "o primeiro" atribuiria o webhook ao tenant errado. Ambiguidade é falha de
+// segurança, não caso normal — o chamador não escreve nada.
+var ErrAmbiguousTrackingTenant = errors.New("ambiguous tracking tenant")
+
+// GroupMemberRepository é a fronteira de persistência da fundação histórica de
+// membros de grupo (Melhoria 2, Fase A).
+//
+// Invariantes:
+//   - todo método de mutação recebe o tenant/user_id e o inclui no predicado;
+//   - group_id NUNCA vem calculado de fora: é resolvido aqui por
+//     (user_id, wa_group_id);
+//   - ledger, projeção e agregado diário de um envelope mudam na MESMA
+//     transação — não existe commit de ledger sem projeção;
+//   - a reconciliação nunca escreve no ledger (lá só entram fatos de webhook).
+type GroupMemberRepository interface {
+	// ResolveWebhookTenant resolve o nome da sessão WAHA para no máximo uma
+	// instância. Zero linhas devolve erro TRANSITÓRIO (a instância pode estar
+	// sendo criada); duas ou mais devolvem ErrAmbiguousTrackingTenant.
+	ResolveWebhookTenant(ctx context.Context, sessionName string) (*models.TrackingTenant, error)
+
+	// RecordWebhookBatch aplica um envelope inteiro atomicamente: insere os
+	// fatos (idempotente por (user_id, provider_event_id, participant_hash)),
+	// projeta apenas as linhas efetivamente inseridas e incrementa o agregado
+	// diário. Replay do mesmo envelope é no-op.
+	RecordWebhookBatch(ctx context.Context, tenant models.TrackingTenant, event models.GroupMemberWebhookEvent) (models.RecordBatchResult, error)
+
+	// ClaimGroupsForReconciliation reivindica até limit grupos elegíveis com
+	// FOR UPDATE SKIP LOCKED, escolhendo de forma determinística um chip
+	// conectado participante (preferindo o owner). Claims mais antigos que
+	// lease voltam a ser elegíveis.
+	ClaimGroupsForReconciliation(ctx context.Context, limit int, lease time.Duration) ([]models.GroupReconciliationCandidate, error)
+
+	// ReconcileGroup aplica a fotografia de participantes de um grupo. Só
+	// altera o estado de projeções cujo last_event_applied_at seja anterior a
+	// observationStartedAt — um webhook aplicado durante a chamada WAHA nunca
+	// é desfeito por uma foto mais velha.
+	ReconcileGroup(ctx context.Context, candidate models.GroupReconciliationCandidate, members []models.GroupReconciliationMember, observationStartedAt time.Time) error
+
+	// ReleaseReconciliationClaim libera o claim de um grupo que falhou.
+	ReleaseReconciliationClaim(ctx context.Context, groupID string) error
+
+	// CleanupOldGroupMemberEvents apaga fatos com occurred_at anterior a
+	// olderThan, em lotes limitados. Devolve o total apagado.
+	CleanupOldGroupMemberEvents(ctx context.Context, olderThan time.Time, batchSize, maxBatches int) (int64, error)
+
+	// CleanupOldGroupMemberSnapshots apaga agregados com snapshot_date
+	// anterior a olderThan, em lotes limitados. Devolve o total apagado.
+	CleanupOldGroupMemberSnapshots(ctx context.Context, olderThan time.Time, batchSize, maxBatches int) (int64, error)
 }

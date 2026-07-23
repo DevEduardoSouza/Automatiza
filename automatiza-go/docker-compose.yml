@@ -212,7 +212,11 @@ services:
       # on the host, so we must use host.docker.internal. For production (both in
       # Docker), override WAHA_HOOK_BASE_URL to http://server:3000.
       - WHATSAPP_HOOK_URL=${WAHA_HOOK_BASE_URL:-http://host.docker.internal:3000}/api/v1/webhooks/waha
-      - WHATSAPP_HOOK_EVENTS=message,message.ack,session.status,group.join,group.leave
+      # Espelha whatsapp.DefaultWebhookEvents() (waha_adapter.go). message.any
+      # (nao "message") entrega TAMBEM fromMe — gatilho do offer_generate; NAO
+      # adicionar "message" junto, duplicaria os incoming.
+      # group.v2.participants alimenta o tracking historico de membros.
+      - WHATSAPP_HOOK_EVENTS=message.any,message.ack,session.status,group.join,group.leave,group.v2.participants
       - WHATSAPP_HOOK_HMAC_KEY=${WEBHOOK_SECRET}
 
       # Dashboard

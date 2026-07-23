@@ -659,14 +659,12 @@ func (h *AdminHandler) EnsureWebhooks(
 	var failCount int32
 	var totalCount int32
 
-	// Default webhook events for WAHA
-	webhookEvents := []string{
-		"message",
-		"message.ack",
-		"session.status",
-		"message.waiting",
-		"message.revoked",
-	}
+	// Lista CANÔNICA (whatsapp.DefaultWebhookEvents) — a mesma do adapter.
+	// A lista própria que existia aqui era um superset falso: tinha "message"
+	// (sem fromMe) no lugar de "message.any" e nenhum evento de grupo, então
+	// reaplicar webhooks em massa DERRUBAVA o gatilho do offer_generate e o
+	// tracking de membros nas sessões tocadas.
+	webhookEvents := whatsapp.DefaultWebhookEvents()
 
 	for _, inst := range instances {
 		if totalCount >= int32(limit) {
