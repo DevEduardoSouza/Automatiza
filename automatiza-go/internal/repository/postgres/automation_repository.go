@@ -158,24 +158,11 @@ func (r *automationRepository) GetAutomationByIDAndUser(ctx context.Context, aut
 	return r.scanAutomation(r.db.QueryRow(ctx, query, automationID, userID))
 }
 
-func (r *automationRepository) CreateAutomation(ctx context.Context, userID string, data *models.Automation) (*models.Automation, error) {
-	now := time.Now().UTC()
-
-	// Convert arrays to JSON
-	emptyArr := []byte("[]")
-	groupIDsJSON := marshalJSONField(r.logger, data.GroupIDs, "group_ids", emptyArr)
-	sendGroupsJSON := marshalJSONField(r.logger, data.SendGroups, "send_groups", emptyArr)
-	monitorGroupIDsJSON := marshalJSONField(r.logger, data.MonitorGroupIDs, "monitor_group_ids", emptyArr)
-	categoriesJSON := marshalJSONField(r.logger, data.Categories, "categories", emptyArr)
-	storesJSON := marshalJSONField(r.logger, data.Stores, "stores", emptyArr)
-	scheduleDaysJSON := marshalJSONField(r.logger, data.ScheduleDays, "schedule_days", emptyArr)
-
-	var monitoringRulesJSON []byte
-	if data.MonitoringTextRules != nil {
-		monitoringRulesJSON = marshalJSONField(r.logger, data.MonitoringTextRules, "monitoring_text_rules", []byte("null"))
-	}
-
-	query := `
+// createAutomationQuery é a fonte da verdade das colunas do INSERT. Fica fora da
+// função de propósito: o guard em automation_create_args_test.go compara os
+// placeholders daqui com o que createAutomationArgs monta, e reprova em
+// milissegundos a coluna acrescentada sem o valor correspondente.
+const createAutomationQuery = `
 		INSERT INTO automations (
 			user_id, name, type, status, mode, shopee_link, keyword,
 			group_ids, send_groups, monitor_group_ids, monitoring_text_rules,
@@ -196,6 +183,23 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 		)
 		RETURNING id
 	`
+
+// createAutomationArgs monta os valores do createAutomationQuery na ordem das
+// colunas. COLUNA NOVA NO INSERT = VALOR NOVO AQUI, no fim da lista.
+func (r *automationRepository) createAutomationArgs(userID string, data *models.Automation, now time.Time) []interface{} {
+	// Convert arrays to JSON
+	emptyArr := []byte("[]")
+	groupIDsJSON := marshalJSONField(r.logger, data.GroupIDs, "group_ids", emptyArr)
+	sendGroupsJSON := marshalJSONField(r.logger, data.SendGroups, "send_groups", emptyArr)
+	monitorGroupIDsJSON := marshalJSONField(r.logger, data.MonitorGroupIDs, "monitor_group_ids", emptyArr)
+	categoriesJSON := marshalJSONField(r.logger, data.Categories, "categories", emptyArr)
+	storesJSON := marshalJSONField(r.logger, data.Stores, "stores", emptyArr)
+	scheduleDaysJSON := marshalJSONField(r.logger, data.ScheduleDays, "schedule_days", emptyArr)
+
+	var monitoringRulesJSON []byte
+	if data.MonitoringTextRules != nil {
+		monitoringRulesJSON = marshalJSONField(r.logger, data.MonitoringTextRules, "monitoring_text_rules", []byte("null"))
+	}
 
 	// instance_id is the string form on the wire; coerce to int for the
 	// INTEGER FK column. Empty string / unparseable → NULL (no preference).
@@ -234,28 +238,34 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 	// level (full auto routing).
 	chipOverridesJSON := marshalJSONField(r.logger, data.ChipOverrides, "chip_overrides", []byte("{}"))
 
+	return []interface{}{
+		userID, data.Name, data.Type, data.Status, data.Mode, data.ShopeeLink, data.Keyword,
+		groupIDsJSON, sendGroupsJSON, monitorGroupIDsJSON, monitoringRulesJSON,
+		categoriesJSON, storesJSON, data.MinPrice, data.MaxPrice, data.MinDiscount, 0,
+		data.CustomMessage, data.IncludeImage, data.DispatchTextID, nil,
+		data.ScheduleTime, scheduleDaysJSON, data.StartTime, data.EndTime, data.IntervalMinutes,
+		data.DelaySeconds, data.DedupeHours, data.CouponID, now, now,
+		data.Texts, data.CTAs, data.CTAIDs, data.MlLinkListID, data.ListItemsPerRun, data.ListIncludeImage, data.PriorityType,
+		data.ListSendAsImage, instanceIDArg, instanceIDsArg, data.ApplyCouponRules, chipOverridesJSON,
+		data.RepeatWhenFinished, data.StartDate, data.EndDate, data.OfferGenerateSendAsImage,
+		data.SearchSendAsImage, data.MonitoringSendAsImage, data.HumanizeMode,
+		// $51 monitor_interval_minutes: coluna NOT NULL DEFAULT 0 (078). O getter
+		// devolve 0 quando o request não traz o campo — ponteiro nil escreveria
+		// NULL e violaria a constraint.
+		data.GetMonitorIntervalMinutes(),
+	}
+}
+
+func (r *automationRepository) CreateAutomation(ctx context.Context, userID string, data *models.Automation) (*models.Automation, error) {
+	args := r.createAutomationArgs(userID, data, time.Now().UTC())
+
 	var id string
 	// Guard de failover (Melhoria 5): com a feature desligada isto é o mesmo
 	// QueryRow de sempre, no pool, sem transação nem lock.
 	err := r.runGuardedAutomationMutation(ctx,
 		automationGuardScope{userID: userID, kind: automationMutationCreate},
 		func(ex pgExecutor) error {
-			return ex.QueryRow(ctx, query,
-				userID, data.Name, data.Type, data.Status, data.Mode, data.ShopeeLink, data.Keyword,
-				groupIDsJSON, sendGroupsJSON, monitorGroupIDsJSON, monitoringRulesJSON,
-				categoriesJSON, storesJSON, data.MinPrice, data.MaxPrice, data.MinDiscount, 0,
-				data.CustomMessage, data.IncludeImage, data.DispatchTextID, nil,
-				data.ScheduleTime, scheduleDaysJSON, data.StartTime, data.EndTime, data.IntervalMinutes,
-				data.DelaySeconds, data.DedupeHours, data.CouponID, now, now,
-				data.Texts, data.CTAs, data.CTAIDs, data.MlLinkListID, data.ListItemsPerRun, data.ListIncludeImage, data.PriorityType,
-				data.ListSendAsImage, instanceIDArg, instanceIDsArg, data.ApplyCouponRules, chipOverridesJSON,
-				data.RepeatWhenFinished, data.StartDate, data.EndDate, data.OfferGenerateSendAsImage,
-				data.SearchSendAsImage, data.MonitoringSendAsImage, data.HumanizeMode,
-				// $51 monitor_interval_minutes: coluna NOT NULL DEFAULT 0 (078). O
-				// getter devolve 0 quando o request não traz o campo — ponteiro nil
-				// escreveria NULL e violaria a constraint.
-				data.GetMonitorIntervalMinutes(),
-			).Scan(&id)
+			return ex.QueryRow(ctx, createAutomationQuery, args...).Scan(&id)
 		})
 
 	if err != nil {

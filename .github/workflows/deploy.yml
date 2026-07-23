@@ -147,6 +147,16 @@ jobs:
             -ldflags="-w -s -X main.Version=${VERSION}" \
             -o "$RUNNER_TEMP/go-ctx/server" ./cmd/server
 
+      # Guard do INSERT de automações: em 23/07 uma coluna nova entrou na query
+      # sem o valor correspondente e o build passou — a criação de automação só
+      # quebrou no clique do usuário, em produção. Teste puro (sem banco, sem
+      # Docker, ~0.5s). Se reprovar, a imagem não sobe e o job `deploy` aborta
+      # no "Wait for images". Filtro por -run de propósito: o resto da suíte
+      # deste pacote é de integração e exige Docker.
+      - name: Guard de argumentos do INSERT de automações
+        working-directory: automatiza-go
+        run: go test ./internal/repository/postgres/ -run TestCreateAutomationArgs -count=1
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
