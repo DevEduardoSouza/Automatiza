@@ -1,7 +1,17 @@
--- Verificação da migração 077 (chip reserva e failover de instância).
+-- Teste dos INVARIANTES de schema da migração 077 (chip reserva).
 --
 -- SOMENTE para banco local descartável. NUNCA rodar em produção: o script
--- insere fixtures e testa violações de constraint de propósito.
+-- insere fixtures e provoca violações de constraint de propósito.
+--
+-- POR QUE ESTE ARQUIVO NÃO MORA EM migrations/ E NÃO SE CHAMA .verify.sql:
+-- o runner (scripts/db/run-migrations.sh) trata `<migração>.verify.sql` como
+-- VERIFICADOR e o executa CONTRA PRODUÇÃO junto da migração. Com o nome antigo,
+-- este arquivo rodou no deploy de 23/07/2026: a primeira violação proposital
+-- virou `migration_verify_failed` e travou todos os deploys do repositório.
+-- (Produção saiu ilesa — o runner roda o verificador em transação e o erro
+-- reverteu as fixtures — mas por sorte, não por desenho.)
+-- Um comentário "não rode em produção" não protege nada: o runner lê a
+-- extensão, não o texto.
 --
 -- Uso:
 --   psql -v ON_ERROR_STOP=0 -f 077_instance_failover.verify.sql
