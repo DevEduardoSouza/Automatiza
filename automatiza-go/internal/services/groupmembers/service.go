@@ -28,7 +28,17 @@ const EventTypeParticipants = "group.v2.participants"
 // caber nele: 250 grupos / 10 em paralelo × 10s de teto por chamada ≈ 4min no
 // pior caso absoluto, e ordens de magnitude menos no caso real.
 const (
-	reconcileBatchSize   = 250
+	// reconcileBatchSize dimensionado pelo throughput MEDIDO em produção
+	// (23/07/2026): 250 grupos levaram 40s com 10 chamadas concorrentes, ou
+	// ~0,16s/grupo. A 1000, a rodada leva ~160s — folga confortável dentro do
+	// teto FIXO de 5min que o cron impõe (cron_service.go), e o excedente é
+	// seguro de qualquer forma: o cancelamento do contexto libera os claims em
+	// voo em vez de travá-los até o lease.
+	//
+	// A 250/h os 28k grupos levariam ~4,7 dias para ter dado na tela; a 1000/h,
+	// ~28h. O custo é ~160s/hora de 10 leituras concorrentes no WAHA — ordem de
+	// grandeza abaixo do tráfego de envio.
+	reconcileBatchSize   = 1000
 	reconcileConcurrency = 10
 	reconcileCallTimeout = 10 * time.Second
 	// reconcileLease: um claim mais velho que isto volta a ser elegível, o que
