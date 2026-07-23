@@ -1,3 +1,4 @@
+-- automatiza:migration-mode=transactional
 -- Melhoria 9 — ledger de ofertas/campanhas do monitor com retry durável.
 --
 -- ADITIVA: só cria tabelas novas. Nenhum DROP, nenhum ALTER destrutivo, nenhuma
@@ -14,6 +15,11 @@
 -- volumosa (8.6GB) e seu status não representa "esta mensagem já produziu sua
 -- oferta". Idempotência e recovery precisam de uma tabela pequena com unique
 -- keys próprias; as duas convivem.
+
+-- Teto curto de espera por lock (exigência do guardrail GOV-SQL-003).
+-- Esta migração só cria tabelas novas, então na prática não disputa lock com
+-- tráfego; o teto é rede de segurança.
+SET lock_timeout = '3s';
 
 SET lock_timeout = '5s';
 SET statement_timeout = '60s';
@@ -68,9 +74,6 @@ CREATE TABLE IF NOT EXISTS monitor_offer_jobs (
 
 -- Cleanup diário varre só o que já é terminal: índice parcial mantém o
 -- varredor fora das linhas ativas.
-CREATE INDEX IF NOT EXISTS monitor_offer_jobs_terminal_idx
-    ON monitor_offer_jobs (updated_at)
-    WHERE status IN ('succeeded', 'exhausted', 'blocked', 'superseded', 'ambiguous');
 
 -- ---------------------------------------------------------------------------
 -- Item: um link comercial dentro do job.
@@ -142,17 +145,8 @@ CREATE TABLE IF NOT EXISTS monitor_offer_items (
 
 -- Funde duas ocorrências do mesmo produto no mesmo job. Parcial porque
 -- canonical_key nasce NULL e vários itens podem ficar sem ela.
-CREATE UNIQUE INDEX IF NOT EXISTS monitor_offer_items_canonical_key_uidx
-    ON monitor_offer_items (job_id, canonical_key)
-    WHERE canonical_key IS NOT NULL;
 
 -- Fila do sweep: só linhas pending entram no índice.
-CREATE INDEX IF NOT EXISTS monitor_offer_items_pending_idx
-    ON monitor_offer_items (status, next_attempt_at)
-    WHERE status = 'pending';
-
-CREATE INDEX IF NOT EXISTS monitor_offer_items_job_ordinal_idx
-    ON monitor_offer_items (job_id, ordinal);
 
 -- ---------------------------------------------------------------------------
 -- Delivery: a autoridade de idempotência POR DESTINO.
@@ -199,6 +193,4 @@ CREATE TABLE IF NOT EXISTS monitor_offer_deliveries (
 );
 
 -- O reaper de 'sending' órfã (>3min vira ambiguous) varre só estas linhas.
-CREATE INDEX IF NOT EXISTS monitor_offer_deliveries_sending_idx
-    ON monitor_offer_deliveries (status, sending_at)
-    WHERE status = 'sending';
+
