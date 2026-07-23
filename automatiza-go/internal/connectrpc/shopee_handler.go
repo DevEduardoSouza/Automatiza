@@ -3,6 +3,7 @@ package connectrpc
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	affiliatesv1 "automatiza-go/internal/gen/affiliates/v1"
 	"automatiza-go/internal/models"
@@ -152,6 +153,70 @@ func (h *ShopeeHandler) GenerateAffiliateLink(
 	}
 
 	return connect.NewResponse(resp), nil
+}
+
+// ListCategories devolve o catálogo curado de grupos de categoria da
+// Shopee (nome + IDs oficiais) que a UI usa para montar regras de cupom
+// por categoria. Reusa o GetCategories que já existia — não há método
+// novo na interface do serviço.
+//
+// O mesmo ID pode pertencer a MAIS DE UM grupo: o catálogo é um mapeamento
+// curado, não uma partição. Por isso a UI persiste apenas IDs e nunca
+// tenta reconstruir os nomes selecionados a partir da união gravada.
+func (h *ShopeeHandler) ListCategories(
+	ctx context.Context,
+	_ *connect.Request[affiliatesv1.ListCategoriesRequest],
+) (*connect.Response[affiliatesv1.ListCategoriesResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+
+	categories, err := h.shopeeService.GetCategories(ctx, nil)
+	if err != nil {
+		// Erro sanitizado: o catálogo é estático, qualquer falha aqui é
+		// interna e não deve vazar detalhe do serviço para o cliente.
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to list categories"))
+	}
+
+	groups := make([]*affiliatesv1.ShopeeCategoryGroup, 0, len(categories))
+	for _, cat := range categories {
+		if cat.Name == "" || len(cat.IDs) == 0 {
+			continue
+		}
+		ids := dedupSortedInt64(cat.IDs)
+		if len(ids) == 0 {
+			continue
+		}
+		groups = append(groups, &affiliatesv1.ShopeeCategoryGroup{
+			Name: cat.Name,
+			Ids:  ids,
+		})
+	}
+	// GetCategories itera um map — a ordem é aleatória a cada chamada.
+	// Ordenar por nome dá uma lista estável para a UI.
+	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
+
+	return connect.NewResponse(&affiliatesv1.ListCategoriesResponse{Groups: groups}), nil
+}
+
+// dedupSortedInt64 devolve os valores únicos, em ordem crescente, num
+// slice novo (não mexe na entrada).
+func dedupSortedInt64(in []int64) []int64 {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(in))
+	out := make([]int64, 0, len(in))
+	for _, v := range in {
+		if _, dup := seen[v]; dup {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 // mapProtoSortBy converts proto SortBy enum to string for the service.

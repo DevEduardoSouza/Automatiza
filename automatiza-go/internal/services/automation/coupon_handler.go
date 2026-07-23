@@ -54,6 +54,25 @@ func (g couponRolloutGate) enabledFor(userID string) bool {
 	return ok
 }
 
+// parseCategoryRulesGate lê COUPON_CATEGORY_RULES_ENABLED, o gate de
+// PROCESSO (não por usuário) das regras de cupom por categoria oficial
+// Shopee. Só "1", "true", "on" e "yes" ligam — qualquer outro valor,
+// inclusive ausente ou lixo, é false. Default desligado: o deploy sobe
+// com a coluna e o CRUD disponíveis (para o operador preparar as regras)
+// mas com o matcher ainda ignorando categorias.
+//
+// Rollback é desligar este gate; NUNCA apagar product_category_ids — o
+// UPDATE ... SET product_category_ids = NULL converteria regras
+// específicas em genéricas e ALARGARIA o alcance delas.
+func parseCategoryRulesGate(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "on", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
 // CouponResult contains the result of applying a coupon to an offer.
 // It tracks whether the coupon was applied successfully and provides
 // the formatted coupon text for inclusion in the message.
@@ -88,6 +107,9 @@ type CouponHandler struct {
 	couponRuleRepo repository.CouponRuleRepository
 	logger         *zap.Logger
 	rollout        couponRolloutGate
+	// categoryRules é o gate de processo COUPON_CATEGORY_RULES_ENABLED,
+	// parseado uma vez no construtor e imutável daqui em diante.
+	categoryRules bool
 }
 
 // NewCouponHandler creates a new coupon handler. couponRuleRepo can be
@@ -96,11 +118,19 @@ type CouponHandler struct {
 // rollout (tie-break + SEARCH coupon) is gated per user by env
 // COUPON_RULES_ROLLOUT_USERS, read once here (empty = off for everyone).
 func NewCouponHandler(couponRepo repository.CouponRepository, couponRuleRepo repository.CouponRuleRepository, logger *zap.Logger) *CouponHandler {
+	categoryRules := parseCategoryRulesGate(os.Getenv("COUPON_CATEGORY_RULES_ENABLED"))
+	// Debug por instância construída (são três handlers independentes no
+	// processo): sem estado global e sem sync.Once, que quebrariam os
+	// testes com t.Setenv.
+	if logger != nil {
+		logger.Debug("Coupon category rules gate", zap.Bool("enabled", categoryRules))
+	}
 	return &CouponHandler{
 		couponRepo:     couponRepo,
 		couponRuleRepo: couponRuleRepo,
 		logger:         logger,
 		rollout:        parseCouponRolloutGate(os.Getenv("COUPON_RULES_ROLLOUT_USERS")),
+		categoryRules:  categoryRules,
 	}
 }
 
@@ -131,12 +161,19 @@ func (h *CouponHandler) CouponRolloutEnabledFor(userID string) bool {
 // Returns CouponResult with Applied=true and formatted CouponText if a
 // rule matched, or Applied=false with SkipReason describing why nothing
 // was injected.
+// productCategoryIDs carrega os IDs oficiais de categoria da Shopee do
+// produto (ShopeeOffer.ProductCategoryIDs). O handler os repassa ao
+// matcher SOMENTE quando o gate COUPON_CATEGORY_RULES_ENABLED está ligado
+// E a plataforma normalizada é "shopee"; nos demais casos manda nil, e o
+// matcher só enxerga regras genéricas — comportamento idêntico ao de
+// antes de 075. Mercado Livre passa nil na origem também.
 func (h *CouponHandler) ApplyCoupon(
 	ctx context.Context,
 	automation *models.Automation,
 	offerPrice float64,
 	offerStore string,
 	productIsOfficial bool,
+	productCategoryIDs []int64,
 ) (*CouponResult, error) {
 	result := &CouponResult{Applied: false}
 
@@ -156,7 +193,14 @@ func (h *CouponHandler) ApplyCoupon(
 	// official_only-first tie-break is gated per user during rollout; non-gated
 	// users keep the historical min_price-first ordering.
 	officialFirst := h.rollout.enabledFor(automation.UserID)
-	coupon, err := h.couponRuleRepo.FindMatchingCoupon(ctx, automation.UserID, platform, offerPrice, productIsOfficial, officialFirst)
+	// Categoria é sinal EXCLUSIVO da Shopee (productCatIds). Gate off ou
+	// outra plataforma → nil, e o matcher volta a enxergar só regras
+	// genéricas. O slice do caller não é mutado nem reordenado aqui.
+	categoryIDs := productCategoryIDs
+	if !h.categoryRules || platform != "shopee" {
+		categoryIDs = nil
+	}
+	coupon, err := h.couponRuleRepo.FindMatchingCoupon(ctx, automation.UserID, platform, offerPrice, productIsOfficial, officialFirst, categoryIDs)
 	if err != nil {
 		h.logger.Error("Failed to resolve coupon rule",
 			zap.String("userID", automation.UserID),

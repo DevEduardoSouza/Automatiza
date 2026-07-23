@@ -3,14 +3,17 @@ package connectrpc
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 
 	"automatiza-go/internal/auth"
 	couponsv1 "automatiza-go/internal/gen/coupons/v1"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/coupons"
 
 	"connectrpc.com/connect"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1305,4 +1308,340 @@ func TestValidateRulePeriod(t *testing.T) {
 			}
 		})
 	}
+}
+
+// =============================================================================
+// Coupon Rules: categorias oficiais Shopee (migração 075)
+// =============================================================================
+
+// ruleRepoStub é um duplo de repository.CouponRuleRepository que registra o
+// que o handler mandou gravar. Testify mock aqui só atrapalharia: o que
+// interessa é inspecionar o map de UPDATE e a regra do INSERT.
+type ruleRepoStub struct {
+	current    *models.CouponRule
+	getErr     error
+	created    *models.CouponRule
+	createErr  error
+	lastUpdate map[string]interface{}
+	updateErr  error
+	updateHits int
+}
+
+var _ repository.CouponRuleRepository = (*ruleRepoStub)(nil)
+
+func (s *ruleRepoStub) GetUserCouponRules(context.Context, string) ([]models.CouponRule, error) {
+	return nil, nil
+}
+
+func (s *ruleRepoStub) GetCouponRuleByID(context.Context, string, string) (*models.CouponRule, error) {
+	return s.current, s.getErr
+}
+
+func (s *ruleRepoStub) CreateCouponRule(_ context.Context, _ string, data *models.CouponRule) (*models.CouponRule, error) {
+	s.created = data
+	if s.createErr != nil {
+		return nil, s.createErr
+	}
+	out := *data
+	out.ID = "rule-1"
+	return &out, nil
+}
+
+func (s *ruleRepoStub) UpdateCouponRule(_ context.Context, _, _ string, updates map[string]interface{}) error {
+	s.updateHits++
+	s.lastUpdate = updates
+	return s.updateErr
+}
+
+func (s *ruleRepoStub) DeleteCouponRule(context.Context, string, string) error { return nil }
+
+// O matcher não é exercitado por estes testes de CRUD; existe só para
+// satisfazer a interface.
+func (s *ruleRepoStub) FindMatchingCoupon(context.Context, string, string, float64, bool, bool, []int64) (*models.Coupon, error) {
+	return nil, nil
+}
+
+func newRuleHandler(repo *ruleRepoStub) (*CouponsHandler, context.Context) {
+	return NewCouponsHandler(new(mockCouponsServiceForHandler), repo),
+		createTestUserContextForCoupons("user-1")
+}
+
+func shopeeRule() *models.CouponRule {
+	return &models.CouponRule{ID: "rule-1", UserID: "user-1", Platform: "shopee"}
+}
+
+func TestNormalizeProductCategoryIDs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("vazio vira nil (regra genérica)", func(t *testing.T) {
+		got, err := normalizeProductCategoryIDs(nil)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+
+		got, err = normalizeProductCategoryIDs([]int64{})
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("deduplica e ordena", func(t *testing.T) {
+		got, err := normalizeProductCategoryIDs([]int64{100003, 100001, 100003, 100002})
+		require.NoError(t, err)
+		assert.Equal(t, []int64{100001, 100002, 100003}, got)
+	})
+
+	t.Run("rejeita fora de faixa", func(t *testing.T) {
+		for _, bad := range [][]int64{{0}, {-1}, {math.MaxInt32 + 1}} {
+			_, err := normalizeProductCategoryIDs(bad)
+			assert.Error(t, err, "input %v deveria ser rejeitado", bad)
+		}
+	})
+
+	t.Run("aceita exatamente o teto e rejeita acima", func(t *testing.T) {
+		ok := make([]int64, maxProductCategoryIDs)
+		for i := range ok {
+			ok[i] = int64(i + 1)
+		}
+		got, err := normalizeProductCategoryIDs(ok)
+		require.NoError(t, err)
+		assert.Len(t, got, maxProductCategoryIDs)
+
+		_, err = normalizeProductCategoryIDs(append(ok, int64(maxProductCategoryIDs+1)))
+		assert.Error(t, err)
+	})
+}
+
+func TestCreateCouponRule_ProductCategories(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Shopee normaliza, deduplica e ordena", func(t *testing.T) {
+		repo := &ruleRepoStub{}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.CreateCouponRule(ctx, connect.NewRequest(&couponsv1.CreateCouponRuleRequest{
+			Platform:           "shopee",
+			ProductCategoryIds: []int64{100002, 100001, 100002},
+		}))
+		require.NoError(t, err)
+		require.NotNil(t, repo.created)
+		assert.Equal(t, []int64{100001, 100002}, repo.created.ProductCategoryIDs)
+	})
+
+	t.Run("lista vazia grava nil", func(t *testing.T) {
+		repo := &ruleRepoStub{}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.CreateCouponRule(ctx, connect.NewRequest(&couponsv1.CreateCouponRuleRequest{
+			Platform: "shopee",
+		}))
+		require.NoError(t, err)
+		require.NotNil(t, repo.created)
+		assert.Nil(t, repo.created.ProductCategoryIDs)
+	})
+
+	t.Run("Mercado Livre com IDs é InvalidArgument", func(t *testing.T) {
+		repo := &ruleRepoStub{}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.CreateCouponRule(ctx, connect.NewRequest(&couponsv1.CreateCouponRuleRequest{
+			Platform:           "mercado_livre",
+			ProductCategoryIds: []int64{100001},
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.Nil(t, repo.created, "não pode chegar ao banco")
+	})
+
+	t.Run("IDs inválidos são InvalidArgument", func(t *testing.T) {
+		many := make([]int64, maxProductCategoryIDs+1)
+		for i := range many {
+			many[i] = int64(i + 1)
+		}
+		for name, ids := range map[string][]int64{
+			"zero":        {0},
+			"negativo":    {-5},
+			"acima_int32": {math.MaxInt32 + 1},
+			"513_unicos":  many,
+		} {
+			t.Run(name, func(t *testing.T) {
+				repo := &ruleRepoStub{}
+				h, ctx := newRuleHandler(repo)
+				_, err := h.CreateCouponRule(ctx, connect.NewRequest(&couponsv1.CreateCouponRuleRequest{
+					Platform:           "shopee",
+					ProductCategoryIds: ids,
+				}))
+				require.Error(t, err)
+				assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+			})
+		}
+	})
+
+	t.Run("violação da constraint vira InvalidArgument", func(t *testing.T) {
+		repo := &ruleRepoStub{createErr: &pgconn.PgError{
+			Code:           "23514",
+			ConstraintName: productCategoryConstraint,
+		}}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.CreateCouponRule(ctx, connect.NewRequest(&couponsv1.CreateCouponRuleRequest{
+			Platform:           "shopee",
+			ProductCategoryIds: []int64{100001},
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("outra violação de banco continua Internal", func(t *testing.T) {
+		repo := &ruleRepoStub{createErr: &pgconn.PgError{Code: "23505", ConstraintName: "coupon_rules_pkey"}}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.CreateCouponRule(ctx, connect.NewRequest(&couponsv1.CreateCouponRuleRequest{
+			Platform: "shopee",
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+	})
+}
+
+func TestUpdateCouponRule_ProductCategories(t *testing.T) {
+	t.Parallel()
+
+	t.Run("lista não vazia substitui", func(t *testing.T) {
+		repo := &ruleRepoStub{current: shopeeRule()}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.UpdateCouponRule(ctx, connect.NewRequest(&couponsv1.UpdateCouponRuleRequest{
+			Id:                 "rule-1",
+			ProductCategoryIds: []int64{100002, 100001},
+		}))
+		require.NoError(t, err)
+		assert.Equal(t, []int64{100001, 100002}, repo.lastUpdate["product_category_ids"])
+	})
+
+	t.Run("vazio + clear grava NULL", func(t *testing.T) {
+		clear := true
+		repo := &ruleRepoStub{current: shopeeRule()}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.UpdateCouponRule(ctx, connect.NewRequest(&couponsv1.UpdateCouponRuleRequest{
+			Id:                      "rule-1",
+			ClearProductCategoryIds: &clear,
+		}))
+		require.NoError(t, err)
+		val, present := repo.lastUpdate["product_category_ids"]
+		require.True(t, present, "a coluna deve entrar no UPDATE")
+		assert.Nil(t, val)
+	})
+
+	t.Run("vazio sem clear NÃO toca na coluna", func(t *testing.T) {
+		repo := &ruleRepoStub{current: shopeeRule()}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.UpdateCouponRule(ctx, connect.NewRequest(&couponsv1.UpdateCouponRuleRequest{
+			Id:       "rule-1",
+			MinPrice: ptrFloat64(50),
+		}))
+		require.NoError(t, err)
+		_, present := repo.lastUpdate["product_category_ids"]
+		assert.False(t, present, "cliente antigo não pode apagar a segmentação")
+	})
+
+	t.Run("lista + clear é InvalidArgument", func(t *testing.T) {
+		clear := true
+		repo := &ruleRepoStub{current: shopeeRule()}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.UpdateCouponRule(ctx, connect.NewRequest(&couponsv1.UpdateCouponRuleRequest{
+			Id:                      "rule-1",
+			ProductCategoryIds:      []int64{100001},
+			ClearProductCategoryIds: &clear,
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.Zero(t, repo.updateHits)
+	})
+
+	t.Run("mudar para ML limpa as categorias no MESMO update", func(t *testing.T) {
+		rule := shopeeRule()
+		rule.ProductCategoryIDs = []int64{100001}
+		repo := &ruleRepoStub{current: rule}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.UpdateCouponRule(ctx, connect.NewRequest(&couponsv1.UpdateCouponRuleRequest{
+			Id:       "rule-1",
+			Platform: ptrString("mercado_livre"),
+		}))
+		require.NoError(t, err)
+		assert.Equal(t, 1, repo.updateHits, "um único statement")
+		val, present := repo.lastUpdate["product_category_ids"]
+		require.True(t, present)
+		assert.Nil(t, val)
+	})
+
+	t.Run("categorias com plataforma efetiva ML é InvalidArgument", func(t *testing.T) {
+		repo := &ruleRepoStub{current: shopeeRule()}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.UpdateCouponRule(ctx, connect.NewRequest(&couponsv1.UpdateCouponRuleRequest{
+			Id:                 "rule-1",
+			Platform:           ptrString("mercado_livre"),
+			ProductCategoryIds: []int64{100001},
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("sem plataforma no request usa a persistida", func(t *testing.T) {
+		mlRule := shopeeRule()
+		mlRule.Platform = "mercado_livre"
+		repo := &ruleRepoStub{current: mlRule}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.UpdateCouponRule(ctx, connect.NewRequest(&couponsv1.UpdateCouponRuleRequest{
+			Id:                 "rule-1",
+			ProductCategoryIds: []int64{100001},
+		}))
+		require.Error(t, err, "a regra persistida é ML, então categorias são inválidas")
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("regra inexistente mantém NotFound", func(t *testing.T) {
+		repo := &ruleRepoStub{current: nil}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.UpdateCouponRule(ctx, connect.NewRequest(&couponsv1.UpdateCouponRuleRequest{
+			Id: "sumida",
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+		assert.Zero(t, repo.updateHits)
+	})
+
+	t.Run("violação da constraint vira InvalidArgument", func(t *testing.T) {
+		repo := &ruleRepoStub{
+			current:   shopeeRule(),
+			updateErr: &pgconn.PgError{Code: "23514", ConstraintName: productCategoryConstraint},
+		}
+		h, ctx := newRuleHandler(repo)
+		_, err := h.UpdateCouponRule(ctx, connect.NewRequest(&couponsv1.UpdateCouponRuleRequest{
+			Id:                 "rule-1",
+			ProductCategoryIds: []int64{100001},
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+}
+
+func TestCouponRuleToProto_ProductCategories(t *testing.T) {
+	t.Parallel()
+
+	out := couponRuleToProto(&models.CouponRule{
+		ID: "rule-1", Platform: "shopee",
+		ProductCategoryIDs: []int64{100001, 100002, 100003},
+	})
+	require.NotNil(t, out)
+	assert.Equal(t, []int64{100001, 100002, 100003}, out.ProductCategoryIds)
+
+	generic := couponRuleToProto(&models.CouponRule{ID: "rule-2", Platform: "shopee"})
+	require.NotNil(t, generic)
+	assert.Empty(t, generic.ProductCategoryIds)
+}
+
+func TestGetCouponRule_ReturnsProductCategories(t *testing.T) {
+	t.Parallel()
+
+	rule := shopeeRule()
+	rule.ProductCategoryIDs = []int64{100001, 100002}
+	repo := &ruleRepoStub{current: rule}
+	h, ctx := newRuleHandler(repo)
+
+	resp, err := h.GetCouponRule(ctx, connect.NewRequest(&couponsv1.GetCouponRuleRequest{Id: "rule-1"}))
+	require.NoError(t, err)
+	assert.Equal(t, []int64{100001, 100002}, resp.Msg.GetRule().GetProductCategoryIds())
 }

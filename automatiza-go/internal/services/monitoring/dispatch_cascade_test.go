@@ -31,18 +31,20 @@ func (m *mockCTARepo) GetCTAsByIDs(ctx context.Context, ctaIDs []string, userID 
 }
 
 type mockCouponApplier struct {
-	called       bool
-	lastPrice    float64
-	lastStore    string
-	lastOfficial bool
-	fn           func(offerPrice float64, offerStore string, productIsOfficial bool) *CouponResult
+	called          bool
+	lastPrice       float64
+	lastStore       string
+	lastOfficial    bool
+	lastCategoryIDs []int64
+	fn              func(offerPrice float64, offerStore string, productIsOfficial bool) *CouponResult
 }
 
-func (m *mockCouponApplier) ApplyCoupon(_ context.Context, _ *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool) (*CouponResult, error) {
+func (m *mockCouponApplier) ApplyCoupon(_ context.Context, _ *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool, productCategoryIDs []int64) (*CouponResult, error) {
 	m.called = true
 	m.lastPrice = offerPrice
 	m.lastStore = offerStore
 	m.lastOfficial = productIsOfficial
+	m.lastCategoryIDs = productCategoryIDs
 	if m.fn != nil {
 		return m.fn(offerPrice, offerStore, productIsOfficial), nil
 	}
@@ -289,6 +291,47 @@ func renderShopeeTemplate(t *testing.T, body string, shopee *mockShopeeService, 
 	auto.ApplyCouponRules = true
 	aff := &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff123", ItemID: 123, ShopID: 456}
 	return svc.renderMonitorDispatchText(context.Background(), auto, aff, "https://shopee.com.br/prod", "", "", "")
+}
+
+// O caminho Shopee do espelho repassa ao matcher os IDs oficiais de
+// categoria que o GetProduct enriqueceu — é o que habilita regra de cupom
+// por categoria no monitoramento.
+func TestCoupon_ShopeePassesProductCategoryIDs(t *testing.T) {
+	applier := &mockCouponApplier{}
+	shopee := shopeeConvertAndEnrich("Produto XYZ", 50.0, 100.0, false)
+	inner := shopee.GetProductFn
+	shopee.GetProductFn = func(ctx context.Context, itemID, shopID int64, userID string) (*models.ShopeeOffer, error) {
+		offer, err := inner(ctx, itemID, shopID, userID)
+		if err != nil {
+			return nil, err
+		}
+		offer.ProductCategoryIDs = []int64{100001, 100002}
+		return offer, nil
+	}
+	renderShopeeTemplate(t, "{nome_produto} {link_afiliado}", shopee, applier, nil)
+
+	if !applier.called {
+		t.Fatal("couponHandler deveria ter sido chamado (preço > 0)")
+	}
+	if len(applier.lastCategoryIDs) != 2 ||
+		applier.lastCategoryIDs[0] != 100001 || applier.lastCategoryIDs[1] != 100002 {
+		t.Errorf("categorias repassadas = %v, want [100001 100002]", applier.lastCategoryIDs)
+	}
+}
+
+// Produto Shopee sem categoria na API: nil chega ao matcher, que então só
+// enxerga regras genéricas (mesmo comportamento de antes de 075).
+func TestCoupon_ShopeeWithoutCategoriesPassesNil(t *testing.T) {
+	applier := &mockCouponApplier{}
+	renderShopeeTemplate(t, "{nome_produto} {link_afiliado}",
+		shopeeConvertAndEnrich("Produto XYZ", 50.0, 100.0, false), applier, nil)
+
+	if !applier.called {
+		t.Fatal("couponHandler deveria ter sido chamado (preço > 0)")
+	}
+	if applier.lastCategoryIDs != nil {
+		t.Errorf("categorias repassadas = %v, want nil", applier.lastCategoryIDs)
+	}
 }
 
 // Preço enriquecido > 0 e regra casa: injeta bloco de cupom (append, sem

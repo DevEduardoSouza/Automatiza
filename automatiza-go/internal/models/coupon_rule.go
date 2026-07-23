@@ -9,11 +9,17 @@ package models
 // Cupons Simples remain as a separate catalog used MANUALLY in message
 // composition; they're a sibling concept, not a parent.
 //
-// Tie-break order at match time: highest MinPrice DESC (the rule whose
-// minimum price tier the product just clears), then Priority DESC, then
-// CreatedAt DESC. The "highest min_price" default mirrors how operators
-// naturally design tiers (R$50 OFF for produtos > R$300, R$100 OFF for
-// produtos > R$700) — bigger product earns the bigger coupon.
+// Tie-break order at match time (ordem TOTAL, ver FindMatchingCoupon):
+//  1. regra específica de categoria (ProductCategoryIDs não vazio) vence
+//     qualquer regra genérica — especificidade tem precedência absoluta;
+//  2. OfficialOnly DESC, somente quando officialFirst=true;
+//  3. MinPrice DESC (a faixa de preço mais alta que o produto alcança);
+//  4. Priority DESC;
+//  5. CreatedAt DESC.
+//
+// O default "maior min_price" espelha como operadores desenham faixas
+// (R$50 OFF para produtos > R$300, R$100 OFF para produtos > R$700) —
+// produto maior ganha cupom maior.
 type CouponRule struct {
 	ID     string `json:"id" db:"id"`
 	UserID string `json:"user_id" db:"user_id"`
@@ -44,8 +50,15 @@ type CouponRule struct {
 	DiscountType  *string  `json:"discount_type,omitempty" db:"discount_type"`
 	DiscountValue *float64 `json:"discount_value,omitempty" db:"discount_value"`
 	MaxDiscount   *float64 `json:"max_discount,omitempty" db:"max_discount"`
-	CreatedAt     string   `json:"created_at" db:"created_at"`
-	UpdatedAt     string   `json:"updated_at" db:"updated_at"`
+	// ProductCategoryIDs restringe a regra aos IDs OFICIAIS de categoria
+	// da Shopee (ShopeeOffer.ProductCategoryIDs). nil/vazio = regra
+	// genérica, que continua sendo o fallback de qualquer produto. Não
+	// vazio = a regra só casa por interseção e ganha precedência sobre
+	// as genéricas. Só existe em Platform == "shopee" (constraint
+	// coupon_rules_product_categories_shopee_only, migração 075).
+	ProductCategoryIDs []int64 `db:"product_category_ids" json:"product_category_ids,omitempty"`
+	CreatedAt          string  `json:"created_at" db:"created_at"`
+	UpdatedAt          string  `json:"updated_at" db:"updated_at"`
 }
 
 // CreateCouponRuleRequest captures a new rule from the API. Period and

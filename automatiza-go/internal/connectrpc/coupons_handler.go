@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"sort"
 	"time"
 
 	couponsv1 "automatiza-go/internal/gen/coupons/v1"
@@ -12,6 +14,7 @@ import (
 	"automatiza-go/internal/services/coupons"
 
 	"connectrpc.com/connect"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // CouponsHandler implements the couponsv1connect.CouponsServiceHandler interface.
@@ -395,6 +398,62 @@ func (h *CouponsHandler) requireRules() error {
 	return nil
 }
 
+// maxProductCategoryIDs limita quantos IDs uma regra pode segmentar. O
+// catálogo curado tem 198 IDs únicos hoje; 512 dá folga de sobra e ainda
+// impede que um cliente qualquer grave um array gigante no matcher.
+const maxProductCategoryIDs = 512
+
+// productCategoryConstraint é o nome exato da CHECK da migração 075.
+const productCategoryConstraint = "coupon_rules_product_categories_shopee_only"
+
+// normalizeProductCategoryIDs valida e canoniza os IDs de categoria que
+// vieram do cliente: únicos, crescentes, em (0, MaxInt32] — o teto vem do
+// contrato da Shopee, cujo productCatIds é `[Int!]` (GraphQL Int = 32
+// bits, ver shopee-affiliate-api/schema.graphql:438).
+//
+// Lista vazia devolve (nil, nil): "regra genérica" tem UMA representação
+// só, o NULL do banco.
+func normalizeProductCategoryIDs(ids []int64) ([]int64, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, fmt.Errorf("product_category_ids: id must be positive")
+		}
+		if id > math.MaxInt32 {
+			return nil, fmt.Errorf("product_category_ids: id out of range")
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	if len(out) > maxProductCategoryIDs {
+		return nil, fmt.Errorf("product_category_ids: at most %d categories per rule", maxProductCategoryIDs)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+// isProductCategoryConstraintViolation reconhece SOMENTE a violação da
+// CHECK de 075 (categorias fora do Shopee). Qualquer outro erro de banco
+// continua sendo erro interno — converter falha de banco em "argumento
+// inválido" esconderia incidente real do operador.
+func isProductCategoryConstraintViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == "23514" && pgErr.ConstraintName == productCategoryConstraint
+}
+
 // validateRulePeriod rejects a period whose end is not strictly after its
 // start. A zero-length (end == start) or inverted window silently matches
 // no product at all — the rule looks active in the UI but never fires.
@@ -517,8 +576,24 @@ func (h *CouponsHandler) CreateCouponRule(
 	if err := validateRulePeriod(rule.PeriodStart, rule.PeriodEnd); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	cats, err := normalizeProductCategoryIDs(req.Msg.GetProductCategoryIds())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	// Categoria oficial é sinal exclusivo da Shopee: aceitar IDs numa
+	// regra de ML criaria uma regra que nunca casa nada (e a constraint
+	// de 075 recusaria a linha de qualquer jeito).
+	if len(cats) > 0 && rule.Platform != "shopee" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("product_category_ids is only supported for platform 'shopee'"))
+	}
+	rule.ProductCategoryIDs = cats
 	created, err := h.couponRuleRepo.CreateCouponRule(ctx, user.ID, rule)
 	if err != nil {
+		if isProductCategoryConstraintViolation(err) {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("product_category_ids is only supported for platform 'shopee'"))
+		}
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create coupon rule: %w", err))
 	}
 	return connect.NewResponse(&couponsv1.CreateCouponRuleResponse{Rule: couponRuleToProto(created)}), nil
@@ -602,7 +677,61 @@ func (h *CouponsHandler) UpdateCouponRule(
 	if err := validateRulePeriod(req.Msg.PeriodStart, req.Msg.PeriodEnd); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+
+	// --- Categorias (075) -------------------------------------------------
+	// Tabela verdade:
+	//   lista != vazia, clear off  → substitui pela lista normalizada
+	//   lista vazia,    clear on   → grava NULL
+	//   lista vazia,    clear off  → NÃO toca na coluna (é o que o cliente
+	//                                antigo manda: ele nunca envia o campo,
+	//                                e não pode apagar segmentação alheia)
+	//   lista != vazia, clear on   → InvalidArgument (intenção contraditória)
+	cats, err := normalizeProductCategoryIDs(req.Msg.GetProductCategoryIds())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	clearCats := req.Msg.GetClearProductCategoryIds()
+	if len(cats) > 0 && clearCats {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("product_category_ids and clear_product_category_ids are mutually exclusive"))
+	}
+
+	// Plataforma EFETIVA = a do request quando veio, senão a persistida.
+	// Precisa da regra atual porque um update que muda só a plataforma
+	// (sem tocar em categorias) tem de limpar as categorias no MESMO
+	// statement — senão a linha ficaria inválida perante a constraint.
+	current, err := h.couponRuleRepo.GetCouponRuleByID(ctx, req.Msg.GetId(), user.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to load coupon rule: %w", err))
+	}
+	if current == nil {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("coupon rule not found"))
+	}
+	effectivePlatform := current.Platform
+	if v := req.Msg.Platform; v != nil && *v != "" {
+		effectivePlatform = *v
+	}
+
+	switch {
+	case len(cats) > 0:
+		if effectivePlatform != "shopee" {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("product_category_ids is only supported for platform 'shopee'"))
+		}
+		updates["product_category_ids"] = cats
+	case clearCats:
+		updates["product_category_ids"] = nil
+	case effectivePlatform != "shopee":
+		// Saiu da Shopee sem falar de categorias: limpa junto, no mesmo
+		// UPDATE. A constraint do banco fecha a corrida com outro writer.
+		updates["product_category_ids"] = nil
+	}
+
 	if err := h.couponRuleRepo.UpdateCouponRule(ctx, req.Msg.GetId(), user.ID, updates); err != nil {
+		if isProductCategoryConstraintViolation(err) {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("product_category_ids is only supported for platform 'shopee'"))
+		}
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update coupon rule: %w", err))
 	}
 	updated, err := h.couponRuleRepo.GetCouponRuleByID(ctx, req.Msg.GetId(), user.ID)
@@ -668,6 +797,9 @@ func couponRuleToProto(r *models.CouponRule) *couponsv1.CouponRule {
 	}
 	if r.MaxDiscount != nil {
 		out.MaxDiscount = r.MaxDiscount
+	}
+	if len(r.ProductCategoryIDs) > 0 {
+		out.ProductCategoryIds = append([]int64(nil), r.ProductCategoryIDs...)
 	}
 	return out
 }

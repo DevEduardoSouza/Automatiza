@@ -536,17 +536,21 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			var offerPrice float64
 			var offerStore string
 			var productIsOfficial bool
+			var productCategoryIDs []int64
 			if isML && preview != nil {
 				offerPrice = preview.Price
 				offerStore = "ml"
 				// ML doesn't expose a Mall-style flag — leave false.
+				// Nem categoria oficial: productCategoryIDs fica nil, então
+				// só regras genéricas ficam elegíveis.
 			} else if isShopee && shopeeProduct != nil {
 				offerPrice = shopeeProduct.Price
 				offerStore = "shopee"
 				productIsOfficial = shopeeProduct.IsMall
+				productCategoryIDs = shopeeProduct.ProductCategoryIDs
 			}
 			if offerPrice > 0 {
-				if cr, err := s.couponHandler.ApplyCoupon(ctx, automation, offerPrice, offerStore, productIsOfficial); err == nil {
+				if cr, err := s.couponHandler.ApplyCoupon(ctx, automation, offerPrice, offerStore, productIsOfficial, productCategoryIDs); err == nil {
 					couponResult = cr
 				}
 			}

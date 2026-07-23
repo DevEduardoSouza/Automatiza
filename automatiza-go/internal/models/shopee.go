@@ -25,6 +25,16 @@ type ShopeeOffer struct {
 	CategoryID      int64   `json:"categoryId,omitempty"`
 	IsMall          bool    `json:"isMall"`
 	IsPreferredPlus bool    `json:"isPreferredPlus"`
+	// ProductCategoryIDs são os IDs OFICIAIS de categoria da Shopee
+	// (ProductOfferV2.productCatIds — schema.graphql:438 declara
+	// `productCatIds: [Int!]`, lista nullable de Int não nulos). É o
+	// único sinal de categoria que a API entrega; nada aqui é inferido
+	// de título, descrição ou nome de loja.
+	//
+	// nil/vazio = produto sem categoria conhecida → só casa regra de
+	// cupom genérica. GraphQL Int é 32 bits, então int64 é alargamento
+	// sem perda (mesma razão do BIGINT[] na coluna).
+	ProductCategoryIDs []int64 `json:"productCatIds,omitempty"`
 }
 
 // ShopeeSearchParams represents search parameters for Shopee
@@ -78,10 +88,17 @@ type ShopeeAffiliateLink struct {
 
 // ShopeeCategory represents a Shopee category
 type ShopeeCategory struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	ParentID *int64 `json:"parentId,omitempty"`
-	Level    int    `json:"level"`
+	// ID é o PRIMEIRO ID do grupo, preservado para o caller de
+	// diagnóstico que já existia (automation_service.go) — não é um
+	// identificador único do grupo.
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	// IDs é a lista COMPLETA de IDs oficiais que o grupo cobre. O mapa
+	// de categorias tem IDs que aparecem em mais de um grupo, então a
+	// união de IDs selecionados não reconstrói os grupos de origem.
+	IDs      []int64 `json:"ids,omitempty"`
+	ParentID *int64  `json:"parentId,omitempty"`
+	Level    int     `json:"level"`
 }
 
 // AffiliateCredentials represents affiliate store credentials (Shopee, ML, Amazon, etc.)

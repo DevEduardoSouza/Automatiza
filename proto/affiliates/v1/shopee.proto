@@ -128,6 +128,27 @@ message GenerateAffiliateLinkResponse {
 }
 
 // ============================================================
+// Category Catalog
+// ============================================================
+
+message ListCategoriesRequest {}
+
+/**
+ * A named group of official Shopee category IDs. The same ID can appear
+ * in more than one group (the catalog is a curated mapping, not a
+ * partition), so the union of selected IDs does NOT reconstruct the
+ * originally selected group names.
+ */
+message ShopeeCategoryGroup {
+  string name = 1;
+  repeated int64 ids = 2;
+}
+
+message ListCategoriesResponse {
+  repeated ShopeeCategoryGroup groups = 1;
+}
+
+// ============================================================
 // Service Definition
 // ============================================================
 
@@ -140,4 +161,8 @@ service ShopeeService {
 
   // Generates an affiliate link for a Shopee product.
   rpc GenerateAffiliateLink(GenerateAffiliateLinkRequest) returns (GenerateAffiliateLinkResponse);
+
+  // Lists the curated Shopee category groups (name + official IDs) used
+  // to build category-scoped coupon rules.
+  rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse);
 }

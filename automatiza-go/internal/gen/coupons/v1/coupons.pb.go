@@ -1118,8 +1118,14 @@ type CouponRule struct {
 	DiscountType  *DiscountType `protobuf:"varint,15,opt,name=discount_type,json=discountType,proto3,enum=coupons.v1.DiscountType,oneof" json:"discount_type,omitempty"`
 	DiscountValue *float64      `protobuf:"fixed64,16,opt,name=discount_value,json=discountValue,proto3,oneof" json:"discount_value,omitempty"`
 	MaxDiscount   *float64      `protobuf:"fixed64,17,opt,name=max_discount,json=maxDiscount,proto3,oneof" json:"max_discount,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// IDs oficiais de categoria da Shopee (ProductOfferV2.productCatIds).
+	// Vazio = regra genérica (vale para qualquer categoria). Não vazio =
+	// a regra só casa produtos que tenham ao menos um destes IDs, e tem
+	// precedência sobre qualquer regra genérica. Só existe em
+	// platform = "shopee".
+	ProductCategoryIds []int64 `protobuf:"varint,18,rep,packed,name=product_category_ids,json=productCategoryIds,proto3" json:"product_category_ids,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CouponRule) Reset() {
@@ -1269,6 +1275,13 @@ func (x *CouponRule) GetMaxDiscount() float64 {
 		return *x.MaxDiscount
 	}
 	return 0
+}
+
+func (x *CouponRule) GetProductCategoryIds() []int64 {
+	if x != nil {
+		return x.ProductCategoryIds
+	}
+	return nil
 }
 
 type ListCouponRulesRequest struct {
@@ -1457,8 +1470,10 @@ type CreateCouponRuleRequest struct {
 	DiscountType  *DiscountType `protobuf:"varint,11,opt,name=discount_type,json=discountType,proto3,enum=coupons.v1.DiscountType,oneof" json:"discount_type,omitempty"`
 	DiscountValue *float64      `protobuf:"fixed64,12,opt,name=discount_value,json=discountValue,proto3,oneof" json:"discount_value,omitempty"`
 	MaxDiscount   *float64      `protobuf:"fixed64,13,opt,name=max_discount,json=maxDiscount,proto3,oneof" json:"max_discount,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Vazio/ausente = regra genérica. Só aceito quando platform = "shopee".
+	ProductCategoryIds []int64 `protobuf:"varint,14,rep,packed,name=product_category_ids,json=productCategoryIds,proto3" json:"product_category_ids,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CreateCouponRuleRequest) Reset() {
@@ -1582,6 +1597,13 @@ func (x *CreateCouponRuleRequest) GetMaxDiscount() float64 {
 	return 0
 }
 
+func (x *CreateCouponRuleRequest) GetProductCategoryIds() []int64 {
+	if x != nil {
+		return x.ProductCategoryIds
+	}
+	return nil
+}
+
 type CreateCouponRuleResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Rule          *CouponRule            `protobuf:"bytes,1,opt,name=rule,proto3" json:"rule,omitempty"`
@@ -1645,8 +1667,15 @@ type UpdateCouponRuleRequest struct {
 	DiscountType  *DiscountType `protobuf:"varint,12,opt,name=discount_type,json=discountType,proto3,enum=coupons.v1.DiscountType,oneof" json:"discount_type,omitempty"`
 	DiscountValue *float64      `protobuf:"fixed64,13,opt,name=discount_value,json=discountValue,proto3,oneof" json:"discount_value,omitempty"`
 	MaxDiscount   *float64      `protobuf:"fixed64,14,opt,name=max_discount,json=maxDiscount,proto3,oneof" json:"max_discount,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Lista não vazia substitui as categorias da regra. Lista vazia SEM
+	// clear_product_category_ids não toca na coluna (cliente antigo, que
+	// nunca envia o campo, não pode apagar a segmentação de ninguém).
+	ProductCategoryIds []int64 `protobuf:"varint,15,rep,packed,name=product_category_ids,json=productCategoryIds,proto3" json:"product_category_ids,omitempty"`
+	// Limpa as categorias (grava NULL) — só válido com
+	// product_category_ids vazio. Lista + clear juntos é InvalidArgument.
+	ClearProductCategoryIds *bool `protobuf:"varint,16,opt,name=clear_product_category_ids,json=clearProductCategoryIds,proto3,oneof" json:"clear_product_category_ids,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *UpdateCouponRuleRequest) Reset() {
@@ -1775,6 +1804,20 @@ func (x *UpdateCouponRuleRequest) GetMaxDiscount() float64 {
 		return *x.MaxDiscount
 	}
 	return 0
+}
+
+func (x *UpdateCouponRuleRequest) GetProductCategoryIds() []int64 {
+	if x != nil {
+		return x.ProductCategoryIds
+	}
+	return nil
+}
+
+func (x *UpdateCouponRuleRequest) GetClearProductCategoryIds() bool {
+	if x != nil && x.ClearProductCategoryIds != nil {
+		return *x.ClearProductCategoryIds
+	}
+	return false
 }
 
 type UpdateCouponRuleResponse struct {
@@ -2017,7 +2060,7 @@ const file_coupons_v1_coupons_proto_rawDesc = "" +
 	"\x19ListCouponsByStoreRequest\x121\n" +
 	"\x05store\x18\x01 \x01(\x0e2\x11.coupons.v1.StoreB\b\xbaH\x05\x82\x01\x02\x10\x01R\x05store\"J\n" +
 	"\x1aListCouponsByStoreResponse\x12,\n" +
-	"\acoupons\x18\x01 \x03(\v2\x12.coupons.v1.CouponR\acoupons\"\xae\x05\n" +
+	"\acoupons\x18\x01 \x03(\v2\x12.coupons.v1.CouponR\acoupons\"\xe0\x05\n" +
 	"\n" +
 	"CouponRule\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
@@ -2040,7 +2083,8 @@ const file_coupons_v1_coupons_proto_rawDesc = "" +
 	"\amessage\x18\x0e \x01(\tH\x03R\amessage\x88\x01\x01\x12B\n" +
 	"\rdiscount_type\x18\x0f \x01(\x0e2\x18.coupons.v1.DiscountTypeH\x04R\fdiscountType\x88\x01\x01\x12*\n" +
 	"\x0ediscount_value\x18\x10 \x01(\x01H\x05R\rdiscountValue\x88\x01\x01\x12&\n" +
-	"\fmax_discount\x18\x11 \x01(\x01H\x06R\vmaxDiscount\x88\x01\x01B\x0f\n" +
+	"\fmax_discount\x18\x11 \x01(\x01H\x06R\vmaxDiscount\x88\x01\x01\x120\n" +
+	"\x14product_category_ids\x18\x12 \x03(\x03R\x12productCategoryIdsB\x0f\n" +
 	"\r_period_startB\r\n" +
 	"\v_period_endB\a\n" +
 	"\x05_codeB\n" +
@@ -2055,7 +2099,7 @@ const file_coupons_v1_coupons_proto_rawDesc = "" +
 	"\x14GetCouponRuleRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\"C\n" +
 	"\x15GetCouponRuleResponse\x12*\n" +
-	"\x04rule\x18\x01 \x01(\v2\x16.coupons.v1.CouponRuleR\x04rule\"\xac\x05\n" +
+	"\x04rule\x18\x01 \x01(\v2\x16.coupons.v1.CouponRuleR\x04rule\"\xde\x05\n" +
 	"\x17CreateCouponRuleRequest\x12\x1b\n" +
 	"\tcoupon_id\x18\x01 \x01(\tR\bcouponId\x12#\n" +
 	"\bplatform\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bplatform\x12&\n" +
@@ -2072,7 +2116,8 @@ const file_coupons_v1_coupons_proto_rawDesc = "" +
 	"\rdiscount_type\x18\v \x01(\x0e2\x18.coupons.v1.DiscountTypeH\bR\fdiscountType\x88\x01\x01\x12*\n" +
 	"\x0ediscount_value\x18\f \x01(\x01H\tR\rdiscountValue\x88\x01\x01\x12&\n" +
 	"\fmax_discount\x18\r \x01(\x01H\n" +
-	"R\vmaxDiscount\x88\x01\x01B\x0f\n" +
+	"R\vmaxDiscount\x88\x01\x01\x120\n" +
+	"\x14product_category_ids\x18\x0e \x03(\x03R\x12productCategoryIdsB\x0f\n" +
 	"\r_period_startB\r\n" +
 	"\v_period_endB\f\n" +
 	"\n" +
@@ -2088,7 +2133,7 @@ const file_coupons_v1_coupons_proto_rawDesc = "" +
 	"\x0f_discount_valueB\x0f\n" +
 	"\r_max_discount\"F\n" +
 	"\x18CreateCouponRuleResponse\x12*\n" +
-	"\x04rule\x18\x01 \x01(\v2\x16.coupons.v1.CouponRuleR\x04rule\"\xe1\x05\n" +
+	"\x04rule\x18\x01 \x01(\v2\x16.coupons.v1.CouponRuleR\x04rule\"\xf4\x06\n" +
 	"\x17UpdateCouponRuleRequest\x12\x17\n" +
 	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12 \n" +
 	"\tcoupon_id\x18\x02 \x01(\tH\x00R\bcouponId\x88\x01\x01\x12\x1f\n" +
@@ -2106,7 +2151,9 @@ const file_coupons_v1_coupons_proto_rawDesc = "" +
 	"\rdiscount_type\x18\f \x01(\x0e2\x18.coupons.v1.DiscountTypeH\n" +
 	"R\fdiscountType\x88\x01\x01\x12*\n" +
 	"\x0ediscount_value\x18\r \x01(\x01H\vR\rdiscountValue\x88\x01\x01\x12&\n" +
-	"\fmax_discount\x18\x0e \x01(\x01H\fR\vmaxDiscount\x88\x01\x01B\f\n" +
+	"\fmax_discount\x18\x0e \x01(\x01H\fR\vmaxDiscount\x88\x01\x01\x120\n" +
+	"\x14product_category_ids\x18\x0f \x03(\x03R\x12productCategoryIds\x12@\n" +
+	"\x1aclear_product_category_ids\x18\x10 \x01(\bH\rR\x17clearProductCategoryIds\x88\x01\x01B\f\n" +
 	"\n" +
 	"_coupon_idB\v\n" +
 	"\t_platformB\x0f\n" +
@@ -2123,7 +2170,8 @@ const file_coupons_v1_coupons_proto_rawDesc = "" +
 	"\b_messageB\x10\n" +
 	"\x0e_discount_typeB\x11\n" +
 	"\x0f_discount_valueB\x0f\n" +
-	"\r_max_discount\"F\n" +
+	"\r_max_discountB\x1d\n" +
+	"\x1b_clear_product_category_ids\"F\n" +
 	"\x18UpdateCouponRuleResponse\x12*\n" +
 	"\x04rule\x18\x01 \x01(\v2\x16.coupons.v1.CouponRuleR\x04rule\"2\n" +
 	"\x17DeleteCouponRuleRequest\x12\x17\n" +

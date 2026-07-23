@@ -932,6 +932,8 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 					// (fail-closed→false) não pode REBAIXAR um Mall já confirmado
 					// pela busca — senão a regra official_only deixaria de casar.
 					allOffers[i].IsMall = allOffers[i].IsMall || refreshed.IsMall
+					allOffers[i].ProductCategoryIDs = mergeRefetchedCategoryIDs(
+						allOffers[i].ProductCategoryIDs, refreshed.ProductCategoryIDs)
 					if allOffers[i].Price > 0 && allOffers[i].OriginalPrice > allOffers[i].Price {
 						allOffers[i].Discount = ((allOffers[i].OriginalPrice - allOffers[i].Price) / allOffers[i].OriginalPrice) * 100
 					}
@@ -1007,7 +1009,7 @@ func (s *automationService) executeSearchAutomation(ctx context.Context, automat
 			// Fail-open: erro no cupom só significa "sem cupom", nunca bloqueia o envio.
 			var couponResult *CouponResult
 			if s.couponHandler != nil && offer.Price > 0 && s.couponHandler.CouponRolloutEnabledFor(automation.UserID) {
-				if cr, err := s.couponHandler.ApplyCoupon(ctx, automation, offer.Price, store, offer.IsMall); err == nil {
+				if cr, err := s.couponHandler.ApplyCoupon(ctx, automation, offer.Price, store, offer.IsMall, offer.ProductCategoryIDs); err == nil {
 					couponResult = cr
 				}
 			}
@@ -1558,6 +1560,24 @@ func (s *automationService) releaseExecutionLock(ctx context.Context, automation
 		// Don't return error - lock will expire naturally
 	}
 	return nil
+}
+
+// mergeRefetchedCategoryIDs decide as categorias oficiais de uma oferta da
+// BUSCA que foi re-enriquecida via GetProduct.
+//
+// O refetch é a fonte AUTORITATIVA quando traz lista — recategorização na
+// Shopee reflete na hora. Refetch VAZIO preserva o que a busca trouxe:
+// campo ausente/null não é "produto sem categoria", é ausência de sinal, e
+// zerar aqui faria a regra específica deixar de casar sem motivo.
+//
+// As duas listas NUNCA são combinadas: são instantes diferentes do
+// catálogo, e a união inventaria uma categoria que nenhuma das duas
+// respostas afirmou sozinha.
+func mergeRefetchedCategoryIDs(original, refreshed []int64) []int64 {
+	if len(refreshed) > 0 {
+		return refreshed
+	}
+	return original
 }
 
 func stringPtrValue(s *string) string {

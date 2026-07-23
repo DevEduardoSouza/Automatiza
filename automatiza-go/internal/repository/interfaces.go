@@ -237,7 +237,11 @@ type CouponRuleRepository interface {
 	// officialFirst, when true, sorts official_only rules ahead of the
 	// min_price tie-break (rollout-gated); false keeps the historical
 	// min_price-first ordering.
-	FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64, productIsOfficial, officialFirst bool) (*models.Coupon, error)
+	// productCategoryIDs são os IDs oficiais de categoria da Shopee do
+	// produto (ProductOfferV2.productCatIds). nil/vazio = produto sem
+	// categoria: só regras genéricas ficam elegíveis. Regra específica
+	// casa por interseção e tem precedência sobre qualquer genérica.
+	FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64, productIsOfficial, officialFirst bool, productCategoryIDs []int64) (*models.Coupon, error)
 }
 
 // DispatchLogWithGroup represents a dispatch log with group name from a join

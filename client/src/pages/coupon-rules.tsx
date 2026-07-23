@@ -2,6 +2,7 @@ import { CouponsTabsHeader } from '@/components/coupons/coupons-tabs';
 import { WhatsAppPreview } from '@/components/coupons/whatsapp-preview';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ import {
   type LocalCouponRule,
   useCouponRules,
 } from '@/hooks/use-coupon-rules';
+import { type ShopeeCategoryGroup, useShopeeCategories } from '@/hooks/use-shopee-categories';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -55,6 +57,8 @@ interface RuleFormState {
   discount_type: '' | 'fixed' | 'percent';
   discount_value: string;
   max_discount: string;
+  /** IDs únicos e ordenados. Vazio = "Todas as categorias" (regra genérica). */
+  product_category_ids: number[];
 }
 
 const EMPTY_FORM: RuleFormState = {
@@ -68,7 +72,32 @@ const EMPTY_FORM: RuleFormState = {
   discount_type: '',
   discount_value: '',
   max_discount: '',
+  product_category_ids: [],
 };
+
+/** Mantém o estado sempre único e ordenado — é o que o backend persiste. */
+function normalizeIds(ids: number[]): number[] {
+  return Array.from(new Set(ids)).sort((a, b) => a - b);
+}
+
+/**
+ * Um grupo está marcado quando TODOS os seus IDs estão selecionados. Como
+ * grupos compartilham IDs, a marcação é derivada por cobertura, nunca
+ * guardada à parte.
+ */
+function isGroupChecked(group: ShopeeCategoryGroup, selected: number[]): boolean {
+  if (group.ids.length === 0) return false;
+  const set = new Set(selected);
+  return group.ids.every((id) => set.has(id));
+}
+
+function formatCategories(rule: LocalCouponRule): string {
+  if (rule.platform !== 'shopee') return '—';
+  const count = rule.product_category_ids.length;
+  // Nunca reconstruímos os nomes dos grupos: IDs sobrepostos tornam a
+  // reconstrução ambígua, e um rótulo errado engana o operador.
+  return count === 0 ? 'Todas as categorias' : `${count} IDs`;
+}
 
 // datetime-local widgets emit "YYYY-MM-DDTHH:mm"; the proto / repo
 // expects RFC3339. Convert when sending and when prefilling the form.
@@ -130,6 +159,12 @@ function buildPreview(form: RuleFormState): string {
 export default function CouponRulesPage() {
   const { t } = useTranslation();
   const { rules, isLoading, createRule, updateRule, deleteRule, isMutating } = useCouponRules();
+  const {
+    groups: categoryGroups,
+    isLoading: categoriesLoading,
+    isError: categoriesError,
+    refetch: refetchCategories,
+  } = useShopeeCategories();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -180,6 +215,9 @@ export default function CouponRulesPage() {
       discount_type: rule.discount_type ?? '',
       discount_value: rule.discount_value != null ? String(rule.discount_value) : '',
       max_discount: rule.max_discount != null ? String(rule.max_discount) : '',
+      // Carrega EXATAMENTE os IDs persistidos, inclusive os que o catálogo
+      // atual não conhece mais — só some se o operador limpar.
+      product_category_ids: normalizeIds(rule.product_category_ids),
     });
     setDialogOpen(true);
   }
@@ -198,6 +236,7 @@ export default function CouponRulesPage() {
     }
     setPeriodError(null);
 
+    const isShopee = form.platform === 'shopee';
     const discountValueNum = form.discount_value ? Number(form.discount_value) : null;
     const maxDiscountNum = form.max_discount ? Number(form.max_discount) : null;
 
@@ -227,6 +266,8 @@ export default function CouponRulesPage() {
       discount_type: form.discount_type || null,
       discount_value: discountValueNum,
       max_discount: maxDiscountNum,
+      // Categoria é sinal exclusivo da Shopee — em ML sai sempre vazio.
+      product_category_ids: isShopee ? form.product_category_ids : [],
     };
 
     try {
@@ -249,6 +290,11 @@ export default function CouponRulesPage() {
           discount_type: payload.discount_type ?? null,
           discount_value: discountValueNum ?? 0,
           max_discount: maxDiscountNum ?? 0,
+          product_category_ids: payload.product_category_ids,
+          // Lista vazia sozinha NÃO apaga no servidor; o clear explícito é
+          // que limpa. Só mandamos clear quando a intenção é mesmo limpar
+          // (ação "Todas as categorias" ou troca para Mercado Livre).
+          clear_product_category_ids: (payload.product_category_ids ?? []).length === 0,
         });
       } else {
         await createRule(payload);
@@ -334,6 +380,7 @@ export default function CouponRulesPage() {
                     <th className="px-4 py-3 font-medium">Mensagem</th>
                     <th className="px-4 py-3 font-medium">Desconto</th>
                     <th className="px-4 py-3 font-medium">Plataforma</th>
+                    <th className="px-4 py-3 font-medium">Categorias</th>
                     <th className="px-4 py-3 font-medium">Valor mín.</th>
                     <th className="px-4 py-3 font-medium">Período</th>
                     <th className="px-4 py-3 font-medium">Status</th>
@@ -359,6 +406,7 @@ export default function CouponRulesPage() {
                           )}
                         </div>
                       </td>
+                      <td className="px-4 py-3 text-xs">{formatCategories(rule)}</td>
                       <td className="px-4 py-3">{formatPrice(rule.min_price)}</td>
                       <td className="px-4 py-3 text-xs">{formatPeriod(rule)}</td>
                       <td className="px-4 py-3">
@@ -426,7 +474,16 @@ export default function CouponRulesPage() {
                 <Label htmlFor="rule-platform">Plataforma</Label>
                 <Select
                   value={form.platform}
-                  onValueChange={(v) => setForm((f) => ({ ...f, platform: v }))}
+                  onValueChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      platform: v,
+                      // Sair da Shopee zera os dois filtros que só existem
+                      // lá, na MESMA atualização de estado.
+                      official_only: v === 'shopee' ? f.official_only : false,
+                      product_category_ids: v === 'shopee' ? f.product_category_ids : [],
+                    }))
+                  }
                 >
                   <SelectTrigger id="rule-platform">
                     <SelectValue />
@@ -502,6 +559,89 @@ export default function CouponRulesPage() {
                     checked={form.official_only}
                     onCheckedChange={(v) => setForm((f) => ({ ...f, official_only: v }))}
                   />
+                </div>
+              )}
+
+              {form.platform === 'shopee' && (
+                <div className="space-y-2" data-testid="rule-categories-section">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Categorias (Shopee)</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={form.product_category_ids.length === 0}
+                      onClick={() => setForm((f) => ({ ...f, product_category_ids: [] }))}
+                    >
+                      Todas as categorias
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground" data-testid="rule-categories-summary">
+                    {form.product_category_ids.length === 0
+                      ? 'Todas as categorias'
+                      : `${form.product_category_ids.length} IDs de categoria`}
+                  </p>
+
+                  {categoriesError ? (
+                    <div
+                      className="flex items-center justify-between gap-2 rounded-lg border border-red-200 p-3"
+                      role="alert"
+                    >
+                      <p className="text-xs text-red-600">
+                        Não foi possível carregar as categorias da Shopee. A regra pode ser salva
+                        como genérica.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => refetchCategories()}
+                      >
+                        Tentar novamente
+                      </Button>
+                    </div>
+                  ) : categoriesLoading ? (
+                    <p className="text-xs text-muted-foreground">Carregando categorias...</p>
+                  ) : (
+                    <Card>
+                      <CardContent className="pt-4 grid grid-cols-2 xl:grid-cols-3 gap-2 lg:gap-3 max-h-40 lg:max-h-52 overflow-y-auto">
+                        {categoryGroups.map((group) => (
+                          <div key={group.name} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`rule-cat-${group.name}`}
+                              checked={isGroupChecked(group, form.product_category_ids)}
+                              onCheckedChange={(checked) =>
+                                setForm((f) => {
+                                  if (checked) {
+                                    return {
+                                      ...f,
+                                      product_category_ids: normalizeIds([
+                                        ...f.product_category_ids,
+                                        ...group.ids,
+                                      ]),
+                                    };
+                                  }
+                                  // Desmarcar remove os IDs do grupo mesmo
+                                  // que pertençam a outro grupo; a marcação
+                                  // dos demais é recalculada por cobertura.
+                                  const removed = new Set(group.ids);
+                                  return {
+                                    ...f,
+                                    product_category_ids: f.product_category_ids.filter(
+                                      (id) => !removed.has(id)
+                                    ),
+                                  };
+                                })
+                              }
+                            />
+                            <Label htmlFor={`rule-cat-${group.name}`} className="cursor-pointer">
+                              {group.name}
+                            </Label>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               )}
             </section>

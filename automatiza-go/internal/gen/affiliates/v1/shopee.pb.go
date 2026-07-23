@@ -552,6 +552,143 @@ func (x *GenerateAffiliateLinkResponse) GetProductImageUrl() string {
 	return ""
 }
 
+type ListCategoriesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCategoriesRequest) Reset() {
+	*x = ListCategoriesRequest{}
+	mi := &file_affiliates_v1_shopee_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCategoriesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCategoriesRequest) ProtoMessage() {}
+
+func (x *ListCategoriesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_affiliates_v1_shopee_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCategoriesRequest.ProtoReflect.Descriptor instead.
+func (*ListCategoriesRequest) Descriptor() ([]byte, []int) {
+	return file_affiliates_v1_shopee_proto_rawDescGZIP(), []int{5}
+}
+
+// *
+// A named group of official Shopee category IDs. The same ID can appear
+// in more than one group (the catalog is a curated mapping, not a
+// partition), so the union of selected IDs does NOT reconstruct the
+// originally selected group names.
+type ShopeeCategoryGroup struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Ids           []int64                `protobuf:"varint,2,rep,packed,name=ids,proto3" json:"ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ShopeeCategoryGroup) Reset() {
+	*x = ShopeeCategoryGroup{}
+	mi := &file_affiliates_v1_shopee_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ShopeeCategoryGroup) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ShopeeCategoryGroup) ProtoMessage() {}
+
+func (x *ShopeeCategoryGroup) ProtoReflect() protoreflect.Message {
+	mi := &file_affiliates_v1_shopee_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ShopeeCategoryGroup.ProtoReflect.Descriptor instead.
+func (*ShopeeCategoryGroup) Descriptor() ([]byte, []int) {
+	return file_affiliates_v1_shopee_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ShopeeCategoryGroup) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ShopeeCategoryGroup) GetIds() []int64 {
+	if x != nil {
+		return x.Ids
+	}
+	return nil
+}
+
+type ListCategoriesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Groups        []*ShopeeCategoryGroup `protobuf:"bytes,1,rep,name=groups,proto3" json:"groups,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCategoriesResponse) Reset() {
+	*x = ListCategoriesResponse{}
+	mi := &file_affiliates_v1_shopee_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCategoriesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCategoriesResponse) ProtoMessage() {}
+
+func (x *ListCategoriesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_affiliates_v1_shopee_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCategoriesResponse.ProtoReflect.Descriptor instead.
+func (*ListCategoriesResponse) Descriptor() ([]byte, []int) {
+	return file_affiliates_v1_shopee_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListCategoriesResponse) GetGroups() []*ShopeeCategoryGroup {
+	if x != nil {
+		return x.Groups
+	}
+	return nil
+}
+
 var File_affiliates_v1_shopee_proto protoreflect.FileDescriptor
 
 const file_affiliates_v1_shopee_proto_rawDesc = "" +
@@ -615,7 +752,13 @@ const file_affiliates_v1_shopee_proto_rawDesc = "" +
 	"\x0e_product_titleB\x10\n" +
 	"\x0e_product_priceB\x19\n" +
 	"\x17_product_original_priceB\x14\n" +
-	"\x12_product_image_url*\xa5\x01\n" +
+	"\x12_product_image_url\"\x17\n" +
+	"\x15ListCategoriesRequest\";\n" +
+	"\x13ShopeeCategoryGroup\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
+	"\x03ids\x18\x02 \x03(\x03R\x03ids\"T\n" +
+	"\x16ListCategoriesResponse\x12:\n" +
+	"\x06groups\x18\x01 \x03(\v2\".affiliates.v1.ShopeeCategoryGroupR\x06groups*\xa5\x01\n" +
 	"\x06SortBy\x12\x17\n" +
 	"\x13SORT_BY_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12SORT_BY_COMMISSION\x10\x01\x12\x15\n" +
@@ -628,10 +771,11 @@ const file_affiliates_v1_shopee_proto_rawDesc = "" +
 	"FilterType\x12\x1b\n" +
 	"\x17FILTER_TYPE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11FILTER_TYPE_LIGHT\x10\x01\x12\x15\n" +
-	"\x11FILTER_TYPE_HEAVY\x10\x022\xdc\x01\n" +
+	"\x11FILTER_TYPE_HEAVY\x10\x022\xbb\x02\n" +
 	"\rShopeeService\x12W\n" +
 	"\fSearchOffers\x12\".affiliates.v1.SearchOffersRequest\x1a#.affiliates.v1.SearchOffersResponse\x12r\n" +
-	"\x15GenerateAffiliateLink\x12+.affiliates.v1.GenerateAffiliateLinkRequest\x1a,.affiliates.v1.GenerateAffiliateLinkResponseB\xac\x01\n" +
+	"\x15GenerateAffiliateLink\x12+.affiliates.v1.GenerateAffiliateLinkRequest\x1a,.affiliates.v1.GenerateAffiliateLinkResponse\x12]\n" +
+	"\x0eListCategories\x12$.affiliates.v1.ListCategoriesRequest\x1a%.affiliates.v1.ListCategoriesResponseB\xac\x01\n" +
 	"\x11com.affiliates.v1B\vShopeeProtoP\x01Z5automatiza-go/internal/gen/affiliates/v1;affiliatesv1\xa2\x02\x03AXX\xaa\x02\rAffiliates.V1\xca\x02\rAffiliates\\V1\xe2\x02\x19Affiliates\\V1\\GPBMetadata\xea\x02\x0eAffiliates::V1b\x06proto3"
 
 var (
@@ -647,7 +791,7 @@ func file_affiliates_v1_shopee_proto_rawDescGZIP() []byte {
 }
 
 var file_affiliates_v1_shopee_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_affiliates_v1_shopee_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_affiliates_v1_shopee_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_affiliates_v1_shopee_proto_goTypes = []any{
 	(SortBy)(0),                           // 0: affiliates.v1.SortBy
 	(FilterType)(0),                       // 1: affiliates.v1.FilterType
@@ -656,20 +800,26 @@ var file_affiliates_v1_shopee_proto_goTypes = []any{
 	(*SearchOffersResponse)(nil),          // 4: affiliates.v1.SearchOffersResponse
 	(*GenerateAffiliateLinkRequest)(nil),  // 5: affiliates.v1.GenerateAffiliateLinkRequest
 	(*GenerateAffiliateLinkResponse)(nil), // 6: affiliates.v1.GenerateAffiliateLinkResponse
+	(*ListCategoriesRequest)(nil),         // 7: affiliates.v1.ListCategoriesRequest
+	(*ShopeeCategoryGroup)(nil),           // 8: affiliates.v1.ShopeeCategoryGroup
+	(*ListCategoriesResponse)(nil),        // 9: affiliates.v1.ListCategoriesResponse
 }
 var file_affiliates_v1_shopee_proto_depIdxs = []int32{
 	0, // 0: affiliates.v1.SearchOffersRequest.sort_by:type_name -> affiliates.v1.SortBy
 	1, // 1: affiliates.v1.SearchOffersRequest.filter_type:type_name -> affiliates.v1.FilterType
 	2, // 2: affiliates.v1.SearchOffersResponse.offers:type_name -> affiliates.v1.ShopeeOffer
-	3, // 3: affiliates.v1.ShopeeService.SearchOffers:input_type -> affiliates.v1.SearchOffersRequest
-	5, // 4: affiliates.v1.ShopeeService.GenerateAffiliateLink:input_type -> affiliates.v1.GenerateAffiliateLinkRequest
-	4, // 5: affiliates.v1.ShopeeService.SearchOffers:output_type -> affiliates.v1.SearchOffersResponse
-	6, // 6: affiliates.v1.ShopeeService.GenerateAffiliateLink:output_type -> affiliates.v1.GenerateAffiliateLinkResponse
-	5, // [5:7] is the sub-list for method output_type
-	3, // [3:5] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	8, // 3: affiliates.v1.ListCategoriesResponse.groups:type_name -> affiliates.v1.ShopeeCategoryGroup
+	3, // 4: affiliates.v1.ShopeeService.SearchOffers:input_type -> affiliates.v1.SearchOffersRequest
+	5, // 5: affiliates.v1.ShopeeService.GenerateAffiliateLink:input_type -> affiliates.v1.GenerateAffiliateLinkRequest
+	7, // 6: affiliates.v1.ShopeeService.ListCategories:input_type -> affiliates.v1.ListCategoriesRequest
+	4, // 7: affiliates.v1.ShopeeService.SearchOffers:output_type -> affiliates.v1.SearchOffersResponse
+	6, // 8: affiliates.v1.ShopeeService.GenerateAffiliateLink:output_type -> affiliates.v1.GenerateAffiliateLinkResponse
+	9, // 9: affiliates.v1.ShopeeService.ListCategories:output_type -> affiliates.v1.ListCategoriesResponse
+	7, // [7:10] is the sub-list for method output_type
+	4, // [4:7] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_affiliates_v1_shopee_proto_init() }
@@ -686,7 +836,7 @@ func file_affiliates_v1_shopee_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_affiliates_v1_shopee_proto_rawDesc), len(file_affiliates_v1_shopee_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   5,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

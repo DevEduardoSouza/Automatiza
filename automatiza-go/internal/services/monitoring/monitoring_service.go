@@ -101,7 +101,7 @@ type CouponResult struct {
 // CouponApplier resolve o cupom (rules engine) para uma oferta. couponHandler
 // nil → nenhum cupom (o monitor sem wiring de cupom se comporta como antes).
 type CouponApplier interface {
-	ApplyCoupon(ctx context.Context, automation *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool) (*CouponResult, error)
+	ApplyCoupon(ctx context.Context, automation *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool, productCategoryIDs []int64) (*CouponResult, error)
 }
 
 type monitoringService struct {
@@ -1164,11 +1164,11 @@ func (s *monitoringService) pickMonitorCTA(ctx context.Context, automation *mode
 // já enriquecido. Fail-open: sem handler, preço <=0, regra desligada ou erro →
 // Applied=false. Só é chamado no caminho do template, então o repasse histórico
 // nunca é afetado.
-func (s *monitoringService) applyMonitorCoupon(ctx context.Context, automation *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool) *CouponResult {
+func (s *monitoringService) applyMonitorCoupon(ctx context.Context, automation *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool, productCategoryIDs []int64) *CouponResult {
 	if s.couponHandler == nil || offerPrice <= 0 {
 		return &CouponResult{}
 	}
-	res, err := s.couponHandler.ApplyCoupon(ctx, automation, offerPrice, offerStore, productIsOfficial)
+	res, err := s.couponHandler.ApplyCoupon(ctx, automation, offerPrice, offerStore, productIsOfficial, productCategoryIDs)
 	if err != nil || res == nil {
 		return &CouponResult{}
 	}
@@ -1209,6 +1209,7 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 		CTA:           cta,
 	}
 	productIsOfficial := false
+	var productCategoryIDs []int64
 	if s.shopeeService != nil && shopeeAff.ItemID > 0 && shopeeAff.ShopID > 0 {
 		product, prodErr := s.shopeeService.GetProduct(ctx, shopeeAff.ItemID, shopeeAff.ShopID, automation.UserID)
 		if prodErr != nil {
@@ -1219,6 +1220,7 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 			vars.Price = product.Price
 			vars.Discount = product.Discount
 			productIsOfficial = product.IsMall
+			productCategoryIDs = product.ProductCategoryIDs
 			if product.OriginalPrice > product.Price {
 				vars.OriginalPrice = product.OriginalPrice
 			}
@@ -1228,7 +1230,7 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 		}
 	}
 
-	coupon := s.applyMonitorCoupon(ctx, automation, vars.Price, "shopee", productIsOfficial)
+	coupon := s.applyMonitorCoupon(ctx, automation, vars.Price, "shopee", productIsOfficial, productCategoryIDs)
 	if coupon.Applied {
 		vars.CouponCode = coupon.CouponCode
 		vars.CouponText = coupon.CouponText
@@ -1274,7 +1276,9 @@ func (s *monitoringService) renderMLDispatchTemplate(
 
 	// ML não expõe flag Mall-style → productIsOfficial=false; store "ml" é
 	// normalizado para "mercado_livre" no matcher de cupons.
-	coupon := s.applyMonitorCoupon(ctx, automation, vars.Price, "ml", false)
+	// ML não expõe categoria oficial na API — nil mantém a automação de
+	// Mercado Livre restrita às regras genéricas.
+	coupon := s.applyMonitorCoupon(ctx, automation, vars.Price, "ml", false, nil)
 	if coupon.Applied {
 		vars.CouponCode = coupon.CouponCode
 		vars.CouponText = coupon.CouponText

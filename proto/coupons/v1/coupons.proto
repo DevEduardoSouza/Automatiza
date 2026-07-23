@@ -228,6 +228,12 @@ message CouponRule {
   optional DiscountType discount_type = 15;
   optional double discount_value = 16;
   optional double max_discount = 17;
+  // IDs oficiais de categoria da Shopee (ProductOfferV2.productCatIds).
+  // Vazio = regra genérica (vale para qualquer categoria). Não vazio =
+  // a regra só casa produtos que tenham ao menos um destes IDs, e tem
+  // precedência sobre qualquer regra genérica. Só existe em
+  // platform = "shopee".
+  repeated int64 product_category_ids = 18;
 }
 
 message ListCouponRulesRequest {}
@@ -261,6 +267,8 @@ message CreateCouponRuleRequest {
   optional DiscountType discount_type = 11;
   optional double discount_value = 12;
   optional double max_discount = 13;
+  // Vazio/ausente = regra genérica. Só aceito quando platform = "shopee".
+  repeated int64 product_category_ids = 14;
 }
 
 message CreateCouponRuleResponse {
@@ -285,6 +293,13 @@ message UpdateCouponRuleRequest {
   optional DiscountType discount_type = 12;
   optional double discount_value = 13;
   optional double max_discount = 14;
+  // Lista não vazia substitui as categorias da regra. Lista vazia SEM
+  // clear_product_category_ids não toca na coluna (cliente antigo, que
+  // nunca envia o campo, não pode apagar a segmentação de ninguém).
+  repeated int64 product_category_ids = 15;
+  // Limpa as categorias (grava NULL) — só válido com
+  // product_category_ids vazio. Lista + clear juntos é InvalidArgument.
+  optional bool clear_product_category_ids = 16;
 }
 
 message UpdateCouponRuleResponse {

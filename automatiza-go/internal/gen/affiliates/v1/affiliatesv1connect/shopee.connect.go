@@ -39,6 +39,9 @@ const (
 	// ShopeeServiceGenerateAffiliateLinkProcedure is the fully-qualified name of the ShopeeService's
 	// GenerateAffiliateLink RPC.
 	ShopeeServiceGenerateAffiliateLinkProcedure = "/affiliates.v1.ShopeeService/GenerateAffiliateLink"
+	// ShopeeServiceListCategoriesProcedure is the fully-qualified name of the ShopeeService's
+	// ListCategories RPC.
+	ShopeeServiceListCategoriesProcedure = "/affiliates.v1.ShopeeService/ListCategories"
 )
 
 // ShopeeServiceClient is a client for the affiliates.v1.ShopeeService service.
@@ -47,6 +50,9 @@ type ShopeeServiceClient interface {
 	SearchOffers(context.Context, *connect.Request[v1.SearchOffersRequest]) (*connect.Response[v1.SearchOffersResponse], error)
 	// Generates an affiliate link for a Shopee product.
 	GenerateAffiliateLink(context.Context, *connect.Request[v1.GenerateAffiliateLinkRequest]) (*connect.Response[v1.GenerateAffiliateLinkResponse], error)
+	// Lists the curated Shopee category groups (name + official IDs) used
+	// to build category-scoped coupon rules.
+	ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error)
 }
 
 // NewShopeeServiceClient constructs a client for the affiliates.v1.ShopeeService service. By
@@ -72,6 +78,12 @@ func NewShopeeServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(shopeeServiceMethods.ByName("GenerateAffiliateLink")),
 			connect.WithClientOptions(opts...),
 		),
+		listCategories: connect.NewClient[v1.ListCategoriesRequest, v1.ListCategoriesResponse](
+			httpClient,
+			baseURL+ShopeeServiceListCategoriesProcedure,
+			connect.WithSchema(shopeeServiceMethods.ByName("ListCategories")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -79,6 +91,7 @@ func NewShopeeServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 type shopeeServiceClient struct {
 	searchOffers          *connect.Client[v1.SearchOffersRequest, v1.SearchOffersResponse]
 	generateAffiliateLink *connect.Client[v1.GenerateAffiliateLinkRequest, v1.GenerateAffiliateLinkResponse]
+	listCategories        *connect.Client[v1.ListCategoriesRequest, v1.ListCategoriesResponse]
 }
 
 // SearchOffers calls affiliates.v1.ShopeeService.SearchOffers.
@@ -91,12 +104,20 @@ func (c *shopeeServiceClient) GenerateAffiliateLink(ctx context.Context, req *co
 	return c.generateAffiliateLink.CallUnary(ctx, req)
 }
 
+// ListCategories calls affiliates.v1.ShopeeService.ListCategories.
+func (c *shopeeServiceClient) ListCategories(ctx context.Context, req *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error) {
+	return c.listCategories.CallUnary(ctx, req)
+}
+
 // ShopeeServiceHandler is an implementation of the affiliates.v1.ShopeeService service.
 type ShopeeServiceHandler interface {
 	// Searches for offers on Shopee based on filters.
 	SearchOffers(context.Context, *connect.Request[v1.SearchOffersRequest]) (*connect.Response[v1.SearchOffersResponse], error)
 	// Generates an affiliate link for a Shopee product.
 	GenerateAffiliateLink(context.Context, *connect.Request[v1.GenerateAffiliateLinkRequest]) (*connect.Response[v1.GenerateAffiliateLinkResponse], error)
+	// Lists the curated Shopee category groups (name + official IDs) used
+	// to build category-scoped coupon rules.
+	ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error)
 }
 
 // NewShopeeServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -118,12 +139,20 @@ func NewShopeeServiceHandler(svc ShopeeServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(shopeeServiceMethods.ByName("GenerateAffiliateLink")),
 		connect.WithHandlerOptions(opts...),
 	)
+	shopeeServiceListCategoriesHandler := connect.NewUnaryHandler(
+		ShopeeServiceListCategoriesProcedure,
+		svc.ListCategories,
+		connect.WithSchema(shopeeServiceMethods.ByName("ListCategories")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/affiliates.v1.ShopeeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ShopeeServiceSearchOffersProcedure:
 			shopeeServiceSearchOffersHandler.ServeHTTP(w, r)
 		case ShopeeServiceGenerateAffiliateLinkProcedure:
 			shopeeServiceGenerateAffiliateLinkHandler.ServeHTTP(w, r)
+		case ShopeeServiceListCategoriesProcedure:
+			shopeeServiceListCategoriesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -139,4 +168,8 @@ func (UnimplementedShopeeServiceHandler) SearchOffers(context.Context, *connect.
 
 func (UnimplementedShopeeServiceHandler) GenerateAffiliateLink(context.Context, *connect.Request[v1.GenerateAffiliateLinkRequest]) (*connect.Response[v1.GenerateAffiliateLinkResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("affiliates.v1.ShopeeService.GenerateAffiliateLink is not implemented"))
+}
+
+func (UnimplementedShopeeServiceHandler) ListCategories(context.Context, *connect.Request[v1.ListCategoriesRequest]) (*connect.Response[v1.ListCategoriesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("affiliates.v1.ShopeeService.ListCategories is not implemented"))
 }

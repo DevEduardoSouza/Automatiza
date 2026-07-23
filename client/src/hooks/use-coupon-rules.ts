@@ -42,6 +42,11 @@ export interface LocalCouponRule {
   discount_type: 'fixed' | 'percent' | null;
   discount_value: number | null;
   max_discount: number | null;
+  /**
+   * IDs oficiais de categoria da Shopee. Vazio = regra genérica (vale para
+   * qualquer categoria). Só existe em platform === 'shopee'.
+   */
+  product_category_ids: number[];
   created_at: string;
   updated_at: string;
 }
@@ -59,6 +64,7 @@ export interface CreateCouponRuleParams {
   discount_type?: 'fixed' | 'percent' | null;
   discount_value?: number | null;
   max_discount?: number | null;
+  product_category_ids?: number[];
 }
 
 export interface UpdateCouponRuleParams {
@@ -76,6 +82,32 @@ export interface UpdateCouponRuleParams {
   discount_type?: 'fixed' | 'percent' | null;
   discount_value?: number;
   max_discount?: number;
+  /**
+   * Lista não vazia substitui as categorias. Lista vazia/undefined SEM
+   * clear_product_category_ids não toca na coluna — para limpar é preciso
+   * mandar clear_product_category_ids=true (e a lista vazia).
+   */
+  product_category_ids?: number[];
+  clear_product_category_ids?: boolean;
+}
+
+/** Teto do Int32 da Shopee — mesmo limite validado no backend. */
+const MAX_SHOPEE_CATEGORY_ID = 2147483647;
+/** Máximo de categorias por regra — espelha maxProductCategoryIDs no backend. */
+const MAX_CATEGORY_IDS = 512;
+
+/**
+ * Sanitiza os ids antes de virarem bigint no wire: descarta valor não
+ * inteiro, fora de faixa ou duplicado, ordena e corta no teto. Sem isto um
+ * estado corrompido viraria InvalidArgument do servidor sem explicação.
+ */
+function toProtoCategoryIds(ids: number[] | undefined): bigint[] {
+  if (!ids || ids.length === 0) return [];
+  const unique = Array.from(new Set(ids))
+    .filter((id) => Number.isSafeInteger(id) && id > 0 && id <= MAX_SHOPEE_CATEGORY_ID)
+    .sort((a, b) => a - b)
+    .slice(0, MAX_CATEGORY_IDS);
+  return unique.map((id) => BigInt(id));
 }
 
 function discountTypeToProto(
@@ -109,6 +141,8 @@ function fromProto(r: ProtoCouponRule): LocalCouponRule {
     discount_type: discountTypeFromProto(r.discountType),
     discount_value: r.discountValue ?? null,
     max_discount: r.maxDiscount ?? null,
+    // proto int64 chega como bigint; ids da Shopee cabem em Int32.
+    product_category_ids: (r.productCategoryIds ?? []).map((id) => Number(id)),
     created_at: r.createdAt,
     updated_at: r.updatedAt,
   };
@@ -160,6 +194,7 @@ export function useCouponRules() {
           discountType: discountTypeToProto(params.discount_type),
           discountValue: params.discount_value ?? undefined,
           maxDiscount: params.max_discount ?? undefined,
+          productCategoryIds: toProtoCategoryIds(params.product_category_ids),
         }),
       );
       return resp.rule ? fromProto(resp.rule) : null;
@@ -193,6 +228,8 @@ export function useCouponRules() {
           discountType: discountTypeToProto(params.discount_type),
           discountValue: params.discount_value,
           maxDiscount: params.max_discount,
+          productCategoryIds: toProtoCategoryIds(params.product_category_ids),
+          clearProductCategoryIds: params.clear_product_category_ids,
         }),
       );
       return resp.rule ? fromProto(resp.rule) : null;

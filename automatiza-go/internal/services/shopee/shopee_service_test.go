@@ -14,6 +14,10 @@ import (
 	"strings"
 	"testing"
 
+	"automatiza-go/internal/lib/cache"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -2260,4 +2264,292 @@ func TestShouldRelayOwnShortLink(t *testing.T) {
 			t.Error("empty appID must not short-circuit")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// productCatIds (categorias oficiais) + writer do cache global de produto
+// ---------------------------------------------------------------------------
+
+// shopeeProductNode devolve um node de productOfferV2 completo; extras
+// sobrescreve/adiciona campos (ex.: productCatIds).
+func shopeeProductNode(extras map[string]interface{}) map[string]interface{} {
+	node := map[string]interface{}{
+		"productName":       "Test Product",
+		"itemId":            456,
+		"shopId":            123,
+		"productLink":       "https://shopee.com.br/product/123/456",
+		"offerLink":         "https://s.shopee.com.br/abc",
+		"imageUrl":          "https://img.shopee.com.br/test.jpg",
+		"priceMin":          "50.00",
+		"priceMax":          "100.00",
+		"price":             "75.00",
+		"commission":        "5.00",
+		"commissionRate":    "6.5",
+		"sales":             100,
+		"ratingStar":        "4.5",
+		"priceDiscountRate": 25,
+		"shopName":          "TestShop",
+	}
+	for k, v := range extras {
+		node[k] = v
+	}
+	return node
+}
+
+// productOfferServer sobe um httptest que responde productOfferV2 com um
+// único node e registra o corpo da última query recebida.
+func productOfferServer(t *testing.T, node map[string]interface{}, lastQuery *string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if lastQuery != nil {
+			body, _ := readBody(r)
+			*lastQuery = body
+		}
+		resp := map[string]interface{}{
+			"productOfferV2": map[string]interface{}{
+				"nodes": []map[string]interface{}{node},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, graphqlResponse(resp))
+	}))
+}
+
+func credsRepo() *mockAffiliateRepo {
+	return &mockAffiliateRepo{
+		GetByUserAndStoreFn: func(_ context.Context, _, _ string) (*models.AffiliateCredentials, error) {
+			return validCreds(), nil
+		},
+	}
+}
+
+// newTestServiceWithCache é o newTestService com um cache REAL apontando
+// para um Redis em memória (miniredis) — necessário para provar o writer
+// do cache global, que a versão sem cache pula.
+func newTestServiceWithCache(t *testing.T, baseURL string, c *cache.Cache) *shopeeService {
+	t.Helper()
+	svc := newTestService(t, baseURL, credsRepo(), &mockSettingsRepo{})
+	svc.cache = c
+	return svc
+}
+
+func newMiniredisCache(t *testing.T) (*cache.Cache, *miniredis.Miniredis) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	return cache.NewCache(client, "test", false), mr
+}
+
+func TestSearchOffers_ProductCategoryIDs(t *testing.T) {
+	ctx := context.Background()
+
+	searchServer := func(t *testing.T, node map[string]interface{}) *httptest.Server {
+		t.Helper()
+		return productOfferServer(t, node, nil)
+	}
+
+	t.Run("decodifica a lista de productCatIds", func(t *testing.T) {
+		server := searchServer(t, shopeeProductNode(map[string]interface{}{
+			"productCatIds": []int64{100001, 100002},
+		}))
+		defer server.Close()
+		svc := newTestService(t, server.URL, credsRepo(), &mockSettingsRepo{})
+
+		kw := "fone"
+		res, err := svc.SearchOffers(ctx, "user1", models.ShopeeSearchParams{Keyword: &kw, Limit: 10})
+		if err != nil {
+			t.Fatalf("erro inesperado: %v", err)
+		}
+		if len(res.Offers) != 1 {
+			t.Fatalf("offers = %d, want 1", len(res.Offers))
+		}
+		got := res.Offers[0].ProductCategoryIDs
+		if len(got) != 2 || got[0] != 100001 || got[1] != 100002 {
+			t.Errorf("ProductCategoryIDs = %v, want [100001 100002]", got)
+		}
+	})
+
+	for _, tc := range []struct {
+		name  string
+		value interface{}
+		set   bool
+	}{
+		{name: "campo ausente", set: false},
+		{name: "campo null", value: nil, set: true},
+	} {
+		t.Run(tc.name+" resulta em nil sem erro", func(t *testing.T) {
+			extras := map[string]interface{}{}
+			if tc.set {
+				extras["productCatIds"] = tc.value
+			}
+			server := searchServer(t, shopeeProductNode(extras))
+			defer server.Close()
+			svc := newTestService(t, server.URL, credsRepo(), &mockSettingsRepo{})
+
+			kw := "fone"
+			res, err := svc.SearchOffers(ctx, "user1", models.ShopeeSearchParams{Keyword: &kw, Limit: 10})
+			if err != nil {
+				t.Fatalf("erro inesperado: %v", err)
+			}
+			if len(res.Offers) != 1 {
+				t.Fatalf("offers = %d, want 1", len(res.Offers))
+			}
+			if res.Offers[0].ProductCategoryIDs != nil {
+				t.Errorf("ProductCategoryIDs = %v, want nil", res.Offers[0].ProductCategoryIDs)
+			}
+		})
+	}
+}
+
+func TestGetProduct_ProductCategoryIDs(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("solicita productCatIds na query e decodifica os IDs", func(t *testing.T) {
+		var lastQuery string
+		server := productOfferServer(t, shopeeProductNode(map[string]interface{}{
+			"productCatIds": []int64{100001, 100002},
+		}), &lastQuery)
+		defer server.Close()
+		svc := newTestService(t, server.URL, credsRepo(), &mockSettingsRepo{})
+
+		product, err := svc.GetProduct(ctx, 456, 123, "user1")
+		if err != nil {
+			t.Fatalf("erro inesperado: %v", err)
+		}
+		if !strings.Contains(lastQuery, "productCatIds") {
+			t.Errorf("a query GraphQL de GetProduct deve pedir productCatIds; got: %s", lastQuery)
+		}
+		got := product.ProductCategoryIDs
+		if len(got) != 2 || got[0] != 100001 || got[1] != 100002 {
+			t.Errorf("ProductCategoryIDs = %v, want [100001 100002]", got)
+		}
+	})
+
+	t.Run("campo ausente/null resulta em nil", func(t *testing.T) {
+		for _, extras := range []map[string]interface{}{
+			{},
+			{"productCatIds": nil},
+		} {
+			server := productOfferServer(t, shopeeProductNode(extras), nil)
+			svc := newTestService(t, server.URL, credsRepo(), &mockSettingsRepo{})
+			product, err := svc.GetProduct(ctx, 456, 123, "user1")
+			server.Close()
+			if err != nil {
+				t.Fatalf("erro inesperado: %v", err)
+			}
+			if product.ProductCategoryIDs != nil {
+				t.Errorf("ProductCategoryIDs = %v, want nil", product.ProductCategoryIDs)
+			}
+		}
+	})
+}
+
+func TestGetProduct_GlobalCacheWriter(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("escreve a chave global com categorias e SEM link/comissão", func(t *testing.T) {
+		c, mr := newMiniredisCache(t)
+		server := productOfferServer(t, shopeeProductNode(map[string]interface{}{
+			"productCatIds": []int64{100001, 100002},
+		}), nil)
+		defer server.Close()
+		svc := newTestServiceWithCache(t, server.URL, c)
+
+		product, err := svc.GetProduct(ctx, 456, 123, "user1")
+		if err != nil {
+			t.Fatalf("erro inesperado: %v", err)
+		}
+		// O retorno mantém link/comissão — só a CÓPIA cacheada é sanitizada.
+		if product.AffiliateLink == "" || product.CommissionRate == 0 {
+			t.Fatalf("o retorno de GetProduct não pode ser sanitizado: %+v", product)
+		}
+
+		raw, err := mr.Get("test:" + shopeeProductCacheKey(123, 456))
+		if err != nil {
+			t.Fatalf("chave global não foi escrita: %v", err)
+		}
+
+		var cached models.ShopeeOffer
+		if err := json.Unmarshal([]byte(raw), &cached); err != nil {
+			t.Fatalf("JSON cacheado inválido: %v", err)
+		}
+		if len(cached.ProductCategoryIDs) != 2 ||
+			cached.ProductCategoryIDs[0] != 100001 || cached.ProductCategoryIDs[1] != 100002 {
+			t.Errorf("categorias no cache = %v, want [100001 100002]", cached.ProductCategoryIDs)
+		}
+		if cached.AffiliateLink != "" {
+			t.Errorf("AffiliateLink cacheado = %q, want vazio (não pode vazar entre contas)", cached.AffiliateLink)
+		}
+		if cached.CommissionRate != 0 {
+			t.Errorf("CommissionRate cacheado = %v, want 0", cached.CommissionRate)
+		}
+		if cached.Name != "Test Product" || cached.Price != 75.0 {
+			t.Errorf("dados de catálogo perdidos no cache: %+v", cached)
+		}
+	})
+
+	t.Run("falha de escrita no cache não altera o retorno", func(t *testing.T) {
+		c, mr := newMiniredisCache(t)
+		server := productOfferServer(t, shopeeProductNode(map[string]interface{}{
+			"productCatIds": []int64{100001},
+		}), nil)
+		defer server.Close()
+		svc := newTestServiceWithCache(t, server.URL, c)
+
+		mr.Close() // Redis fora do ar durante a escrita.
+
+		product, err := svc.GetProduct(ctx, 456, 123, "user1")
+		if err != nil {
+			t.Fatalf("cache indisponível não pode derrubar a oferta: %v", err)
+		}
+		if product == nil || product.Name != "Test Product" {
+			t.Fatalf("produto = %+v, want o produto da API", product)
+		}
+		if len(product.ProductCategoryIDs) != 1 || product.ProductCategoryIDs[0] != 100001 {
+			t.Errorf("categorias = %v, want [100001]", product.ProductCategoryIDs)
+		}
+	})
+
+	t.Run("entrada antiga sem productCatIds desserializa com nil", func(t *testing.T) {
+		c, mr := newMiniredisCache(t)
+		// Fixture do FORMATO ANTIGO, exatamente como ficou gravada antes de 075.
+		const legacyJSON = `{"itemId":456,"shopId":123,"name":"Produto Antigo","image":"https://img/x.jpg",` +
+			`"price":75,"priceMin":50,"priceMax":100,"originalPrice":100,"discount":25,` +
+			`"commissionRate":0,"sales":100,"stock":0,"shopName":"TestShop","shopRating":4.5,` +
+			`"productUrl":"https://shopee.com.br/product/123/456","isMall":false,"isPreferredPlus":false}`
+		mr.Set("test:"+shopeeProductCacheKey(123, 456), legacyJSON)
+
+		svc := newTestServiceWithCache(t, "http://127.0.0.1:1", c) // API inalcançável: só cache hit serve
+		product, err := svc.GetProduct(ctx, 456, 123, "user1")
+		if err != nil {
+			t.Fatalf("cache hit deveria servir sem chamar a API: %v", err)
+		}
+		if product.Name != "Produto Antigo" {
+			t.Fatalf("veio da API em vez do cache: %+v", product)
+		}
+		if product.ProductCategoryIDs != nil {
+			t.Errorf("ProductCategoryIDs = %v, want nil (fixture antiga)", product.ProductCategoryIDs)
+		}
+	})
+}
+
+func TestGetCategories_FullIDs(t *testing.T) {
+	svc := newTestService(t, "", credsRepo(), &mockSettingsRepo{})
+	cats, err := svc.GetCategories(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	if len(cats) == 0 {
+		t.Fatal("catálogo vazio")
+	}
+	for _, c := range cats {
+		if len(c.IDs) == 0 {
+			t.Errorf("grupo %q sem IDs", c.Name)
+			continue
+		}
+		if c.ID != c.IDs[0] {
+			t.Errorf("grupo %q: ID = %d, want IDs[0] = %d (retrocompat do caller de diagnóstico)", c.Name, c.ID, c.IDs[0])
+		}
+	}
 }

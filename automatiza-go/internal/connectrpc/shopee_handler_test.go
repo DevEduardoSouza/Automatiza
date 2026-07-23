@@ -93,13 +93,13 @@ func TestSearchOffers_SuccessWithDefaultLimit(t *testing.T) {
 	})).Return(&models.ShopeeSearchResult{
 		Offers: []models.ShopeeOffer{
 			{
-				ProductURL:    "https://shopee.com.br/product/1/1001",
-				Name:          "Smartphone XYZ",
-				OriginalPrice: 1999.99,
-				Price:         1499.99,
-				Discount:      25,
-				Image:         "https://example.com/img.jpg",
-				ShopName:      "TechStore",
+				ProductURL:     "https://shopee.com.br/product/1/1001",
+				Name:           "Smartphone XYZ",
+				OriginalPrice:  1999.99,
+				Price:          1499.99,
+				Discount:       25,
+				Image:          "https://example.com/img.jpg",
+				ShopName:       "TechStore",
 				CommissionRate: 5.5,
 			},
 			{
@@ -365,4 +365,64 @@ func TestMapProtoSortBy(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// =============================================================================
+// ListCategories (catálogo para regras de cupom por categoria)
+// =============================================================================
+
+func TestListCategories_Unauthenticated(t *testing.T) {
+	handler, _ := createShopeeHandler(t)
+
+	_, err := handler.ListCategories(context.Background(), connect.NewRequest(&affiliatesv1.ListCategoriesRequest{}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err),
+		"mesmo código dos RPCs vizinhos")
+}
+
+func TestListCategories_NormalizesAndSorts(t *testing.T) {
+	handler, svc := createShopeeHandler(t)
+	ctx := contextWithUser("user-123", "user@example.com")
+
+	// Fixture propositalmente bagunçada: fora de ordem alfabética, IDs
+	// desordenados/duplicados, um grupo vazio, um grupo sem nome e um ID
+	// COMPARTILHADO entre dois grupos (o catálogo real tem isso).
+	svc.On("GetCategories", mock.Anything, (*int64)(nil)).Return([]models.ShopeeCategory{
+		{Name: "Moda", ID: 100003, IDs: []int64{100003, 100001, 100003}},
+		{Name: "Beleza", ID: 100002, IDs: []int64{100002, 100001}},
+		{Name: "Vazio", ID: 0, IDs: nil},
+		{Name: "", ID: 100009, IDs: []int64{100009}},
+	}, nil)
+
+	resp, err := handler.ListCategories(ctx, connect.NewRequest(&affiliatesv1.ListCategoriesRequest{}))
+	require.NoError(t, err)
+
+	groups := resp.Msg.GetGroups()
+	require.Len(t, groups, 2, "grupo vazio e grupo sem nome devem ser omitidos")
+
+	assert.Equal(t, "Beleza", groups[0].GetName(), "grupos ordenados por nome")
+	assert.Equal(t, "Moda", groups[1].GetName())
+
+	assert.Equal(t, []int64{100001, 100002}, groups[0].GetIds())
+	assert.Equal(t, []int64{100001, 100003}, groups[1].GetIds(),
+		"IDs deduplicados e ordenados; o ID compartilhado permanece nos DOIS grupos")
+
+	svc.AssertExpectations(t)
+}
+
+func TestListCategories_ServiceErrorIsSanitizedInternal(t *testing.T) {
+	handler, svc := createShopeeHandler(t)
+	ctx := contextWithUser("user-123", "user@example.com")
+
+	svc.On("GetCategories", mock.Anything, (*int64)(nil)).
+		Return(nil, errors.New("dsn=postgres://user:senha@host/db falhou"))
+
+	_, err := handler.ListCategories(ctx, connect.NewRequest(&affiliatesv1.ListCategoriesRequest{}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+	assert.NotContains(t, err.Error(), "senha", "o erro não pode vazar detalhe interno")
+
+	svc.AssertExpectations(t)
 }

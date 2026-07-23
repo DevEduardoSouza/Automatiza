@@ -556,6 +556,12 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 				// official_only coupon rules can match search offers too.
 				// Scalar-or-array shape, same as GetProduct.
 				ShopType json.RawMessage `json:"shopType"`
+				// productCatIds já era PEDIDO na query; o decode é que
+				// descartava o campo. Alimenta as regras de cupom por
+				// categoria. schema.graphql:438 → [Int!] (lista nullable,
+				// elementos não nulos): ausente/null decodifica como nil
+				// sem erro.
+				ProductCatIDs []int64 `json:"productCatIds"`
 			} `json:"nodes"`
 		} `json:"productOfferV2"`
 	}
@@ -618,22 +624,23 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 		}
 
 		offer := models.ShopeeOffer{
-			ItemID:         node.ItemID,
-			ShopID:         node.ShopID,
-			Name:           node.ProductName,
-			Image:          node.ImageURL,
-			Price:          effectivePrice,
-			OriginalPrice:  originalPrice,
-			PriceMin:       priceMin,
-			PriceMax:       priceMax,
-			Discount:       discount,
-			CommissionRate: commissionRate,
-			Sales:          int(node.Sales),
-			ShopName:       node.ShopName,
-			ShopRating:     ratingStar,
-			AffiliateLink:  node.OfferLink,
-			ProductURL:     node.ProductLink,
-			IsMall:         shopTypeIsMall(node.ShopType),
+			ItemID:             node.ItemID,
+			ShopID:             node.ShopID,
+			Name:               node.ProductName,
+			Image:              node.ImageURL,
+			Price:              effectivePrice,
+			OriginalPrice:      originalPrice,
+			PriceMin:           priceMin,
+			PriceMax:           priceMax,
+			Discount:           discount,
+			CommissionRate:     commissionRate,
+			Sales:              int(node.Sales),
+			ShopName:           node.ShopName,
+			ShopRating:         ratingStar,
+			AffiliateLink:      node.OfferLink,
+			ProductURL:         node.ProductLink,
+			IsMall:             shopTypeIsMall(node.ShopType),
+			ProductCategoryIDs: node.ProductCatIDs,
 		}
 
 		offers = append(offers, offer)
@@ -955,7 +962,7 @@ func (s *shopeeService) GenerateAffiliateLink(ctx context.Context, productURL, u
 		// og:image sozinho; imagem vazia = card pelado no grupo).
 		if s.cache != nil {
 			var cachedOffer models.ShopeeOffer
-			if err := s.cache.GetJSON(ctx, fmt.Sprintf("shopee_product:%d:%d", shopID, itemID), &cachedOffer); err == nil && cachedOffer.Image != "" {
+			if err := s.cache.GetJSON(ctx, shopeeProductCacheKey(shopID, itemID), &cachedOffer); err == nil && cachedOffer.Image != "" {
 				own.ImageURL = cachedOffer.Image
 			}
 		}
@@ -1103,13 +1110,33 @@ func (s *shopeeService) GetCategories(ctx context.Context, parentID *int64) ([]m
 	categories := make([]models.ShopeeCategory, 0)
 	for name, ids := range s.categoryMap {
 		if len(ids) > 0 {
+			// IDs completa alimenta o catálogo de regras de cupom por
+			// categoria; ID (primeiro do grupo) fica pro caller de
+			// diagnóstico que já existia. Cópia própria: o slice do
+			// categoryMap não pode vazar pra fora do serviço.
+			full := make([]int64, len(ids))
+			for i, id := range ids {
+				full[i] = int64(id)
+			}
 			categories = append(categories, models.ShopeeCategory{
-				ID:   int64(ids[0]),
+				ID:   full[0],
 				Name: name,
+				IDs:  full,
 			})
 		}
 	}
 	return categories, nil
+}
+
+// shopeeProductCacheTTL é o TTL LÓGICO do produto no cache global. Não
+// confundir com o TTL curto do tier em memória: catálogo (nome, preço,
+// imagem, loja, categorias) é estável por hora.
+const shopeeProductCacheTTL = time.Hour
+
+// shopeeProductCacheKey monta a chave do cache GLOBAL de produto,
+// compartilhada entre todos os afiliados (ver comentário em GetProduct).
+func shopeeProductCacheKey(shopID, itemID int64) string {
+	return fmt.Sprintf("shopee_product:%d:%d", shopID, itemID)
 }
 
 func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, userID string) (*models.ShopeeOffer, error) {
@@ -1145,7 +1172,7 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 	// offerLink/commission do resultado (o link de comissão vem sempre do
 	// GenerateAffiliateLink, por usuário) e a cópia cacheada vai com esses
 	// campos zerados, então não há vazamento de tracking entre contas.
-	productCacheKey := fmt.Sprintf("shopee_product:%d:%d", shopID, itemID)
+	productCacheKey := shopeeProductCacheKey(shopID, itemID)
 	if s.cache != nil {
 		var cachedOffer models.ShopeeOffer
 		if cacheErr := s.cache.GetJSON(ctx, productCacheKey, &cachedOffer); cacheErr == nil && cachedOffer.ItemID != 0 {
@@ -1159,7 +1186,7 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 	// Use productOfferV2 with itemId and shopId to get product details.
 	// shopType is included so the model's IsMall flag (= shopType == 1)
 	// can drive the coupon rule engine's official_only filter.
-	gqlQuery := fmt.Sprintf(`{ productOfferV2(itemId: %d, shopId: %d, limit: 1) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName shopType } } }`, itemID, shopID)
+	gqlQuery := fmt.Sprintf(`{ productOfferV2(itemId: %d, shopId: %d, limit: 1) { nodes { productName itemId shopId productLink offerLink imageUrl priceMin priceMax price commission commissionRate sales ratingStar priceDiscountRate shopName shopType productCatIds } } }`, itemID, shopID)
 	payload, marshalErr := json.Marshal(map[string]string{"query": gqlQuery})
 	if marshalErr != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to marshal Shopee getProduct payload", marshalErr, map[string]string{
@@ -1214,6 +1241,10 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 				// Preferred at once). RawMessage lets us accept both
 				// shapes and resolve to "is Mall?" in one helper.
 				ShopType json.RawMessage `json:"shopType"`
+				// IDs oficiais de categoria (schema.graphql:438 →
+				// [Int!]). Ausente/null = nil, sem erro: produto sem
+				// categoria só casa regra de cupom genérica.
+				ProductCatIDs []int64 `json:"productCatIds"`
 			} `json:"nodes"`
 		} `json:"productOfferV2"`
 	}
@@ -1260,7 +1291,7 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 		zap.Float64("price", effectivePrice),
 		zap.Float64("originalPrice", originalPrice))
 
-	return &models.ShopeeOffer{
+	offer := &models.ShopeeOffer{
 		ItemID:         node.ItemID,
 		ShopID:         node.ShopID,
 		Name:           node.ProductName,
@@ -1277,8 +1308,33 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 		// Shopee shopType=1 marks Mall lojas oficiais — the only signal
 		// the affiliate API gives us about official storefronts. Used
 		// by coupon rules with official_only=true to filter dispatches.
-		IsMall: shopTypeIsMall(node.ShopType),
-	}, nil
+		IsMall:             shopTypeIsMall(node.ShopType),
+		ProductCategoryIDs: node.ProductCatIDs,
+	}
+
+	// Writer do cache GLOBAL. O comentário do leitor acima já prometia que
+	// uma cópia sanitizada era gravada aqui, mas nenhum writer existia — a
+	// chave tinha dois readers e zero writers, então todo GetProduct pagava
+	// productOfferV2 (o endpoint mais rate-limitado, 10030). A cópia vai com
+	// AffiliateLink/CommissionRate ZERADOS: são por-usuário e não podem
+	// vazar entre contas; nenhum consumidor de GetProduct usa esses campos
+	// (o link de comissão vem sempre do GenerateAffiliateLink).
+	//
+	// Fail-open: cache indisponível não pode derrubar a oferta. O log não
+	// carrega credencial, link de afiliado, payload nem a lista de IDs.
+	if s.cache != nil {
+		sanitized := *offer
+		sanitized.AffiliateLink = ""
+		sanitized.CommissionRate = 0
+		if cacheErr := s.cache.SetJSON(ctx, productCacheKey, sanitized, shopeeProductCacheTTL); cacheErr != nil {
+			s.logger.Warn("Failed to write global Shopee product cache (continuing)",
+				zap.Int64("itemID", itemID),
+				zap.Int64("shopID", shopID),
+				zap.Error(cacheErr))
+		}
+	}
+
+	return offer, nil
 }
 
 // shopTypeIsMall normalizes Shopee's `shopType` field, which the API

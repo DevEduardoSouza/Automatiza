@@ -26,7 +26,7 @@ const couponRuleSelectColumns = `
 	id, user_id, coupon_id, platform, period_start, period_end,
 	min_price, priority, is_active, official_only,
 	code, message, discount_type, discount_value, max_discount,
-	created_at, updated_at
+	created_at, updated_at, product_category_ids
 `
 
 func (r *couponRuleRepository) GetUserCouponRules(ctx context.Context, userID string) ([]models.CouponRule, error) {
@@ -60,8 +60,8 @@ func (r *couponRuleRepository) CreateCouponRule(ctx context.Context, userID stri
 		INSERT INTO coupon_rules (user_id, platform, period_start, period_end,
 		                          min_price, priority, is_active, official_only,
 		                          code, message, discount_type, discount_value, max_discount,
-		                          created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		                          created_at, updated_at, product_category_ids)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		RETURNING id
 	`
 	var id string
@@ -76,6 +76,7 @@ func (r *couponRuleRepository) CreateCouponRule(ctx context.Context, userID stri
 		nullableFloat(data.DiscountValue),
 		nullableFloat(data.MaxDiscount),
 		now, now,
+		nullableInt64Slice(data.ProductCategoryIDs),
 	).Scan(&id); err != nil {
 		r.logger.Error("Failed to create coupon rule",
 			zap.String("userID", userID),
@@ -139,15 +140,30 @@ func (r *couponRuleRepository) DeleteCouponRule(ctx context.Context, ruleID, use
 	return nil
 }
 
-// FindMatchingCoupon picks the winning rule for a product. Tie-break:
-// when officialFirst is true (rollout-gated per user), official_only rules
-// sort ahead — a rule targeted at Shopee Mall beats a generic price tier on
-// a Mall product, fixing the incident where a "Loja Oficial" rule with
-// min_price=0 lost to any generic tier on official-store products. When
-// officialFirst is false the ordering is the historical min_price DESC →
-// priority DESC → created_at DESC. The SQL does the entire match in one
-// round-trip; the LIMIT 1 plus the partial index on (user_id, platform)
-// WHERE is_active keeps it fast even for users with many rules.
+// FindMatchingCoupon picks the winning rule for a product.
+//
+// Elegibilidade por categoria (075): uma regra com product_category_ids
+// não vazio só entra quando INTERSECTA as categorias oficiais do produto
+// (productCategoryIDs, vindo de ProductOfferV2.productCatIds). Regra com
+// coluna NULL ou '{}' é genérica e continua elegível para tudo — inclusive
+// para produto sem categoria, para entrada antiga de cache e para Mercado
+// Livre, que passa nil.
+//
+// Tie-break (ordem TOTAL):
+//  1. regra específica de categoria vence qualquer genérica;
+//  2. quando officialFirst é true (gated por usuário), official_only sorta
+//     à frente — uma regra de Shopee Mall bate uma faixa de preço genérica
+//     num produto Mall, corrigindo o incidente em que a regra "Loja
+//     Oficial" com min_price=0 perdia para qualquer faixa genérica;
+//  3. min_price DESC; 4. priority DESC; 5. created_at DESC.
+//
+// Com TODAS as regras legadas (categoria NULL) a primeira chave é a
+// constante FALSE para toda linha, e com officialFirst=false a segunda
+// também — logo o conjunto elegível e a ordenação continuam idênticos ao
+// histórico. O SQL faz o match inteiro num round-trip; o LIMIT 1 mais o
+// índice parcial em (user_id, platform) WHERE is_active mantém rápido
+// mesmo para usuários com muitas regras (o filtro por categoria roda sobre
+// esse conjunto já reduzido — sem GIN nesta entrega).
 //
 // As of 048 the rule itself owns code/message/discount fields — there's
 // no JOIN to coupons anymore. We synthesize a *models.Coupon from the
@@ -160,11 +176,17 @@ func (r *couponRuleRepository) DeleteCouponRule(ctx context.Context, ruleID, use
 // items (productIsOfficial=true on the call); for non-Shopee platforms
 // productIsOfficial is always false, so an official_only rule on
 // Mercado Livre simply never matches — that's the intended behavior.
-func (r *couponRuleRepository) FindMatchingCoupon(ctx context.Context, userID, platform string, productPrice float64, productIsOfficial, officialFirst bool) (*models.Coupon, error) {
-	// The CASE keeps the tie-break rollout-gated: officialFirst=false makes the
-	// first sort key a constant FALSE for every row, so the ORDER BY collapses to
-	// the historical `min_price DESC, priority DESC, created_at DESC`. Only gated
-	// users get official_only rules sorted ahead.
+func (r *couponRuleRepository) FindMatchingCoupon(
+	ctx context.Context,
+	userID, platform string,
+	productPrice float64,
+	productIsOfficial, officialFirst bool,
+	productCategoryIDs []int64,
+) (*models.Coupon, error) {
+	// The CASE keeps the official tie-break rollout-gated: officialFirst=false
+	// makes that sort key a constant FALSE for every row, so the ORDER BY
+	// collapses to the historical `min_price DESC, priority DESC, created_at
+	// DESC`. Only gated users get official_only rules sorted ahead.
 	const query = `
 		SELECT cr.id, cr.user_id, cr.platform,
 		       cr.code, cr.message, cr.discount_type, cr.discount_value, cr.max_discount,
@@ -177,12 +199,31 @@ func (r *couponRuleRepository) FindMatchingCoupon(ctx context.Context, userID, p
 		  AND (cr.period_end IS NULL OR cr.period_end >= NOW())
 		  AND cr.min_price <= $3
 		  AND (NOT cr.official_only OR $4)
-		ORDER BY (CASE WHEN $5 THEN cr.official_only ELSE FALSE END) DESC,
-		         cr.min_price DESC, cr.priority DESC, cr.created_at DESC
+		  AND (
+		    cr.product_category_ids IS NULL
+		    OR cardinality(cr.product_category_ids) = 0
+		    OR cr.product_category_ids && $6::bigint[]
+		  )
+		ORDER BY
+		  (
+		    cr.product_category_ids IS NOT NULL
+		    AND cardinality(cr.product_category_ids) > 0
+		  ) DESC,
+		  (CASE WHEN $5 THEN cr.official_only ELSE FALSE END) DESC,
+		  cr.min_price DESC,
+		  cr.priority DESC,
+		  cr.created_at DESC
 		LIMIT 1
 	`
 
-	row := r.db.QueryRow(ctx, query, userID, platform, productPrice, productIsOfficial, officialFirst)
+	// Slice nil/vazio vira '{}' no Postgres: `&&` com array vazio é FALSE,
+	// então produto sem categoria (ou cache antigo, ou Mercado Livre) só
+	// alcança as regras genéricas — nunca uma regra específica.
+	cats := productCategoryIDs
+	if cats == nil {
+		cats = []int64{}
+	}
+	row := r.db.QueryRow(ctx, query, userID, platform, productPrice, productIsOfficial, officialFirst, cats)
 
 	var (
 		id, userIDOut, platformOut  string
@@ -232,7 +273,7 @@ func (r *couponRuleRepository) scanRule(row pgx.Row) (*models.CouponRule, error)
 		&periodStart, &periodEnd,
 		&rule.MinPrice, &rule.Priority, &rule.IsActive, &rule.OfficialOnly,
 		&rule.Code, &rule.Message, &rule.DiscountType, &rule.DiscountValue, &rule.MaxDiscount,
-		&createdAt, &updatedAt,
+		&createdAt, &updatedAt, &rule.ProductCategoryIDs,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -265,7 +306,7 @@ func (r *couponRuleRepository) scanRules(rows pgx.Rows) ([]models.CouponRule, er
 			&periodStart, &periodEnd,
 			&rule.MinPrice, &rule.Priority, &rule.IsActive, &rule.OfficialOnly,
 			&rule.Code, &rule.Message, &rule.DiscountType, &rule.DiscountValue, &rule.MaxDiscount,
-			&createdAt, &updatedAt,
+			&createdAt, &updatedAt, &rule.ProductCategoryIDs,
 		); err != nil {
 			return nil, err
 		}
@@ -310,4 +351,15 @@ func nullableFloat(f *float64) interface{} {
 		return nil
 	}
 	return *f
+}
+
+// nullableInt64Slice normaliza lista vazia para NULL na escrita. NULL e
+// '{}' têm a MESMA semântica no matcher ("regra genérica"); gravar sempre
+// NULL mantém uma representação só no banco e evita que um '{}' futuro
+// pareça uma segmentação vazia intencional.
+func nullableInt64Slice(v []int64) interface{} {
+	if len(v) == 0 {
+		return nil
+	}
+	return v
 }

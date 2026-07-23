@@ -1389,8 +1389,8 @@ func (a *couponHandlerAdapter) ApplyCouponWithPreloaded(coupon *models.Coupon, o
 	}
 }
 
-func (a *couponHandlerAdapter) ApplyCoupon(ctx context.Context, auto *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool) (*offer_generate.CouponResult, error) {
-	result, err := a.handler.ApplyCoupon(ctx, auto, offerPrice, offerStore, productIsOfficial)
+func (a *couponHandlerAdapter) ApplyCoupon(ctx context.Context, auto *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool, productCategoryIDs []int64) (*offer_generate.CouponResult, error) {
+	result, err := a.handler.ApplyCoupon(ctx, auto, offerPrice, offerStore, productIsOfficial, productCategoryIDs)
 	if err != nil || result == nil {
 		return nil, err
 	}
@@ -1411,8 +1411,8 @@ type monitoringCouponAdapter struct {
 	handler *automation.CouponHandler
 }
 
-func (a *monitoringCouponAdapter) ApplyCoupon(ctx context.Context, auto *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool) (*monitoring.CouponResult, error) {
-	result, err := a.handler.ApplyCoupon(ctx, auto, offerPrice, offerStore, productIsOfficial)
+func (a *monitoringCouponAdapter) ApplyCoupon(ctx context.Context, auto *models.Automation, offerPrice float64, offerStore string, productIsOfficial bool, productCategoryIDs []int64) (*monitoring.CouponResult, error) {
+	result, err := a.handler.ApplyCoupon(ctx, auto, offerPrice, offerStore, productIsOfficial, productCategoryIDs)
 	if err != nil || result == nil {
 		return nil, err
 	}
