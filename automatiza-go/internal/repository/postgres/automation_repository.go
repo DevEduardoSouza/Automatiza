@@ -251,6 +251,10 @@ func (r *automationRepository) CreateAutomation(ctx context.Context, userID stri
 				data.ListSendAsImage, instanceIDArg, instanceIDsArg, data.ApplyCouponRules, chipOverridesJSON,
 				data.RepeatWhenFinished, data.StartDate, data.EndDate, data.OfferGenerateSendAsImage,
 				data.SearchSendAsImage, data.MonitoringSendAsImage, data.HumanizeMode,
+				// $51 monitor_interval_minutes: coluna NOT NULL DEFAULT 0 (078). O
+				// getter devolve 0 quando o request não traz o campo — ponteiro nil
+				// escreveria NULL e violaria a constraint.
+				data.GetMonitorIntervalMinutes(),
 			).Scan(&id)
 		})
 
