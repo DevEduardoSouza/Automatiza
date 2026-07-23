@@ -18,9 +18,20 @@ vi.mock('react-i18next', () => ({
 // ============================================================
 
 let mockSlug: string | undefined = 'test-slug';
+// Route the hook thinks it is on. `/r/...` is the legacy SPA path (auto
+// redirect); `/join/...` is the backend fallback (always manual).
+let mockPathname = '/r/test-slug';
+let mockSearch = '';
 
 vi.mock('react-router', () => ({
   useParams: () => ({ slug: mockSlug }),
+  useLocation: () => ({
+    pathname: mockPathname,
+    search: mockSearch,
+    hash: '',
+    state: null,
+    key: 'test',
+  }),
 }));
 
 // ============================================================
@@ -66,6 +77,8 @@ describe('usePublicRedirect', () => {
     vi.clearAllMocks();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockSlug = 'test-slug';
+    mockPathname = '/r/test-slug';
+    mockSearch = '';
     mockProcessRedirectBySlug.mockResolvedValue({
       success: true,
       group_name: 'Promocoes Tech',
@@ -771,6 +784,295 @@ describe('usePublicRedirect', () => {
         writable: true,
         configurable: true,
       });
+    });
+  });
+
+  // ── /join fallback route ───────────────────────────────────────
+  // The backend only 302s a client to /join when a direct redirect would not
+  // work for it, so this route must NEVER auto-redirect — not even on a
+  // desktop UA.
+  describe('/join fallback route', () => {
+    beforeEach(() => {
+      mockPathname = '/join/test-slug';
+    });
+
+    it('should make exactly one POST and stay manual on a desktop UA', async () => {
+      const { result } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(mockProcessRedirectBySlug).toHaveBeenCalledTimes(1);
+      expect(window.location.href).toBe('http://localhost:3003/r/test-slug');
+      expect(result.current.loading).toBe(false);
+      expect(result.current.redirectUrl).toBe('https://chat.whatsapp.com/ABC123');
+    });
+
+    it('should stay manual on an in-app UA too', async () => {
+      Object.defineProperty(navigator, 'userAgent', {
+        value: 'Mozilla/5.0 (iPhone) Instagram 334.0.0.32.98',
+        writable: true,
+        configurable: true,
+      });
+
+      const { result } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(mockProcessRedirectBySlug).toHaveBeenCalledTimes(1);
+      expect(window.location.href).toBe('http://localhost:3003/r/test-slug');
+      expect(result.current.isInAppBrowser).toBe(true);
+
+      Object.defineProperty(navigator, 'userAgent', {
+        value: originalNavigator.userAgent,
+        writable: true,
+        configurable: true,
+      });
+    });
+  });
+
+  // ── ?error=<code> from the direct GET ──────────────────────────
+  describe('error code from the backend', () => {
+    beforeEach(() => {
+      mockPathname = '/join/test-slug';
+    });
+
+    it('should render the mapped error WITHOUT calling the API again', async () => {
+      mockSearch = '?error=not_found';
+
+      const { result } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      expect(mockProcessRedirectBySlug).not.toHaveBeenCalled();
+      expect(result.current.error).toBe('pages.publicRedirect.error.invalidLink');
+      expect(result.current.errorType).toBe('not_found');
+      expect(result.current.loading).toBe(false);
+    });
+
+    it('should map groups_full to the retryable error type', async () => {
+      mockSearch = '?error=groups_full';
+
+      const { result } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      expect(result.current.error).toBe('pages.publicRedirect.error.groupsFull');
+      expect(result.current.errorType).toBe('groups_full');
+      expect(mockProcessRedirectBySlug).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to generic for a prototype key (tela branca)', async () => {
+      // `?error=constructor` resolvia no protótipo do objeto de mapeamento e
+      // devolvia uma função, então o fallback nunca disparava e a página
+      // renderizava vazia.
+      for (const evil of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+        mockSearch = `?error=${evil}`;
+        const { result, unmount } = renderPublicRedirect();
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(100);
+        });
+
+        expect(result.current.error).toBe('pages.publicRedirect.error.genericError');
+        expect(result.current.errorType).toBe('generic');
+        expect(result.current.loading).toBe(false);
+        expect(mockProcessRedirectBySlug).not.toHaveBeenCalled();
+        unmount();
+      }
+    });
+
+    it('should fall back to generic for an unknown code', async () => {
+      mockSearch = '?error=whatever-someone-typed';
+
+      const { result } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      expect(result.current.error).toBe('pages.publicRedirect.error.genericError');
+      expect(result.current.errorType).toBe('generic');
+      expect(mockProcessRedirectBySlug).not.toHaveBeenCalled();
+    });
+
+    it('should strip the query so a reload becomes a clean attempt', async () => {
+      mockSearch = '?error=temporary';
+      const replaceSpy = vi.spyOn(window.history, 'replaceState');
+
+      renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      expect(replaceSpy).toHaveBeenCalledWith(null, '', '/join/test-slug');
+
+      // The clean URL: a reload now performs one real attempt.
+      mockSearch = '';
+      const { result } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(mockProcessRedirectBySlug).toHaveBeenCalledTimes(1);
+      expect(result.current.redirectUrl).toBe('https://chat.whatsapp.com/ABC123');
+
+      replaceSpy.mockRestore();
+    });
+  });
+
+  // ── ?mode=preview ──────────────────────────────────────────────
+  describe('preview mode', () => {
+    beforeEach(() => {
+      mockPathname = '/join/test-slug';
+      mockSearch = '?mode=preview';
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(document, 'prerendering');
+    });
+
+    it('should never call the API when the document is not prerendering', async () => {
+      const { result } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(mockProcessRedirectBySlug).not.toHaveBeenCalled();
+      expect(result.current.loading).toBe(false);
+      // A real user caught by a UA false positive still gets a retry button.
+      expect(result.current.errorType).toBe('temporary');
+    });
+
+    it('should not call the API before the prerender is activated', async () => {
+      Object.defineProperty(document, 'prerendering', {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+
+      renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(mockProcessRedirectBySlug).not.toHaveBeenCalled();
+    });
+
+    it('should call the API exactly once when the user activates the prerender', async () => {
+      Object.defineProperty(document, 'prerendering', {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+
+      renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      expect(mockProcessRedirectBySlug).not.toHaveBeenCalled();
+
+      await act(async () => {
+        document.dispatchEvent(new Event('prerenderingchange'));
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(mockProcessRedirectBySlug).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not call the API when unmounted before activation', async () => {
+      Object.defineProperty(document, 'prerendering', {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+
+      const { unmount } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      unmount();
+
+      await act(async () => {
+        document.dispatchEvent(new Event('prerenderingchange'));
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(mockProcessRedirectBySlug).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Attempt guard ──────────────────────────────────────────────
+  describe('attempt guard', () => {
+    it('should not repeat the POST on a rerender', async () => {
+      const { rerender } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(mockProcessRedirectBySlug).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        rerender();
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      expect(mockProcessRedirectBySlug).toHaveBeenCalledTimes(1);
+    });
+
+    it('should start a new attempt when the slug actually changes', async () => {
+      const { rerender } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(mockProcessRedirectBySlug).toHaveBeenCalledTimes(1);
+
+      mockSlug = 'another-slug';
+      await act(async () => {
+        rerender();
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(mockProcessRedirectBySlug).toHaveBeenCalledTimes(2);
+      expect(mockProcessRedirectBySlug).toHaveBeenLastCalledWith('another-slug');
+    });
+  });
+
+  // ── Invite code extraction ─────────────────────────────────────
+  describe('invite code extraction', () => {
+    it('should keep _ and - in the invite code', async () => {
+      mockPathname = '/join/test-slug';
+      mockProcessRedirectBySlug.mockResolvedValue({
+        success: true,
+        group_name: 'Promocoes Tech',
+        redirect_url: 'https://chat.whatsapp.com/Abc_1-Xyz9',
+      });
+
+      const { result } = renderPublicRedirect();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(result.current.inviteCode).toBe('Abc_1-Xyz9');
     });
   });
 });

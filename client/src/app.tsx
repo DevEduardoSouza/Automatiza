@@ -145,8 +145,14 @@ const App = () => (
                     <Route path="/forgot-password" element={<ForgotPassword />} />
                     <Route path="/reset-password" element={<ResetPassword />} />
 
-                    {/* Rota publica de redirecionamento */}
+                    {/* Rota publica de redirecionamento.
+                        /r/:slug: legado — hoje o Gin responde esse path direto
+                        com 302; a rota SPA continua aqui para quem ainda tem
+                        service worker antigo servindo o app shell.
+                        /join/:slug: fallback para onde o backend manda in-app
+                        browser, crawler e erro de negocio (sempre manual). */}
                     <Route path="/r/:slug" element={<PublicRedirect />} />
+                    <Route path="/join/:slug" element={<PublicRedirect />} />
 
                     <Route
                       path="/dashboard"

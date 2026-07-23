@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"go.uber.org/zap/zaptest"
 )
@@ -1005,7 +1007,11 @@ func TestProcessRedirect(t *testing.T) {
 		}
 	})
 
-	t.Run("increments clicks (warns on error, does not fail)", func(t *testing.T) {
+	// Contract change: the counter is now fail-CLOSED. Handing out a
+	// destination whose click was never recorded would silently overshoot
+	// click_limit and skew round_robin, so a failed increment fails the
+	// redirect instead of being logged and ignored.
+	t.Run("increments clicks (fails closed on error)", func(t *testing.T) {
 		inviteCode := "CODE123"
 		link := makeActiveLink(models.RedirectStrategyRoundRobin, []models.GroupPriority{
 			{GroupID: "g1", IsActive: true, Priority: 1},
@@ -1035,8 +1041,14 @@ func TestProcessRedirect(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !result.Success {
-			t.Errorf("expected Success=true even on increment error, error=%q", result.Error)
+		if result.Success {
+			t.Error("expected Success=false when the click could not be recorded")
+		}
+		if result.Error != "service temporarily unavailable" {
+			t.Errorf("error = %q, want %q", result.Error, "service temporarily unavailable")
+		}
+		if result.RedirectURL != "" {
+			t.Errorf("expected no RedirectURL on a failed increment, got %q", result.RedirectURL)
 		}
 		if !clickIncrementCalled {
 			t.Error("expected IncrementClicks to be called")
@@ -1693,4 +1705,569 @@ func TestCheckSlugAvailability(t *testing.T) {
 			t.Errorf("excludeID = %q, want %q", receivedExcludeID, "exclude-123")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Tests: invite code validation (a bad code must never be persisted, counted
+// or turned into a URL)
+// ---------------------------------------------------------------------------
+
+func TestProcessRedirect_InviteCodeValidation(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("invalid code saved in the database is refused without calling WAHA", func(t *testing.T) {
+		badCode := "ab" // shorter than the 5-char minimum
+		link := makeActiveLink(models.RedirectStrategyRoundRobin, []models.GroupPriority{
+			{GroupID: "g1", IsActive: true, Priority: 1},
+		})
+		incrementCalled := false
+		redirectRepo := &mockRedirectLinkRepo{
+			GetBySlugFn: func(_ context.Context, _ string) (*models.RedirectLink, error) { return link, nil },
+			IncrementClicksFn: func(_ context.Context, _, _ string) error {
+				incrementCalled = true
+				return nil
+			},
+		}
+		updateCalled := false
+		groupRepo := &mockGroupRepo{
+			GetGroupByIDFn: func(_ context.Context, _ string) (*models.Group, error) {
+				return makeGroup("g1", "5", "wa-g1@g.us", "Group 1", &badCode), nil
+			},
+			UpdateGroupFn: func(_ context.Context, _ string, _ map[string]interface{}) error {
+				updateCalled = true
+				return nil
+			},
+		}
+		instanceRepo := &mockInstanceRepo{
+			GetInstanceByIDFn: func(_ context.Context, _ int) (*models.Instance, error) {
+				return makeInstance(5, "session-1"), nil
+			},
+		}
+		wahaCalled := false
+		waProvider := &mockWAProvider{
+			GetGroupInviteCodeFn: func(_ context.Context, _, _ string) (string, error) {
+				wahaCalled = true
+				return "GOOD_CODE", nil
+			},
+		}
+
+		svc := newTestService(t, redirectRepo, groupRepo, instanceRepo, waProvider)
+		result, err := svc.ProcessRedirect(ctx, "test-slug", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Success {
+			t.Error("expected Success=false for a malformed saved invite code")
+		}
+		if result.Error != "invite code not available" {
+			t.Errorf("error = %q, want %q", result.Error, "invite code not available")
+		}
+		if result.RedirectURL != "" {
+			t.Errorf("expected no RedirectURL, got %q", result.RedirectURL)
+		}
+		if wahaCalled {
+			t.Error("a saved (if invalid) code must not trigger a WAHA call")
+		}
+		if updateCalled {
+			t.Error("nothing should be persisted for an invalid code")
+		}
+		if incrementCalled {
+			t.Error("a refused redirect must not count a click")
+		}
+	})
+
+	t.Run("invalid code from WAHA is neither persisted nor counted", func(t *testing.T) {
+		link := makeActiveLink(models.RedirectStrategyRoundRobin, []models.GroupPriority{
+			{GroupID: "g1", IsActive: true, Priority: 1},
+		})
+		incrementCalled := false
+		redirectRepo := &mockRedirectLinkRepo{
+			GetBySlugFn: func(_ context.Context, _ string) (*models.RedirectLink, error) { return link, nil },
+			IncrementClicksFn: func(_ context.Context, _, _ string) error {
+				incrementCalled = true
+				return nil
+			},
+		}
+		updateCalled := false
+		groupRepo := &mockGroupRepo{
+			GetGroupByIDFn: func(_ context.Context, _ string) (*models.Group, error) {
+				return makeGroup("g1", "5", "wa-g1@g.us", "Group 1", nil), nil
+			},
+			UpdateGroupFn: func(_ context.Context, _ string, _ map[string]interface{}) error {
+				updateCalled = true
+				return nil
+			},
+		}
+		instanceRepo := &mockInstanceRepo{
+			GetInstanceByIDFn: func(_ context.Context, _ int) (*models.Instance, error) {
+				return makeInstance(5, "session-1"), nil
+			},
+		}
+		waProvider := &mockWAProvider{
+			GetGroupInviteCodeFn: func(_ context.Context, _, _ string) (string, error) {
+				// A full URL where a bare code was promised, as WAHA has been
+				// seen to return on some engines.
+				return "https://chat.whatsapp.com/ABCDE", nil
+			},
+		}
+
+		svc := newTestService(t, redirectRepo, groupRepo, instanceRepo, waProvider)
+		result, err := svc.ProcessRedirect(ctx, "test-slug", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Success {
+			t.Error("expected Success=false for a malformed WAHA invite code")
+		}
+		if result.Error != "invite code not available" {
+			t.Errorf("error = %q, want %q", result.Error, "invite code not available")
+		}
+		if updateCalled {
+			t.Error("an invalid code must not be cached in the groups table")
+		}
+		if incrementCalled {
+			t.Error("a refused redirect must not count a click")
+		}
+	})
+
+	t.Run("empty code from WAHA is still refused", func(t *testing.T) {
+		link := makeActiveLink(models.RedirectStrategyRoundRobin, []models.GroupPriority{
+			{GroupID: "g1", IsActive: true, Priority: 1},
+		})
+		redirectRepo := &mockRedirectLinkRepo{
+			GetBySlugFn: func(_ context.Context, _ string) (*models.RedirectLink, error) { return link, nil },
+		}
+		groupRepo := &mockGroupRepo{
+			GetGroupByIDFn: func(_ context.Context, _ string) (*models.Group, error) {
+				return makeGroup("g1", "5", "wa-g1@g.us", "Group 1", nil), nil
+			},
+		}
+		instanceRepo := &mockInstanceRepo{
+			GetInstanceByIDFn: func(_ context.Context, _ int) (*models.Instance, error) {
+				return makeInstance(5, "session-1"), nil
+			},
+		}
+		svc := newTestService(t, redirectRepo, groupRepo, instanceRepo, &mockWAProvider{})
+		result, err := svc.ProcessRedirect(ctx, "test-slug", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Success || result.Error != "invite code not available" {
+			t.Errorf("got Success=%v error=%q, want Success=false error=%q",
+				result.Success, result.Error, "invite code not available")
+		}
+	})
+
+	t.Run("code with _ and - is accepted", func(t *testing.T) {
+		code := "Abc_1-Xyz9"
+		link := makeActiveLink(models.RedirectStrategyRoundRobin, []models.GroupPriority{
+			{GroupID: "g1", IsActive: true, Priority: 1},
+		})
+		incrementCalls := 0
+		redirectRepo := &mockRedirectLinkRepo{
+			GetBySlugFn: func(_ context.Context, _ string) (*models.RedirectLink, error) { return link, nil },
+			IncrementClicksFn: func(_ context.Context, _, _ string) error {
+				incrementCalls++
+				return nil
+			},
+		}
+		groupRepo := &mockGroupRepo{
+			GetGroupByIDFn: func(_ context.Context, _ string) (*models.Group, error) {
+				return makeGroup("g1", "5", "wa-g1@g.us", "Group 1", &code), nil
+			},
+		}
+		instanceRepo := &mockInstanceRepo{
+			GetInstanceByIDFn: func(_ context.Context, _ int) (*models.Instance, error) {
+				return makeInstance(5, "session-1"), nil
+			},
+		}
+		svc := newTestService(t, redirectRepo, groupRepo, instanceRepo, &mockWAProvider{})
+		result, err := svc.ProcessRedirect(ctx, "test-slug", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.Success {
+			t.Fatalf("expected Success=true, error=%q", result.Error)
+		}
+		if result.RedirectURL != "https://chat.whatsapp.com/Abc_1-Xyz9" {
+			t.Errorf("RedirectURL = %q", result.RedirectURL)
+		}
+		// Success implies EXACTLY one confirmed increment.
+		if incrementCalls != 1 {
+			t.Errorf("IncrementClicks called %d times, want exactly 1", incrementCalls)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Tests: per-link serialization
+// ---------------------------------------------------------------------------
+
+// clickStore is a tiny stand-in for the row in saved_redirect_links: reads
+// return a fresh snapshot, writes are atomic. It is what makes the difference
+// between "serialized" and "both callers saw the same stale snapshot" visible.
+type clickStore struct {
+	mu     sync.Mutex
+	clicks map[string]int
+}
+
+func (c *clickStore) snapshot() map[string]int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make(map[string]int, len(c.clicks))
+	for k, v := range c.clicks {
+		out[k] = v
+	}
+	return out
+}
+
+func (c *clickStore) increment(groupID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.clicks[groupID]++
+}
+
+func TestProcessRedirect_ConcurrentClicksAreSerializedPerLink(t *testing.T) {
+	ctx := context.Background()
+
+	run := func(t *testing.T, strategy string, groups []models.GroupPriority) (map[string]int, int) {
+		t.Helper()
+		store := &clickStore{clicks: map[string]int{}}
+		var incMu sync.Mutex
+		increments := 0
+
+		redirectRepo := &mockRedirectLinkRepo{
+			GetBySlugFn: func(_ context.Context, _ string) (*models.RedirectLink, error) {
+				// Fresh snapshot per read, exactly like a SELECT would be.
+				link := makeActiveLink(strategy, append([]models.GroupPriority(nil), groups...))
+				link.GroupClicks = store.snapshot()
+				return link, nil
+			},
+			IncrementClicksFn: func(_ context.Context, _, groupID string) error {
+				store.increment(groupID)
+				incMu.Lock()
+				increments++
+				incMu.Unlock()
+				return nil
+			},
+		}
+		code := "VALIDCODE"
+		groupRepo := &mockGroupRepo{
+			GetGroupByIDFn: func(_ context.Context, groupID string) (*models.Group, error) {
+				return makeGroup(groupID, "5", "wa-"+groupID+"@g.us", "Group "+groupID, &code), nil
+			},
+		}
+		instanceRepo := &mockInstanceRepo{
+			GetInstanceByIDFn: func(_ context.Context, _ int) (*models.Instance, error) {
+				return makeInstance(5, "session-1"), nil
+			},
+		}
+		svc := newTestService(t, redirectRepo, groupRepo, instanceRepo, &mockWAProvider{})
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		var resMu sync.Mutex
+		picked := map[string]int{}
+
+		for i := 0; i < 2; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				result, err := svc.ProcessRedirect(ctx, "test-slug", "")
+				if err != nil || result == nil || !result.Success {
+					return
+				}
+				resMu.Lock()
+				picked[result.GroupID]++
+				resMu.Unlock()
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		// The lock entry must be gone once nobody holds it.
+		svc.linkLocksMu.Lock()
+		remaining := len(svc.linkLocks)
+		svc.linkLocksMu.Unlock()
+		if remaining != 0 {
+			t.Errorf("linkLocks still holds %d entries after all callers finished", remaining)
+		}
+
+		return picked, increments
+	}
+
+	t.Run("click_limit is not overshot by concurrent clicks", func(t *testing.T) {
+		picked, increments := run(t, models.RedirectStrategyClickLimit, []models.GroupPriority{
+			{GroupID: "g1", IsActive: true, Priority: 1, ClickLimit: 1},
+			{GroupID: "g2", IsActive: true, Priority: 2, ClickLimit: 1},
+		})
+		if increments != 2 {
+			t.Fatalf("expected 2 confirmed increments, got %d", increments)
+		}
+		// Serialized: the second caller sees g1 already at its limit.
+		if picked["g1"] != 1 || picked["g2"] != 1 {
+			t.Errorf("expected one click on each group, got %v", picked)
+		}
+	})
+
+	t.Run("round_robin rotates instead of picking the same group twice", func(t *testing.T) {
+		picked, increments := run(t, models.RedirectStrategyRoundRobin, []models.GroupPriority{
+			{GroupID: "g1", IsActive: true, Priority: 1},
+			{GroupID: "g2", IsActive: true, Priority: 2},
+		})
+		if increments != 2 {
+			t.Fatalf("expected 2 confirmed increments, got %d", increments)
+		}
+		if picked["g1"] != 1 || picked["g2"] != 1 {
+			t.Errorf("expected the rotation to hand out one click each, got %v", picked)
+		}
+	})
+}
+
+// The lock is per link: a slow WAHA call on link A must not stall link B.
+func TestProcessRedirect_DifferentLinksDoNotBlockEachOther(t *testing.T) {
+	ctx := context.Background()
+
+	blocked := make(chan struct{})
+	releaseA := make(chan struct{})
+	code := "VALIDCODE"
+
+	linkFor := func(id, slug, groupID string) *models.RedirectLink {
+		l := makeActiveLink(models.RedirectStrategyRoundRobin, []models.GroupPriority{
+			{GroupID: groupID, IsActive: true, Priority: 1},
+		})
+		l.ID = id
+		l.Slug = slug
+		return l
+	}
+
+	// ONE service instance, so both calls contend on the same lock map — a
+	// global lock would be observable here.
+	svc := newTestService(t,
+		&mockRedirectLinkRepo{
+			GetBySlugFn: func(_ context.Context, slug string) (*models.RedirectLink, error) {
+				if slug == "slug-a" {
+					return linkFor("link-A", "slug-a", "gA"), nil
+				}
+				return linkFor("link-B", "slug-b", "gB"), nil
+			},
+		},
+		&mockGroupRepo{
+			GetGroupByIDFn: func(_ context.Context, groupID string) (*models.Group, error) {
+				if groupID == "gA" {
+					close(blocked)
+					<-releaseA
+				}
+				return makeGroup(groupID, "5", "wa-"+groupID+"@g.us", "Group "+groupID, &code), nil
+			},
+		},
+		&mockInstanceRepo{
+			GetInstanceByIDFn: func(_ context.Context, _ int) (*models.Instance, error) {
+				return makeInstance(5, "session-1"), nil
+			},
+		},
+		&mockWAProvider{},
+	)
+
+	doneA := make(chan struct{})
+	go func() {
+		defer close(doneA)
+		_, _ = svc.ProcessRedirect(ctx, "slug-a", "")
+	}()
+
+	<-blocked // link A is now holding its lock inside the slow call
+
+	doneB := make(chan struct{})
+	go func() {
+		defer close(doneB)
+		result, err := svc.ProcessRedirect(ctx, "slug-b", "")
+		if err != nil || result == nil || !result.Success {
+			t.Errorf("link B should have completed: err=%v result=%+v", err, result)
+		}
+	}()
+
+	select {
+	case <-doneB:
+		// Expected: B finished while A is still blocked.
+	case <-time.After(3 * time.Second):
+		close(releaseA)
+		t.Fatal("link B was blocked by link A — the lock is not per link")
+	}
+
+	close(releaseA)
+	<-doneA
+}
+
+// ---------------------------------------------------------------------------
+// Tests: a slow WAHA call must NOT be serialized by the per-link lock
+// ---------------------------------------------------------------------------
+
+// O caminho frio (grupo sem invite_code em cache) chama a WAHA, que permite 3
+// retries sobre um timeout de 30s por tentativa — até ~2min. Se esse trecho
+// rodasse sob o lock do link, um único grupo lento serializaria TODOS os
+// cliques daquele link. Em produção 153 dos 208 links ativos têm ao menos um
+// grupo nessa situação, então isso é o caminho quente, não uma borda.
+func TestProcessRedirect_SlowWAHADoesNotBlockSameLink(t *testing.T) {
+	ctx := context.Background()
+
+	link := makeActiveLink(models.RedirectStrategyRoundRobin, []models.GroupPriority{
+		{GroupID: "g1", IsActive: true, Priority: 1},
+	})
+
+	redirectRepo := &mockRedirectLinkRepo{
+		GetBySlugFn: func(_ context.Context, _ string) (*models.RedirectLink, error) { return link, nil },
+	}
+	groupRepo := &mockGroupRepo{
+		GetGroupByIDFn: func(_ context.Context, groupID string) (*models.Group, error) {
+			// Sem invite_code: força o caminho frio nas duas chamadas.
+			return makeGroup(groupID, "5", "wa-g1@g.us", "Group 1", nil), nil
+		},
+	}
+	instanceRepo := &mockInstanceRepo{
+		GetInstanceByIDFn: func(_ context.Context, _ int) (*models.Instance, error) {
+			return makeInstance(5, "session-1"), nil
+		},
+	}
+
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+	waProvider := &mockWAProvider{
+		GetGroupInviteCodeFn: func(_ context.Context, _, _ string) (string, error) {
+			entered <- struct{}{}
+			<-release
+			return "VALIDCODE", nil
+		},
+	}
+
+	svc := newTestService(t, redirectRepo, groupRepo, instanceRepo, waProvider)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = svc.ProcessRedirect(ctx, "test-slug", "")
+		}()
+	}
+
+	// AMBAS as chamadas precisam chegar na WAHA com a primeira ainda pendurada.
+	// Com o lock cobrindo a chamada, a segunda nunca chegaria e isto expiraria.
+	for i := 0; i < 2; i++ {
+		select {
+		case <-entered:
+		case <-time.After(3 * time.Second):
+			close(release)
+			wg.Wait()
+			t.Fatalf("apenas %d de 2 chamadas alcançaram a WAHA — o lock do link está serializando a chamada de rede", i)
+		}
+	}
+
+	close(release)
+	wg.Wait()
+}
+
+// Depois de buscar o código na WAHA, a segunda passada precisa contar o clique
+// exatamente uma vez — nem zero (perderia o clique), nem duas.
+func TestProcessRedirect_ColdPathCountsExactlyOnce(t *testing.T) {
+	ctx := context.Background()
+
+	link := makeActiveLink(models.RedirectStrategyRoundRobin, []models.GroupPriority{
+		{GroupID: "g1", IsActive: true, Priority: 1},
+	})
+
+	var saved *string
+	increments := 0
+	redirectRepo := &mockRedirectLinkRepo{
+		GetBySlugFn: func(_ context.Context, _ string) (*models.RedirectLink, error) { return link, nil },
+		IncrementClicksFn: func(_ context.Context, _, _ string) error {
+			increments++
+			return nil
+		},
+	}
+	groupRepo := &mockGroupRepo{
+		GetGroupByIDFn: func(_ context.Context, groupID string) (*models.Group, error) {
+			// Reflete o cache: nil na 1ª passada, preenchido depois do UpdateGroup.
+			return makeGroup(groupID, "5", "wa-g1@g.us", "Group 1", saved), nil
+		},
+		UpdateGroupFn: func(_ context.Context, _ string, updates map[string]interface{}) error {
+			if code, ok := updates["invite_code"].(string); ok {
+				saved = &code
+			}
+			return nil
+		},
+	}
+	instanceRepo := &mockInstanceRepo{
+		GetInstanceByIDFn: func(_ context.Context, _ int) (*models.Instance, error) {
+			return makeInstance(5, "session-1"), nil
+		},
+	}
+	wahaCalls := 0
+	waProvider := &mockWAProvider{
+		GetGroupInviteCodeFn: func(_ context.Context, _, _ string) (string, error) {
+			wahaCalls++
+			return "VALIDCODE", nil
+		},
+	}
+
+	svc := newTestService(t, redirectRepo, groupRepo, instanceRepo, waProvider)
+	result, err := svc.ProcessRedirect(ctx, "test-slug", "")
+	if err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	if !result.Success {
+		t.Fatalf("esperava Success=true, erro=%q", result.Error)
+	}
+	if result.RedirectURL != "https://chat.whatsapp.com/VALIDCODE" {
+		t.Errorf("RedirectURL = %q", result.RedirectURL)
+	}
+	if increments != 1 {
+		t.Errorf("IncrementClicks chamado %d vezes, esperado exatamente 1", increments)
+	}
+	if wahaCalls != 1 {
+		t.Errorf("WAHA chamada %d vezes, esperado exatamente 1", wahaCalls)
+	}
+}
+
+// UpdateGroup é fail-open: se o cache no banco falhar, o código já buscado
+// ainda precisa ser usado nesta requisição em vez de virar erro.
+func TestProcessRedirect_ColdPathSurvivesCacheWriteFailure(t *testing.T) {
+	ctx := context.Background()
+
+	link := makeActiveLink(models.RedirectStrategyRoundRobin, []models.GroupPriority{
+		{GroupID: "g1", IsActive: true, Priority: 1},
+	})
+	redirectRepo := &mockRedirectLinkRepo{
+		GetBySlugFn: func(_ context.Context, _ string) (*models.RedirectLink, error) { return link, nil },
+	}
+	groupRepo := &mockGroupRepo{
+		GetGroupByIDFn: func(_ context.Context, groupID string) (*models.Group, error) {
+			return makeGroup(groupID, "5", "wa-g1@g.us", "Group 1", nil), nil
+		},
+		UpdateGroupFn: func(_ context.Context, _ string, _ map[string]interface{}) error {
+			return errors.New("cache write failed")
+		},
+	}
+	instanceRepo := &mockInstanceRepo{
+		GetInstanceByIDFn: func(_ context.Context, _ int) (*models.Instance, error) {
+			return makeInstance(5, "session-1"), nil
+		},
+	}
+	waProvider := &mockWAProvider{
+		GetGroupInviteCodeFn: func(_ context.Context, _, _ string) (string, error) {
+			return "VALIDCODE", nil
+		},
+	}
+
+	svc := newTestService(t, redirectRepo, groupRepo, instanceRepo, waProvider)
+	result, err := svc.ProcessRedirect(ctx, "test-slug", "")
+	if err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	if !result.Success {
+		t.Fatalf("falha no cache não pode derrubar o redirect; erro=%q", result.Error)
+	}
+	if result.RedirectURL != "https://chat.whatsapp.com/VALIDCODE" {
+		t.Errorf("RedirectURL = %q", result.RedirectURL)
+	}
 }

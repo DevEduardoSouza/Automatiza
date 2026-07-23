@@ -10,11 +10,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
+	"sync"
 
 	"go.uber.org/zap"
 )
+
+// Shape of a WhatsApp group invite code, per WAHA
+// GET /api/{session}/groups/{id}/invite-code (waha-plus-openapi.json:6093,
+// 200 = plain string). Validated before the code is persisted, incremented
+// against or turned into a URL.
+var inviteCodeRe = regexp.MustCompile(`^[A-Za-z0-9_-]{5,128}$`)
 
 // Service defines the redirect service interface
 type Service interface {
@@ -50,6 +58,54 @@ type redirectService struct {
 	instanceRepo     repository.InstanceRepository
 	wahaProvider     whatsapp.WhatsAppProvider
 	logger           *zap.Logger
+
+	// Per-link serialization of ProcessRedirect. Zero value is ready to use,
+	// so a redirectService built literally (as the tests do) still locks.
+	linkLocksMu sync.Mutex
+	linkLocks   map[string]*linkLock
+}
+
+// linkLock serializes the resolve → select → increment sequence of ONE link.
+// refs lets the entry be removed once nobody is using it, so a long tail of
+// slugs doesn't grow the map forever.
+type linkLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+// lockLink blocks until this process owns the given link, and returns the
+// release function.
+//
+// ponytail: an in-process mutex is exactly enough for the current topology —
+// ONE server container serves every /r hit. It buys `click_limit` and
+// `round_robin` a consistent snapshot (select and increment can't interleave)
+// without a round-trip to Postgres. It is NOT distributed: a second server
+// replica would need a row lock (SELECT ... FOR UPDATE) or an idempotency key
+// in Postgres instead. See the concurrency note on ProcessRedirect.
+func (s *redirectService) lockLink(linkID string) func() {
+	s.linkLocksMu.Lock()
+	if s.linkLocks == nil {
+		s.linkLocks = make(map[string]*linkLock)
+	}
+	l, ok := s.linkLocks[linkID]
+	if !ok {
+		l = &linkLock{}
+		s.linkLocks[linkID] = l
+	}
+	l.refs++
+	s.linkLocksMu.Unlock()
+
+	l.mu.Lock()
+
+	return func() {
+		l.mu.Unlock()
+		s.linkLocksMu.Lock()
+		l.refs--
+		if l.refs == 0 {
+			delete(s.linkLocks, linkID)
+		}
+		s.linkLocksMu.Unlock()
+	}
 }
 
 // NewRedirectService creates a new redirect service
@@ -69,9 +125,9 @@ func NewRedirectService(
 	}
 }
 
-// ProcessRedirect processes a public redirect request and returns the invite URL
-func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, linkID string) (*models.ProcessRedirectResult, error) {
-	// Get the redirect link
+// loadRedirectLink resolves the link by id or slug. A non-nil result means
+// "stop and return this to the caller"; both returns are never non-nil at once.
+func (s *redirectService) loadRedirectLink(ctx context.Context, slug string, linkID string) (*models.RedirectLink, *models.ProcessRedirectResult) {
 	var link *models.RedirectLink
 	var err error
 
@@ -80,10 +136,10 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 	} else if slug != "" {
 		link, err = s.redirectLinkRepo.GetBySlug(ctx, slug)
 	} else {
-		return &models.ProcessRedirectResult{
+		return nil, &models.ProcessRedirectResult{
 			Success: false,
 			Error:   "slug or linkId is required",
-		}, nil
+		}
 	}
 
 	if err != nil {
@@ -91,16 +147,122 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 			zap.String("slug", slug),
 			zap.String("linkID", linkID),
 			zap.Error(err))
-		return &models.ProcessRedirectResult{
+		return nil, &models.ProcessRedirectResult{
 			Success: false,
 			Error:   "internal error",
-		}, nil
+		}
 	}
 
 	if link == nil {
-		return &models.ProcessRedirectResult{
+		return nil, &models.ProcessRedirectResult{
 			Success: false,
 			Error:   "link not found",
+		}
+	}
+
+	return link, nil
+}
+
+// coldInvite says the selection landed on a group whose invite code is not
+// cached: the caller must fetch it from WAHA OUTSIDE the link lock.
+type coldInvite struct {
+	group    *models.Group
+	instance *models.Instance
+}
+
+// ProcessRedirect processes a public redirect request and returns the invite URL.
+//
+// Concurrency: the resolve → select → increment sequence is serialized per
+// link, so two simultaneous clicks cannot read the same click_count and pick
+// the same group. A success is only returned after the click was recorded.
+//
+// The WAHA call is deliberately OUTSIDE that critical section. It can take
+// ~2min (30s timeout × up to 4 attempts — waha_adapter.go:48-53 and :525-528),
+// and holding a per-link lock across it would serialize every other click on a
+// link whose group has no cached code yet — 153 of 208 active links are in that
+// state, including paid-campaign links doing ~50 hits/min. So a cold selection
+// returns, releases the lock, fetches, and repeats the selection.
+//
+// What this does NOT promise: exactly-once across replicas (see lockLink), nor
+// against an ambiguous commit or an invisible transport retry. And member_limit
+// still reads the synced members_count — serializing clicks does not reserve a
+// seat, so the documented lag between a click and a real join remains.
+func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, linkID string) (*models.ProcessRedirectResult, error) {
+	first, res := s.loadRedirectLink(ctx, slug, linkID)
+	if res != nil {
+		return res, nil
+	}
+
+	// Codes fetched from WAHA during THIS request, keyed by group. Carried into
+	// the second pass so a failed cache write (UpdateGroup is fail-open) cannot
+	// turn a code we already hold into an error.
+	fetched := make(map[string]string, 1)
+
+	// Two passes at most: the first may end cold, and the second runs with the
+	// code already in hand.
+	for attempt := 0; attempt < 2; attempt++ {
+		result, cold := s.selectAndCount(ctx, first.ID, slug, linkID, fetched)
+		if result != nil {
+			return result, nil
+		}
+
+		// Lock is released at this point.
+		inviteCode, failure := s.fetchInviteCode(ctx, cold.instance, cold.group)
+		if failure != nil {
+			return failure, nil
+		}
+		fetched[cold.group.ID] = inviteCode
+
+		// Cache for future clicks. Fail-open: losing the cache write is not a
+		// reason to refuse a code that is already valid in hand.
+		if err := s.groupRepo.UpdateGroup(ctx, cold.group.ID, map[string]interface{}{"invite_code": inviteCode}); err != nil {
+			s.logger.Warn("Failed to save invite code to database",
+				zap.String("groupID", cold.group.ID),
+				zap.Error(err))
+		}
+	}
+
+	// Both passes ended cold, i.e. the rotation moved to a different uncached
+	// group in between. Retryable error beats a third WAHA round trip.
+	return &models.ProcessRedirectResult{
+		Success: false,
+		Error:   "service temporarily unavailable",
+	}, nil
+}
+
+// selectAndCount runs the part that MUST be serialized per link: reload the
+// snapshot, pick a group and record the click. It holds the link lock for its
+// whole body and never calls WAHA.
+//
+// Returns exactly one of: a final result, or a coldInvite asking the caller to
+// fetch the invite code with the lock released.
+func (s *redirectService) selectAndCount(
+	ctx context.Context,
+	lockID string,
+	slug string,
+	linkID string,
+	fetched map[string]string,
+) (*models.ProcessRedirectResult, *coldInvite) {
+	release := s.lockLink(lockID)
+	defer release()
+
+	// Re-read under the lock: the snapshot from the first lookup may already be
+	// stale (another click just incremented it).
+	link, res := s.loadRedirectLink(ctx, slug, linkID)
+	if res != nil {
+		return res, nil
+	}
+
+	// The lock is keyed on the id learned BEFORE it was held. If the slug now
+	// resolves to a different link, this goroutine holds the wrong lock and must
+	// not increment under it.
+	if link.ID != lockID {
+		s.logger.Warn("Redirect link changed identity between lookups — refusing to count under the wrong lock",
+			zap.String("lockedID", lockID),
+			zap.String("loadedID", link.ID))
+		return &models.ProcessRedirectResult{
+			Success: false,
+			Error:   "service temporarily unavailable",
 		}, nil
 	}
 
@@ -187,83 +349,54 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 		}, nil
 	}
 
-	// Try to use the invite code saved in the database first
+	// Resolve the invite code without leaving the lock: from the database
+	// cache, or from what this request already fetched on an earlier pass.
 	var inviteCode string
-	if group.InviteCode != nil && *group.InviteCode != "" {
+	switch {
+	case group.InviteCode != nil && *group.InviteCode != "":
 		inviteCode = *group.InviteCode
+		// Validate the stored value before it becomes a URL: the column is
+		// written by other flows too, and a malformed code must not reach the
+		// caller's Location header nor burn a click.
+		if !inviteCodeRe.MatchString(inviteCode) {
+			s.logger.Error("Saved invite code has an invalid shape — refusing to redirect",
+				zap.String("groupID", group.ID),
+				zap.Int("codeLength", len(inviteCode)))
+			return &models.ProcessRedirectResult{
+				Success: false,
+				Error:   "invite code not available",
+			}, nil
+		}
 		s.logger.Debug("Using saved invite code from database",
 			zap.String("groupID", group.ID),
 			zap.String("groupName", group.Name))
-	} else {
-		// Fallback: Get the invite code from WAHA if not saved
+	case fetched[group.ID] != "":
+		inviteCode = fetched[group.ID]
+	default:
 		if s.wahaProvider == nil {
 			return &models.ProcessRedirectResult{
 				Success: false,
 				Error:   "WhatsApp provider not configured",
 			}, nil
 		}
-
-		var err error
-		inviteCode, err = s.wahaProvider.GetGroupInviteCode(ctx, instance.InstanceID, group.WAGroupID)
-		if err != nil {
-			s.logger.Error("Failed to get group invite code from WAHA",
-				zap.String("sessionName", instance.InstanceID),
-				zap.String("waGroupID", group.WAGroupID),
-				zap.String("groupName", group.Name),
-				zap.Bool("isAdmin", group.IsAdmin),
-				zap.Error(err))
-			observability.CaptureWithTags(err, map[string]string{
-				"module":      "redirect",
-				"flow":        "invite-code",
-				"sessionName": instance.InstanceID,
-				"waGroupID":   group.WAGroupID,
-				"groupName":   group.Name,
-			})
-
-			// Differentiate temporary from permanent errors
-			var providerErr *whatsapp.ProviderError
-			if errors.As(err, &providerErr) {
-				switch providerErr.Code {
-				case whatsapp.ErrCodeRateLimited, whatsapp.ErrCodeTimeout, whatsapp.ErrCodeNetworkError, whatsapp.ErrCodeProviderError:
-					return &models.ProcessRedirectResult{
-						Success: false,
-						Error:   "service temporarily unavailable",
-					}, nil
-				case whatsapp.ErrCodePermissionDenied:
-					return &models.ProcessRedirectResult{
-						Success: false,
-						Error:   "bot is not admin in group",
-					}, nil
-				}
-			}
-			return &models.ProcessRedirectResult{
-				Success: false,
-				Error:   "failed to get invite code",
-			}, nil
-		}
-
-		if inviteCode == "" {
-			return &models.ProcessRedirectResult{
-				Success: false,
-				Error:   "invite code not available",
-			}, nil
-		}
-
-		// Save the invite code to the database for future use
-		if err := s.groupRepo.UpdateGroup(ctx, group.ID, map[string]interface{}{"invite_code": inviteCode}); err != nil {
-			s.logger.Warn("Failed to save invite code to database",
-				zap.String("groupID", group.ID),
-				zap.Error(err))
-		}
+		// Cold: hand the slow call back to the caller, lock-free.
+		return nil, &coldInvite{group: group, instance: instance}
 	}
 
-	// Increment click counters
+	// Increment click counters. Fail-CLOSED on purpose: the counters are what
+	// click_limit and round_robin decide on, so handing out a destination
+	// without recording the click would silently overshoot the limit and skew
+	// the rotation. A caller that gets no URL retries; a caller that got an
+	// uncounted URL is a lost invariant.
 	if err := s.redirectLinkRepo.IncrementClicks(ctx, link.ID, targetGroup.GroupID); err != nil {
-		// Log but don't fail the request
-		s.logger.Warn("Failed to increment click counters",
+		s.logger.Error("Failed to increment click counters — refusing the redirect",
 			zap.String("linkID", link.ID),
 			zap.String("groupID", targetGroup.GroupID),
 			zap.Error(err))
+		return &models.ProcessRedirectResult{
+			Success: false,
+			Error:   "service temporarily unavailable",
+		}, nil
 	}
 
 	// Build the invite URL
@@ -276,6 +409,67 @@ func (s *redirectService) ProcessRedirect(ctx context.Context, slug string, link
 		GroupID:     group.ID,
 		WAGroupID:   group.WAGroupID,
 	}, nil
+}
+
+// fetchInviteCode asks WAHA for a group invite code. Called with NO link lock
+// held — see the note on ProcessRedirect.
+func (s *redirectService) fetchInviteCode(
+	ctx context.Context,
+	instance *models.Instance,
+	group *models.Group,
+) (string, *models.ProcessRedirectResult) {
+	inviteCode, err := s.wahaProvider.GetGroupInviteCode(ctx, instance.InstanceID, group.WAGroupID)
+	if err != nil {
+		s.logger.Error("Failed to get group invite code from WAHA",
+			zap.String("sessionName", instance.InstanceID),
+			zap.String("waGroupID", group.WAGroupID),
+			zap.String("groupName", group.Name),
+			zap.Bool("isAdmin", group.IsAdmin),
+			zap.Error(err))
+		observability.CaptureWithTags(err, map[string]string{
+			"module":      "redirect",
+			"flow":        "invite-code",
+			"sessionName": instance.InstanceID,
+			"waGroupID":   group.WAGroupID,
+			"groupName":   group.Name,
+		})
+
+		// Differentiate temporary from permanent errors
+		var providerErr *whatsapp.ProviderError
+		if errors.As(err, &providerErr) {
+			switch providerErr.Code {
+			case whatsapp.ErrCodeRateLimited, whatsapp.ErrCodeTimeout, whatsapp.ErrCodeNetworkError, whatsapp.ErrCodeProviderError:
+				return "", &models.ProcessRedirectResult{
+					Success: false,
+					Error:   "service temporarily unavailable",
+				}
+			case whatsapp.ErrCodePermissionDenied:
+				return "", &models.ProcessRedirectResult{
+					Success: false,
+					Error:   "bot is not admin in group",
+				}
+			}
+		}
+		return "", &models.ProcessRedirectResult{
+			Success: false,
+			Error:   "failed to get invite code",
+		}
+	}
+
+	// Validate BEFORE persisting: an unusable code must not be cached in the
+	// groups table for every future click to trip over.
+	if !inviteCodeRe.MatchString(inviteCode) {
+		s.logger.Error("WAHA returned an invite code with an invalid shape",
+			zap.String("sessionName", instance.InstanceID),
+			zap.String("waGroupID", group.WAGroupID),
+			zap.Int("codeLength", len(inviteCode)))
+		return "", &models.ProcessRedirectResult{
+			Success: false,
+			Error:   "invite code not available",
+		}
+	}
+
+	return inviteCode, nil
 }
 
 // ListGroups lists all groups available for redirect links for a user

@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"automatiza-go/internal/models"
 	"automatiza-go/internal/workers"
 
 	"github.com/alicebob/miniredis/v2"
@@ -192,5 +194,161 @@ func TestSetupRoutes_WithSSEHub(t *testing.T) {
 	// Should not be 404 — route is registered (will fail auth, returning 401 or similar)
 	if w.Code == http.StatusNotFound {
 		t.Fatal("expected /api/v1/sse/events to be registered, got 404")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GET / HEAD /r/:slug — route registration, precedence and edge paths
+// ---------------------------------------------------------------------------
+
+// newRedirectRouter wires a real gin.Engine and returns a pointer to the call
+// counter of the redirect service, so each case can assert how many attempts a
+// request actually produced.
+func newRedirectRouter(t *testing.T) (*gin.Engine, *int) {
+	t.Helper()
+	deps, mocks := newTestDeps()
+	calls := 0
+	mocks.RedirectService.ProcessRedirectFunc = func(_ context.Context, slug, linkID string) (*models.ProcessRedirectResult, error) {
+		calls++
+		return &models.ProcessRedirectResult{
+			Success:     true,
+			RedirectURL: "https://chat.whatsapp.com/ABCDEFGH",
+			GroupName:   "Group",
+			GroupID:     "g1",
+		}, nil
+	}
+	r := gin.New()
+	SetupRoutes(r, deps)
+	return r, &calls
+}
+
+func doRedirectRequest(r *gin.Engine, method, path, ua string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, nil)
+	if ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func TestSetupRoutes_DirectRedirect_CanonicalPath(t *testing.T) {
+	t.Parallel()
+	r, calls := newRedirectRouter(t)
+
+	w := doRedirectRequest(r, http.MethodGet, "/r/my-link", uaChromeDesktop)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", w.Code)
+	}
+	if got := w.Header().Get("Location"); got != "https://chat.whatsapp.com/ABCDEFGH" {
+		t.Errorf("Location = %q", got)
+	}
+	if *calls != 1 {
+		t.Errorf("service called %d times, want exactly 1", *calls)
+	}
+}
+
+func TestSetupRoutes_DirectRedirect_HeadIsPreviewAndBodyless(t *testing.T) {
+	t.Parallel()
+	r, calls := newRedirectRouter(t)
+
+	w := doRedirectRequest(r, http.MethodHead, "/r/my-link", uaChromeDesktop)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", w.Code)
+	}
+	if got := w.Header().Get("Location"); got != "/join/my-link?mode=preview" {
+		t.Errorf("Location = %q, want %q", got, "/join/my-link?mode=preview")
+	}
+	if w.Body.Len() != 0 {
+		t.Errorf("HEAD body should be empty, got %q", w.Body.String())
+	}
+	if *calls != 0 {
+		t.Errorf("HEAD must not call the service, got %d calls", *calls)
+	}
+}
+
+// Observed gin behaviour for the paths around /r/:slug. None of them may reach
+// the service — in particular the trailing-slash 301 is a CANONICAL redirect,
+// not a counted attempt.
+func TestSetupRoutes_DirectRedirect_EdgePathsNeverReachTheService(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		path         string
+		wantStatus   int
+		wantLocation string
+	}{
+		{path: "/r", wantStatus: http.StatusNotFound},
+		{path: "/r/", wantStatus: http.StatusNotFound},
+		{path: "/r/my-link/", wantStatus: http.StatusMovedPermanently, wantLocation: "/r/my-link"},
+		{path: "/r/a/b", wantStatus: http.StatusNotFound},
+	} {
+		t.Run("path="+tt.path, func(t *testing.T) {
+			t.Parallel()
+			r, calls := newRedirectRouter(t)
+
+			w := doRedirectRequest(r, http.MethodGet, tt.path, uaChromeDesktop)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
+			}
+			if got := w.Header().Get("Location"); got != tt.wantLocation {
+				t.Errorf("Location = %q, want %q", got, tt.wantLocation)
+			}
+			if *calls != 0 {
+				t.Errorf("service called %d times, want 0", *calls)
+			}
+		})
+	}
+}
+
+// The legacy JSON endpoint stays exactly as it was — old bundles and the /join
+// fallback both depend on it.
+func TestSetupRoutes_DirectRedirect_LegacyPostStillWorks(t *testing.T) {
+	t.Parallel()
+	r, calls := newRedirectRouter(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/redirect", strings.NewReader(`{"slug":"my-link"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if body["success"] != true {
+		t.Errorf("expected success=true, got %v", body["success"])
+	}
+	if *calls != 1 {
+		t.Errorf("service called %d times, want exactly 1", *calls)
+	}
+}
+
+// With no service configured the route must still exist and fail loudly: 404
+// would silently hand /r/<slug> back to the SPA, and /join would land on the
+// stub that cannot process a slug at all.
+func TestSetupRoutes_DirectRedirect_RegisteredEvenWithoutService(t *testing.T) {
+	t.Parallel()
+	deps, _ := newTestDeps()
+	deps.RedirectService = nil
+	r := gin.New()
+
+	panicGuard(t, "SetupRoutes_NilRedirectService", func() {
+		SetupRoutes(r, deps)
+	})
+
+	w := doRedirectRequest(r, http.MethodGet, "/r/my-link", uaChromeDesktop)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+	if got := w.Header().Get("Location"); got != "" {
+		t.Errorf("expected no Location, got %q", got)
 	}
 }

@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,4 +44,42 @@ func TestInitMetrics_Enabled_IdempotentWhenCalledTwice(t *testing.T) {
 	// GlobalMetrics is overwritten by the second call — both must be non-nil
 	assert.NotNil(t, GlobalMetrics)
 	assert.NotNil(t, first)
+}
+
+func TestInitMetrics_Enabled_RegistersRedirectCounter(t *testing.T) {
+	origMetrics := GlobalMetrics
+	defer func() { GlobalMetrics = origMetrics }()
+
+	GlobalMetrics = nil
+	require.NoError(t, InitMetrics(true))
+	require.NotNil(t, GlobalMetrics)
+	assert.NotNil(t, GlobalMetrics.RedirectRequests, "redirect counter must be registered")
+}
+
+// The redirect handler calls this on every response, including when OTel is
+// off — it must never panic on a nil GlobalMetrics.
+func TestRecordRedirectRequest_NoopWhenMetricsDisabled(t *testing.T) {
+	origMetrics := GlobalMetrics
+	defer func() { GlobalMetrics = origMetrics }()
+
+	GlobalMetrics = nil
+	assert.NotPanics(t, func() {
+		RecordRedirectRequest(context.Background(), "normal", "direct_success", 302)
+	})
+
+	GlobalMetrics = &Metrics{}
+	assert.NotPanics(t, func() {
+		RecordRedirectRequest(context.Background(), "preview", "fallback_preview", 302)
+	})
+}
+
+func TestRecordRedirectRequest_RecordsWhenEnabled(t *testing.T) {
+	origMetrics := GlobalMetrics
+	defer func() { GlobalMetrics = origMetrics }()
+
+	GlobalMetrics = nil
+	require.NoError(t, InitMetrics(true))
+	assert.NotPanics(t, func() {
+		RecordRedirectRequest(context.Background(), "normal", "direct_success", 302)
+	})
 }

@@ -252,6 +252,16 @@ func SetupRoutes(r *gin.Engine, deps *Dependencies) {
 		api.POST("/redirect", redirectHandler.Process)
 	}
 
+	// Shared links are /r/<slug> at the ROOT, not under /api/v1 — the shape is
+	// public and already printed on thousands of copied links. Registered even
+	// with a nil service (it answers 503) so the path never falls through to
+	// the SPA and silently changes behaviour.
+	{
+		directRedirectHandler := NewRedirectPublicHandler(deps.RedirectService, deps.Logger)
+		r.GET("/r/:slug", directRedirectHandler.Direct)
+		r.HEAD("/r/:slug", directRedirectHandler.Direct)
+	}
+
 	// Instagram (public) — OAuth callback (no session; state is signed),
 	// ephemeral story-media fetch (unguessable id) and Meta deauthorize /
 	// data-deletion stubs. Registered even when the feature is off so Meta's

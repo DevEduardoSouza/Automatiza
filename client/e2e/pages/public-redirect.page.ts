@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 /**
- * Page Object Model for the Public Redirect page (/r/:slug).
+ * Page Object Model for the Public Redirect page (/r/:slug and /join/:slug).
  * Handles loading, error, and manual redirect states.
  */
 export class PublicRedirectPage {
@@ -68,10 +68,21 @@ export class PublicRedirectPage {
   }
 
   /**
-   * Navigates to the public redirect page.
+   * Legacy SPA route. In production the backend now answers /r/<slug> itself
+   * with a 302; this path only still renders the SPA for clients whose old
+   * service worker serves the app shell.
    */
-  async goto(slug: string): Promise<void> {
+  async gotoLegacy(slug: string): Promise<void> {
     await this.page.goto(`/r/${slug}`);
+  }
+
+  /**
+   * Fallback route the backend 302s to. Always manual — it never
+   * auto-redirects. `query` carries the backend's verdict, e.g.
+   * `?error=groups_full` or `?mode=preview`.
+   */
+  async gotoJoin(slug: string, query = ''): Promise<void> {
+    await this.page.goto(`/join/${slug}${query}`);
   }
 
   /**

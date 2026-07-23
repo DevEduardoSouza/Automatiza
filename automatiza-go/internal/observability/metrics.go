@@ -1,7 +1,10 @@
 package observability
 
 import (
+	"context"
+
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -11,6 +14,7 @@ type Metrics struct {
 	AutomationRuns     metric.Int64Counter
 	WebhookEvents      metric.Int64Counter
 	WorkerTaskDuration metric.Float64Histogram
+	RedirectRequests   metric.Int64Counter
 }
 
 // GlobalMetrics is the singleton instance initialized at startup.
@@ -47,7 +51,29 @@ func InitMetrics(enabled bool) error {
 		metric.WithUnit("ms")); err != nil {
 		return err
 	}
+	if m.RedirectRequests, err = meter.Int64Counter("automatiza.redirect.requests",
+		metric.WithDescription("Public redirect link attempts, by client class and outcome"),
+		metric.WithUnit("{request}")); err != nil {
+		return err
+	}
 
 	GlobalMetrics = m
 	return nil
+}
+
+// RecordRedirectRequest counts one public redirect attempt.
+//
+// All three labels come from closed sets defined by the handler — never a
+// slug, URL or User-Agent, which would make the series unbounded. No-op when
+// metrics are disabled; the caller also emits an equivalent structured log, so
+// the OTel flag is never the only record of an attempt.
+func RecordRedirectRequest(ctx context.Context, clientClass, outcome string, httpStatus int) {
+	if GlobalMetrics == nil || GlobalMetrics.RedirectRequests == nil {
+		return
+	}
+	GlobalMetrics.RedirectRequests.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("client_class", clientClass),
+		attribute.String("outcome", outcome),
+		attribute.Int("http_status", httpStatus),
+	))
 }

@@ -24,9 +24,14 @@ precacheAndRoute(self.__WB_MANIFEST);
 // Navegação (document requests) → app shell precacheado.
 // API/RPC/Sentry ficam FORA do SW (sem handler = passthrough nativo do browser),
 // então nada autenticado é cacheado e SSE/upload continuam idênticos ao atual.
+// /r/<slug> é resolvido pelo BACKEND (302 direto pro WhatsApp, sem bundle).
+// Sem esta denylist o SW serviria o app shell e o usuário controlado pelo SW
+// nunca chegaria no Gin. /join continua no app shell — é uma página React.
+// Atenção: um SW já instalado só passa a respeitar isto quando for substituído;
+// até lá esses clientes seguem no fluxo SPA legado.
 registerRoute(
 	new NavigationRoute(createHandlerBoundToURL("/index.html"), {
-		denylist: [/^\/api\//, /^\/connect\//, /^\/sentry-tunnel/],
+		denylist: [/^\/api\//, /^\/connect\//, /^\/sentry-tunnel/, /^\/r(?:\/|$)/],
 	}),
 );
 
