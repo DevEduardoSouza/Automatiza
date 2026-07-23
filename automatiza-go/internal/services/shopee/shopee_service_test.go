@@ -841,11 +841,12 @@ func TestSearchOffers(t *testing.T) {
 		}
 	})
 
-	// priceDiscountRate é Int! e a Shopee devolve 0 mesmo em produto com preço
-	// cheio maior (schema.graphql:440). Sem o fallback por preços, {desconto}
-	// sairia vazio nessas ofertas. Os preços aqui são os da resposta da API —
-	// pré-cupom por construção.
-	t.Run("sem priceDiscountRate o desconto sai dos precos", func(t *testing.T) {
+	// priceDiscountRate é a ÚNICA fonte de percentual da Shopee
+	// (schema.graphql:440). priceMin/priceMax não têm semântica documentada
+	// (schema.graphql:436-437 sem descrição), então quando a taxa vem 0 o
+	// desconto fica 0 — não se inventa "25% OFF" a partir de priceMax, mesmo
+	// que ele vire o "De {preco_original}" da mensagem.
+	t.Run("sem priceDiscountRate nao inventa desconto a partir de priceMax", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			resp := map[string]interface{}{
 				"productOfferV2": map[string]interface{}{
@@ -889,9 +890,13 @@ func TestSearchOffers(t *testing.T) {
 		if len(result.Offers) != 1 {
 			t.Fatalf("expected 1 offer, got %d", len(result.Offers))
 		}
-		// (100 - 75) / 100 = 25%
-		if result.Offers[0].Discount != 25.0 {
-			t.Errorf("discount = %f, want 25.0 (derivado de priceMax x price)", result.Offers[0].Discount)
+		if result.Offers[0].Discount != 0 {
+			t.Errorf("discount = %f, want 0 (priceMax nao e preco cheio comprovado)", result.Offers[0].Discount)
+		}
+		// A linha "De/Por" segue usando priceMax — comportamento preexistente,
+		// só o percentual é que não é afirmado.
+		if result.Offers[0].OriginalPrice != 100.0 {
+			t.Errorf("originalPrice = %f, want 100.0 (priceMax)", result.Offers[0].OriginalPrice)
 		}
 	})
 
@@ -1906,9 +1911,10 @@ func TestGetProduct(t *testing.T) {
 		if product.OriginalPrice != 50.0 {
 			t.Errorf("originalPrice = %f, want 50.0 (priceMax)", product.OriginalPrice)
 		}
-		// Sem priceDiscountRate, o percentual sai dos preços: (50-30)/50 = 40%
-		if product.Discount != 40.0 {
-			t.Errorf("discount = %f, want 40.0 (derivado de priceMax x price)", product.Discount)
+		// Sem priceDiscountRate não há percentual: {desconto} sai vazio, em vez
+		// de anunciar 40% derivado de um priceMax de semântica indocumentada.
+		if product.Discount != 0 {
+			t.Errorf("discount = %f, want 0 (sem taxa oficial nao se infere percentual)", product.Discount)
 		}
 	})
 

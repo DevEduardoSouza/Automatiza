@@ -355,12 +355,13 @@ func TestRenderMonitorDispatchText_DiscountParityShopeeML(t *testing.T) {
 	shopeeOut := shopeeSvc.renderMonitorDispatchText(context.Background(), automation, aff,
 		"https://shopee.com.br/prod", "", "", "", false).Body
 
+	mlOriginal := 199.90
 	mlSvc := newTestService(t, func(s *monitoringService) {
 		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: body}}
 		s.mlService = &mockMLService{
 			GetProductPreviewFn: func(_ context.Context, _, _ string) (*models.MLProductPreview, error) {
 				return &models.MLProductPreview{
-					Title: "P", Price: 99.90, Discount: 50,
+					Title: "P", Price: 99.90, OriginalPrice: &mlOriginal, Discount: 50,
 					Permalink: "https://mercadolivre.com.br/p/MLB1",
 				}, nil
 			},
@@ -372,8 +373,10 @@ func TestRenderMonitorDispatchText_DiscountParityShopeeML(t *testing.T) {
 	if !strings.Contains(shopeeOut, "🔥 50% OFF") {
 		t.Fatalf("espelho Shopee deveria conter '50%% OFF'; got:\n%s", shopeeOut)
 	}
-	if !strings.Contains(mlOut.Body, "🔥 50% OFF") {
-		t.Fatalf("espelho ML deveria conter '50%% OFF' (paridade); got:\n%s", mlOut.Body)
+	// Mesmo produto, mesmos preços, mesmo template nas duas lojas: a saída tem
+	// de ser IDÊNTICA, não só "conter" o desconto.
+	if shopeeOut != mlOut.Body {
+		t.Fatalf("paridade quebrada:\nShopee:\n%s\nML:\n%s", shopeeOut, mlOut.Body)
 	}
 }
 

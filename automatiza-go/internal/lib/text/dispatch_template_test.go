@@ -1391,6 +1391,45 @@ func TestDiscountVarsLegacyCompat(t *testing.T) {
 		}
 	})
 
+	// Sem percentual, o legado NÃO pode virar "% OFF" pendurado — a linha some
+	// inteira, e a linha do preço acima dela continua de pé.
+	t.Run("template legado {desconto}% OFF sem desconto nao deixa sobra", func(t *testing.T) {
+		t.Parallel()
+		const template = "💸 Por {preco_formatado}\n{desconto}% OFF\n🛒 {link_afiliado}"
+		want := "💸 Por R$ 11,99\n🛒 https://exemplo"
+		for _, d := range []float64{0, 0.4, 150, -3} {
+			got := RenderShopeeOfferTemplate(template, ShopeeOfferVars{
+				Title: "P", Price: 11.99, Discount: d, AffiliateLink: "https://exemplo",
+			})
+			if got != want {
+				t.Errorf("Shopee com Discount=%v =\n%q\nwant\n%q", d, got, want)
+			}
+			gotML := RenderMLOfferTemplate(template, MLOfferVars{
+				Title: "P", Price: 11.99, Discount: d, AffiliateLink: "https://exemplo",
+			})
+			if gotML != want {
+				t.Errorf("ML com Discount=%v =\n%q\nwant\n%q", d, gotML, want)
+			}
+		}
+	})
+
+	// Invariante do contrato §4: o percentual descreve o PRODUTO. O renderer
+	// nunca o deriva de preços, então reduzir o Price (cupom, tag de desconto)
+	// não pode mexer no desconto exibido.
+	t.Run("percentual nao muda quando o preco cai por cupom", func(t *testing.T) {
+		t.Parallel()
+		const template = "{desconto_formatado}"
+		semCupom := RenderShopeeOfferTemplate(template, ShopeeOfferVars{
+			Title: "P", Price: 100, OriginalPrice: 125, Discount: 20,
+		})
+		comCupom := RenderShopeeOfferTemplate(template, ShopeeOfferVars{
+			Title: "P", Price: 70, OriginalPrice: 125, Discount: 20, CouponCode: "CUPOM30",
+		})
+		if semCupom != "20% OFF" || comCupom != "20% OFF" {
+			t.Errorf("cupom contaminou o percentual: sem=%q com=%q, want ambos %q", semCupom, comCupom, "20% OFF")
+		}
+	})
+
 	t.Run("alias legado {discount} nao e normalizado", func(t *testing.T) {
 		t.Parallel()
 		// 150 e 0.4 são inválidos para as variáveis novas, mas o alias inglês
@@ -1470,10 +1509,34 @@ func TestStripEmptyDiscountLine(t *testing.T) {
 			want:          "Por {preco_formatado} {desconto_formatado}",
 		},
 		{
-			name:          "linha legada {desconto}% OFF fica (tem texto proprio)",
-			template:      "{desconto}% OFF",
+			name:          "linha legada {desconto}% OFF some inteira (o sufixo e da variavel)",
+			template:      "Por {preco_formatado}\n{desconto}% OFF\n{link_afiliado}",
 			discountEmpty: true,
-			want:          "{desconto}% OFF",
+			want:          "Por {preco_formatado}\n{link_afiliado}",
+		},
+		{
+			name:          "sufixo % off em minuscula tambem conta",
+			template:      "🔥 {desconto}% off 🔥",
+			discountEmpty: true,
+			want:          "",
+		},
+		{
+			name:          "OFF sem % nao e sufixo: e texto, linha fica",
+			template:      "{desconto_formatado} off",
+			discountEmpty: true,
+			want:          "{desconto_formatado} off",
+		},
+		{
+			name:          "linha com texto proprio alem do sufixo fica",
+			template:      "{desconto}% de desconto na categoria",
+			discountEmpty: true,
+			want:          "{desconto}% de desconto na categoria",
+		},
+		{
+			name:          "alias legado {discount} nunca remove linha",
+			template:      "{discount}",
+			discountEmpty: true,
+			want:          "{discount}",
 		},
 		{
 			name:          "linha com spintax fica",

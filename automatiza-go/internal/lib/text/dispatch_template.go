@@ -133,16 +133,26 @@ func StripEmptyOriginalPriceLine(template string, originalPriceEmpty bool) strin
 	return strings.Join(kept, "\n")
 }
 
+// discountVarWithSuffixRegex casa um placeholder de desconto MAIS o sufixo de
+// unidade colado nele ("%", "% OFF"). O sufixo faz parte da variável: quem
+// escreve o template legado "{desconto}% OFF" está montando à mão o que
+// {desconto_formatado} entrega pronto, então sem o percentual o "% OFF" não é
+// texto do usuário, é resto de uma variável que não existe.
+var discountVarWithSuffixRegex = regexp.MustCompile(
+	`(?:\{\{(?:` + VarDescontoFormatado + `|` + VarDesconto + `)\}\}|\{(?:` + VarDescontoFormatado + `|` + VarDesconto + `)\})` +
+		`(?:\s*%(?:\s*(?i:OFF))?)?`)
+
 // StripEmptyDiscountLine remove a linha do desconto quando o percentual é
 // inválido (as duas variáveis renderizam ""), no mesmo molde de
 // StripEmptyOriginalPriceLine.
 //
-// A linha só sai quando, tirados os placeholders de desconto, NÃO sobra
-// nenhuma letra ou dígito: "🔥 {desconto_formatado} 🔥" e "-{desconto}%" são
-// decoração órfã e somem inteiras. Já "Por {preco_formatado} {desconto_formatado}"
-// e o legado "{desconto}% OFF" carregam conteúdo próprio (o outro placeholder
-// tem letras; "OFF" também) e ficam — o RenderTemplate apenas apaga a variável,
-// que é a regra "linha mista perde só a variável".
+// A linha só sai quando, tirados os placeholders de desconto (com o sufixo de
+// unidade grudado neles), NÃO sobra nenhuma letra ou dígito: "🔥 {desconto_formatado} 🔥",
+// "-{desconto}%" e o legado "{desconto}% OFF" são decoração órfã e somem
+// inteiros. Já "Por {preco_formatado} {desconto_formatado}" e
+// "{desconto}% de desconto na categoria" carregam conteúdo próprio e ficam — o
+// RenderTemplate apenas apaga a variável, que é a regra "linha mista perde só
+// a variável".
 //
 // Só considera as variáveis em português. O alias legado {discount} fica de
 // fora de propósito: ele tem vazio próprio (FormatDiscount) e um Discount
@@ -156,11 +166,7 @@ func StripEmptyDiscountLine(template string, discountEmpty bool) string {
 	lines := strings.Split(template, "\n")
 	kept := make([]string, 0, len(lines))
 	for _, line := range lines {
-		rest := line
-		for _, k := range []string{VarDescontoFormatado, VarDesconto} {
-			rest = strings.ReplaceAll(rest, "{{"+k+"}}", "")
-			rest = strings.ReplaceAll(rest, "{"+k+"}", "")
-		}
+		rest := discountVarWithSuffixRegex.ReplaceAllString(line, "")
 		if rest != line && !hasLetterOrDigit(rest) {
 			continue // era só desconto + decoração — descarta a linha
 		}

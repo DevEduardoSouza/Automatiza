@@ -16,6 +16,7 @@ import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/commerceurl"
 	"automatiza-go/internal/lib/crypto"
+	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
@@ -602,7 +603,11 @@ func parseAffiliateSocialHTML(html, finalURL string) *models.MLProductPreview {
 	if preview.OriginalPrice != nil && *preview.OriginalPrice > preview.Price && preview.Price > 0 {
 		d := ((*preview.OriginalPrice - preview.Price) / *preview.OriginalPrice) * 100
 		preview.DiscountPercent = &d
-		preview.Discount = d
+		// O ML não devolve percentual de desconto: aqui os preços SÃO a fonte,
+		// e são pré-cupom (o cupom só entra depois, ao montar a mensagem).
+		// Discount alimenta template, então vai normalizado (inteiro, 1..100);
+		// DiscountPercent segue cru para não mexer no card já exibido.
+		preview.Discount = text.DiscountPercentFromPrices(*preview.OriginalPrice, preview.Price)
 	}
 
 	return preview
@@ -658,10 +663,11 @@ func (s *mlService) parseProductFromHTML(html, originURL, productID string) *mod
 	// Extract original price
 	preview.OriginalPrice = extractOriginalPrice(html)
 
-	// Calculate discount from original price
+	// Calculate discount from original price (mesma regra do caminho de
+	// afiliado: preços são a única fonte no ML e são pré-cupom).
 	if preview.OriginalPrice != nil && *preview.OriginalPrice > preview.Price && preview.Price > 0 {
 		discount := ((*preview.OriginalPrice - preview.Price) / *preview.OriginalPrice) * 100
-		preview.Discount = discount
+		preview.Discount = text.DiscountPercentFromPrices(*preview.OriginalPrice, preview.Price)
 		preview.DiscountPercent = &discount
 	}
 

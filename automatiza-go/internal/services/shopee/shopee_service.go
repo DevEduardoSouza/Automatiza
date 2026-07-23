@@ -3,7 +3,6 @@ package shopee
 import (
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/commerceurl"
-	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
@@ -629,15 +628,15 @@ func (s *shopeeService) searchShopee(ctx context.Context, appID, secret string, 
 			}
 		}
 
-		// priceDiscountRate é Int! (schema.graphql:440) e vem 0 quando a
-		// Shopee não expõe a taxa, mesmo com priceMax acima do preço atual.
-		// Deriva o percentual dos preços da PRÓPRIA resposta — pré-cupom por
-		// construção, já que o cupom só entra depois, no render. Roda DEPOIS
-		// do filtro MinDiscount de propósito: o filtro continua decidindo
-		// pela taxa oficial, então nenhuma oferta muda de elegibilidade.
-		if discount <= 0 {
-			discount = text.DiscountPercentFromPrices(originalPrice, effectivePrice)
-		}
+		// NÃO derivamos percentual de desconto de priceMax quando
+		// priceDiscountRate vem 0: `priceMin`/`priceMax` são o par de preços
+		// que a API devolve ao lado de `price` e a doc oficial não define o
+		// que significam (schema.graphql:436-437 e API-REFERENCE.md:548-549
+		// vêm sem descrição), então "priceMax é o preço cheio" é suposição.
+		// Serve de heurística para a linha "De {preco_original}" (abaixo),
+		// mas virar "25% OFF" seria anunciar desconto não comprovado ao
+		// consumidor — e vazaria para {discount}, badge da UI e prompt da IA.
+		// A taxa oficial manda; sem ela, as variáveis de desconto ficam vazias.
 
 		// Skip offers with no real discount
 		if effectivePrice > 0 && originalPrice > 0 && effectivePrice >= originalPrice {
@@ -1318,11 +1317,8 @@ func (s *shopeeService) GetProduct(ctx context.Context, itemID, shopID int64, us
 		}
 	}
 
-	// Mesmo fallback pré-cupom da busca: sem priceDiscountRate, o percentual
-	// sai dos preços da resposta (priceMax como cheio).
-	if discount <= 0 {
-		discount = text.DiscountPercentFromPrices(originalPrice, effectivePrice)
-	}
+	// Sem derivação de percentual a partir de priceMax — mesma razão da busca:
+	// a semântica desses campos não está na doc oficial.
 
 	s.logger.Info("GetProduct completed",
 		zap.Int64("itemID", itemID),
