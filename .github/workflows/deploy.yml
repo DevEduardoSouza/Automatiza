@@ -3,9 +3,25 @@ name: Deploy
 on:
   push:
     branches: [main]
-    # Docs-only pushes don't produce a different system — skip the whole deploy.
+    # Governance-only pushes do not produce a different runtime artifact.
     paths-ignore:
       - "**.md"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/deploy.yml"
+      - "Makefile"
+      - "scripts/validate-change-governance.sh"
+      - "scripts/test-validate-change-governance.sh"
+      # Operação da VPS: nada aqui entra em imagem nem é copiado pelo deploy
+      # (o CI só faz scp de docker-compose.prod.yml e docker/waha-router/*.go).
+      # Instalação é manual por operador — um push aqui não deve bouncar containers.
+      - "ops/**"
+      - "systemd/**"
+      - "observability/**"
+      - "docker/postgres-backup/**"
+      - "docker/docker-compose.backup.yml"
+      - "docker/docker-compose.restore.yml"
+      - "docker/docker-compose.restore-pitr.yml"
   workflow_dispatch:
     inputs:
       full_restart:
@@ -20,6 +36,38 @@ env:
   NODE_VERSION: "20"
 
 jobs:
+  # Gate real do fluxo push-to-main: o CI (ci.yml) não roda em push na main,
+  # então este job valida migrações novas e change records ANTES de o deploy
+  # tocar a VPS. Os builds seguem em paralelo; só o job `deploy` espera.
+  governance:
+    name: Production Change Guardrails
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Test validator
+        run: ./scripts/test-validate-change-governance.sh
+
+      - name: Test migration runner on PostgreSQL 16
+        run: ./automatiza-go/scripts/db/test-run-migrations.sh
+
+      - name: Validate changed files
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: |
+          if [ -n "$BASE_SHA" ] && git rev-parse --verify "${BASE_SHA}^{commit}" >/dev/null 2>&1; then
+            ./scripts/validate-change-governance.sh --base "$BASE_SHA"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            ./scripts/validate-change-governance.sh --base HEAD^
+          else
+            ./scripts/validate-change-governance.sh
+          fi
+
   # ---------------------------------------------------------------------------
   # Both binaries are compiled ON THE RUNNER, where incremental caches persist
   # across runs (Go build cache, node_modules). The Docker builds then only
@@ -249,6 +297,10 @@ jobs:
     name: Deploy to VPS
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Guardrails de governança bloqueiam o rollout antes de qualquer mutação
+    # na VPS; os builds continuam em paralelo (o deploy espera imagens via
+    # poll no GHCR de qualquer forma).
+    needs: governance
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -432,7 +484,7 @@ jobs:
           # caminho enxuto (MarkProcessedEnsure). Rollout/rollback sem deploy:
           # gh variable set WEBHOOK_LEAN_PERSIST --body true|false + bounce.
           WEBHOOK_LEAN_PERSIST=${{ vars.WEBHOOK_LEAN_PERSIST }}
-          # Tracking historico de membros de grupo (migracao 076).
+          # Tracking historico de membros de grupo (Melhoria 2, Fase A).
           # ""/ausente/"false" = INERTE: zero escrita nova, zero chamada WAHA de
           # reconciliacao. Rollout/rollback sem deploy: gh variable set
           # GROUP_MEMBER_TRACKING_ENABLED --body true|false + bounce.
@@ -516,6 +568,7 @@ jobs:
           cat > /tmp/deploy-vps.sh << 'SCRIPT'
           set -euo pipefail
           FULL_RESTART="${1:-false}"
+          MIGRATION_TRACE_ID="${2:?migration trace id is required}"
           cd /opt/automatiza/docker
           export $(grep -E '^(BACKEND_IMAGE|FRONTEND_IMAGE)=' .env | xargs)
 
@@ -542,7 +595,10 @@ jobs:
           # O .env já aponta para as imagens NOVAS neste ponto — restaura os
           # pins antigos de .env.prev antes de sair, para o trap religar o
           # worker com a imagem ANTIGA (consistente com o schema não migrado).
-          if ! docker compose run --rm -T migrate </dev/null; then
+          if ! docker compose run --rm -T \
+            -e MIGRATION_TRACE_ID="$MIGRATION_TRACE_ID" \
+            migrate </dev/null; then
+            echo "error_code=migration_deploy_blocked event=deploy_aborted trace_id=$MIGRATION_TRACE_ID"
             echo "ERROR: migrations failed — restoring previous image pins and aborting deploy"
             wait "$WORKER_STOP" || true
             if [ -f .env.prev ]; then
@@ -557,14 +613,13 @@ jobs:
 
           echo "=== Rolling out new images ==="
           docker compose up -d --no-recreate postgres redis waha waha-2
-          # --no-deps e OBRIGATORIO aqui, nao estilo. `up -d <svc>` tambem sobe
-          # as DEPENDENCIAS do servico, e sem --no-deps ele as RECRIA quando
-          # estao config-dirty — anulando o --no-recreate da linha acima.
+          # --no-deps é OBRIGATÓRIO aqui, não estilo. `up -d <svc>` também sobe
+          # as DEPENDÊNCIAS do serviço, e sem --no-deps ele as RECRIA quando
+          # estão config-dirty — anulando o --no-recreate da linha acima.
           # waha-router depends_on waha/waha-2; server depends_on postgres/redis.
-          # Incidente 23/07/2026 (deploy aba9244): uma mudanca em
-          # WHATSAPP_HOOK_EVENTS deixou os dois shards dirty e este comando
-          # recriou ambos, parando ~724 sessoes pareadas (recuperadas pelo
-          # auto-start, mas ~15min de chips fora e ~40 envios perdidos).
+          # Incidente 23/07/2026: uma mudança em WHATSAPP_HOOK_EVENTS deixou os
+          # dois shards dirty e este comando recriou ambos, parando ~724 sessões
+          # pareadas (recuperadas pelo auto-start, mas ~20min de chips fora).
           docker compose up -d --no-deps server frontend waha-router
 
           echo "=== Waiting for backend health ==="
@@ -603,7 +658,9 @@ jobs:
           fi
           SCRIPT
           scp /tmp/deploy-vps.sh vps:/opt/automatiza/docker/.deploy.sh
-          ssh vps "bash /opt/automatiza/docker/.deploy.sh '${FULL_RESTART:-false}'"
+          # These arguments are intentionally expanded by the trusted CI runner.
+          # shellcheck disable=SC2029
+          ssh vps "bash /opt/automatiza/docker/.deploy.sh '${FULL_RESTART:-false}' '${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}'"
 
       - name: Notify on failure
         if: failure()

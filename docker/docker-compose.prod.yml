@@ -299,7 +299,7 @@ services:
     command:
       - |
         echo "=== Running init.sql ==="
-        PGPASSWORD=$$DB_PASSWORD psql -h postgres -U $$DB_USER -d $$DB_NAME -f /app/db/init.sql
+        PGPASSWORD=$$DB_PASSWORD psql -X -v ON_ERROR_STOP=1 -h postgres -U $$DB_USER -d $$DB_NAME -f /app/db/init.sql
         echo "=== Running migrations ==="
         DB_HOST=postgres /app/db/run-migrations.sh
     environment:

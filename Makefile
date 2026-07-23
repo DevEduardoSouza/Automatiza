@@ -10,7 +10,7 @@
         proto-generate proto-lint proto-breaking proto-deps install \
         db-up db-down db-reset db-migrate db-shell db-logs db-wait \
         waha-up waha-down waha-logs \
-        deploy deploy-status deploy-logs deploy-rollback
+        deploy deploy-status deploy-logs deploy-rollback test-governance test-migrations
 
 # Colors
 CYAN := \033[36m
@@ -105,12 +105,9 @@ db-migrate: ## Run all pending migrations on existing database
 	@echo "$(GREEN)Running database migrations...$(RESET)"
 	@cd automatiza-go && docker compose up -d postgres
 	@cd automatiza-go && docker compose exec -T postgres sh -c 'until pg_isready -U $${POSTGRES_USER:-automatiza} > /dev/null 2>&1; do sleep 1; done'
-	@cd automatiza-go && docker compose exec postgres sh -c \
-		'for f in /docker-entrypoint-initdb.d/migrations/*.sql; do \
-			case "$$f" in *rollback*|*.down.*) continue;; esac; \
-			echo "  Applying: $$(basename $$f)"; \
-			psql -v ON_ERROR_STOP=0 -U $${POSTGRES_USER:-automatiza} -d $${POSTGRES_DB:-automatiza} -f "$$f" 2>&1 || true; \
-		done'
+	@cd automatiza-go && docker compose exec -T postgres \
+		env MIGRATION_TRACE_ID="operator-local-$$(date +%Y%m%d%H%M%S)" \
+		/docker-entrypoint-initdb.d/02-run-migrations.sh
 	@echo "$(GREEN)Migrations complete!$(RESET)"
 
 db-reset: ## Reset database (DESTRUCTIVE - removes all data)
@@ -209,6 +206,13 @@ test-coverage: ## Run tests with coverage
 	@echo "$(GREEN)Running tests with coverage...$(RESET)"
 	@cd client && npm run test:coverage 2>/dev/null || echo "$(YELLOW)Client coverage not configured$(RESET)"
 	@cd automatiza-go && go test -v -race -coverprofile=coverage.out ./... && go tool cover -html=coverage.out -o coverage.html
+
+test-governance: ## Test and run incremental production-change guardrails
+	@./scripts/test-validate-change-governance.sh
+	@./scripts/validate-change-governance.sh
+
+test-migrations: ## Test the fail-closed migration runner on PostgreSQL 16
+	@./automatiza-go/scripts/db/test-run-migrations.sh
 
 # =============================================================================
 # Protocol Buffers

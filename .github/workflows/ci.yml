@@ -31,6 +31,7 @@ jobs:
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       backend: ${{ steps.filter.outputs.backend }}
+      governance: ${{ steps.filter.outputs.governance }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,10 +52,52 @@ jobs:
               - 'automatiza-go/**'
               - 'proto/**'
               - '.github/workflows/ci.yml'
+            governance:
+              - '.github/PULL_REQUEST_TEMPLATE.md'
+              - '.github/workflows/ci.yml'
+              - 'docs/**'
+              - 'Makefile'
+              - 'scripts/validate-change-governance.sh'
+              - 'scripts/test-validate-change-governance.sh'
+              - 'automatiza-go/scripts/db/run-migrations.sh'
+              - 'automatiza-go/scripts/db/test-run-migrations.sh'
+              - 'automatiza-go/scripts/db/migrations/**'
+              - 'docker/docker-compose.prod.yml'
 
   # All jobs below fan out in parallel from `changes` — tests no longer wait
   # for lints, so the critical path is the single slowest job instead of
   # lint + test stacked.
+  governance:
+    name: Production Change Guardrails
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.governance == 'true'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Test validator
+        run: ./scripts/test-validate-change-governance.sh
+
+      - name: Test migration runner on PostgreSQL 16
+        run: ./automatiza-go/scripts/db/test-run-migrations.sh
+
+      - name: Validate changed files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$BASE_SHA" ] && git rev-parse --verify "${BASE_SHA}^{commit}" >/dev/null 2>&1; then
+            ./scripts/validate-change-governance.sh --base "$BASE_SHA"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            ./scripts/validate-change-governance.sh --base HEAD^
+          else
+            ./scripts/validate-change-governance.sh
+          fi
+
   lint-frontend:
     name: Lint Frontend
     runs-on: ubuntu-latest

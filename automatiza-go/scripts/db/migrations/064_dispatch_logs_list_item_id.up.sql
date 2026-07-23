@@ -1,3 +1,4 @@
+-- automatiza:migration-mode=nontransactional
 -- Rastreabilidade de entrega por item de lista (L2 da auditoria de estabilidade).
 --
 -- O LIST mode marca ml_link_list_items.consumed_at NO ENFILEIRAMENTO; se o envio
@@ -6,21 +7,10 @@
 -- dispatch_log do LIST ao item que o originou, permitindo ao reconciliador
 -- (reconcile_list_deliveries) detectar "consumido mas nunca entregue" e devolver
 -- o item (consumed_at=NULL) para retry no próximo ciclo.
-ALTER TABLE dispatch_logs ADD COLUMN IF NOT EXISTS list_item_id UUID;
+SET lock_timeout = '5s';
+SET statement_timeout = '10min';
 
--- Autocura: um CREATE INDEX CONCURRENTLY interrompido (crash/cancel) deixa o
--- índice INVALID — e o IF NOT EXISTS abaixo o veria como "existente" para
--- sempre. Dropa só se inválido; as migrações re-rodam a cada deploy.
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_index i
-        JOIN pg_class c ON c.oid = i.indexrelid
-        WHERE c.relname = 'idx_dispatch_logs_list_item' AND NOT i.indisvalid
-    ) THEN
-        EXECUTE 'DROP INDEX idx_dispatch_logs_list_item';
-    END IF;
-END$$;
+ALTER TABLE dispatch_logs ADD COLUMN IF NOT EXISTS list_item_id UUID;
 
 -- Índice parcial: só linhas do LIST mode entram (fração pequena da tabela).
 -- CONCURRENTLY é OBRIGATÓRIO aqui: dispatch_logs tem ~8.6GB/6M+ linhas em
@@ -33,3 +23,6 @@ END$$;
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dispatch_logs_list_item
 ON dispatch_logs (list_item_id, created_at)
 WHERE list_item_id IS NOT NULL;
+
+RESET statement_timeout;
+RESET lock_timeout;
