@@ -1230,6 +1230,108 @@ type InstanceFailoverRepository interface {
 	ListEvents(ctx context.Context, in ListFailoverEventsInput) ([]models.InstanceFailoverEvent, string, error)
 }
 
+// MonitorOfferRetryRepository é o ledger de ofertas/campanhas do monitor
+// (Melhoria 9, migração 079). Guarda o estado POR LINK COMERCIAL de uma
+// mensagem-fonte, e por destino de cada saída.
+//
+// Não substitui dispatch_logs: aquela é histórico por destino, volumosa, e o
+// status dela não responde "esta mensagem já produziu sua oferta". Aqui vivem
+// as unique keys que fazem redelivery de webhook virar no-op e o crash
+// "WAHA aceitou e o processo morreu" virar `ambiguous` visível em vez de
+// duplicata.
+//
+// Duas regras valem para TODA implementação desta interface, iguais às da
+// MonitorCadenceRepository: o relógio é o do PostgreSQL
+// (transaction_timestamp()), e toda transição é CAS — um worker antigo
+// acordando depois de um lease reemitido faz zero linhas e vira no-op.
+type MonitorOfferRetryRepository interface {
+	// --- criação ---
+
+	// CreateJobWithItems grava job + itens sintáticos numa ÚNICA transação,
+	// ANTES de qualquer I/O externo. created=false significa que a identidade
+	// da mensagem já existia: o chamador NÃO chama API nem envia nada — o dono
+	// vivo ou o sweep concluem o job. É este retorno que torna redelivery de
+	// webhook idempotente.
+	CreateJobWithItems(ctx context.Context, job *models.MonitorOfferJob, items []models.MonitorOfferItem) (bool, error)
+
+	// GetJob lê um job escopado por tenant. Outro tenant recebe not-found —
+	// nunca "forbidden" com dados dentro.
+	GetJob(ctx context.Context, userID, jobID string) (*models.MonitorOfferJob, error)
+	ListItems(ctx context.Context, jobID string) ([]models.MonitorOfferItem, error)
+
+	// --- ciclo de tentativa ---
+
+	// ClaimDueItems reivindica itens pending vencidos (FOR UPDATE SKIP LOCKED),
+	// incrementa enqueue_generation e grava lease na MESMA transação. Só o item
+	// de MENOR ordinal por job entra enquanto o job não tem produto escolhido:
+	// é isso que torna determinística a corrida de dois unknowns que depois
+	// viram produto.
+	ClaimDueItems(ctx context.Context, limit int) ([]models.MonitorOfferItemLease, error)
+
+	// ClaimItemForAttempt é o CAS do handler: (id, generation, status=pending)
+	// → processing. Generation obsoleta ou status terminal devolve nil, nil.
+	ClaimItemForAttempt(ctx context.Context, itemID string, generation int) (*models.MonitorOfferAttempt, error)
+
+	// MarkAttemptStarted carimba attempt_started_at e incrementa attempts.
+	// Separado do claim de propósito: crash ANTES deste marcador devolve o item
+	// a pending sem consumir tentativa.
+	MarkAttemptStarted(ctx context.Context, itemID string) error
+
+	// FinishItem aplica o desfecho e recomputa o status do job na MESMA
+	// transação.
+	FinishItem(ctx context.Context, out models.MonitorOfferItemOutcome) error
+
+	// RescheduleItem devolve o item a pending. consumeAttempt=false para os
+	// casos que NÃO gastam tentativa de negócio (fora da janela, sem chip,
+	// shutdown).
+	RescheduleItem(ctx context.Context, itemID string, nextAttemptAt time.Time, reasonCode string, consumeAttempt bool) error
+
+	// PublishCanonicalKey resolve a corrida de duas ocorrências do mesmo
+	// produto: SELECT job FOR UPDATE, menor ordinal vence. Depois que a key
+	// pertence a uma saída preparada/enviada ela nunca troca de dono.
+	PublishCanonicalKey(ctx context.Context, itemID string, canonicalKey string) (models.CanonicalKeyVerdict, error)
+
+	// --- entrega por destino ---
+
+	// UpsertDelivery cria a linha em 'prepared'. Idempotente na PK.
+	UpsertDelivery(ctx context.Context, d models.MonitorOfferDelivery) error
+
+	// MarkDeliverySending é o CAS imediatamente ANTES do POST na WAHA. false
+	// significa que outro processo já assumiu ou o desfecho já é terminal.
+	MarkDeliverySending(ctx context.Context, jobID string, outputKey, destinationGroupID string, token string) (bool, error)
+
+	// FinishDelivery grava o desfecho. sent e ambiguous são ABSORVENTES: nunca
+	// voltam para sending, porque reenviar um 'sent' duplica no grupo do
+	// cliente e reenviar um 'ambiguous' pode duplicar.
+	FinishDelivery(ctx context.Context, jobID string, outputKey, destinationGroupID string, token string, status, reasonCode string, providerMessageID *string) error
+
+	ListDeliveries(ctx context.Context, jobID string, outputKey string) ([]models.MonitorOfferDelivery, error)
+
+	// --- manutenção ---
+
+	// ReapStaleLeases: 'prepared' órfã vira failed/delivery_rejected (prova que
+	// nenhum POST começou); 'sending' vencida vira ambiguous (NUNCA pending);
+	// item em processing sem attempt_started_at volta a pending sem consumir
+	// tentativa.
+	ReapStaleLeases(ctx context.Context) (models.MonitorOfferReapStats, error)
+
+	// ExpirePayloads limpa ciphertext vencido (6h) e marca item ainda ativo
+	// como exhausted/payload_expired.
+	ExpirePayloads(ctx context.Context) (int, error)
+
+	// DeleteTerminalOlderThan apaga metadata terminal em lotes.
+	DeleteTerminalOlderThan(ctx context.Context, olderThan time.Duration, batch int) (int, error)
+
+	// --- replay manual ---
+
+	// GetItemForReplay lê item + job escopados por tenant.
+	GetItemForReplay(ctx context.Context, userID, itemID string) (*models.MonitorOfferItem, *models.MonitorOfferJob, error)
+
+	// ResetItemForReplay zera attempts e lease, PRESERVA total_attempts,
+	// incrementa replay_count e enqueue_generation, e agenda agora.
+	ResetItemForReplay(ctx context.Context, userID, itemID string, allowAmbiguous bool) error
+}
+
 // MonitorCadenceRepository é o ledger durável da cadência do espelho
 // (Melhoria 7, migração 078). PostgreSQL é a primitiva de verdade: Redis/Asynq
 // podem ser zerados e todo pending não terminal continua recuperável daqui.

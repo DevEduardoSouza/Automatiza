@@ -82,9 +82,16 @@ func (g Gate) Allows(userID uuid.UUID) bool {
 	return ok
 }
 
-// AllowsString aceita o ID em texto. ID não parseável nega — nunca libera por
-// não conseguir ler o argumento.
+// AllowsString aceita o ID em texto.
+//
+// `all` é checado ANTES do parse: "todos" não pode depender do formato do ID.
+// Fora dele, um ID não parseável nega — comparar contra a allowlist exige uma
+// identidade, e liberar por não conseguir ler o argumento seria o inverso do
+// propósito do gate.
 func (g Gate) AllowsString(userID string) bool {
+	if g.all {
+		return true
+	}
 	id, err := uuid.Parse(strings.TrimSpace(userID))
 	if err != nil {
 		return false

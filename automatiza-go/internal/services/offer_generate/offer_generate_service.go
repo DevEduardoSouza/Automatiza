@@ -16,6 +16,7 @@ import (
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/commerceurl"
 	"automatiza-go/internal/lib/ctapicker"
 	"automatiza-go/internal/lib/humanize"
 	"automatiza-go/internal/lib/pacing"
@@ -230,7 +231,8 @@ func (s *offerGenerateService) processIncoming(ctx context.Context, msg *models.
 		zap.String("instance", msg.InstanceName),
 		zap.String("group", msg.RemoteJID),
 		zap.Int("links", len(links)),
-		zap.String("bodyPreview", truncateStr(msg.Body, 100)))
+		zap.Int("bodyLen", len(msg.Body)),
+		zap.String("bodyHash", commerceurl.Hash8(msg.Body)))
 
 	// Resolve o DONO do chip que entregou a mensagem ANTES do dedup — as chaves
 	// abaixo TÊM que ser escopadas por ele (mesmo fix do monitoring, #245): num
@@ -366,6 +368,28 @@ func (s *offerGenerateService) processAutomationLeased(ctx, sendRoot context.Con
 		} else if text.IsMLLink(link) {
 			mlLinks = append(mlLinks, link)
 		}
+	}
+
+	// 2b. Cardinalidade (Melhoria 9, §12.7): a oferta é do PRIMEIRO PRODUTO na
+	// ordem do texto, não "Shopee sempre primeiro".
+	//
+	// O ramo abaixo é `if shopee {...} else if ml {...}`, então um cupom Shopee
+	// citado antes de um produto ML roubava a oferta: entrava no ramo Shopee,
+	// virava aviso de cupom, e o produto que o cliente queria anunciar nunca
+	// era montado. A reordenação usa só classificação LOCAL (host + path, zero
+	// I/O) — o mesmo `commerceurl.ClassifyLocal` do planner.
+	//
+	// Quando nenhum link é produto localmente (ex.: dois short links, que só a
+	// expansão resolve), a ordem histórica é preservada: sem prova de produto
+	// não há motivo para mudar o desempate.
+	// shopeeCarryOver leva os links Shopee para o ramo ML quando a oferta é
+	// dele. Sem isso, o aviso de cupom do ML (que PRESERVA o corpo original)
+	// deixaria os links Shopee crus na mensagem — vazando a comissão para quem
+	// postou no grupo-fonte.
+	var shopeeCarryOver []string
+	if firstProductStore(links) == models.MonitorStoreMercadoLivr && len(shopeeLinks) > 0 {
+		shopeeCarryOver = shopeeLinks
+		shopeeLinks = nil
 	}
 
 	// 3. Filter by configured stores (fallback to user's active affiliate stores)
@@ -738,7 +762,7 @@ func (s *offerGenerateService) processAutomationLeased(ctx, sendRoot context.Con
 				zap.String("automationID", auto.ID),
 				zap.String("link", link),
 				zap.Error(prevErr))
-			return s.relayMLCouponNotice(ctx, sendRoot, auto, msg, mlLinks)
+			return s.relayMLCouponNotice(ctx, sendRoot, auto, msg, mlLinks, shopeeCarryOver)
 		}
 
 		// ML is passthrough: the user posts their OWN affiliate link (meli.la/sec
@@ -1423,7 +1447,8 @@ func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.Inc
 		zap.String("group", msg.RemoteJID),
 		zap.Bool("hasMedia", msg.HasMedia),
 		zap.String("mediaType", msg.MediaType),
-		zap.String("bodyPreview", truncateStr(msg.Body, 100)))
+		zap.Int("bodyLen", len(msg.Body)),
+		zap.String("bodyHash", commerceurl.Hash8(msg.Body)))
 
 	// Escopo por dono ANTES dos claims — mesmo racional do fluxo principal
 	// (chip de outro usuário sem automação não pode consumir o claim).
@@ -1590,8 +1615,30 @@ func (s *offerGenerateService) relayWithConvertedShopeeLinks(ctx, sendRoot conte
 // batido do Shopee. Espelha a mecânica de relayWithConvertedShopeeLinks (ordena
 // do link mais longo para o mais curto p/ o ReplaceAll não solar prefixo, e usa
 // cópia rasa para o body convertido não vazar entre donos).
-func (s *offerGenerateService) relayMLCouponNotice(ctx, sendRoot context.Context, auto *models.Automation, msg *models.IncomingMessage, mlLinks []string) error {
+func (s *offerGenerateService) relayMLCouponNotice(ctx, sendRoot context.Context, auto *models.Automation, msg *models.IncomingMessage, mlLinks, shopeeLinks []string) error {
 	body := msg.Body
+
+	// Links Shopee que vieram junto (a oferta era do ML): converter para o
+	// afiliado do DONO ou REMOVER do corpo. O corpo deste aviso é o texto
+	// original preservado, então um link Shopee não convertido sairia cru e
+	// creditaria a venda a quem postou no grupo-fonte. Remover é a única
+	// alternativa segura a converter — nunca deixar passar.
+	if len(shopeeLinks) > 0 && s.shopeeService != nil {
+		ordered := append([]string(nil), shopeeLinks...)
+		sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
+		for _, orig := range ordered {
+			aff, err := s.shopeeService.GenerateAffiliateLink(ctx, orig, auto.UserID)
+			if err == nil && aff != nil && aff.AffiliateLink != "" {
+				body = strings.ReplaceAll(body, orig, aff.AffiliateLink)
+				continue
+			}
+			s.logger.Warn("offer_generate: link Shopee não convertido no aviso ML — removido do corpo",
+				zap.String("automationID", auto.ID),
+				zap.String("linkHash", commerceurl.Hash8(orig)),
+				zap.Error(err))
+			body = strings.ReplaceAll(body, orig, "")
+		}
+	}
 
 	ordered := append([]string(nil), mlLinks...)
 	sort.SliceStable(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
@@ -2125,4 +2172,22 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 func (s *offerGenerateService) buildRelayContentKey(scope string, msg *models.IncomingMessage) string {
 	h := sha256.Sum256([]byte(msg.Body + "\x00" + msg.MediaURL + "\x00" + msg.MimeType))
 	return fmt.Sprintf("og_relay_content:%s:%s:%s", scope, msg.RemoteJID, hex.EncodeToString(h[:8]))
+}
+
+// firstProductStore devolve a loja do primeiro link que, SÓ pela classificação
+// local (host + path, sem nenhuma chamada de rede), já é uma página de produto.
+//
+// Devolve "" quando nenhum link prova ser produto localmente — caso em que o
+// chamador mantém a ordem histórica, porque não há evidência para desempatar.
+func firstProductStore(links []string) string {
+	for _, raw := range links {
+		u, err := commerceurl.Parse(raw)
+		if err != nil || u.Store == "" {
+			continue
+		}
+		if commerceurl.ClassifyLocal(u).Class == models.URLClassProduct {
+			return u.Store
+		}
+	}
+	return ""
 }

@@ -50,6 +50,7 @@ import (
 	"automatiza-go/internal/lib/pacing"
 	"automatiza-go/internal/lib/reputation"
 	"automatiza-go/internal/lib/urlsafety"
+	"automatiza-go/internal/lib/usergate"
 	"automatiza-go/internal/middleware"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
@@ -71,6 +72,7 @@ import (
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/mllinklists"
 	"automatiza-go/internal/services/monitoring"
+	"automatiza-go/internal/services/monitoroffer"
 	"automatiza-go/internal/services/offer_generate"
 	"automatiza-go/internal/services/reconciliation"
 	"automatiza-go/internal/services/redirect"
@@ -674,6 +676,58 @@ func main() {
 		config.NewModuleLogger(logger, "cron"),
 	)
 
+	// ---------------------------------------------------------------------
+	// Melhoria 9 — ledger de ofertas/campanhas do monitor.
+	//
+	// Os dois gates nascem OFF. Token fora de off/all/UUID é ERRO DE BOOT
+	// (usergate.MustParse), nunca "all": um erro de digitação na env não pode
+	// ligar uma feature nova para 870 usuários.
+	//
+	// As correções de SEGURANÇA da melhoria 9 (host exato, anti-SSRF, fim do
+	// repasse de URL comercial crua) NÃO passam por gate — já estão em
+	// produção desde b3b0a70 e não voltam atrás.
+	// ---------------------------------------------------------------------
+	monitorRetryGate := usergate.MustParse("MONITOR_PRODUCT_RETRY", os.Getenv("MONITOR_PRODUCT_RETRY"))
+	monitorMirrorGate := usergate.MustParse("MONITOR_MIRROR_CONTENT", os.Getenv("MONITOR_MIRROR_CONTENT"))
+	logger.Info("Melhoria 9 (ledger de ofertas do monitor)",
+		zap.String("retry_gate", monitorRetryGate.String()),
+		zap.String("mirror_gate", monitorMirrorGate.String()))
+
+	// Com o gate de retry globalmente off o coordinator fica sem repositório:
+	// nenhuma linha é escrita, nenhuma task é enfileirada, e a chave de
+	// criptografia NÃO é exigida no boot.
+	var monitorOfferRepo repository.MonitorOfferRetryRepository
+	if !monitorRetryGate.GloballyOff() {
+		if cfg.MLCredentialsEncryptionKey == "" {
+			logger.Fatal("MONITOR_PRODUCT_RETRY ligado exige ML_CREDENTIALS_ENCRYPTION_KEY (o payload do retry é cifrado)")
+		}
+		monitorOfferRepo = repos.MonitorOfferRetry
+	}
+	monitorOfferCoordinator := monitoroffer.NewCoordinator(
+		monitorOfferRepo, queueClient, monitorRetryGate, monitorMirrorGate,
+		cfg.MLCredentialsEncryptionKey,
+		config.NewModuleLogger(logger, "monitor-offer"),
+	)
+
+	// Sweep de 1 minuto: reaper de lease, expiração de payload e
+	// reenfileiramento dos itens vencidos. Só roda com o gate ligado.
+	if !monitorRetryGate.GloballyOff() {
+		cronService.RegisterTask("monitor_offer_sweep", time.Minute, func(ctx context.Context) error {
+			monitorOfferCoordinator.Sweep(ctx, 100)
+			return nil
+		})
+	}
+
+	// Cleanup diário roda SEMPRE após a migração, inclusive com os gates off:
+	// ele apaga metadata terminal de um rollout anterior e não enfileira nada.
+	cronService.RegisterTask("monitor_offer_cleanup", 24*time.Hour, func(ctx context.Context) error {
+		monitorOfferCleanup := monitoroffer.NewCoordinator(
+			repos.MonitorOfferRetry, nil, monitorRetryGate, monitorMirrorGate,
+			cfg.MLCredentialsEncryptionKey, config.NewModuleLogger(logger, "monitor-offer-cleanup"))
+		monitorOfferCleanup.Cleanup(ctx)
+		return nil
+	})
+
 	// Reconciliador de entregas do LIST: devolve itens consumidos no
 	// enfileiramento cuja entrega nunca se confirmou (0 sent, ≥1 failed na
 	// janela) e libera os claims de dedup dos destinos falhos. Fecha o buraco
@@ -897,6 +951,12 @@ func main() {
 		monitoring.WithCTARepo(ctaRepo),
 		monitoring.WithCouponApplier(monitorCouponApplier),
 		monitoring.WithDispatchText(os.Getenv("MONITOR_DISPATCH_TEXT")),
+		// Melhoria 9: espelho de conteúdo comum. Gate fechado (default) mantém
+		// o early return de "mensagem sem link" byte a byte.
+		monitoring.WithMirrorContent(usergate.MustParse("MONITOR_MIRROR_CONTENT", os.Getenv("MONITOR_MIRROR_CONTENT"))),
+		// Ledger da Melhoria 9: com o gate fechado o coordinator não grava nada
+		// e o serviço se comporta exatamente como antes.
+		monitoring.WithOfferCoordinator(monitorOfferCoordinator),
 		monitoring.WithDispatchGate(failoverGate),
 		// Cadência durável do espelho (Melhoria 7). O adapter WAHA implementa
 		// DurableMediaFetcher; outro provider entra como nil e a admissão
@@ -1976,6 +2036,23 @@ func runWorker(
 			runner, config.NewModuleLogger(logger, "monitor-deferred"))
 		queueServer.RegisterHandler(workers.TypeMonitoringDeferredDispatch,
 			observability.SentryAsynqMiddleware("monitor_deferred", asynq.HandlerFunc(monitorDeferredWorker.ProcessTask)))
+	}
+
+	// Retry de link comercial (Melhoria 9). Só registra com o gate ligado —
+	// gate off = componente inerte, sem handler e sem consumir slot da fila.
+	//
+	// O gate é reparseado aqui em vez de entrar na assinatura de runWorker:
+	// MustParse já falhou no boot se a env fosse inválida, então esta segunda
+	// leitura não pode divergir da primeira.
+	if retryGate := usergate.MustParse("MONITOR_PRODUCT_RETRY", os.Getenv("MONITOR_PRODUCT_RETRY")); !retryGate.GloballyOff() {
+		executor, _ := monitoringService.(workers.RetryExecutor)
+		monitorOfferRetryWorker := workers.NewMonitorOfferRetryWorker(
+			postgres.NewMonitorOfferRetryRepository(db, config.NewModuleLogger(logger, "monitor-offer-repo")),
+			executor, cfg.MLCredentialsEncryptionKey,
+			config.NewModuleLogger(logger, "monitor-offer-retry"))
+		queueServer.RegisterHandler(workers.TypeMonitorOfferRetry,
+			observability.SentryAsynqMiddleware("monitor_offer_retry",
+				asynq.HandlerFunc(monitorOfferRetryWorker.ProcessTask)))
 	}
 
 	queueServer.RegisterHandler(workers.TypeInstagramPublishStory,

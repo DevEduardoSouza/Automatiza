@@ -110,3 +110,28 @@ func TestMustParsePanicaEmGateRuim(t *testing.T) {
 	}()
 	MustParse("TESTE", "todos")
 }
+
+// TestAllLiberaIndependenteDoFormatoDoID: "all" significa todos. Fazê-lo
+// depender de o ID parsear como UUID excluiria silenciosamente qualquer conta
+// cujo identificador não fosse UUID — um gate "aberto" que nega.
+func TestAllLiberaIndependenteDoFormatoDoID(t *testing.T) {
+	g, err := Parse("all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{uuid.New().String(), "user-1", "", "qualquer-coisa"} {
+		if !g.AllowsString(id) {
+			t.Errorf("all negou o ID %q", id)
+		}
+	}
+}
+
+// A allowlist, ao contrário, exige identidade: sem UUID não há como comparar.
+func TestAllowlistExigeUUIDValido(t *testing.T) {
+	g, _ := Parse(uuid.New().String())
+	for _, id := range []string{"user-1", "", "nao-e-uuid"} {
+		if g.AllowsString(id) {
+			t.Errorf("allowlist liberou o ID inválido %q", id)
+		}
+	}
+}

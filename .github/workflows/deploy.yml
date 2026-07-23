@@ -480,6 +480,19 @@ jobs:
           # do grupo). "all" = todos. "id1,id2" = allowlist de user_ids (canário).
           # Rollout sem novo deploy: gh variable set MONITOR_DISPATCH_TEXT --body <valor>.
           MONITOR_DISPATCH_TEXT=${{ vars.MONITOR_DISPATCH_TEXT }}
+          # Melhoria 9 — ledger de ofertas/campanhas do monitor (migração 079).
+          # Formato dos DOIS: ""/"off" (default) | "all" | "id1,id2" (canário).
+          # Token fora disso é ERRO DE BOOT, nunca "all".
+          #
+          # MONITOR_PRODUCT_RETRY liga o ledger, a task de retry e a
+          # recuperação nos dois modos. MONITOR_MIRROR_CONTENT libera o espelho
+          # de texto/mídia SEM link comercial no modo monitoring.
+          #
+          # OFF não desliga segurança: host exato, anti-SSRF e a proibição de
+          # emitir URL comercial crua valem sempre.
+          # Rollback sem deploy: gh variable set MONITOR_PRODUCT_RETRY --body off
+          MONITOR_PRODUCT_RETRY=${{ vars.MONITOR_PRODUCT_RETRY }}
+          MONITOR_MIRROR_CONTENT=${{ vars.MONITOR_MIRROR_CONTENT }}
           # Cadência durável entre mensagens espelhadas (Melhoria 7, migração 078).
           # ""/ausente/"false" = INERTE: a admissão retorna antes de tocar o banco e
           # o espelho segue imediato. "true" = ligada — cada mensagem monitorada com

@@ -16,18 +16,21 @@ import (
 	"automatiza-go/internal/adapters/whatsapp"
 	"automatiza-go/internal/config"
 	"automatiza-go/internal/lib/cache"
+	"automatiza-go/internal/lib/commerceurl"
 	"automatiza-go/internal/lib/ctapicker"
 	"automatiza-go/internal/lib/deadgroup"
 	"automatiza-go/internal/lib/humanize"
 	"automatiza-go/internal/lib/pacing"
 	"automatiza-go/internal/lib/selfsend"
 	"automatiza-go/internal/lib/text"
+	"automatiza-go/internal/lib/usergate"
 	"automatiza-go/internal/lib/wamentions"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/failover"
 	"automatiza-go/internal/services/mercadolivre"
+	"automatiza-go/internal/services/monitoroffer"
 	"automatiza-go/internal/services/shopee"
 
 	"github.com/getsentry/sentry-go"
@@ -127,6 +130,15 @@ type monitoringService struct {
 	// dispatchGate é a barreira contra troca de chip em andamento (Melhoria 5).
 	// nil = sem gate (comportamento histórico).
 	dispatchGate DispatchGate
+
+	// offerCoordinator é o ledger da Melhoria 9. nil = feature ausente:
+	// nenhum caminho abaixo muda de comportamento.
+	offerCoordinator *monitoroffer.Coordinator
+
+	// mirrorContent é o gate do espelho de conteúdo comum (Melhoria 9,
+	// MONITOR_MIRROR_CONTENT). Valor zero = fechado, então um serviço sem
+	// wiring se comporta exatamente como antes.
+	mirrorContent usergate.Gate
 
 	// cadenceRepo/durableMedia são a cadência durável (Melhoria 7). nil =
 	// feature ausente: nenhum caminho abaixo muda de comportamento.
@@ -279,6 +291,41 @@ func WithDispatchText(env string) Option {
 	return func(s *monitoringService) { s.dispatchText = parseDispatchTextGate(env) }
 }
 
+// mirrorCommonAllowed diz se esta mensagem SEM link comercial pode seguir para
+// o espelho de conteúdo comum.
+//
+// Resolve o dono pelo chip que entregou a mensagem — o gate é POR USUÁRIO, e o
+// webhook não traz o user_id. Falha na resolução nega: um gate que abre quando
+// não consegue identificar o dono não é um gate.
+//
+// A consulta ao repositório só acontece quando o gate NÃO está globalmente
+// fechado, para que o caminho quente com gate off não pague uma query a mais
+// por mensagem sem link (que é a maioria absoluta do tráfego).
+func (s *monitoringService) mirrorCommonAllowed(ctx context.Context, msg *models.IncomingMessage) bool {
+	if s.mirrorContent.GloballyOff() {
+		return false
+	}
+	inst, err := s.instanceRepo.GetInstanceByName(ctx, msg.InstanceName)
+	if err != nil || inst == nil || inst.UserID == "" {
+		return false
+	}
+	return s.mirrorContent.AllowsString(inst.UserID)
+}
+
+// WithOfferCoordinator liga o ledger de ofertas (Melhoria 9). nil mantém o
+// serviço exatamente como antes.
+func WithOfferCoordinator(c *monitoroffer.Coordinator) Option {
+	return func(s *monitoringService) { s.offerCoordinator = c }
+}
+
+// WithMirrorContent liga o espelho de conteúdo comum (Melhoria 9).
+//
+// Sem ele, o valor zero de usergate.Gate fecha para todos e o early return de
+// "mensagem sem link" continua idêntico ao histórico.
+func WithMirrorContent(g usergate.Gate) Option {
+	return func(s *monitoringService) { s.mirrorContent = g }
+}
+
 // NewMonitoringService creates a new monitoring service.
 // IMPORTANT: This now requires a WhatsAppProvider instead of waha.Service.
 // groupRepo is optional: passing nil disables per-group dispatch routing
@@ -375,7 +422,17 @@ func (s *monitoringService) processIncoming(ctx context.Context, msg *models.Inc
 	// 3. Extract links
 	links := s.extractLinks(msg.Body)
 	if len(links) == 0 {
-		return nil
+		// Mensagem sem link comercial. Historicamente morria aqui: o espelho
+		// do modo monitoring só sabia repassar mensagem COM link, então texto,
+		// foto e vídeo do grupo-fonte simplesmente não chegavam ao destino.
+		//
+		// Com MONITOR_MIRROR_CONTENT autorizando o dono do chip, a mensagem
+		// segue para selfsend/dedup/automação e é relayada como conteúdo
+		// comum. Gate fechado mantém o early return BYTE A BYTE — é o que
+		// torna o deploy com gate off inerte.
+		if !s.mirrorCommonAllowed(ctx, msg) {
+			return nil
+		}
 	}
 
 	// 3b. Disparo da PRÓPRIA plataforma chegando no grupo-fonte (lista/busca,
@@ -395,7 +452,8 @@ func (s *monitoringService) processIncoming(ctx context.Context, msg *models.Inc
 		zap.String("instance", msg.InstanceName),
 		zap.String("group", msg.RemoteJID),
 		zap.Int("links", len(links)),
-		zap.String("bodyPreview", truncateStr(msg.Body, 100)))
+		zap.Int("bodyLen", len(msg.Body)),
+		zap.String("bodyHash", commerceurl.Hash8(msg.Body)))
 
 	// Resolve o DONO (user) do chip que entregou a mensagem ANTES do dedup.
 	// As chaves abaixo TÊM que ser escopadas por esse dono: um grupo de origem
@@ -755,8 +813,15 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			s.extractCanonicalKey(links), s.detectStore(links))
 		s.logger.Warn("Monitoring relay withheld — affiliate conversion failed",
 			zap.String("automationID", automation.ID),
-			zap.String("link", unconvertedLink),
+			// A URL crua não vai para o log (§4.19): host + hash8 identificam o
+			// link entre linhas sem carregar o conteúdo do cliente.
+			zap.String("linkHash", commerceurl.Hash8(unconvertedLink)),
 			zap.Error(unconvertedErr))
+
+		// Melhoria 9: até aqui o link retido simplesmente sumia — sem registro
+		// e sem segunda chance. Agora ele vira item `pending` no ledger e o
+		// sweep de 1 min o retenta. No-op com o gate fechado.
+		s.RecordFailedLinks(ctx, automation, msg, []string{unconvertedLink})
 		return nil
 	}
 

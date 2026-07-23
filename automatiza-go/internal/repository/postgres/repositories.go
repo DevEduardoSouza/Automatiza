@@ -53,6 +53,7 @@ type Repositories struct {
 	GroupMember              repository.GroupMemberRepository
 	InstanceFailover         repository.InstanceFailoverRepository
 	MonitorCadence           repository.MonitorCadenceRepository
+	MonitorOfferRetry        repository.MonitorOfferRetryRepository
 }
 
 // NewRepositories creates all PostgreSQL repositories
@@ -103,5 +104,6 @@ func NewRepositories(db *DB, logger *zap.Logger) *Repositories {
 		GroupMember:              NewGroupMemberRepository(db, logger),
 		InstanceFailover:         NewInstanceFailoverRepository(db, logger),
 		MonitorCadence:           NewMonitorCadenceRepository(db, logger),
+		MonitorOfferRetry:        NewMonitorOfferRetryRepository(db, logger),
 	}
 }

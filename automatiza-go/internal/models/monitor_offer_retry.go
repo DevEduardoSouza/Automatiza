@@ -1,9 +1,9 @@
 package models
 
 import (
+	"crypto/sha256"
+	"strconv"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // =============================================================================
@@ -215,9 +215,9 @@ const MaxCommercialLinks = 20
 
 // MonitorOfferJob é a linha de monitor_offer_jobs.
 type MonitorOfferJob struct {
-	ID                 uuid.UUID `json:"id" db:"id"`
-	UserID             uuid.UUID `json:"user_id" db:"user_id"`
-	AutomationID       uuid.UUID `json:"automation_id" db:"automation_id"`
+	ID                 string    `json:"id" db:"id"`
+	UserID             string    `json:"user_id" db:"user_id"`
+	AutomationID       string    `json:"automation_id" db:"automation_id"`
 	Mode               string    `json:"mode" db:"mode"`
 	SourceGroupID      string    `json:"source_group_id" db:"source_group_id"`
 	MessageID          string    `json:"message_id" db:"message_id"`
@@ -233,14 +233,14 @@ type MonitorOfferJob struct {
 
 // MonitorOfferItem é a linha de monitor_offer_items: um link comercial.
 type MonitorOfferItem struct {
-	ID                uuid.UUID  `json:"id" db:"id"`
-	JobID             uuid.UUID  `json:"job_id" db:"job_id"`
+	ID                string     `json:"id" db:"id"`
+	JobID             string     `json:"job_id" db:"job_id"`
 	Ordinal           int16      `json:"ordinal" db:"ordinal"`
 	ParagraphOrdinal  int16      `json:"paragraph_ordinal" db:"paragraph_ordinal"`
 	SourceLinkHash    string     `json:"source_link_hash" db:"source_link_hash"`
 	Host              string     `json:"host" db:"host"`
 	CanonicalKey      *string    `json:"canonical_key" db:"canonical_key"`
-	DuplicateOfItemID *uuid.UUID `json:"duplicate_of_item_id" db:"duplicate_of_item_id"`
+	DuplicateOfItemID *string    `json:"duplicate_of_item_id" db:"duplicate_of_item_id"`
 	Store             string     `json:"store" db:"store"`
 	URLClass          string     `json:"url_class" db:"url_class"`
 	ErrorClass        string     `json:"error_class" db:"error_class"`
@@ -263,12 +263,12 @@ type MonitorOfferItem struct {
 // MonitorOfferDelivery é a linha de monitor_offer_deliveries: a autoridade de
 // idempotência por destino. Nunca chamar a WAHA apoiado só em claim Redis.
 type MonitorOfferDelivery struct {
-	JobID              uuid.UUID  `json:"job_id" db:"job_id"`
+	JobID              string     `json:"job_id" db:"job_id"`
 	OutputKey          string     `json:"output_key" db:"output_key"`
 	OutputKind         string     `json:"output_kind" db:"output_kind"`
 	DestinationGroupID string     `json:"destination_group_id" db:"destination_group_id"`
 	Status             string     `json:"status" db:"status"`
-	AttemptToken       *uuid.UUID `json:"attempt_token" db:"attempt_token"`
+	AttemptToken       *string    `json:"attempt_token" db:"attempt_token"`
 	ProviderMessageID  *string    `json:"provider_message_id" db:"provider_message_id"`
 	ReasonCode         string     `json:"reason_code" db:"reason_code"`
 	SendingAt          *time.Time `json:"sending_at" db:"sending_at"`
@@ -333,4 +333,91 @@ func IsTerminalJobStatus(s string) bool {
 // o desfecho e, no caso de security_block, reabriria a superfície fechada.
 func IsReplayableBlock(errorClass string) bool {
 	return errorClass == ErrorClassPermanentConfig
+}
+
+// ---------------------------------------------------------------------------
+// Contratos do repositório do ledger.
+//
+// Ficam aqui (e não no pacote postgres) porque o planner e o worker falam
+// destes tipos sem conhecer SQL. Todos carregam user_id onde o tenant importa:
+// escopo de tenant é FILTRO DE QUERY, não checagem posterior — um SELECT sem
+// user_id que só depois compara em Go já leu a linha do outro cliente.
+// ---------------------------------------------------------------------------
+
+// MonitorOfferItemLease é o item reivindicado pelo sweep, pronto para virar
+// task. Generation é o que torna seguro perder o ack do enqueue.
+type MonitorOfferItemLease struct {
+	ItemID     string
+	JobID      string
+	UserID     string
+	Generation int
+	// RunAt é quando a task deve rodar (ProcessIn = RunAt - agora).
+	RunAt time.Time
+}
+
+// MonitorOfferAttempt é o que o handler recebe após vencer o CAS de generation.
+type MonitorOfferAttempt struct {
+	Item MonitorOfferItem
+	Job  MonitorOfferJob
+}
+
+// MonitorOfferItemOutcome descreve o desfecho de um item.
+type MonitorOfferItemOutcome struct {
+	ItemID       string
+	Status       string
+	URLClass     string
+	ErrorClass   string
+	ReasonCode   string
+	Outcome      string
+	CanonicalKey *string
+	OutputKey    *string
+	OutputKind   *string
+}
+
+// CanonicalKeyVerdict é o resultado de publicar uma canonical key.
+type CanonicalKeyVerdict struct {
+	// Won: este item ficou com a key.
+	Won bool
+	// SupersededItemID é o item que PERDEU a key (quando um ordinal menor
+	// chegou depois e tomou o lugar de um maior).
+	SupersededItemID *string
+	// Reason explica a derrota: duplicate_link ou excess_product.
+	Reason string
+}
+
+// MonitorOfferReapStats reporta o que o reaper fez num ciclo.
+type MonitorOfferReapStats struct {
+	ItemsReleased       int
+	DeliveriesRejected  int
+	DeliveriesAmbiguous int
+	PayloadsExpired     int
+}
+
+// BackoffDelays são os atrasos por tentativa (§8.1): 1m, 5m, 15m, 30m, 60m.
+var BackoffDelays = [MaxItemAttempts]time.Duration{
+	1 * time.Minute,
+	5 * time.Minute,
+	15 * time.Minute,
+	30 * time.Minute,
+	60 * time.Minute,
+}
+
+// NextAttemptDelay devolve o atraso da tentativa `attempts` (0-based) com
+// jitter determinístico de 0–20%.
+//
+// Determinístico de propósito: o mesmo item recalculado após um crash cai no
+// MESMO instante, então um reprocessamento não reembaralha a fila nem cria
+// thundering herd. A fonte do jitter é sha256(itemID|attempt), não rand.
+func NextAttemptDelay(itemID string, attempts int) time.Duration {
+	if attempts < 0 {
+		attempts = 0
+	}
+	if attempts >= MaxItemAttempts {
+		attempts = MaxItemAttempts - 1
+	}
+	base := BackoffDelays[attempts]
+	sum := sha256.Sum256([]byte(itemID + "|" + strconv.Itoa(attempts)))
+	// 16 bits bastam para 0..20% com granularidade de sobra.
+	frac := (int64(sum[0])<<8 | int64(sum[1])) % 2001 // 0..2000 = 0.0%..20.00%
+	return base + time.Duration(int64(base)*frac/10000)
 }

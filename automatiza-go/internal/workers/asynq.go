@@ -32,6 +32,11 @@ const (
 	// PostgreSQL, então perder a fila do Redis não perde nenhum envio — o
 	// poller reemite com geração nova.
 	TypeMonitoringDeferredDispatch = "monitoring:deferred_dispatch"
+
+	// TypeMonitorOfferRetry é a nova tentativa de UM link comercial que falhou
+	// de forma transitória (Melhoria 9). Fila "low" de propósito: o retry NÃO
+	// pode disputar os 64 slots do fan-out com o caminho quente de envio.
+	TypeMonitorOfferRetry = "whatsapp:monitor_offer_retry"
 )
 
 // InstagramStoryJobData is the payload for publishing one Instagram story on
@@ -698,4 +703,50 @@ func (q *QueueClient) EnqueueInstagramReply(ctx context.Context, data *Instagram
 		return nil, err
 	}
 	return info, nil
+}
+
+// MonitorOfferRetryJobData é o payload da task de retry.
+//
+// Só ID e geração. Nenhuma URL, nenhum texto, nenhum corpo: o Redis não é um
+// lugar para o conteúdo da mensagem do cliente, e o payload real vive cifrado
+// no Postgres. A geração é o que torna a task idempotente — uma task antiga
+// chegando depois de o sweep reemitir vira no-op no CAS do handler.
+type MonitorOfferRetryJobData struct {
+	ItemID     string `json:"item_id"`
+	Generation int    `json:"generation"`
+}
+
+// EnqueueMonitorOfferRetry publica a task de retry de um item.
+//
+// MaxRetry(0) é deliberado: quem controla tentativa é a TABELA
+// (monitor_offer_items.attempts, com backoff e teto), não o Asynq. Deixar os
+// dois contarem produziria 5×N tentativas e estouraria a cota da Shopee do
+// usuário.
+//
+// Conflito de TaskID devolve (nil, nil): aquela geração já está enfileirada.
+func (q *QueueClient) EnqueueMonitorOfferRetry(ctx context.Context, itemID string, generation int, runAt time.Time) error {
+	payload, err := json.Marshal(MonitorOfferRetryJobData{ItemID: itemID, Generation: generation})
+	if err != nil {
+		return err
+	}
+
+	delay := time.Until(runAt)
+	if delay < 0 {
+		delay = 0
+	}
+
+	task := asynq.NewTask(TypeMonitorOfferRetry, payload,
+		asynq.Queue("low"),
+		asynq.MaxRetry(0),
+		asynq.Timeout(3*time.Minute),
+		asynq.TaskID(fmt.Sprintf("monitor_retry:%s:%d", itemID, generation)),
+		asynq.ProcessIn(delay),
+	)
+	if _, err := q.client.EnqueueContext(ctx, task); err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
