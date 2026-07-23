@@ -1,3 +1,4 @@
+-- automatiza:migration-mode=transactional
 -- 077: chip reserva e failover de instância WhatsApp (Melhoria 5).
 --
 -- Aditiva e idempotente. NÃO altera nenhuma tabela existente além de adicionar
@@ -23,6 +24,11 @@
 --   * chip em qualquer papel não pode ser apagado → FK ON DELETE RESTRICT
 --
 -- Este arquivo NUNCA deve rodar contra produção nesta entrega.
+
+-- Teto curto de espera por lock. O único ponto desta migração que disputa lock
+-- com tráfego real é o ALTER TABLE em `instances` (4.1): preferimos falhar em 3s
+-- e reexecutar a desligar o envio de 870 contas atrás de uma fila de lock.
+SET lock_timeout = '3s';
 
 -- =============================================================================
 -- 4.1 — Ownership composta: alvo das FKs que provam "mesma conta"
@@ -107,13 +113,6 @@ CREATE TABLE IF NOT EXISTS instance_failover_policies (
     CONSTRAINT uq_failover_backup_instance UNIQUE (backup_instance_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_failover_policies_user
-    ON instance_failover_policies (user_id);
-
-CREATE INDEX IF NOT EXISTS idx_failover_policies_detector
-    ON instance_failover_policies (mode, state)
-    WHERE mode = 'assisted';
-
 -- =============================================================================
 -- 4.3 — Papéis
 -- =============================================================================
@@ -132,9 +131,6 @@ CREATE TABLE IF NOT EXISTS instance_failover_roles (
         REFERENCES instances (user_id, id) ON DELETE RESTRICT,
     CONSTRAINT uq_failover_role_per_policy UNIQUE (policy_id, role)
 );
-
-CREATE INDEX IF NOT EXISTS idx_failover_roles_policy
-    ON instance_failover_roles (policy_id);
 
 -- Coerência papéis × política, verificada no COMMIT (DEFERRABLE INITIALLY
 -- DEFERRED) para que criar policy + 2 roles na mesma transação seja possível
@@ -255,9 +251,6 @@ CREATE TABLE IF NOT EXISTS instance_failover_dry_runs (
     CONSTRAINT uq_failover_dry_run_ref UNIQUE (user_id, dry_run_ref)
 );
 
-CREATE INDEX IF NOT EXISTS idx_failover_dry_runs_policy
-    ON instance_failover_dry_runs (policy_id_snapshot, created_at DESC);
-
 -- =============================================================================
 -- 4.5 — Itens do dry-run
 -- =============================================================================
@@ -318,12 +311,6 @@ CREATE TABLE IF NOT EXISTS instance_failover_operations (
 
 -- No máximo UMA operação não terminal por usuário. Duas políticas do mesmo
 -- dono não conseguem trocar chip ao mesmo tempo.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_failover_one_nonterminal_per_user
-    ON instance_failover_operations (user_id)
-    WHERE status IN ('preparing', 'draining', 'verifying');
-
-CREATE INDEX IF NOT EXISTS idx_failover_operations_policy_created
-    ON instance_failover_operations (policy_id, created_at DESC);
 
 DO $$
 BEGIN
@@ -357,9 +344,6 @@ CREATE TABLE IF NOT EXISTS instance_failover_operation_items (
     PRIMARY KEY (operation_id, automation_id_snapshot)
 );
 
-CREATE INDEX IF NOT EXISTS idx_failover_operation_items_automation
-    ON instance_failover_operation_items (automation_id_snapshot);
-
 -- =============================================================================
 -- 4.8 — Leases de dispatch (efêmeras)
 -- =============================================================================
@@ -379,13 +363,6 @@ CREATE TABLE IF NOT EXISTS instance_failover_dispatch_leases (
 
     CONSTRAINT ck_failover_lease_expiry CHECK (expires_at > acquired_at)
 );
-
-CREATE INDEX IF NOT EXISTS idx_failover_leases_active
-    ON instance_failover_dispatch_leases (user_id, automation_id, expires_at)
-    WHERE released_at IS NULL;
-
-CREATE INDEX IF NOT EXISTS idx_failover_leases_expires
-    ON instance_failover_dispatch_leases (expires_at);
 
 -- =============================================================================
 -- 4.9 — Ledger append-only
@@ -425,14 +402,6 @@ CREATE TABLE IF NOT EXISTS instance_failover_events (
         CHECK (idempotency_scope IS NULL OR idempotency_scope IN ('set_policy', 'disable_policy'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_failover_events_policy_created
-    ON instance_failover_events (policy_id_snapshot, created_at DESC, id DESC);
-
-CREATE INDEX IF NOT EXISTS idx_failover_events_operation
-    ON instance_failover_events (operation_id, created_at, id);
-
 -- Recibo idempotente de SetPolicy/DisablePolicy: replay com a mesma chave
 -- devolve o report anterior em vez de mutar de novo.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_failover_events_idempotency
-    ON instance_failover_events (user_id, idempotency_scope, idempotency_key)
-    WHERE idempotency_scope IS NOT NULL;
+
