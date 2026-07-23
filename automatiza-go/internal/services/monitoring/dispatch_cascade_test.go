@@ -2,12 +2,15 @@ package monitoring
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"automatiza-go/internal/adapters/whatsapp"
+	"automatiza-go/internal/lib/text"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/shopee"
 )
 
 // ---------------------------------------------------------------------------
@@ -290,7 +293,7 @@ func renderShopeeTemplate(t *testing.T, body string, shopee *mockShopeeService, 
 	auto := templateAutomation()
 	auto.ApplyCouponRules = true
 	aff := &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff123", ItemID: 123, ShopID: 456}
-	return svc.renderMonitorDispatchText(context.Background(), auto, aff, "https://shopee.com.br/prod", "", "", "")
+	return svc.renderMonitorDispatchText(context.Background(), auto, aff, "https://shopee.com.br/prod", "", "", "", false)
 }
 
 // O caminho Shopee do espelho repassa ao matcher os IDs oficiais de
@@ -445,8 +448,368 @@ func TestCTA_PoolErrorFallsBackToInline(t *testing.T) {
 	auto := templateAutomation()
 	auto.CTAs = []string{"CTA_INLINE_FALLBACK"}
 	aff := &models.ShopeeAffiliateLink{AffiliateLink: "https://s.shopee.com.br/aff123", ItemID: 123, ShopID: 456}
-	out := svc.renderMonitorDispatchText(context.Background(), auto, aff, "https://shopee.com.br/prod", "", "", "")
+	out := svc.renderMonitorDispatchText(context.Background(), auto, aff, "https://shopee.com.br/prod", "", "", "", false)
 	if !strings.Contains(out.Body, "CTA_INLINE_FALLBACK") {
 		t.Errorf("esperava fallback para CTA inline quando o pool falha; got:\n%s", out.Body)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cupom/campanha Shopee no texto de disparo (link convertido SEM itemID/shopID).
+// ---------------------------------------------------------------------------
+
+const (
+	couponURL      = "https://shopee.com.br/user/voucher-wallet"
+	couponAffURL   = "https://s.shopee.com.br/AFFCUPOM"
+	coupon2URL     = "https://shopee.com.br/m/promo-frete"
+	coupon2AffURL  = "https://s.shopee.com.br/AFFPROMOFRETE"
+	productURL     = "https://shopee.com.br/product-i.123.456"
+	productAffURL  = "https://s.shopee.com.br/aff123"
+	couponTemplate = "TEMPLATE_MARKER {nome_produto}\nPor {preco_formatado}\n{link_afiliado}"
+)
+
+// couponAutomation é a templateAutomation com humanização OFF: text.Vary é
+// no-op, então as asserções sobre o CORPO enviado são exatas (as URLs já eram
+// protegidas, o texto plano não).
+func couponAutomation() *models.Automation {
+	auto := templateAutomation()
+	off := "off"
+	auto.HumanizeMode = &off
+	return auto
+}
+
+// shopeeByURL converte cada link de acordo com o mapa (afiliado, itemID,
+// shopID): itemID/shopID zerados = cupom/campanha (o que a API devolve quando
+// a URL não é de produto).
+func shopeeByURL(m map[string]models.ShopeeAffiliateLink, product *models.ShopeeOffer) *mockShopeeService {
+	return &mockShopeeService{
+		GenerateAffiliateLinkFn: func(_ context.Context, url, _ string) (*models.ShopeeAffiliateLink, error) {
+			aff, ok := m[url]
+			if !ok {
+				return nil, fmt.Errorf("mock: url inesperada %q", url)
+			}
+			return &aff, nil
+		},
+		GetProductFn: func(_ context.Context, _, _ int64, _ string) (*models.ShopeeOffer, error) {
+			if product == nil {
+				return nil, context.DeadlineExceeded
+			}
+			return product, nil
+		},
+	}
+}
+
+// Cupom sem produto: nada para o template descrever, então sai CTA + texto da
+// fonte (com o link já convertido) + aviso de validade — nunca o template com
+// "Por: R$ " vazio.
+func TestCascade_ShopeeCouponOnlyUsesCouponNotice(t *testing.T) {
+	var card *whatsapp.SendLinkPreviewInput
+	var imageCalled, textCalled bool
+	sends := 0
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: couponTemplate}}
+		s.dispatchText = parseDispatchTextGate("all")
+		s.shopeeService = shopeeByURL(map[string]models.ShopeeAffiliateLink{
+			couponURL: {AffiliateLink: couponAffURL},
+		}, nil)
+		s.ctaRepo = ctaPoolRepo()
+		captureCard(s, &card, &imageCalled, &textCalled)
+		inner := s.waProvider.(*mockWAProvider).SendLinkCustomPreviewFn
+		s.waProvider.(*mockWAProvider).SendLinkCustomPreviewFn = func(ctx context.Context, in whatsapp.SendLinkPreviewInput) (*whatsapp.MessageResult, error) {
+			sends++
+			return inner(ctx, in)
+		}
+	})
+
+	msg := sourceMessage()
+	msg.Body = "CUPOM {SAVE20}\n\nResgate aqui:\n" + couponURL
+
+	if err := svc.processAutomation(context.Background(), couponAutomation(), msg, []string{couponURL}, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card == nil {
+		t.Fatal("esperava card de preview")
+	}
+	if sends != 1 {
+		t.Errorf("envios = %d, want 1", sends)
+	}
+
+	body := card.Text
+	if !strings.HasPrefix(body, "CTA_POOL_SHOPEE") {
+		t.Errorf("corpo deveria começar pelo CTA Shopee; got:\n%s", body)
+	}
+	if !strings.Contains(body, "CUPOM {SAVE20}") {
+		t.Errorf("código/texto do cupom deveria sobreviver (inclusive as chaves); got:\n%s", body)
+	}
+	if !strings.Contains(body, couponAffURL) {
+		t.Errorf("link convertido deveria estar no corpo; got:\n%s", body)
+	}
+	if !strings.HasSuffix(body, text.ShopeeCouponLimitedNotice) {
+		t.Errorf("corpo deveria terminar no aviso fixo; got:\n%s", body)
+	}
+	if strings.Contains(body, couponURL) {
+		t.Errorf("URL original não pode sair (comissão da fonte); got:\n%s", body)
+	}
+	if strings.Contains(body, "TEMPLATE_MARKER") || strings.Contains(body, "Por ") {
+		t.Errorf("template de produto não pode ser usado num cupom; got:\n%s", body)
+	}
+	if card.Title != "TITULO DA ORIGEM" {
+		t.Errorf("card.Title = %q, want o título da origem (não há template)", card.Title)
+	}
+	if card.URL != couponAffURL {
+		t.Errorf("card.URL = %q, want o link convertido", card.URL)
+	}
+}
+
+// mixedSourceBody monta a mensagem com cupom ANTES do produto (a ordem que
+// quebrava o template: o cupom, sem IDs, era eleito como "o produto").
+func mixedSourceBody(first, second string) string {
+	return "CUPOM {SAVE20}\n" + first + "\n\nOFERTA DA FONTE\n" + second
+}
+
+func runMixedCascade(t *testing.T, body string, links []string) *whatsapp.SendLinkPreviewInput {
+	t.Helper()
+	var card *whatsapp.SendLinkPreviewInput
+	var imageCalled, textCalled bool
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: couponTemplate}}
+		s.dispatchText = parseDispatchTextGate("all")
+		s.shopeeService = shopeeByURL(map[string]models.ShopeeAffiliateLink{
+			couponURL:  {AffiliateLink: couponAffURL},
+			coupon2URL: {AffiliateLink: coupon2AffURL},
+			productURL: {AffiliateLink: productAffURL, ItemID: 123, ShopID: 456},
+		}, &models.ShopeeOffer{Name: "Produto XYZ", Price: 50.0, OriginalPrice: 100.0})
+		captureCard(s, &card, &imageCalled, &textCalled)
+	})
+
+	msg := sourceMessage()
+	msg.Body = body
+	if err := svc.processAutomation(context.Background(), couponAutomation(), msg, links, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card == nil {
+		t.Fatal("esperava card de preview")
+	}
+	return card
+}
+
+// assertMixed valida o desfecho comum: template do produto + parágrafo do cupom
+// anexado, sem URL da fonte e com o card apontando para o PRODUTO.
+func assertMixed(t *testing.T, card *whatsapp.SendLinkPreviewInput) {
+	t.Helper()
+	body := card.Text
+	if !strings.Contains(body, "Produto XYZ") || !strings.Contains(body, "50,00") {
+		t.Errorf("template do produto deveria estar preenchido; got:\n%s", body)
+	}
+	if card.URL != productAffURL {
+		t.Errorf("card.URL = %q, want o afiliado do PRODUTO (não o do cupom)", card.URL)
+	}
+	if card.Title != "Produto XYZ" {
+		t.Errorf("card.Title = %q, want o nome do produto", card.Title)
+	}
+	if !strings.Contains(body, "CUPOM {SAVE20}") {
+		t.Errorf("parágrafo do cupom deveria ter sido anexado; got:\n%s", body)
+	}
+	if strings.Count(body, couponAffURL) != 1 {
+		t.Errorf("link do cupom deveria aparecer exatamente 1x; got:\n%s", body)
+	}
+	if strings.Count(body, productAffURL) != 1 {
+		t.Errorf("link do produto deveria aparecer exatamente 1x; got:\n%s", body)
+	}
+	if strings.Contains(body, couponURL) || strings.Contains(body, productURL) {
+		t.Errorf("nenhuma URL original pode sair; got:\n%s", body)
+	}
+	if strings.Contains(body, "OFERTA DA FONTE") {
+		t.Errorf("parágrafo sem cupom não deveria ser anexado; got:\n%s", body)
+	}
+}
+
+// Cupom antes do produto: o produto (IDs válidos) ganha o template, e o
+// parágrafo do cupom é anexado em vez de sumir.
+func TestCascade_MixedShopeeCouponBeforeProductKeepsProductTemplate(t *testing.T) {
+	card := runMixedCascade(t, mixedSourceBody(couponURL, productURL), []string{couponURL, productURL})
+	assertMixed(t, card)
+}
+
+// Mesma mensagem com o produto primeiro: desfecho funcional idêntico (a ordem
+// da fonte não pode mudar o que sai).
+func TestCascade_MixedShopeeProductBeforeCouponSameResult(t *testing.T) {
+	body := "OFERTA DA FONTE\n" + productURL + "\n\nCUPOM {SAVE20}\n" + couponURL
+	card := runMixedCascade(t, body, []string{productURL, couponURL})
+	assertMixed(t, card)
+}
+
+// Dois cupons em parágrafos distintos: ambos anexados, na ordem da fonte.
+func TestCascade_MixedTwoShopeeCouponsPreservesParagraphOrder(t *testing.T) {
+	body := "OFERTA DA FONTE\n" + productURL +
+		"\n\nCUPOM A\n" + couponURL +
+		"\n\nCUPOM B\n" + coupon2URL
+	card := runMixedCascade(t, body, []string{productURL, couponURL, coupon2URL})
+
+	out := card.Text
+	if !strings.Contains(out, "Produto XYZ") {
+		t.Errorf("template do produto deveria estar presente; got:\n%s", out)
+	}
+	if strings.Count(out, "Produto XYZ") != 1 {
+		t.Errorf("template deveria ser renderizado 1x; got:\n%s", out)
+	}
+	idxA, idxB := strings.Index(out, "CUPOM A"), strings.Index(out, "CUPOM B")
+	if idxA < 0 || idxB < 0 {
+		t.Fatalf("ambos os parágrafos de cupom deveriam ser anexados; got:\n%s", out)
+	}
+	if idxA > idxB {
+		t.Errorf("ordem dos cupons deveria seguir a fonte (A antes de B); got:\n%s", out)
+	}
+	for _, link := range []string{productAffURL, couponAffURL, coupon2AffURL} {
+		if strings.Count(out, link) != 1 {
+			t.Errorf("link %s deveria aparecer 1x; got:\n%s", link, out)
+		}
+	}
+	for _, link := range []string{productURL, couponURL, coupon2URL} {
+		if strings.Contains(out, link) {
+			t.Errorf("URL original %s não pode sair; got:\n%s", link, out)
+		}
+	}
+}
+
+// Produto ML + cupom Shopee: template ML (produto real) com o parágrafo do
+// cupom Shopee anexado — não o aviso de cupom-only.
+func TestCascade_MLProductAndShopeeCouponUsesMLTemplate(t *testing.T) {
+	const mlURL = "https://mercadolivre.com.br/p/MLB1"
+	const mlAffURL = "https://mercadolivre.com.br/sec/OWN"
+
+	var card *whatsapp.SendLinkPreviewInput
+	var imageCalled, textCalled bool
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: couponTemplate}}
+		s.dispatchText = parseDispatchTextGate("all")
+		s.shopeeService = shopeeByURL(map[string]models.ShopeeAffiliateLink{
+			couponURL: {AffiliateLink: couponAffURL},
+		}, nil)
+		s.mlService = &mockMLService{
+			CreateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.MLAffiliateLink, error) {
+				return &models.MLAffiliateLink{AffiliateLink: mlAffURL}, nil
+			},
+			GetProductPreviewFn: func(_ context.Context, _, _ string) (*models.MLProductPreview, error) {
+				return &models.MLProductPreview{Title: "Cafeteira ML", Price: 210.50, Permalink: mlURL}, nil
+			},
+		}
+		captureCard(s, &card, &imageCalled, &textCalled)
+	})
+
+	auto := couponAutomation()
+	auto.Stores = []string{"shopee", "mercadolivre"}
+	msg := sourceMessage()
+	msg.Body = "CUPOM {SAVE20}\n" + couponURL + "\n\nOFERTA ML\n" + mlURL
+
+	if err := svc.processAutomation(context.Background(), auto, msg, []string{couponURL, mlURL}, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card == nil {
+		t.Fatal("esperava card de preview")
+	}
+
+	out := card.Text
+	if !strings.Contains(out, "Cafeteira ML") || !strings.Contains(out, "210,50") {
+		t.Errorf("esperava o template ML preenchido; got:\n%s", out)
+	}
+	if card.URL != mlAffURL {
+		t.Errorf("card.URL = %q, want o afiliado do produto ML", card.URL)
+	}
+	if !strings.Contains(out, "CUPOM {SAVE20}") || !strings.Contains(out, couponAffURL) {
+		t.Errorf("parágrafo do cupom Shopee deveria ter sido anexado; got:\n%s", out)
+	}
+	if !strings.Contains(out, mlAffURL) {
+		t.Errorf("link ML convertido deveria estar no corpo; got:\n%s", out)
+	}
+	if strings.Contains(out, text.ShopeeCouponLimitedNotice) {
+		t.Errorf("com template ML não se usa o aviso de cupom-only; got:\n%s", out)
+	}
+}
+
+// Regra do operador removeu o parágrafo do cupom: o helper NÃO o ressuscita —
+// nenhum fallback sintético recoloca um link que o cliente mandou tirar.
+func TestCascade_CouponRemovedByMonitoringRulesIsNotResurrected(t *testing.T) {
+	var card *whatsapp.SendLinkPreviewInput
+	var imageCalled, textCalled bool
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: couponTemplate}}
+		s.dispatchText = parseDispatchTextGate("all")
+		s.shopeeService = shopeeByURL(map[string]models.ShopeeAffiliateLink{
+			couponURL:  {AffiliateLink: couponAffURL},
+			productURL: {AffiliateLink: productAffURL, ItemID: 123, ShopID: 456},
+		}, &models.ShopeeOffer{Name: "Produto XYZ", Price: 50.0})
+		captureCard(s, &card, &imageCalled, &textCalled)
+	})
+
+	auto := couponAutomation()
+	auto.MonitoringTextRules = &models.MonitoringTextRules{
+		RemoverTermos: []string{"CUPOM {SAVE20}", couponURL},
+	}
+	msg := sourceMessage()
+	msg.Body = mixedSourceBody(couponURL, productURL)
+
+	if err := svc.processAutomation(context.Background(), auto, msg, []string{couponURL, productURL}, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card == nil {
+		t.Fatal("esperava card de preview")
+	}
+
+	out := card.Text
+	if !strings.Contains(out, "Produto XYZ") {
+		t.Errorf("template do produto deveria ter sido enviado; got:\n%s", out)
+	}
+	if strings.Contains(out, "SAVE20") || strings.Contains(out, couponAffURL) || strings.Contains(out, couponURL) {
+		t.Errorf("cupom removido pelas regras não pode voltar; got:\n%s", out)
+	}
+	if strings.Contains(out, text.ShopeeCouponLimitedNotice) {
+		t.Errorf("sem cupom no corpo não há aviso a anexar; got:\n%s", out)
+	}
+}
+
+// Conta sem Open API (10035): a conversão nem acontece, então não há sinal
+// estruturado para classificar cupom — segue o relay simples de sempre.
+func TestCascade_NoAPIAccessKeepsPlainRelayWithoutCouponNotice(t *testing.T) {
+	var card *whatsapp.SendLinkPreviewInput
+	var imageCalled, textCalled bool
+	sends := 0
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: couponTemplate}}
+		s.dispatchText = parseDispatchTextGate("all")
+		s.shopeeService = &mockShopeeService{
+			GenerateAffiliateLinkFn: func(_ context.Context, _, _ string) (*models.ShopeeAffiliateLink, error) {
+				return nil, shopee.ErrShopeeNoAPIAccess
+			},
+		}
+		s.ctaRepo = ctaPoolRepo()
+		captureCard(s, &card, &imageCalled, &textCalled)
+		s.waProvider.(*mockWAProvider).SendTextFn = func(_ context.Context, in whatsapp.SendTextInput) (*whatsapp.MessageResult, error) {
+			sends++
+			textCalled = true
+			if !strings.Contains(in.Text, "CUPOM {SAVE20}") || !strings.Contains(in.Text, couponURL) {
+				t.Errorf("relay simples deveria repassar o corpo original; got:\n%s", in.Text)
+			}
+			if strings.Contains(in.Text, text.ShopeeCouponLimitedNotice) {
+				t.Errorf("sem conversão não há classificação de cupom; got:\n%s", in.Text)
+			}
+			if strings.Contains(in.Text, "CTA_POOL_SHOPEE") || strings.Contains(in.Text, "TEMPLATE_MARKER") {
+				t.Errorf("relay histórico não aplica CTA/template; got:\n%s", in.Text)
+			}
+			return &whatsapp.MessageResult{ID: "txt-1"}, nil
+		}
+	})
+
+	msg := sourceMessage()
+	msg.Body = "CUPOM {SAVE20}\n\nResgate aqui:\n" + couponURL
+
+	if err := svc.processAutomation(context.Background(), couponAutomation(), msg, []string{couponURL}, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card != nil {
+		t.Fatalf("sem link afiliado não há card de preview; got URL %q", card.URL)
+	}
+	if sends != 1 {
+		t.Errorf("envios de texto = %d, want 1", sends)
 	}
 }

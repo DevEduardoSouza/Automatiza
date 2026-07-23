@@ -417,6 +417,27 @@ func RenderMLCouponNotice(originalBody string) string {
 	return "🎟️ *CUPOM MERCADO LIVRE* 🎟️\n\n" + body
 }
 
+// ShopeeCouponLimitedNotice é o rodapé fixo do aviso de cupom/campanha Shopee.
+const ShopeeCouponLimitedNotice = "⚠ Cupom por tempo limitado, sujeito a alteração."
+
+// RenderShopeeCouponNotice monta o corpo de um link Shopee convertido que NÃO é
+// produto (cupom, campanha, coleção, carteira de vouchers, busca ou perfil): o
+// CTA do cliente, o texto da origem já processado (regras + links trocados pelo
+// afiliado do dono) e o aviso fixo. Deliberadamente sem RenderTemplate: o texto
+// da fonte é conteúdo, não template — o sweep de placeholders comeria {chaves}
+// literais do cupom.
+func RenderShopeeCouponNotice(originalBody, cta string) string {
+	body := strings.TrimSpace(originalBody)
+	if body == "" {
+		return ""
+	}
+	cta = strings.TrimSpace(cta)
+	if cta == "" {
+		return body + "\n\n" + ShopeeCouponLimitedNotice
+	}
+	return cta + "\n\n" + body + "\n\n" + ShopeeCouponLimitedNotice
+}
+
 // ExtractTemplateVariables extracts variable names from a template
 func ExtractTemplateVariables(template string) []string {
 	varRegex := regexp.MustCompile(`\{\{([^}]+)\}\}|\{([^}]+)\}`)

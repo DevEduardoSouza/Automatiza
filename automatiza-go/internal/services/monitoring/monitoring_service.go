@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -131,10 +132,108 @@ type monitoringService struct {
 type monitorDispatchRender struct {
 	Body      string
 	CardTitle string
+	// PreviewURL é o link afiliado do produto que originou o template — a URL
+	// do card de preview. Determinística: nunca sai de iteração de map.
+	PreviewURL string
 	// Coupon carrega o resultado do rules engine para este disparo (nil se
 	// não avaliado — sem template ou sem couponHandler) para auditar no
 	// dispatch log qual cupom saiu.
 	Coupon *CouponResult
+	// ShopeeCouponRelay=true: não há produto para template, mas há link Shopee
+	// convertido sem IDs (cupom/campanha/coleção/busca). O caller monta o
+	// relay processado e embrulha com text.RenderShopeeCouponNotice.
+	ShopeeCouponRelay bool
+	// CTA usado apenas no wrapper de cupom-only (o caminho de template já
+	// injeta o CTA dentro do Body).
+	CTA string
+}
+
+// affiliateLinkReplacement é um par original→afiliado na ORDEM em que o link
+// aparece na mensagem-fonte. Substitui o antigo map[string]string, cuja ordem
+// de iteração (aleatória em Go) tornava a URL do card e a ordem de substituição
+// não determinísticas.
+type affiliateLinkReplacement struct {
+	Original  string
+	Affiliate string
+}
+
+// replaceAffiliateLinksLongestFirst troca os links no corpo aplicando primeiro
+// os originais MAIS LONGOS. Sem isso, uma URL curta (.../m/cupom) substituída
+// antes da longa (.../m/cupom?mmp_pid=fonte) soldaria o link afiliado dentro da
+// querystring da outra, corrompendo as duas. Affiliate vazio = remoção
+// (usado para loja bloqueada). Não normaliza: o caller normaliza uma vez só.
+func replaceAffiliateLinksLongestFirst(body string, replacements []affiliateLinkReplacement) string {
+	ordered := make([]affiliateLinkReplacement, len(replacements))
+	copy(ordered, replacements)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return len(ordered[i].Original) > len(ordered[j].Original)
+	})
+	for _, r := range ordered {
+		if r.Original == "" {
+			continue
+		}
+		body = strings.ReplaceAll(body, r.Original, r.Affiliate)
+	}
+	return body
+}
+
+// buildMonitoringRelayBody monta o corpo canônico do repasse histórico: texto
+// da fonte + regras do operador + troca dos links pelos afiliados do dono +
+// remoção das lojas bloqueadas. Ponto ÚNICO desse pipeline — o caller usa o
+// resultado tanto no relay puro quanto no wrapper de cupom e na extração do
+// trecho misto, então as três saídas não podem divergir. Não normaliza.
+func buildMonitoringRelayBody(
+	sourceBody string,
+	rules *models.MonitoringTextRules,
+	affiliateReplacements []affiliateLinkReplacement,
+	blockedStoreLinks []string,
+) string {
+	body := sourceBody
+	if rules != nil {
+		body = text.ProcessarMensagem(body, rules)
+	}
+	all := make([]affiliateLinkReplacement, 0, len(affiliateReplacements)+len(blockedStoreLinks))
+	all = append(all, affiliateReplacements...)
+	for _, blocked := range blockedStoreLinks {
+		all = append(all, affiliateLinkReplacement{Original: blocked})
+	}
+	return replaceAffiliateLinksLongestFirst(body, all)
+}
+
+// monitoringParagraphBreakRegex separa parágrafos por uma ou mais linhas em
+// branco (tolerando espaços/tabs na linha vazia).
+var monitoringParagraphBreakRegex = regexp.MustCompile(`\n[ \t]*\n+`)
+
+// extractShopeeCouponParagraphs devolve, na ordem da fonte, os parágrafos do
+// corpo JÁ PROCESSADO que contêm algum link Shopee não-produto convertido —
+// o trecho de cupom que o template de produto descartaria. Opera sobre o relay
+// processado de propósito: se uma regra do operador removeu o parágrafo, ele
+// não é ressuscitado aqui. Sem fallback sintético e sem passar por template
+// ({chaves} literais do cupom sobrevivem).
+func extractShopeeCouponParagraphs(relayBody string, couponReplacements []affiliateLinkReplacement) string {
+	if strings.TrimSpace(relayBody) == "" || len(couponReplacements) == 0 {
+		return ""
+	}
+	normalized := strings.ReplaceAll(relayBody, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+
+	var selected []string
+	for _, paragraph := range monitoringParagraphBreakRegex.Split(normalized, -1) {
+		p := strings.TrimSpace(paragraph)
+		if p == "" {
+			continue
+		}
+		for _, r := range couponReplacements {
+			if r.Affiliate == "" {
+				continue
+			}
+			if strings.Contains(p, r.Affiliate) {
+				selected = append(selected, p)
+				break
+			}
+		}
+	}
+	return strings.Join(selected, "\n\n")
 }
 
 // Option configura dependências opcionais do monitoringService. Aditivo: sem
@@ -411,14 +510,24 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	}
 
 	// 4. Generate affiliate links + capture CDN image URL
-	affiliateLinks := make(map[string]string)
+	//
+	// Slice (não map): a ordem da fonte é significativa — decide a URL do card
+	// e a ordem de substituição no corpo.
+	var affiliateReplacements []affiliateLinkReplacement
+	// Subconjunto: links Shopee convertidos SEM ItemID/ShopID (cupom, campanha,
+	// coleção, carteira de vouchers, busca, perfil). A API de afiliado não
+	// devolve tipo estruturado além dos IDs, então ausência de IDs é o único
+	// sinal confiável de "não é produto".
+	var shopeeCouponReplacements []affiliateLinkReplacement
 	var productImageURL string
 
 	// Captured only to enrich + render a dispatch-text template below (opt-in).
-	// firstShopeeAff carries ItemID/ShopID so we can call GetProduct for the price;
-	// the ML pair carries the affiliate link for the ML template.
-	var firstShopeeAff *models.ShopeeAffiliateLink
-	var firstShopeeOriginalLink, firstMLOriginalLink, firstMLAffiliateLink string
+	// firstShopeeProductAff carries ItemID/ShopID so we can call GetProduct for
+	// the price; the ML pair carries the affiliate link for the ML template.
+	// Só PRODUTO entra aqui: um cupom que chegasse antes roubaria o template e
+	// renderizaria {nome_produto}/{preco} vazios.
+	var firstShopeeProductAff *models.ShopeeAffiliateLink
+	var firstShopeeProductOriginalLink, firstMLOriginalLink, firstMLAffiliateLink string
 
 	// A product link that failed affiliate conversion (for any reason other
 	// than a Shopee account with no API access at all). Forwarding it as-is
@@ -490,13 +599,23 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 					unconvertedErr = err
 				}
 			} else if aff != nil && aff.AffiliateLink != "" {
-				affiliateLinks[link] = aff.AffiliateLink
-				if aff.ImageURL != "" && productImageURL == "" {
-					productImageURL = aff.ImageURL
-				}
-				if firstShopeeAff == nil {
-					firstShopeeAff = aff
-					firstShopeeOriginalLink = link
+				replacement := affiliateLinkReplacement{Original: link, Affiliate: aff.AffiliateLink}
+				affiliateReplacements = append(affiliateReplacements, replacement)
+
+				// ItemID/ShopID positivos é a assinatura fechada de PRODUTO:
+				// generateNonProductAffiliateLink constrói o link sem eles.
+				// Fail-safe de propósito — uma entrada anômala de produto sem
+				// IDs cai no relay em vez de render um template quebrado.
+				if aff.ItemID > 0 && aff.ShopID > 0 {
+					if firstShopeeProductAff == nil {
+						firstShopeeProductAff = aff
+						firstShopeeProductOriginalLink = link
+					}
+					if productImageURL == "" && aff.ImageURL != "" {
+						productImageURL = aff.ImageURL
+					}
+				} else {
+					shopeeCouponReplacements = append(shopeeCouponReplacements, replacement)
 				}
 			}
 		}
@@ -545,7 +664,8 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				unconvertedLink = link
 				unconvertedErr = err
 			} else if aff != nil && aff.AffiliateLink != "" {
-				affiliateLinks[link] = aff.AffiliateLink
+				affiliateReplacements = append(affiliateReplacements,
+					affiliateLinkReplacement{Original: link, Affiliate: aff.AffiliateLink})
 				if firstMLAffiliateLink == "" {
 					firstMLOriginalLink = link
 					firstMLAffiliateLink = aff.AffiliateLink
@@ -578,43 +698,50 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	// of relaying the source text. Sem dispatch text → comportamento histórico:
 	// repassa msg.Body com as regras de rodapé + troca de links por afiliado.
 	// Ligado por usuário via env MONITOR_DISPATCH_TEXT (ver dispatchTextGate).
-	processedText := msg.Body
-	dispatchTextRendered := ""
-	dispatchCardTitle := ""
-	var couponUsed *CouponResult
+	var processedText string
+	rendered := monitorDispatchRender{}
 	if s.dispatchText.enabledFor(automation.UserID) && automation.DispatchTextID != nil && *automation.DispatchTextID != "" && s.settingsRepo != nil {
-		rendered := s.renderMonitorDispatchText(
-			ctx, automation, firstShopeeAff, firstShopeeOriginalLink, firstMLOriginalLink, firstMLAffiliateLink, productImageURL)
-		dispatchTextRendered = rendered.Body
-		dispatchCardTitle = rendered.CardTitle
-		couponUsed = rendered.Coupon
+		rendered = s.renderMonitorDispatchText(
+			ctx, automation, firstShopeeProductAff, firstShopeeProductOriginalLink,
+			firstMLOriginalLink, firstMLAffiliateLink, productImageURL,
+			len(shopeeCouponReplacements) > 0)
 	}
-	usingTemplate := dispatchTextRendered != ""
+	dispatchCardTitle := rendered.CardTitle
+	couponUsed := rendered.Coupon
+	usingTemplate := rendered.Body != ""
 
-	if usingTemplate {
+	switch {
+	case usingTemplate:
 		// Template is self-contained (already carries the affiliate link), so we
 		// skip the source-text rules and link substitution entirely.
-		processedText = dispatchTextRendered
-	} else {
-		// Get monitoring text rules if configured
-		if automation.MonitoringTextRules != nil {
-			processedText = text.ProcessarMensagem(processedText, automation.MonitoringTextRules)
+		processedText = rendered.Body
+		// Exceção: cupom Shopee junto do produto. O template só fala do
+		// produto, então o parágrafo do cupom (código + link convertido)
+		// desapareceria. Anexa o trecho, sem ressuscitar o que as regras do
+		// operador removeram.
+		if len(shopeeCouponReplacements) > 0 {
+			relayBody := buildMonitoringRelayBody(
+				msg.Body, automation.MonitoringTextRules, affiliateReplacements, blockedStoreLinks)
+			if excerpt := extractShopeeCouponParagraphs(relayBody, shopeeCouponReplacements); excerpt != "" {
+				processedText = strings.TrimSpace(processedText) + "\n\n" + excerpt
+			}
 		}
 
-		// 6. Replace original links with affiliate links
-		for orig, aff := range affiliateLinks {
-			processedText = strings.ReplaceAll(processedText, orig, aff)
-		}
+	case rendered.ShopeeCouponRelay:
+		// Cupom/campanha Shopee sem produto: não há título nem preço para
+		// template nenhum (a API de afiliado não expõe lookup de cupom), então
+		// o texto da fonte processado É o conteúdo — só embrulhado no CTA do
+		// cliente e no aviso de validade.
+		relayBody := buildMonitoringRelayBody(
+			msg.Body, automation.MonitoringTextRules, affiliateReplacements, blockedStoreLinks)
+		processedText = text.RenderShopeeCouponNotice(relayBody, rendered.CTA)
 
-		// 6b. Block non-enabled store relay: strip ML (when mercadolivre is
-		// disabled) and any non-convertible store link (Amazon/Magalu/Shein/
-		// AliExpress) the source posted. Pure store-only messages were already
-		// dropped by the store filter above; this covers mixed messages where a
-		// Shopee link keeps the relay alive but another store's link rode along
-		// in the body.
-		for _, blocked := range blockedStoreLinks {
-			processedText = strings.ReplaceAll(processedText, blocked, "")
-		}
+	default:
+		// Repasse histórico: regras do operador + troca de links por afiliado +
+		// remoção das lojas bloqueadas (ML desabilitado, Amazon/Magalu/Shein/
+		// AliExpress, que carregariam a comissão da fonte).
+		processedText = buildMonitoringRelayBody(
+			msg.Body, automation.MonitoringTextRules, affiliateReplacements, blockedStoreLinks)
 	}
 
 	// 7. Normalize text
@@ -793,11 +920,15 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		}
 	}
 
-	// Extract first affiliate URL for link custom preview
-	var firstAffiliateURL string
-	for _, v := range affiliateLinks {
-		firstAffiliateURL = v
-		break
+	// URL do card de preview. Com template, é o link do produto que o template
+	// descreve (Shopee ou ML); sem template, o primeiro link convertido NA ORDEM
+	// DA FONTE. Antes vinha de iteração de map: o card podia apontar para o
+	// cupom enquanto o corpo falava do produto.
+	firstAffiliateURL := ""
+	if usingTemplate && rendered.PreviewURL != "" {
+		firstAffiliateURL = rendered.PreviewURL
+	} else if len(affiliateReplacements) > 0 {
+		firstAffiliateURL = affiliateReplacements[0].Affiliate
 	}
 
 	// 12. Get deduplication settings
@@ -1100,6 +1231,7 @@ func (s *monitoringService) renderMonitorDispatchText(
 	automation *models.Automation,
 	shopeeAff *models.ShopeeAffiliateLink,
 	shopeeOriginalLink, mlOriginalLink, mlAffiliateLink, fallbackImageURL string,
+	hasShopeeCouponLink bool,
 ) monitorDispatchRender {
 	dispatchText, err := s.settingsRepo.GetActiveDispatchTextByID(ctx, *automation.DispatchTextID, automation.UserID)
 	if err != nil || dispatchText == nil {
@@ -1116,16 +1248,31 @@ func (s *monitoringService) renderMonitorDispatchText(
 		return monitorDispatchRender{}
 	}
 
-	isShopee := shopeeAff != nil && shopeeAff.AffiliateLink != ""
-	isML := !isShopee && mlAffiliateLink != "" && s.mlService != nil
-	cta := s.pickMonitorCTA(ctx, automation, isML, isShopee)
-
-	if isShopee {
+	// Prioridade: produto Shopee > produto ML > cupom Shopee. shopeeAff só
+	// chega aqui quando é produto (IDs válidos), então um cupom que aparecesse
+	// antes do produto na mensagem não rouba mais o template.
+	isShopeeProduct := shopeeAff != nil && shopeeAff.AffiliateLink != "" &&
+		shopeeAff.ItemID > 0 && shopeeAff.ShopID > 0
+	if isShopeeProduct {
+		cta := s.pickMonitorCTA(ctx, automation, false, true)
 		return s.renderShopeeDispatchTemplate(ctx, automation, body, cta, shopeeAff, shopeeOriginalLink)
 	}
-	if isML {
-		return s.renderMLDispatchTemplate(ctx, automation, body, cta, mlOriginalLink, mlAffiliateLink, fallbackImageURL)
+
+	if mlAffiliateLink != "" && s.mlService != nil {
+		cta := s.pickMonitorCTA(ctx, automation, true, false)
+		if mlRender := s.renderMLDispatchTemplate(
+			ctx, automation, body, cta, mlOriginalLink, mlAffiliateLink, fallbackImageURL); mlRender.Body != "" {
+			return mlRender
+		}
+		// ML não é produto (cupom/campanha ou preview bloqueado): cai para o
+		// cupom Shopee abaixo, se houver.
 	}
+
+	if hasShopeeCouponLink {
+		cta := s.pickMonitorCTA(ctx, automation, false, true)
+		return monitorDispatchRender{ShopeeCouponRelay: true, CTA: cta}
+	}
+
 	return monitorDispatchRender{}
 }
 
@@ -1201,6 +1348,14 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 	shopeeAff *models.ShopeeAffiliateLink,
 	shopeeOriginalLink string,
 ) monitorDispatchRender {
+	// Guard duro antes de qualquer dereference/CTA/GetProduct: sem os dois IDs
+	// não há produto para descrever, e renderizar mesmo assim produzia
+	// {nome_produto}/{preco_formatado} vazios com o literal "Por:" do template.
+	if shopeeAff == nil || shopeeAff.AffiliateLink == "" ||
+		shopeeAff.ItemID <= 0 || shopeeAff.ShopID <= 0 {
+		return monitorDispatchRender{}
+	}
+
 	vars := text.ShopeeOfferVars{
 		AffiliateLink: shopeeAff.AffiliateLink,
 		Link:          shopeeOriginalLink,
@@ -1241,7 +1396,12 @@ func (s *monitoringService) renderShopeeDispatchTemplate(
 	}
 
 	message := applyCTAAndCouponAppend(text.RenderShopeeOfferTemplate(body, vars), body, cta, coupon)
-	return monitorDispatchRender{Body: message, CardTitle: vars.Title, Coupon: coupon}
+	return monitorDispatchRender{
+		Body:       message,
+		CardTitle:  vars.Title,
+		PreviewURL: shopeeAff.AffiliateLink,
+		Coupon:     coupon,
+	}
 }
 
 // renderMLDispatchTemplate fills the dispatch-text template for an ML offer.
@@ -1289,7 +1449,12 @@ func (s *monitoringService) renderMLDispatchTemplate(
 	}
 
 	message := applyCTAAndCouponAppend(text.RenderMLOfferTemplate(body, vars), body, cta, coupon)
-	return monitorDispatchRender{Body: message, CardTitle: vars.Title, Coupon: coupon}
+	return monitorDispatchRender{
+		Body:       message,
+		CardTitle:  vars.Title,
+		PreviewURL: mlAffiliateLink,
+		Coupon:     coupon,
+	}
 }
 
 // preferredParticipantSession returns the session of the first pinned chip

@@ -25,6 +25,65 @@ func TestRenderMLCouponNotice(t *testing.T) {
 	}
 }
 
+func TestRenderShopeeCouponNotice(t *testing.T) {
+	t.Parallel()
+
+	const notice = ShopeeCouponLimitedNotice
+
+	tests := []struct {
+		name string
+		body string
+		cta  string
+		want string
+	}{
+		{
+			name: "corpo vazio nao rende nada",
+			body: "",
+			cta:  "CTA QUALQUER",
+			want: "",
+		},
+		{
+			name: "corpo so espacos nao rende nada",
+			body: "   ",
+			cta:  "CTA QUALQUER",
+			want: "",
+		},
+		{
+			name: "sem cta e corpo mais aviso",
+			body: "CUPOM {SAVE20}",
+			cta:  "",
+			want: "CUPOM {SAVE20}\n\n" + notice,
+		},
+		{
+			name: "cta trimado antes do corpo",
+			body: "CUPOM {SAVE20}",
+			cta:  "  CTA CLIENTE  ",
+			want: "CTA CLIENTE\n\nCUPOM {SAVE20}\n\n" + notice,
+		},
+		{
+			name: "chaves literais sobrevivem",
+			body: "Use {SAVE20} ou {{literal}}",
+			cta:  "",
+			want: "Use {SAVE20} ou {{literal}}\n\n" + notice,
+		},
+		{
+			name: "multiline preserva ordem e conteudo",
+			body: "Resgate aqui:\nhttps://s.shopee.com.br/abc",
+			cta:  "CTA",
+			want: "CTA\n\nResgate aqui:\nhttps://s.shopee.com.br/abc\n\n" + notice,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := RenderShopeeCouponNotice(tt.body, tt.cta); got != tt.want {
+				t.Errorf("RenderShopeeCouponNotice()\n got: %q\nwant: %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRenderTemplate(t *testing.T) {
 	t.Parallel()
 
