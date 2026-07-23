@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Automatiza backup and capacity signals every five minutes
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=5m
+AccuracySec=30s
+Persistent=true
+Unit=automatiza-backup-verify.service
+
+[Install]
+WantedBy=timers.target

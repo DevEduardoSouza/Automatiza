@@ -1,0 +1,39 @@
+# Values only; never commit credentials, private keys, tokens, or real endpoints.
+BACKUP_ENABLED=false
+BACKUP_MODE=staging
+BACKUP_ENABLE_SENTINEL=/etc/automatiza-backup/ENABLED
+BACKUP_STATE_DIR=/var/lib/automatiza-backup
+# Set to the node_exporter textfile collector directory when it is deployed.
+BACKUP_METRICS_DIR=/var/lib/automatiza-backup/metrics
+BACKUP_RCLONE_REMOTE=backup:automatiza
+BACKUP_RCLONE_CONFIG=/etc/automatiza-backup/rclone.conf
+BACKUP_DESTINATION_BUDGET_BYTES=0
+BACKUP_AGE_RECIPIENT_FILE=/etc/automatiza-backup/age-recipient.txt
+BACKUP_CONFIG_ALLOWLIST=/etc/automatiza-backup/config-allowlist.txt
+BACKUP_MONITORED_MOUNTS=/
+BACKUP_MONITORED_TABLES=public.action_history,public.dispatch_logs,public.webhook_logs
+# Comma-separated read-only rclone prefixes; metric labels remain prefix-N.
+BACKUP_MONITORED_S3_PREFIXES=
+BACKUP_PG_CONTAINER=automatiza-postgres
+BACKUP_DB_USER=automatiza_backup
+BACKUP_DB_NAME=automatiza
+BACKUP_PGBACKREST_STANZA=automatiza
+# Flip only after the stanza exists, pgBackRest check succeeds, and archiving is enabled.
+BACKUP_PITR_ENABLED=false
+BACKUP_PG_WAL_PATH=/var/lib/docker/volumes/docker_postgres_data/_data/pg_wal
+BACKUP_PG_WAL_WARN_BYTES=10737418240
+BACKUP_PG_WAL_CRITICAL_BYTES=21474836480
+BACKUP_WAHA1_PATH=/var/lib/docker/volumes/docker_waha_data/_data
+BACKUP_WAHA2_PATH=/var/lib/docker/volumes/docker_waha2_data/_data
+BACKUP_WAHA_ALLOWED_ROOT=/var/lib/docker/volumes
+
+# Restore settings belong only on the isolated restore host.
+RESTORE_ENABLE_SENTINEL=/etc/automatiza-backup/RESTORE_ALLOWED
+RESTORE_ALLOWED_ROOT=/var/lib/automatiza-restore-drill
+RESTORE_AGE_IDENTITY_FILE=/etc/automatiza-backup/restore-age-key.txt
+RESTORE_PG_CONTAINER=automatiza-restore-postgres
+RESTORE_DB_NAME=automatiza_restore
+RESTORE_DB_USER=automatiza
+RESTORE_MIN_PROFILES=1
+RESTORE_MIN_INSTANCES=1
+RESTORE_KEEP_PLAINTEXT=false

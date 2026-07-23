@@ -1,0 +1,32 @@
+# Dedicated PITR drill stack. Never combine with docker-compose.prod.yml.
+services:
+  pgbackrest-restore:
+    image: ${PGBACKREST_RESTORE_IMAGE:?pin the approved pgBackRest image digest}
+    entrypoint: ["pgbackrest"]
+    volumes:
+      - restore_postgres_data:/var/lib/postgresql/data
+      - ${PGBACKREST_CONFIG_PATH:-/etc/automatiza-backup/pgbackrest.conf}:/etc/pgbackrest/pgbackrest.conf:ro
+    networks:
+      - restore-egress
+
+  postgres-restored:
+    image: ${PGBACKREST_RESTORE_IMAGE:?pin the approved pgBackRest image digest}
+    environment:
+      PGBACKREST_ENABLED: "false"
+    volumes:
+      - restore_postgres_data:/var/lib/postgresql/data
+      - ${PGBACKREST_CONFIG_PATH:-/etc/automatiza-backup/pgbackrest.conf}:/etc/pgbackrest/pgbackrest.conf:ro
+    networks:
+      - restore-egress
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${RESTORE_DB_USER:-automatiza} -d ${RESTORE_DB_NAME:-automatiza}"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    restart: "no"
+
+volumes:
+  restore_postgres_data:
+
+networks:
+  restore-egress:

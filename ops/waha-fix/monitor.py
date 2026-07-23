@@ -11,7 +11,7 @@ HH:21 cleanup; established-session tracking; real-loss tripwire) PLUS:
 Multi-instance aware via INSTANCES (default single localhost:3001). Safe to run
 by hand. Coordinates with the rolling purge via purge.lock like the watchdog.
 When deployed, it REPLACES the waha-watchdog cron (do not run both)."""
-import json, os, sys, time, subprocess, urllib.request, re
+import calendar, json, os, sys, time, subprocess, urllib.request, re
 
 ENV = "/opt/automatiza/docker/.env"
 # name -> base url. Direct instance URLs (not via router) so the monitor can
@@ -42,6 +42,14 @@ CAP = 450                        # teto do router (WAHA_CAP), atualizado 20/07
 AUTOSCALE_AT = 330
 DISK_ALERT_PCT = 85
 LOAD_ALERT = 15.0
+BACKUP_ENABLE_SENTINEL = "/etc/automatiza-backup/ENABLED"
+BACKUP_STATUS_DIR = "/var/lib/automatiza-backup/status"
+BACKUP_MAX_AGE = {
+    "postgres-logical": 26 * 3600,
+    "vps-config": 26 * 3600,
+    "waha-1": 8 * 3600,
+    "waha-2": 8 * 3600,
+}
 
 sys.path.insert(0, "/root/waha-fix")
 try:
@@ -81,7 +89,8 @@ def req(method, base, path, timeout=30):
 
 def jload(p, d):
     try:
-        return json.load(open(p))
+        with open(p) as handle:
+            return json.load(handle)
     except Exception:
         return d
 
@@ -148,6 +157,84 @@ def infra_alerts():
                                dedup_key=f"mon_health_{cname}", min_interval=1800)
         except Exception:
             pass
+
+
+def _backup_timestamp(value):
+    try:
+        return calendar.timegm(time.strptime(value, "%Y-%m-%dT%H:%M:%SZ"))
+    except Exception:
+        return 0
+
+
+def _backup_status(filename):
+    value = jload(os.path.join(BACKUP_STATUS_DIR, filename), {})
+    return value if isinstance(value, dict) else {}
+
+
+def backup_alerts(now=None):
+    """Bridge backupctl state into the already deployed e-mail alert channel."""
+    try:
+        with open(BACKUP_ENABLE_SENTINEL) as handle:
+            enabled = handle.read().strip()
+        if enabled != "AUTOMATIZA_BACKUP_ENABLED_V1":
+            return []
+    except Exception:
+        return []
+
+    current = now if now is not None else time.time()
+    issues = []
+    for component, max_age in BACKUP_MAX_AGE.items():
+        status = _backup_status(component + ".json")
+        last_success = _backup_timestamp(status.get("last_success_at", ""))
+        if last_success <= 0 or current - last_success > max_age:
+            issues.append(f"{component}: stale_or_missing")
+        elif status.get("success") is False:
+            issues.append(f"{component}: last_attempt_failed")
+
+    for filename, max_age in (
+        ("verification.json", 10 * 60),
+        ("verification-remote.json", 26 * 3600),
+        ("inventory.json", 26 * 3600),
+    ):
+        status = _backup_status(filename)
+        finished = _backup_timestamp(status.get("finished_at", ""))
+        if finished <= 0 or current - finished > max_age:
+            issues.append(f"{filename}: stale_or_missing")
+            continue
+        if status.get("success") is False:
+            alerts = status.get("alerts", [])
+            codes = sorted({
+                (
+                    str(item.get("error_code", "UNKNOWN"))
+                    + (
+                        ":" + str(item["component"])
+                        if item.get("component") in {
+                            "postgres-diff",
+                            "postgres-full",
+                            "postgres-logical",
+                            "postgres-physical",
+                            "vps-config",
+                            "waha-1",
+                            "waha-2",
+                        }
+                        else ""
+                    )
+                )
+                for item in alerts
+                if isinstance(item, dict)
+            })
+            issues.append(f"{filename}: " + ",".join(codes[:10]))
+
+    if issues:
+        log(f"BACKUP alerts={len(issues)}")
+        if lib_alert:
+            lib_alert.send(
+                f"backup verification: {len(issues)} issue(s)",
+                "Backup/PITR checks require attention:\n  " + "\n  ".join(issues),
+                dedup_key="mon_backup",
+                min_interval=1800,
+            )
+    return issues
 
 
 def router_block_alert():
@@ -283,6 +370,7 @@ def reconcile_connected_dead(seen, all_ok):
 
 
 def main():
+    backup_alerts()
     if not KEY:
         log("ERROR no api key"); return
     locked = purge_locked()

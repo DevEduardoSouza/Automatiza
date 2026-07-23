@@ -1,0 +1,5 @@
+opt/automatiza/docker/docker-compose.prod.yml
+opt/automatiza/docker/docker-compose.backup.yml
+etc/nginx/sites-available/v2automatisagrupos.com.conf
+etc/systemd/system/automatiza-backup@.service
+etc/systemd/system/automatiza-backup-verify.service

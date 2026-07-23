@@ -14,27 +14,32 @@ stabilization (disk faxina, anti-deletion, session sharding, S3 media + backups)
 
 | File | Cron (`/etc/cron.d/`) | What it does |
 |------|-----------------------|--------------|
-| `monitor.py` | `waha-monitor` — `*/5 * * * *` | Superset of the old watchdog: restarts **paired** sessions found `FAILED`/`STOPPED` across `waha-1`/`waha-2` (before the backend can delete them), zombie detection, and email alerts on disk/load/health + router-block events. |
+| `monitor.py` | `waha-monitor` — `*/5 * * * *` | Superset of the old watchdog: restarts **paired** sessions found `FAILED`/`STOPPED` across `waha-1`/`waha-2`, zombie detection, and email alerts on disk/load/health/router events. When the WP-001 sentinel is enabled, it also bridges backup freshness, per-shard failures, remote verification and inventory into the existing e-mail channel. |
 | `guard.py` | `waha-guard` — `47 * * * *` | Hourly: forces GOWS on-disk storage **off** for any newly created session (keeps media in S3, disk low). Self-skips while a purge runs. |
 | `watchdog.py` | *(retired)* | Predecessor of `monitor.py` (anti-deletion only). Kept for reference; **replaced by `monitor.py`** — do not re-enable both. |
 | `purge.py` | *(one-shot)* | Rolling purge of GOWS media/history that had filled the disk (reclaimed ~330 GB). A remediation tool, not a cron job. |
 | `reconcile.py` | *(manual)* | Read-only report reconciling automations ↔ WAHA instance ownership. |
 | `lib_alert.py` | *(library)* | Shared email-alert helper. Reads `SMTP_*` from the docker `.env`; de-dupes via `.alert_*` timestamp files. |
 | `status.sh` | *(manual)* | Quick live status of the fleet. |
-| `backup-pg.sh` | `automatiza-backups` | `pg_dump` → `s3:automatiza-waha/postgres/` (14-day retention). |
-| `backup-sessions.sh` | `automatiza-backups` | `rclone sync` of session dirs → `s3:.../sessions/current/` + versioned `sessions/versions/<day>/` (7-day retention). |
-| `backup-config.sh` | `automatiza-backups` | `.env` + compose tarball, **age-encrypted**, → `s3:.../config/` (30-day retention). |
+| `backup-pg.sh` | compatibility wrapper | Calls the opt-in WP-001 controller for an encrypted logical dump. |
+| `backup-sessions.sh` | compatibility wrapper | Calls the controller independently for **both** WAHA shards. |
+| `backup-config.sh` | compatibility wrapper | Calls the controller with an explicit configuration allowlist. |
 
-## S3 layout (`rclone` remote `s3:` → bucket `automatiza-waha`, region `eu-north-1`)
+## Legacy S3 layout
 
 ```
 automatiza-waha/
 ├── <waha media>            # WAHA runtime media (WAHA_MEDIA_STORAGE=S3)
-├── postgres/               # pg_dump backups (14d)
-├── sessions/current/       # latest session dirs (synced)
-├── sessions/versions/<day>/# rolled-off session versions (7d)
-└── config/                 # age-encrypted .env + compose (30d)
+├── postgres/               # legacy pg_dump backups
+├── sessions/current/       # legacy mutable session copy
+├── sessions/versions/<day>/# legacy rolled-off versions
+└── config/                 # legacy age-encrypted configuration
 ```
+
+The WP-001 controller writes UUID-scoped immutable objects below the configured
+off-host destination and never deletes or overwrites objects. Retention belongs
+to the destination policy and requires human approval. See
+`docs/runbooks/backup-pitr-restore.md`.
 
 ## Env vars (ops-managed — live only in the VPS `docker/.env`)
 
@@ -70,7 +75,7 @@ set `WAHA_API_URL=http://waha:3000` on `server`+`worker` and recreate them.
 
 ## Off-server secret
 
-`backup-config.sh` encrypts with **age**. The matching **private** key
-(`/root/waha-fix/age-key.txt` on the VPS) is the only thing that can decrypt the
-config backups — keep a copy **off the server**. It is deliberately not in this
-repo.
+The controller encrypts streamed artifacts with **age**. Only its public
+recipient belongs on the source host. The matching private key must stay off
+the source VPS, in a separately controlled restore location, and never in this
+repository.

@@ -1,0 +1,18 @@
+[Unit]
+Description=Verify Automatiza backup freshness, WAL, disk and inodes
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/automatiza/backup/backupctl.py --config /etc/automatiza-backup/config.env verify
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/opt/automatiza/backup /etc/automatiza-backup
+ReadWritePaths=/var/lib/automatiza-backup -/var/lib/node_exporter/textfile_collector /run/docker.sock
+UMask=0027

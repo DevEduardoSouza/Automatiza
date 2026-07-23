@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily end-to-end verification of Automatiza backup objects
+
+[Timer]
+OnCalendar=*-*-* 05:00:00 UTC
+RandomizedDelaySec=20m
+Persistent=true
+Unit=automatiza-backup-verify-remote.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,19 @@
+# Staging-first overlay. A human operator must pin POSTGRES_BACKUP_BASE_IMAGE to
+# the exact approved postgres@sha256 digest before any production rollout.
+services:
+  postgres:
+    build:
+      context: ./postgres-backup
+      args:
+        POSTGRES_BASE: ${POSTGRES_BACKUP_BASE_IMAGE:-postgres:16-alpine}
+        PGBACKREST_VERSION: ${PGBACKREST_VERSION:-2.58.0-r0}
+    image: automatiza-postgres-pgbackrest:16
+    environment:
+      PGBACKREST_ENABLED: ${PGBACKREST_ENABLED:-false}
+      PGBACKREST_STANZA: ${PGBACKREST_STANZA:-automatiza}
+    volumes:
+      - ${PGBACKREST_CONFIG_PATH:-/etc/automatiza-backup/pgbackrest.conf}:/etc/pgbackrest/pgbackrest.conf:ro
+      - pgbackrest_spool:/var/spool/pgbackrest
+
+volumes:
+  pgbackrest_spool:

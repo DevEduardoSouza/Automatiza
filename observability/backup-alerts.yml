@@ -1,0 +1,166 @@
+groups:
+  - name: automatiza-backup
+    rules:
+      - alert: AutomatizaBackupSessionShardStale
+        expr: time() - automatiza_backup_last_success_unixtime{component=~"waha-[12]"} > 28800
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "WAHA session backup is stale on {{ $labels.component }}"
+          error_code: VERIFY_BACKUP_STALE
+
+      - alert: AutomatizaPostgresLogicalBackupStale
+        expr: time() - automatiza_backup_last_success_unixtime{component="postgres-logical"} > 93600
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: PostgreSQL logical backup is stale
+          error_code: VERIFY_BACKUP_STALE
+
+      - alert: AutomatizaPostgresDifferentialBackupStale
+        expr: (time() - automatiza_backup_last_success_unixtime{component="postgres-diff"} > 93600) and on() (automatiza_postgres_archiving_enabled == 1)
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: PostgreSQL differential backup is stale
+          error_code: VERIFY_BACKUP_STALE
+
+      - alert: AutomatizaPostgresFullBackupStale
+        expr: (time() - automatiza_backup_last_success_unixtime{component="postgres-full"} > 691200) and on() (automatiza_postgres_archiving_enabled == 1)
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: PostgreSQL full backup is stale
+          error_code: VERIFY_BACKUP_STALE
+
+      - alert: AutomatizaPostgresWALStale
+        expr: automatiza_postgres_archiving_enabled == 1 and (automatiza_postgres_last_wal_age_seconds < 0 or automatiza_postgres_last_wal_age_seconds > 300)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: PostgreSQL WAL archive is unavailable or outside the five-minute RPO
+          error_code: VERIFY_WAL_STALE
+
+      - alert: AutomatizaPostgresWALDirectoryHigh
+        expr: automatiza_postgres_archiving_enabled == 1 and automatiza_postgres_wal_directory_bytes >= 10737418240 and automatiza_postgres_wal_directory_bytes < 21474836480
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: PostgreSQL pg_wal has reached the configured 10 GiB warning baseline
+          error_code: VERIFY_WAL_CAPACITY
+
+      - alert: AutomatizaPostgresWALDirectoryCritical
+        expr: automatiza_postgres_archiving_enabled == 1 and automatiza_postgres_wal_directory_bytes >= 21474836480
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: PostgreSQL pg_wal has reached the configured 20 GiB critical baseline
+          error_code: VERIFY_WAL_CAPACITY
+
+      - alert: AutomatizaDiskUsageWarning
+        expr: automatiza_disk_used_ratio >= 0.70 and automatiza_disk_used_ratio < 0.80
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk usage is at least 70% on {{ $labels.mount }}"
+          error_code: VERIFY_DISK_CRITICAL
+
+      - alert: AutomatizaDiskUsageHigh
+        expr: automatiza_disk_used_ratio >= 0.80 and automatiza_disk_used_ratio < 0.90
+        for: 10m
+        labels:
+          severity: warning
+          priority: high
+        annotations:
+          summary: "Disk usage is at least 80% on {{ $labels.mount }}"
+          error_code: VERIFY_DISK_CRITICAL
+
+      - alert: AutomatizaDiskUsageCritical
+        expr: automatiza_disk_used_ratio >= 0.90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk usage is at least 90% on {{ $labels.mount }}"
+          error_code: VERIFY_DISK_CRITICAL
+
+      - alert: AutomatizaInodeUsageWarning
+        expr: automatiza_inode_used_ratio >= 0.70 and automatiza_inode_used_ratio < 0.80
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Inode usage is at least 70% on {{ $labels.mount }}"
+          error_code: VERIFY_INODE_CRITICAL
+
+      - alert: AutomatizaInodeUsageHigh
+        expr: automatiza_inode_used_ratio >= 0.80 and automatiza_inode_used_ratio < 0.90
+        for: 10m
+        labels:
+          severity: warning
+          priority: high
+        annotations:
+          summary: "Inode usage is at least 80% on {{ $labels.mount }}"
+          error_code: VERIFY_INODE_CRITICAL
+
+      - alert: AutomatizaInodeUsageCritical
+        expr: automatiza_inode_used_ratio >= 0.90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Inode usage is at least 90% on {{ $labels.mount }}"
+          error_code: VERIFY_INODE_CRITICAL
+
+      - alert: AutomatizaBackupDestinationCapacity
+        expr: automatiza_backup_destination_budget_used_ratio >= 0.70
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Backup destination has consumed at least 70% of its approved budget
+          error_code: VERIFY_DESTINATION_CAPACITY
+
+      - alert: AutomatizaBackupMetricsMissing
+        expr: absent(automatiza_backup_verifier_last_run_unixtime) or time() - automatiza_backup_verifier_last_run_unixtime > 600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: Automatiza backup verifier metrics are missing
+          error_code: VERIFY_BACKUP_STALE
+
+      - alert: AutomatizaBackupInventoryStale
+        expr: absent(automatiza_backup_inventory_last_run_unixtime) or time() - automatiza_backup_inventory_last_run_unixtime > 93600
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Automatiza backup capacity inventory is stale
+          error_code: VERIFY_DESTINATION_CAPACITY
+
+      - alert: AutomatizaBackupArtifactInvalid
+        expr: automatiza_backup_artifact_verified == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Latest encrypted backup failed end-to-end verification for {{ $labels.component }}"
+          error_code: VERIFY_ARTIFACT_INVALID
+
+      - alert: AutomatizaBackupRemoteVerificationStale
+        expr: absent(automatiza_backup_remote_verifier_last_run_unixtime) or time() - automatiza_backup_remote_verifier_last_run_unixtime > 93600
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: Daily end-to-end backup verification is stale
+          error_code: VERIFY_ARTIFACT_INVALID

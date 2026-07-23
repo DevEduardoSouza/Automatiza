@@ -1,0 +1,11 @@
+[Unit]
+Description=Five-hourly Automatiza WAHA shard 2 backup
+
+[Timer]
+OnCalendar=*-*-* 00,05,10,15,20:40:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+Unit=automatiza-backup@waha-2.service
+
+[Install]
+WantedBy=timers.target

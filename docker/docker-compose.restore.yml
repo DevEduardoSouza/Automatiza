@@ -1,0 +1,26 @@
+# Isolated restore target. Never combine this file with the production compose.
+services:
+  postgres-restore:
+    image: ${POSTGRES_RESTORE_IMAGE:?pin an approved postgres@sha256 image}
+    container_name: automatiza-restore-postgres
+    environment:
+      POSTGRES_DB: automatiza_restore
+      POSTGRES_USER: automatiza
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - restore_postgres_data:/var/lib/postgresql/data
+    networks:
+      - restore-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automatiza -d automatiza_restore"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: "no"
+
+volumes:
+  restore_postgres_data:
+
+networks:
+  restore-internal:
+    internal: true

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Automatiza capacity and growth inventory
+
+[Timer]
+OnCalendar=*-*-* 05:45:00 UTC
+RandomizedDelaySec=15m
+Persistent=true
+Unit=automatiza-backup-inventory.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,15 @@
+-- Human-reviewed staging/production prerequisite; do not run from an agent.
+-- The role has no password and is intended only for local docker exec/socket use.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'automatiza_backup') THEN
+        CREATE ROLE automatiza_backup LOGIN;
+    END IF;
+END
+$$;
+
+GRANT CONNECT ON DATABASE automatiza TO automatiza_backup;
+GRANT USAGE ON SCHEMA public TO automatiza_backup;
+GRANT pg_read_all_data TO automatiza_backup;
+GRANT pg_monitor TO automatiza_backup;
+ALTER ROLE automatiza_backup SET default_transaction_read_only = on;
