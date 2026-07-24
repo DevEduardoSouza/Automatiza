@@ -389,6 +389,16 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 		categoryIDs = []int{int(*params.CategoryID)}
 	}
 
+	// Keyword-driven categories: names with NO Shopee catId (e.g. os nichos/
+	// subnichos de Confeitaria/Casamento/Bebê) contribuem seu termo-folha como
+	// KEYWORD de busca em vez de filtro de categoria. Categorias com catId e os
+	// sentinelas broad ("Ofertas gerais"/"Sex Shop") não entram aqui. O cap de 8
+	// categorias/run a montante limita o fan-out.
+	var keywordTerms []string
+	if params.CategoryID == nil {
+		keywordTerms = s.keywordCategories(params.Categories)
+	}
+
 	// Build GraphQL query
 	limit := params.Limit
 	if limit <= 0 {
@@ -418,23 +428,48 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 	// Pool of sort types for variety: relevance, sales, commission
 	varietySortTypes := []int{1, 2, 5}
 
-	// If no categories resolved (or "Ofertas gerais"), search without category filter
-	if len(categoryIDs) == 0 {
-		sortType := 2
+	pickSort := func() int {
 		if fixedSortType != nil {
-			sortType = *fixedSortType
-		} else {
-			sortType = varietySortTypes[rand.Intn(len(varietySortTypes))]
+			return *fixedSortType
 		}
-		res, serr := s.searchShopee(ctx, appID, secret, params.Keyword, nil, sortType, limit, params)
-		if serr != nil && errors.Is(serr, ErrShopeeNoAPIAccess) {
-			s.markNoAPIAccess(ctx, userID)
+		return varietySortTypes[rand.Intn(len(varietySortTypes))]
+	}
+
+	var allOffers []models.ShopeeOffer
+
+	// Keyword-driven categories (sem catId): uma busca por keyword por termo.
+	for _, term := range keywordTerms {
+		kw := term
+		if params.Keyword != nil && *params.Keyword != "" {
+			kw = *params.Keyword + " " + term
 		}
-		return res, serr
+		res, err := s.searchShopee(ctx, appID, secret, &kw, nil, pickSort(), limit, params)
+		if err != nil {
+			if errors.Is(err, ErrShopeeNoAPIAccess) {
+				s.markNoAPIAccess(ctx, userID)
+				return nil, err
+			}
+			s.logger.Warn("Shopee keyword-category search failed",
+				zap.String("term", term), zap.Error(err))
+			continue
+		}
+		allOffers = append(allOffers, res.Offers...)
+	}
+
+	// Sem catId resolvido: ou é busca ampla/keyword pura (sem keyword-category),
+	// ou os termos já foram buscados acima.
+	if len(categoryIDs) == 0 {
+		if len(keywordTerms) == 0 {
+			res, serr := s.searchShopee(ctx, appID, secret, params.Keyword, nil, pickSort(), limit, params)
+			if serr != nil && errors.Is(serr, ErrShopeeNoAPIAccess) {
+				s.markNoAPIAccess(ctx, userID)
+			}
+			return res, serr
+		}
+		return &models.ShopeeSearchResult{Offers: allOffers, Total: len(allOffers), HasMore: false}, nil
 	}
 
 	// Search per category and aggregate results
-	var allOffers []models.ShopeeOffer
 	perCategoryLimit := limit
 	if len(categoryIDs) > 1 {
 		perCategoryLimit = max(5, limit/len(categoryIDs))
@@ -442,13 +477,7 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 
 	for _, catID := range categoryIDs {
 		catIDCopy := int64(catID)
-		sortType := 2
-		if fixedSortType != nil {
-			sortType = *fixedSortType
-		} else {
-			sortType = varietySortTypes[rand.Intn(len(varietySortTypes))]
-		}
-		result, err := s.searchShopee(ctx, appID, secret, params.Keyword, &catIDCopy, sortType, perCategoryLimit, params)
+		result, err := s.searchShopee(ctx, appID, secret, params.Keyword, &catIDCopy, pickSort(), perCategoryLimit, params)
 		if err != nil {
 			if errors.Is(err, ErrShopeeNoAPIAccess) {
 				// No Open API access: every category will fail the same way.
@@ -466,7 +495,8 @@ func (s *shopeeService) SearchOffers(ctx context.Context, userID string, params 
 
 	s.logger.Info("Shopee SearchOffers completed",
 		zap.Int("offersAfterFilter", len(allOffers)),
-		zap.Int("categoriesSearched", len(categoryIDs)))
+		zap.Int("categoriesSearched", len(categoryIDs)),
+		zap.Int("keywordCategories", len(keywordTerms)))
 
 	return &models.ShopeeSearchResult{
 		Offers:  allOffers,
@@ -494,6 +524,46 @@ func (s *shopeeService) resolveCategoryIDs(categories []string) []int {
 		}
 	}
 	return ids
+}
+
+// keywordCategories devolve os termos de busca das categorias que NÃO têm
+// productCatId (nichos/subnichos keyword-driven, ex. Confeitaria/Casamento/Bebê).
+// Categorias com catId (tratadas em resolveCategoryIDs) e os sentinelas broad
+// ("Ofertas gerais"/"Sex Shop") são ignorados aqui — não viram keyword.
+func (s *shopeeService) keywordCategories(categories []string) []string {
+	var terms []string
+	for _, cat := range categories {
+		if cat == "Ofertas gerais" || cat == "ofertasGerais" || cat == "Sex Shop" {
+			continue
+		}
+		if catIDs, ok := s.categoryMap[cat]; ok && len(catIDs) > 0 {
+			continue
+		}
+		if term := categoryLeafKeyword(cat); term != "" {
+			terms = append(terms, term)
+		}
+	}
+	return terms
+}
+
+// categoryLeafKeyword extrai o termo de busca de uma categoria/subnicho:
+// "Nicho - Grupo (Subnicho)" -> "Subnicho"; "Nicho - Subnicho" -> "Subnicho";
+// "Nicho" -> "Nicho".
+func categoryLeafKeyword(name string) string {
+	str := strings.TrimSpace(name)
+	if openIdx := strings.LastIndex(str, "("); openIdx >= 0 {
+		if closeIdx := strings.LastIndex(str, ")"); closeIdx > openIdx {
+			if inner := strings.TrimSpace(str[openIdx+1 : closeIdx]); inner != "" {
+				return inner
+			}
+		}
+	}
+	if sep := strings.LastIndex(str, " - "); sep >= 0 {
+		if leaf := strings.TrimSpace(str[sep+3:]); leaf != "" {
+			return leaf
+		}
+	}
+	return str
 }
 
 // searchShopee executes a single Shopee GraphQL search with optional keyword and category.
