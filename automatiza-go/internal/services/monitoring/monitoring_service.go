@@ -853,7 +853,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		// produto, então o parágrafo do cupom (código + link convertido)
 		// desapareceria. Anexa o trecho, sem ressuscitar o que as regras do
 		// operador removeram.
-		if len(shopeeCouponReplacements) > 0 {
+		//
+		// Precedência: se a regra de cupom do CLIENTE já aplicou (couponUsed.Applied),
+		// ela vence — o preço já reflete o desconto dela e o {cupom_bloco} dela já
+		// está no corpo. Anexar o cupom da FONTE aqui geraria DOIS cupons conflitantes
+		// (só o da regra está no "Por"). Só preservamos o cupom da fonte quando a regra
+		// NÃO casou (nil ou !Applied), pra não perder cupom de quem não tem regra.
+		if len(shopeeCouponReplacements) > 0 && (couponUsed == nil || !couponUsed.Applied) {
 			relayBody := buildMonitoringRelayBody(
 				msg.Body, automation.MonitoringTextRules, affiliateReplacements, blockedStoreLinks)
 			if excerpt := extractShopeeCouponParagraphs(relayBody, shopeeCouponReplacements); excerpt != "" {

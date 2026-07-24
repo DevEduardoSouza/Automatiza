@@ -798,6 +798,85 @@ func TestCascade_MixedTwoShopeeCouponsPreservesParagraphOrder(t *testing.T) {
 	}
 }
 
+// Precedência do cupom do CLIENTE sobre o cupom da FONTE (bug jessicamota,
+// 2026-07-23): produto + cupom-fonte na msg E regra de cupom do cliente casando
+// -> sai 1 cupom só (o da regra, já refletido no "Por"); o cupom da fonte é
+// suprimido, senão a oferta levava DOIS cupons conflitantes.
+func TestCascade_ClientCouponRuleSuppressesSourceCoupon(t *testing.T) {
+	var card *whatsapp.SendLinkPreviewInput
+	var imageCalled, textCalled bool
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: couponTemplate}}
+		s.dispatchText = parseDispatchTextGate("all")
+		s.shopeeService = shopeeByURL(map[string]models.ShopeeAffiliateLink{
+			couponURL:  {AffiliateLink: couponAffURL},
+			productURL: {AffiliateLink: productAffURL, ItemID: 123, ShopID: 456},
+		}, &models.ShopeeOffer{Name: "Produto XYZ", Price: 50.0, OriginalPrice: 100.0})
+		s.couponHandler = &mockCouponApplier{fn: func(_ float64, _ string, _ bool) *CouponResult {
+			return &CouponResult{Applied: true, CouponCode: "C10", CouponText: "\n\n🎟️ CUPOM_CLIENTE", DiscountedPrice: 45.0}
+		}}
+		captureCard(s, &card, &imageCalled, &textCalled)
+	})
+
+	auto := couponAutomation()
+	auto.ApplyCouponRules = true
+	msg := sourceMessage()
+	msg.Body = mixedSourceBody(couponURL, productURL)
+
+	if err := svc.processAutomation(context.Background(), auto, msg, []string{couponURL, productURL}, false, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card == nil {
+		t.Fatal("esperava card de preview")
+	}
+
+	out := card.Text
+	if !strings.Contains(out, "CUPOM_CLIENTE") {
+		t.Errorf("cupom da REGRA do cliente deveria estar no corpo; got:\n%s", out)
+	}
+	if !strings.Contains(out, "45,00") {
+		t.Errorf("preço deveria ser o descontado (45,00); got:\n%s", out)
+	}
+	if strings.Contains(out, "CUPOM {SAVE20}") || strings.Contains(out, couponAffURL) {
+		t.Errorf("cupom da FONTE deveria ter sido suprimido (regra do cliente venceu); got:\n%s", out)
+	}
+	if !strings.Contains(out, "Produto XYZ") || card.URL != productAffURL {
+		t.Errorf("template do produto deveria seguir intacto; got body:\n%s\nURL=%s", out, card.URL)
+	}
+}
+
+// Regressão do f50bb54: quando a regra do cliente NÃO casa (Applied=false), o
+// cupom da FONTE continua preservado — não se perde cupom de quem não tem regra.
+func TestCascade_SourceCouponPreservedWhenClientRuleDoesNotApply(t *testing.T) {
+	var card *whatsapp.SendLinkPreviewInput
+	var imageCalled, textCalled bool
+	svc := newTestService(t, func(s *monitoringService) {
+		s.settingsRepo = &mockSettingsRepo{dt: &models.DispatchText{Body: couponTemplate}}
+		s.dispatchText = parseDispatchTextGate("all")
+		s.shopeeService = shopeeByURL(map[string]models.ShopeeAffiliateLink{
+			couponURL:  {AffiliateLink: couponAffURL},
+			productURL: {AffiliateLink: productAffURL, ItemID: 123, ShopID: 456},
+		}, &models.ShopeeOffer{Name: "Produto XYZ", Price: 50.0, OriginalPrice: 100.0})
+		s.couponHandler = &mockCouponApplier{fn: func(_ float64, _ string, _ bool) *CouponResult {
+			return &CouponResult{Applied: false}
+		}}
+		captureCard(s, &card, &imageCalled, &textCalled)
+	})
+
+	auto := couponAutomation()
+	auto.ApplyCouponRules = true
+	msg := sourceMessage()
+	msg.Body = mixedSourceBody(couponURL, productURL)
+
+	if err := svc.processAutomation(context.Background(), auto, msg, []string{couponURL, productURL}, false, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card == nil {
+		t.Fatal("esperava card de preview")
+	}
+	assertMixed(t, card)
+}
+
 // Produto ML + cupom Shopee: template ML (produto real) com o parágrafo do
 // cupom Shopee anexado — não o aviso de cupom-only.
 func TestCascade_MLProductAndShopeeCouponUsesMLTemplate(t *testing.T) {
