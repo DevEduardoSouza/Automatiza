@@ -1,3 +1,4 @@
+-- automatiza:migration-mode=transactional
 -- Nichos Confeitaria e Doces / Casamento / Bebê e Maternidade + subnichos (24/07)
 -- Aditiva: INSERT em categories (has_refinements=true) + subcategories.
 -- name = display = chave do mapa Go; display_key = 'Nicho - Grupo (Subnicho)'.
