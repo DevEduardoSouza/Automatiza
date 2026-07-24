@@ -460,6 +460,32 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 			}
 		}
 
+		// Skip de oferta ML degradada: item de Mercado Livre sem preço (preview
+		// nil ou Price<=0) NÃO deve ser enviado — o template colapsa a linha
+		// "💸 Por " para vazio (FormatBRLSpaced(0)=="") e a oferta sai inútil no
+		// grupo. Espelha o RAMO PERMANENTE do guard Shopee (consume + continue),
+		// NÃO o transitório: aqui NÃO dá para distinguir uma falha de janela
+		// (anti-bot temporário no /social) de um link permanentemente não-raspável
+		// (link ML direto bloqueado, produto removido) — o scrape devolve preview
+		// vazio SEM erro nos dois casos. Diante do desconhecido, seguimos a mesma
+		// política do isTransientShopeeEnrichError ("unknown → permanente →
+		// consome"): manter o item pendente sem consumir travaria a lista neste
+		// item a cada ciclo (GetNextUnconsumed devolve sempre o mesmo topo), o que
+		// é PIOR que dropar um item. Consumido, a lista avança; com
+		// repeat_when_finished (default TRUE) o item retorna no próximo ciclo
+		// completo e é re-tentado numa janela melhor. O log 'skipped' (não
+		// 'failed') não dispara o reconciliador (GetListResurrectCandidates exige
+		// status='failed'), então não há churn de ressurreição.
+		if isML && (preview == nil || preview.Price <= 0) {
+			s.logger.Warn("Skipping degraded ML list item — no price (avoiding priceless offer)",
+				zap.String("automationID", automation.ID),
+				zap.String("originURL", originURL))
+			s.logDispatch(ctx, automation, "system", originURL, "skipped",
+				"Preco ML indisponivel (leitura /social falhou) - item pulado")
+			s.consumeListItem(ctx, item.ID, automation.ID, nil)
+			continue
+		}
+
 		// Skip de oferta degradada (Shopee): se o item é de produto Shopee mas
 		// o enriquecimento não trouxe o produto (shopeeProduct nil, mesmo após
 		// o retry acima), não temos preço nem imagem — enviar geraria uma

@@ -1554,7 +1554,7 @@ func TestProcessListMode_WithDispatchTemplate(t *testing.T) {
 		Return(&models.DispatchText{ID: "dt-1", Body: "{{titulo}} - {{link}}"}, nil)
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
-			{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123", ListID: listID},
+			{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123", ListID: listID, ProductPrice: float64Ptr(99.90)},
 		}, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.AnythingOfType("*string")).Return(nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -1915,7 +1915,7 @@ func TestProcessListMode_MarkConsumedError(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
-			{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123", ListID: listID},
+			{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123", ListID: listID, ProductPrice: float64Ptr(99.90)},
 		}, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.AnythingOfType("*string")).
 		Return(errors.New("db error")) // Error is logged, not returned
@@ -1947,7 +1947,7 @@ func TestProcessListMode_IncludeImageFalse(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
 		Return([]*models.MlLinkListItem{
-			{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123", ListID: listID, ProductImageURL: &imageURL},
+			{ID: "item-1", OriginURL: "https://produto.mercadolivre.com.br/MLB-123", ListID: listID, ProductImageURL: &imageURL, ProductPrice: float64Ptr(99.90)},
 		}, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -1984,6 +1984,44 @@ func TestProcessListMode_MercadolibreURL(t *testing.T) {
 	result, err := svc.processListMode(context.Background(), automation)
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.MessagesSent) // mercadolibre. URL is valid
+}
+
+// Regressão (jessicasilvadelimasilva55@gmail.com, 24/07): oferta de Mercado
+// Livre SEM preço não deve ser enviada. Aqui mlService é nil e o item não tem
+// ProductPrice no metadata, então o preview fica nil — o guard isML pula o item
+// para não mandar "💸 Por " vazio no grupo. CONSOME o item (espelho do ramo
+// permanente do Shopee): manter pendente sem consumir travaria a lista neste
+// item a cada ciclo; consumido, a lista avança e o repeat_when_finished re-tenta
+// num ciclo futuro. O log é 'skipped' (não dispara o reconciliador).
+func TestProcessListMode_MLNoPrice_SkipsAndConsumes(t *testing.T) {
+	t.Parallel()
+	svc, deps := newInternalTestService(t)
+
+	listID := "list-123"
+	automation := &models.Automation{
+		ID:           "auto-1",
+		UserID:       "user-1",
+		Name:         "List Test",
+		MlLinkListID: &listID,
+		GroupIDs:     []string{"group@g.us"},
+	}
+
+	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
+		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, listID, 10).
+		Return([]*models.MlLinkListItem{
+			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-777", ListID: listID},
+		}, nil)
+	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	// Item degradado é consumido para a lista avançar (não travar no topo).
+	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything).Return(nil)
+
+	result, err := svc.processListMode(context.Background(), automation)
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.MessagesSent, "oferta ML sem preco nao deve ser enviada")
+	// Lista avança: item consumido (mesmo contrato do skip permanente do Shopee).
+	deps.mlLinkListItemRepo.AssertCalled(t, "MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything)
 }
 
 func TestProcessListMode_NoGroups(t *testing.T) {
@@ -2875,7 +2913,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 			Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 
 		items := []*models.MlLinkListItem{
-			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
+			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1", ProductPrice: float64Ptr(99.90)},
 		}
 		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 
@@ -3023,7 +3061,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 			Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 
 		items := []*models.MlLinkListItem{
-			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
+			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1", ProductPrice: float64Ptr(99.90)},
 		}
 		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -3155,7 +3193,7 @@ func TestProcessListMode_MLServiceIntegration(t *testing.T) {
 			Return(&models.DispatchText{Body: "Custom ML: {{PRODUTO_NOME}}"}, nil)
 
 		items := []*models.MlLinkListItem{
-			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
+			{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1", ProductPrice: float64Ptr(99.90)},
 		}
 		deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 		deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -3452,7 +3490,7 @@ func TestProcessListMode_URLSafetyBlock(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 
 	items := []*models.MlLinkListItem{
-		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
+		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1", ProductPrice: float64Ptr(99.90)},
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -3496,7 +3534,7 @@ func TestProcessListMode_BackpressureBlock(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 
 	items := []*models.MlLinkListItem{
-		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
+		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1", ProductPrice: float64Ptr(99.90)},
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -3533,7 +3571,7 @@ func TestProcessListMode_WithQueueClient(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 
 	items := []*models.MlLinkListItem{
-		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
+		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1", ProductPrice: float64Ptr(99.90)},
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -3577,7 +3615,7 @@ func TestProcessListMode_SendAsImageTrue(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 
 	items := []*models.MlLinkListItem{
-		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-9999"},
+		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-9999", ProductPrice: float64Ptr(99.90)},
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -3619,7 +3657,7 @@ func TestProcessListMode_SendAsImageFalse(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 
 	items := []*models.MlLinkListItem{
-		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-8888"},
+		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-8888", ProductPrice: float64Ptr(99.90)},
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -3662,7 +3700,7 @@ func TestProcessListMode_WithBackpressureRecord(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 
 	items := []*models.MlLinkListItem{
-		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
+		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1", ProductPrice: float64Ptr(99.90)},
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -4059,7 +4097,7 @@ func TestProcessListMode_EnqueueError(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 
 	items := []*models.MlLinkListItem{
-		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
+		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1", ProductPrice: float64Ptr(99.90)},
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
@@ -5085,7 +5123,7 @@ func TestProcessListMode_URLSafetyEvaluateError_Mock(t *testing.T) {
 		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
 
 	items := []*models.MlLinkListItem{
-		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1"},
+		{ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/product-1", ProductPrice: float64Ptr(99.90)},
 	}
 	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-1", 10).Return(items, nil)
 	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
