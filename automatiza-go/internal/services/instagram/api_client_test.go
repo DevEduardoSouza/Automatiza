@@ -68,14 +68,15 @@ func TestExchangeCode_OfficialDataEnvelope(t *testing.T) {
 }
 
 // Envelope vazio, múltiplo, sem token ou sem id: nenhum deles pode "passar
-// meio certo" — adivinhar aqui persiste o identificador errado.
+// meio certo" — adivinhar aqui persiste o identificador errado. (O "topo plano"
+// NÃO entra aqui: é o formato REAL de produção e é aceito — ver
+// TestExchangeCode_AcceptsFlatTopLevel.)
 func TestExchangeCode_RejectsMalformedEnvelopes(t *testing.T) {
 	cases := map[string]string{
 		"data vazio":     `{"data":[]}`,
 		"data múltiplo":  `{"data":[{"access_token":"a","user_id":"1"},{"access_token":"b","user_id":"2"}]}`,
 		"token vazio":    `{"data":[{"access_token":"","user_id":"1"}]}`,
 		"sem app-scoped": `{"data":[{"access_token":"a","user_id":""}]}`,
-		"topo antigo":    `{"access_token":"a","user_id":"1"}`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -86,6 +87,26 @@ func TestExchangeCode_RejectsMalformedEnvelopes(t *testing.T) {
 				t.Fatal("esperava erro, veio nil")
 			}
 		})
+	}
+}
+
+// Forma REAL observada em produção (herança do Basic Display): objeto PLANO no
+// topo, user_id NÚMERO e permissions ARRAY. Era isto que quebrava a conexão de
+// 100% dos usuários com o parser antigo só de envelope.
+func TestExchangeCode_AcceptsFlatTopLevel(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"access_token":"SHORTTOKEN","user_id":12345678,"permissions":["instagram_business_basic","instagram_business_content_publish"]}`)
+	})
+
+	short, appScoped, err := c.ExchangeCode(context.Background(), "AUTHCODE")
+	if err != nil {
+		t.Fatalf("ExchangeCode (topo plano): %v", err)
+	}
+	if short != "SHORTTOKEN" {
+		t.Errorf("shortToken = %q, want SHORTTOKEN", short)
+	}
+	if appScoped != "12345678" {
+		t.Errorf("appScopedUserID = %q, want 12345678", appScoped)
 	}
 }
 
@@ -111,6 +132,22 @@ func TestGetMe_ReturnsProfessionalID(t *testing.T) {
 	}
 	if accountType != "BUSINESS" {
 		t.Errorf("accountType = %q", accountType)
+	}
+}
+
+// /me também pode vir PLANO no topo (não só em data[]) — o parser tolerante
+// aceita as duas formas.
+func TestGetMe_AcceptsFlatTopLevel(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"user_id":"IG1","username":"loja","account_type":"BUSINESS"}`)
+	})
+
+	igID, username, accountType, err := c.GetMe(context.Background(), "TOKEN")
+	if err != nil {
+		t.Fatalf("GetMe (topo plano): %v", err)
+	}
+	if igID != "IG1" || username != "loja" || accountType != "BUSINESS" {
+		t.Errorf("GetMe = (%q,%q,%q), want (IG1,loja,BUSINESS)", igID, username, accountType)
 	}
 }
 

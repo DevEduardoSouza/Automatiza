@@ -157,11 +157,50 @@ func (c *APIClient) AuthorizeURL(state string) string {
 	return c.baseAuthorize + "/oauth/authorize?" + q.Encode()
 }
 
-// dataEnvelope é o formato oficial das respostas do Business Login: tanto a
-// troca do code quanto o /me respondem `{"data":[{...}]}`. Decodificar o topo
-// (como antes) devolvia campos vazios ou o identificador errado.
+// dataEnvelope tolera as DUAS formas que o endpoint "Instagram API with
+// Instagram Login" devolve na prática: a documentada `{"data":[{...}]}` e a
+// legada (herança do Basic Display) com o objeto PLANO no topo. Em produção o
+// oauth/access_token respondeu plano, e o parser rígido só de envelope quebrava
+// a conexão de 100% dos usuários. UnmarshalJSON normaliza ambas para Data.
 type dataEnvelope[T any] struct {
 	Data []T `json:"data"`
+	// diagKeys guarda as chaves de topo da resposta crua, só para diagnóstico
+	// quando o resultado for rejeitado (nunca contém valores). Sem isto, um 200
+	// com campos inesperados vira "permanent" mudo — foi essa cegueira que
+	// escondeu o bug do OAuth por dias.
+	diagKeys []string
+}
+
+func (e *dataEnvelope[T]) UnmarshalJSON(b []byte) error {
+	e.diagKeys = topLevelJSONKeys(b)
+	// Forma documentada: {"data":[{...}]}.
+	var wrapper struct {
+		Data []T `json:"data"`
+	}
+	if err := json.Unmarshal(b, &wrapper); err == nil && wrapper.Data != nil {
+		e.Data = wrapper.Data
+		return nil
+	}
+	// Forma legada: objeto plano no topo.
+	var flat T
+	if err := json.Unmarshal(b, &flat); err != nil {
+		return err
+	}
+	e.Data = []T{flat}
+	return nil
+}
+
+// warnUnexpectedShape loga um fingerprint SEGURO (só chaves de topo e contagem
+// de itens, nunca valores) quando um 200 é decodificado mas não traz os campos
+// que precisamos. É o diagnóstico que revela drift de formato da Meta.
+func (c *APIClient) warnUnexpectedShape(op string, items int, keys []string) {
+	if c == nil || c.logger == nil {
+		return
+	}
+	c.logger.Warn("instagram: resposta 2xx sem os campos esperados",
+		zap.String("operation", op),
+		zap.Int("data_items", items),
+		zap.Strings("top_keys", keys))
 }
 
 // oneOf exige exatamente um item no envelope. Zero itens é resposta inútil e
@@ -187,19 +226,23 @@ func (c *APIClient) ExchangeCode(ctx context.Context, code string) (shortToken, 
 	form.Set("redirect_uri", c.redirectURI)
 	form.Set("code", code)
 
+	// permissions é omitido de propósito: não é usado, e tipá-lo como string
+	// quebrava o parse quando o Meta o devolvia como array. Chave desconhecida
+	// é ignorada pelo json.Unmarshal.
 	var env dataEnvelope[struct {
 		AccessToken string     `json:"access_token"`
 		UserID      flexString `json:"user_id"`
-		Permissions string     `json:"permissions"`
 	}]
 	if err := c.do(ctx, http.MethodPost, c.baseAPI+"/oauth/access_token", form, "exchange_code", &env); err != nil {
 		return "", "", err
 	}
 	item, err := oneOf(env, "exchange_code")
 	if err != nil {
+		c.warnUnexpectedShape("exchange_code", len(env.Data), env.diagKeys)
 		return "", "", err
 	}
 	if item.AccessToken == "" || string(item.UserID) == "" {
+		c.warnUnexpectedShape("exchange_code", len(env.Data), env.diagKeys)
 		return "", "", &MetaAPIError{Operation: "exchange_code", SafeCategory: categoryPermanent}
 	}
 	return item.AccessToken, string(item.UserID), nil
@@ -269,9 +312,11 @@ func (c *APIClient) GetMe(ctx context.Context, token string) (igUserID, username
 	}
 	item, err := oneOf(env, "get_me")
 	if err != nil {
+		c.warnUnexpectedShape("get_me", len(env.Data), env.diagKeys)
 		return "", "", "", err
 	}
 	if string(item.UserID) == "" {
+		c.warnUnexpectedShape("get_me", len(env.Data), env.diagKeys)
 		return "", "", "", &MetaAPIError{Operation: "get_me", SafeCategory: categoryPermanent}
 	}
 	// account_type não aparece no exemplo oficial do envelope, então ausência
@@ -409,10 +454,35 @@ func (c *APIClient) do(ctx context.Context, method, urlStr string, form url.Valu
 	}
 	if out != nil {
 		if err := json.Unmarshal(raw, out); err != nil {
+			// Fingerprint SEGURO de uma resposta 2xx que não casou com o shape
+			// esperado: só o tamanho e os NOMES das chaves de topo — nunca os
+			// valores (token/id são secretos). A ausência disto foi o que
+			// escondeu o bug do OAuth por dias (o erro saía só como "permanent").
+			if c.logger != nil {
+				c.logger.Warn("instagram: resposta 2xx com shape inesperado",
+					zap.String("operation", op),
+					zap.Int("http_status", resp.StatusCode),
+					zap.Int("body_len", len(raw)),
+					zap.Strings("top_keys", topLevelJSONKeys(raw)))
+			}
 			return &MetaAPIError{Operation: op, HTTPStatus: resp.StatusCode, SafeCategory: categoryPermanent}
 		}
 	}
 	return nil
+}
+
+// topLevelJSONKeys devolve APENAS os nomes das chaves de topo de um JSON objeto
+// (nunca os valores — podem conter token/id). Vazio se o corpo não for objeto.
+func topLevelJSONKeys(raw []byte) []string {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil
+	}
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // graphError é o envelope de erro da Graph API.
