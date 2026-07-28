@@ -2261,13 +2261,24 @@ func TestMapper_SendLinkPreviewToWaha_HighQuality(t *testing.T) {
 // nossa própria credencial.
 // ---------------------------------------------------------------------------
 
+// hasAllowedMediaPrefix repete a allowlist com a lista LITERAL de propósito:
+// reusar matchWAHAMediaPrefix faria o teste concordar com qualquer prefixo que
+// a produção passasse a aceitar por engano.
+func hasAllowedMediaPrefix(p string) bool {
+	return strings.HasPrefix(p, "/api/files/") || strings.HasPrefix(p, "/api/s3/")
+}
+
 func TestSafeWAHAMediaPath_AcceptsRealMediaURLs(t *testing.T) {
-	// Forma confirmada na doc oficial (waha-plus-openapi.json:8846).
+	// /api/files/: forma da doc oficial (waha-plus-openapi.json:8846).
+	// /api/s3/: forma que a PRODUÇÃO usa com WAHA_MEDIA_STORAGE=S3 — recusá-la
+	// derrubou o repasse de mídia inteiro entre 23/07 e 28/07/2026.
 	cases := map[string]string{
 		"absoluta":                "http://localhost:3000/api/files/false_11111111111@c.us_AAAAAAAAAAAAAAAAAAAA.oga",
 		"relativa":                "/api/files/false_5511999999999@c.us_ABCDEF.jpeg",
 		"host externo é ignorado": "https://cdn.example.com/api/files/session_x/foto.jpeg",
 		"subdiretório de sessão":  "/api/files/session_01abc/false_123@g.us_XYZ.jpeg",
+		"proxy s3 (produção)":     "http://localhost:3000/api/s3/automatiza-waha/session_01kxjrbtz1na9cmm2dmpn3wh08/AC00F89711.jpeg",
+		"proxy s3 relativo":       "/api/s3/automatiza-waha/session_01abc/3AA71AE9CF01AD8BE712.webp",
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -2275,8 +2286,8 @@ func TestSafeWAHAMediaPath_AcceptsRealMediaURLs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("URL legítima recusada: %v", err)
 			}
-			if !strings.HasPrefix(got, "/api/files/") {
-				t.Errorf("path = %q, deveria começar com /api/files/", got)
+			if !hasAllowedMediaPrefix(got) {
+				t.Errorf("path = %q, deveria começar com /api/files/ ou /api/s3/", got)
 			}
 			if strings.Contains(got, "://") {
 				t.Errorf("path não pode conter host: %q", got)
@@ -2302,6 +2313,10 @@ func TestSafeWAHAMediaPath_RejectsDangerousPaths(t *testing.T) {
 		"com userinfo":           "http://user:senha@localhost:3000/api/files/x.jpeg",
 		"barra dupla":            "/api/files//../sessions",
 		"raiz":                   "/",
+		"s3 traversal":           "/api/s3/../api/sessions",
+		"s3 barra codificada":    "/api/s3/automatiza-waha/..%2f..%2fapi%2fsessions",
+		"s3 sem arquivo":         "/api/s3/",
+		"s3 prefixo parecido":    "/api/s3X/segredo",
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -2325,6 +2340,7 @@ func TestSafeWAHAMediaPath_AcceptsEscapedFilenames(t *testing.T) {
 		"arroba codificado": "/api/files/false_123%40g.us_ABC.jpeg",
 		"parênteses":        "/api/files/foto(1).jpeg",
 		"host + codificado": "http://localhost:3000/api/files/a%20b.jpeg",
+		"s3 + codificado":   "/api/s3/automatiza-waha/session_01abc/a%20b.jpeg",
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -2332,7 +2348,7 @@ func TestSafeWAHAMediaPath_AcceptsEscapedFilenames(t *testing.T) {
 			if err != nil {
 				t.Fatalf("nome de arquivo legítimo foi RECUSADO (regressão no espelho): %v", err)
 			}
-			if !strings.HasPrefix(got, "/api/files/") {
+			if !hasAllowedMediaPrefix(got) {
 				t.Errorf("path fora da allowlist: %q", got)
 			}
 			// A saída é reescapada, então pode ser concatenada à base sem
@@ -2345,14 +2361,16 @@ func TestSafeWAHAMediaPath_AcceptsEscapedFilenames(t *testing.T) {
 }
 
 // Regressão de invariante: TODA entrada da lista abaixo é aceita, e toda aceita
-// resolve para dentro de /api/files/. O `require` no fim é o que impede este
-// teste de virar tautologia — sem ele, uma função que recusasse tudo passaria.
+// resolve para dentro de um prefixo da allowlist. O `require` no fim é o que
+// impede este teste de virar tautologia — sem ele, uma função que recusasse tudo
+// passaria.
 func TestSafeWAHAMediaPath_AcceptedPathsNeverEscapeMediaPrefix(t *testing.T) {
 	inputs := []string{
 		"http://x/api/files/a.jpeg",
 		"/api/files/b/c/d.jpeg",
 		"https://y.z/api/files/nome%20com%20espaco.jpeg",
 		"/api/files/foto@grupo.jpeg",
+		"http://localhost:3000/api/s3/automatiza-waha/session_01abc/a.jpeg",
 	}
 	accepted := 0
 	for _, in := range inputs {
@@ -2362,7 +2380,7 @@ func TestSafeWAHAMediaPath_AcceptedPathsNeverEscapeMediaPrefix(t *testing.T) {
 			continue
 		}
 		accepted++
-		if !strings.HasPrefix(got, "/api/files/") {
+		if !hasAllowedMediaPrefix(got) {
 			t.Errorf("entrada %q produziu path fora da allowlist: %q", in, got)
 		}
 		// O path devolvido, uma vez decodificado, precisa continuar canônico.

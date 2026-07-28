@@ -2341,11 +2341,30 @@ func (a *WahaAdapter) DownloadMedia(ctx context.Context, input DownloadMediaInpu
 	}, nil
 }
 
-// wahaMediaPathPrefix é a ÚNICA família de paths que DownloadMediaByURL pode
-// alcançar. Confirmado na doc oficial (waha-plus-openapi.json:8846, exemplo
-// "http://localhost:3000/api/files/false_...oga"); com WAHA_S3_PROXY_FILES=True
-// a própria WAHA proxia o S3 por esta rota, então é o que produção usa.
-const wahaMediaPathPrefix = "/api/files/"
+// wahaMediaPathPrefixes são as ÚNICAS famílias de path que DownloadMediaByURL
+// pode alcançar:
+//
+//   - "/api/files/": storage local, o exemplo da doc oficial
+//     (waha-plus-openapi.json:8846, "http://localhost:3000/api/files/false_...oga").
+//   - "/api/s3/": proxy S3 da própria WAHA. É o que a PRODUÇÃO usa hoje
+//     (WAHA_MEDIA_STORAGE=S3 + WAHA_S3_PROXY_FILES=True servem a mídia como
+//     "http://localhost:3000/api/s3/<bucket>/<sessão>/<arquivo>", NÃO por
+//     /api/files/). Rota fora do OpenAPI, verificada na VPS: GET com X-Api-Key
+//     devolve 200 no router e nos dois shards; sem a key, 401 — que é
+//     exatamente o 401→500 que o sendImage levava quando a URL crua vazava
+//     daqui por falta desta entrada (regressão de 23/07, commit 5f68bb9).
+var wahaMediaPathPrefixes = [...]string{"/api/files/", "/api/s3/"}
+
+// matchWAHAMediaPrefix devolve o prefixo permitido que cobre o path, exigindo
+// pelo menos um caractere depois dele (prefixo pelado não é arquivo).
+func matchWAHAMediaPrefix(p string) (string, bool) {
+	for _, prefix := range wahaMediaPathPrefixes {
+		if strings.HasPrefix(p, prefix) && len(p) > len(prefix) {
+			return prefix, true
+		}
+	}
+	return "", false
+}
 
 // errUnsafeMediaPath é a saída única de rejeição — não vale detalhar qual regra
 // reprovou para quem manda a URL.
@@ -2395,15 +2414,17 @@ func safeWAHAMediaPath(mediaURL string) (string, error) {
 	if decoded != path.Clean(decoded) {
 		return "", errUnsafeMediaPath
 	}
-	if !strings.HasPrefix(decoded, wahaMediaPathPrefix) || len(decoded) <= len(wahaMediaPathPrefix) {
+	prefix, ok := matchWAHAMediaPrefix(decoded)
+	if !ok {
 		return "", errUnsafeMediaPath
 	}
 
 	escaped := parsed.EscapedPath()
-	// Cinto e suspensório: a forma escapada tem de continuar dentro do prefixo.
-	// Sem isto, um "%2f" logo após o prefixo poderia mudar o alvo do lado do
-	// servidor mesmo com o decodificado parecendo bem-comportado.
-	if !strings.HasPrefix(escaped, wahaMediaPathPrefix) {
+	// Cinto e suspensório: a forma escapada tem de continuar dentro do MESMO
+	// prefixo que o decodificado casou. Sem isto, um "%2f" logo após o prefixo
+	// poderia mudar o alvo do lado do servidor mesmo com o decodificado
+	// parecendo bem-comportado.
+	if !strings.HasPrefix(escaped, prefix) {
 		return "", errUnsafeMediaPath
 	}
 	return escaped, nil

@@ -2046,27 +2046,46 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		}
 	}
 
+	// Sem os bytes NÃO adianta passar msg.MediaURL adiante: é URL interna do
+	// WAHA (localhost:3000, autenticada), então o fileToMedia do lado dele leva
+	// 401 → 500 e a mensagem some INTEIRA — nem imagem nem texto. Degradar para
+	// texto entrega ao menos a oferta com os links já convertidos.
+	sendWithoutMedia := func() error {
+		s.logger.Warn("Relay: sem bytes de mídia, degradando para texto",
+			zap.String("mediaType", msg.MediaType),
+			zap.String("mimeType", msg.MimeType))
+		if strings.TrimSpace(body) == "" {
+			return fmt.Errorf("relay %s sem bytes de mídia e sem texto", msg.MediaType)
+		}
+		_, err := s.waProvider.SendText(ctx, whatsapp.SendTextInput{
+			SessionName: session,
+			ChatID:      chatID,
+			Text:        body,
+			Mentions:    mentions,
+		})
+		return err
+	}
+
 	switch strings.ToLower(msg.MediaType) {
 	case "image":
-		input := whatsapp.SendImageInput{
+		if mediaB64 == "" {
+			return sendWithoutMedia()
+		}
+		_, err := s.waProvider.SendImage(ctx, whatsapp.SendImageInput{
 			SessionName: session,
 			ChatID:      chatID,
 			Caption:     body,
 			Mimetype:    mediaMime,
 			Mentions:    mentions,
-		}
-		if mediaB64 != "" {
-			input.ImageBase64 = mediaB64
-		} else if msg.MediaURL != "" {
-			input.ImageURL = msg.MediaURL
-		} else {
-			return fmt.Errorf("relay image without MediaURL or MediaBase64")
-		}
-		_, err := s.waProvider.SendImage(ctx, input)
+			ImageBase64: mediaB64,
+		})
 		return err
 
 	case "video":
-		input := whatsapp.SendVideoInput{
+		if mediaB64 == "" {
+			return sendWithoutMedia()
+		}
+		_, err := s.waProvider.SendVideo(ctx, whatsapp.SendVideoInput{
 			SessionName: session,
 			ChatID:      chatID,
 			Caption:     body,
@@ -2075,15 +2094,8 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 			// (faststart) 1x antes do fan-out — evita o WAHA transcodificar
 			// por grupo. Quando false, o WAHA converte (Fase 1).
 			AlreadyStreamable: videoStreamable,
-		}
-		if mediaB64 != "" {
-			input.MediaBase64 = mediaB64
-		} else if msg.MediaURL != "" {
-			input.MediaURL = msg.MediaURL
-		} else {
-			return fmt.Errorf("relay video without MediaURL or MediaBase64")
-		}
-		_, err := s.waProvider.SendVideo(ctx, input)
+			MediaBase64:       mediaB64,
+		})
 		return err
 
 	case "audio", "voice", "ptt":
@@ -2107,45 +2119,36 @@ func (s *offerGenerateService) sendRelayMessage(ctx context.Context, session, ch
 		return err
 
 	case "document", "file":
-		input := whatsapp.SendDocumentInput{
+		if mediaB64 == "" {
+			return sendWithoutMedia()
+		}
+		_, err := s.waProvider.SendDocument(ctx, whatsapp.SendDocumentInput{
 			SessionName: session,
 			ChatID:      chatID,
 			Caption:     body,
 			Mentions:    mentions,
-		}
-		if mediaB64 != "" {
-			input.MediaBase64 = mediaB64
-		} else if msg.MediaURL != "" {
-			input.MediaURL = msg.MediaURL
-		} else {
-			return fmt.Errorf("relay document without MediaURL or MediaBase64")
-		}
-		_, err := s.waProvider.SendDocument(ctx, input)
+			MediaBase64: mediaB64,
+		})
 		return err
 
 	default:
 		// Mídia com tipo não resolvido (mediaType e mime ausentes/desconhecidos).
-		// Defesa em profundidade: se temos os bytes/URL, tenta enviar como imagem
+		// Defesa em profundidade: se temos os BYTES, tenta enviar como imagem
 		// — de longe o caso mais comum no relay — em vez de degradar pra texto
 		// puro e perder a mídia silenciosamente. Se falhar, o erro propaga e o
 		// dispatch fica logado como "failed".
-		if msg.HasMedia && (mediaB64 != "" || msg.MediaURL != "") {
-			input := whatsapp.SendImageInput{
+		if msg.HasMedia && mediaB64 != "" {
+			s.logger.Warn("Relay media with unresolved type — sending as image (fallback)",
+				zap.String("mediaType", msg.MediaType),
+				zap.String("mimeType", msg.MimeType))
+			_, err := s.waProvider.SendImage(ctx, whatsapp.SendImageInput{
 				SessionName: session,
 				ChatID:      chatID,
 				Caption:     body,
 				Mimetype:    mediaMime,
 				Mentions:    mentions,
-			}
-			if mediaB64 != "" {
-				input.ImageBase64 = mediaB64
-			} else {
-				input.ImageURL = msg.MediaURL
-			}
-			s.logger.Warn("Relay media with unresolved type — sending as image (fallback)",
-				zap.String("mediaType", msg.MediaType),
-				zap.String("mimeType", msg.MimeType))
-			_, err := s.waProvider.SendImage(ctx, input)
+				ImageBase64: mediaB64,
+			})
 			return err
 		}
 		// Sticker/location/contact sem método dedicado: fallback pra texto se
