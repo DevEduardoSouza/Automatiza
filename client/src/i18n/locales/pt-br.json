@@ -345,6 +345,8 @@
         "newGroups": "Novos grupos",
         "growthRate": "Taxa de crescimento",
         "peakMembers": "Pico de membros",
+        "joins": "Entraram",
+        "leaves": "Sa\u00edram",
         "activeGroups": "Grupos ativos",
         "period": {
           "weekly": "Semanal",

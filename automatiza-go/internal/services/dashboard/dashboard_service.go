@@ -31,6 +31,8 @@ type HistoryDataPoint struct {
 	Groups     int32
 	NewMembers int32
 	NewGroups  int32
+	Joins      int32
+	Leaves     int32
 }
 
 // Service defines the dashboard service interface
@@ -190,6 +192,8 @@ func (s *dashboardService) GetHistory(ctx context.Context, userID string, period
 			Groups:     int32(dp.Groups),
 			NewMembers: int32(dp.NewMembers),
 			NewGroups:  int32(dp.NewGroups),
+			Joins:      int32(dp.Joins),
+			Leaves:     int32(dp.Leaves),
 		}
 	}
 

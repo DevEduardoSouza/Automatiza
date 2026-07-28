@@ -398,7 +398,11 @@ type HistoryDataPoint struct {
 	// New members added in this period
 	NewMembers int32 `protobuf:"varint,4,opt,name=new_members,json=newMembers,proto3" json:"new_members,omitempty"`
 	// New groups added in this period
-	NewGroups     int32 `protobuf:"varint,5,opt,name=new_groups,json=newGroups,proto3" json:"new_groups,omitempty"`
+	NewGroups int32 `protobuf:"varint,5,opt,name=new_groups,json=newGroups,proto3" json:"new_groups,omitempty"`
+	// Members that joined in this period (real join events)
+	Joins int32 `protobuf:"varint,6,opt,name=joins,proto3" json:"joins,omitempty"`
+	// Members that left in this period (real leave events)
+	Leaves        int32 `protobuf:"varint,7,opt,name=leaves,proto3" json:"leaves,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -464,6 +468,20 @@ func (x *HistoryDataPoint) GetNewMembers() int32 {
 func (x *HistoryDataPoint) GetNewGroups() int32 {
 	if x != nil {
 		return x.NewGroups
+	}
+	return 0
+}
+
+func (x *HistoryDataPoint) GetJoins() int32 {
+	if x != nil {
+		return x.Joins
+	}
+	return 0
+}
+
+func (x *HistoryDataPoint) GetLeaves() int32 {
+	if x != nil {
+		return x.Leaves
 	}
 	return 0
 }
@@ -571,7 +589,7 @@ const file_dashboard_v1_dashboard_proto_rawDesc = "" +
 	"\x06period\x18\x01 \x01(\x0e2\x14.dashboard.v1.PeriodR\x06period\"^\n" +
 	"\x1bGetDashboardHistoryResponse\x12?\n" +
 	"\vdata_points\x18\x01 \x03(\v2\x1e.dashboard.v1.HistoryDataPointR\n" +
-	"dataPoints\"\x9a\x01\n" +
+	"dataPoints\"\xc8\x01\n" +
 	"\x10HistoryDataPoint\x12\x14\n" +
 	"\x05label\x18\x01 \x01(\tR\x05label\x12\x18\n" +
 	"\amembers\x18\x02 \x01(\x05R\amembers\x12\x16\n" +
@@ -579,7 +597,9 @@ const file_dashboard_v1_dashboard_proto_rawDesc = "" +
 	"\vnew_members\x18\x04 \x01(\x05R\n" +
 	"newMembers\x12\x1d\n" +
 	"\n" +
-	"new_groups\x18\x05 \x01(\x05R\tnewGroups\"\x18\n" +
+	"new_groups\x18\x05 \x01(\x05R\tnewGroups\x12\x14\n" +
+	"\x05joins\x18\x06 \x01(\x05R\x05joins\x12\x16\n" +
+	"\x06leaves\x18\a \x01(\x05R\x06leaves\"\x18\n" +
 	"\x16GetAnnouncementRequest\"Y\n" +
 	"\x17GetAnnouncementResponse\x12>\n" +
 	"\fannouncement\x18\x01 \x01(\v2\x1a.dashboard.v1.AnnouncementR\fannouncement*Z\n" +

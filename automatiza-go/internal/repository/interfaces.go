@@ -608,8 +608,10 @@ type HistoryDataPoint struct {
 	Label      string
 	Members    int
 	Groups     int
-	NewMembers int
+	NewMembers int // = Joins, mantido pelo contrato proto já existente
 	NewGroups  int
+	Joins      int // entradas observadas no bucket (SUM joins_count)
+	Leaves     int // saídas observadas no bucket (SUM leaves_count)
 }
 
 // DashboardRepository handles dashboard-related data operations

@@ -94,6 +94,12 @@ message HistoryDataPoint {
 
   // New groups added in this period
   int32 new_groups = 5;
+
+  // Members that joined in this period (real join events)
+  int32 joins = 6;
+
+  // Members that left in this period (real leave events)
+  int32 leaves = 7;
 }
 
 // ============================================================

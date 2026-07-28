@@ -119,6 +119,8 @@ func (h *DashboardHandler) GetDashboardHistory(
 			Groups:     dp.Groups,
 			NewMembers: dp.NewMembers,
 			NewGroups:  dp.NewGroups,
+			Joins:      dp.Joins,
+			Leaves:     dp.Leaves,
 		}
 	}
 

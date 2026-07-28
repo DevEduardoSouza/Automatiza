@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS groups (
     wa_group_id VARCHAR(255) NOT NULL,
     status VARCHAR(50) DEFAULT 'active',
     participating_instance_ids INTEGER[] NOT NULL DEFAULT '{}',
+    members_count INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(user_id, wa_group_id)
 );
 `

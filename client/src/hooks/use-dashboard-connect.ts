@@ -116,6 +116,8 @@ export interface HistoryDataPoint {
   groups: number;
   newMembers: number;
   newGroups: number;
+  joins: number;
+  leaves: number;
 }
 
 interface UseDashboardHistoryReturn {
@@ -170,6 +172,8 @@ export function useDashboardHistory(period: HistoryPeriod): UseDashboardHistoryR
       groups: dp.groups,
       newMembers: dp.newMembers,
       newGroups: dp.newGroups,
+      joins: dp.joins,
+      leaves: dp.leaves,
     }));
   }, [historyResponse]);
 

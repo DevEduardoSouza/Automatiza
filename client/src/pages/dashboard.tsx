@@ -217,7 +217,11 @@ import { useTranslation } from 'react-i18next';
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Legend,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -235,6 +239,14 @@ const colors = {
   wineTextMuted: 'rgba(141, 45, 83, 0.6)',
   iconBg: 'rgba(141, 45, 83, 0.1)',
   iconBgHover: 'rgba(141, 45, 83, 0.15)',
+};
+
+// Fluxo de membros: entradas para cima, saidas para baixo, num eixo so.
+// Par validado para daltonismo contra a superficie clara (deutan dE 11.9,
+// visao normal dE 28.3) — verde e vinho nao colapsam num tom unico.
+const flowColors = {
+  joins: '#0E8F63',
+  leaves: '#8D2D53',
 };
 
 const PERIODS: HistoryPeriod[] = ['weekly', 'monthly', 'yearly'];
@@ -275,16 +287,20 @@ export default function Dashboard() {
       label: dp.label,
       members: dp.members,
       groups: dp.groups,
+      joins: dp.joins,
+      // Negativo so para o desenho; o tooltip e o rodape mostram o absoluto.
+      leaves: -dp.leaves,
     }));
   }, [historyData]);
 
   // Calculate chart stats
   const chartStats = useMemo(() => {
     if (!historyData || historyData.length === 0) {
-      return { growthRate: 0, peakMembers: 0, activeGroups: 0 };
+      return { growthRate: 0, totalJoins: 0, totalLeaves: 0, activeGroups: 0 };
     }
 
-    const peakMembers = Math.max(...historyData.map((dp) => dp.members));
+    const totalJoins = historyData.reduce((acc, dp) => acc + dp.joins, 0);
+    const totalLeaves = historyData.reduce((acc, dp) => acc + dp.leaves, 0);
     const activeGroups = historyData.length > 0 ? historyData[historyData.length - 1].groups : 0;
 
     // Calculate growth rate
@@ -293,7 +309,7 @@ export default function Dashboard() {
     const growthRate =
       firstMembers > 0 ? Math.round(((lastMembers - firstMembers) / firstMembers) * 100) : 0;
 
-    return { growthRate, peakMembers, activeGroups };
+    return { growthRate, totalJoins, totalLeaves, activeGroups };
   }, [historyData]);
 
   // Get period-specific subtitle
@@ -903,12 +919,71 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* Fluxo de membros: entradas x saidas. Grafico separado porque a
+                escala (dezenas) nao divide eixo com o total (milhares). */}
+            {chartData.length > 0 && (
+              <div className="h-[90px] xs:h-[110px] sm:h-[130px] w-full mt-3 xs:mt-4 [&_.recharts-wrapper]:outline-none [&_.recharts-surface]:outline-none">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 4, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(141, 45, 83, 0.1)"
+                      vertical={false}
+                    />
+                    <XAxis dataKey="label" hide />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: 'rgba(141, 45, 83, 0.6)', fontSize: chartFontSize }}
+                      tickFormatter={(value: number) => String(Math.abs(value))}
+                      dx={-10}
+                      width={40}
+                    />
+                    <ReferenceLine y={0} stroke="rgba(141, 45, 83, 0.25)" />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(141, 45, 83, 0.06)' }}
+                      contentStyle={{
+                        backgroundColor: '#ffffff',
+                        border: '1px solid rgba(141, 45, 83, 0.2)',
+                        borderRadius: '12px',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                      }}
+                      labelStyle={{ color: '#18181b', fontWeight: 600, marginBottom: 4 }}
+                      itemStyle={{ fontSize: 13 }}
+                      formatter={(value: number) => Math.abs(value).toLocaleString()}
+                    />
+                    <Legend
+                      verticalAlign="top"
+                      align="right"
+                      height={20}
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: 11, color: colors.wineTextMuted }}
+                    />
+                    <Bar
+                      dataKey="joins"
+                      name={t('pages.dashboard.chart.joins')}
+                      fill={flowColors.joins}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={18}
+                    />
+                    <Bar
+                      dataKey="leaves"
+                      name={t('pages.dashboard.chart.leaves')}
+                      fill={flowColors.leaves}
+                      radius={[0, 0, 4, 4]}
+                      maxBarSize={18}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
             {/* Chart Footer Stats */}
             <div
               className="h-px my-4 xs:my-5 sm:my-6 lg:my-8"
               style={{ backgroundColor: colors.wineBorder }}
             />
-            <div className="grid grid-cols-1 xs:grid-cols-3 gap-2 xs:gap-3 sm:gap-4 lg:gap-6">
+            <div className="grid grid-cols-2 xs:grid-cols-4 gap-2 xs:gap-3 sm:gap-4 lg:gap-6">
               <div className="text-center">
                 <div
                   className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-semibold"
@@ -926,10 +1001,21 @@ export default function Dashboard() {
                   className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-semibold"
                   style={{ color: '#18181b' }}
                 >
-                  {chartStats.peakMembers.toLocaleString()}
+                  {chartStats.totalJoins.toLocaleString()}
                 </div>
                 <div className="text-[10px] xs:text-xs sm:text-sm" style={{ color: colors.wineTextMuted }}>
-                  {t('pages.dashboard.chart.peakMembers')}
+                  {t('pages.dashboard.chart.joins')}
+                </div>
+              </div>
+              <div className="text-center">
+                <div
+                  className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-semibold"
+                  style={{ color: '#18181b' }}
+                >
+                  {chartStats.totalLeaves.toLocaleString()}
+                </div>
+                <div className="text-[10px] xs:text-xs sm:text-sm" style={{ color: colors.wineTextMuted }}>
+                  {t('pages.dashboard.chart.leaves')}
                 </div>
               </div>
               <div className="text-center">
