@@ -551,6 +551,69 @@ func TestSendGroupImage_WithoutCaption(t *testing.T) {
 	assert.Equal(t, "msg-123", resp.Msg.GetMessageId())
 }
 
+func TestSendGroupImage_VideoMimetype_UsesSendVideo(t *testing.T) {
+	handler, _, instanceRepo, waProvider := createTestHandler(t)
+
+	ctx := contextWithUser("user-123", "user@example.com")
+	caption := "olha esse video"
+	mimetype := "video/mp4"
+
+	instanceRepo.On("GetInstanceByUserAndName", ctx, "user-123", "test-instance").
+		Return(&models.Instance{ID: 1, InstanceID: "test-instance"}, nil)
+
+	waProvider.SendVideoFunc = func(ctx context.Context, input whatsapp.SendVideoInput) (*whatsapp.MessageResult, error) {
+		assert.Equal(t, "test-instance", input.SessionName)
+		assert.Equal(t, "group@g.us", input.ChatID)
+		assert.Equal(t, caption, input.Caption)
+		assert.Equal(t, "data:video/mp4;base64,AAAA", input.MediaBase64)
+		assert.Empty(t, input.MediaURL)
+		return &whatsapp.MessageResult{ID: "msg-video"}, nil
+	}
+
+	req := connect.NewRequest(&groupsv1.SendGroupImageRequest{
+		InstanceName: "test-instance",
+		GroupId:      "group@g.us",
+		Image:        "data:video/mp4;base64,AAAA",
+		Caption:      &caption,
+		Mimetype:     &mimetype,
+	})
+
+	resp, err := handler.SendGroupImage(ctx, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, "msg-video", resp.Msg.GetMessageId())
+	assert.Equal(t, 1, waProvider.CallCount("SendVideo"))
+	assert.Equal(t, 0, waProvider.CallCount("SendImage"))
+}
+
+func TestSendGroupImage_ImageMimetype_StillUsesSendImage(t *testing.T) {
+	handler, _, instanceRepo, waProvider := createTestHandler(t)
+
+	ctx := contextWithUser("user-123", "user@example.com")
+	mimetype := "image/png"
+
+	instanceRepo.On("GetInstanceByUserAndName", ctx, "user-123", "test-instance").
+		Return(&models.Instance{ID: 1, InstanceID: "test-instance"}, nil)
+
+	waProvider.SendImageFunc = func(ctx context.Context, input whatsapp.SendImageInput) (*whatsapp.MessageResult, error) {
+		assert.Equal(t, mimetype, input.Mimetype)
+		return &whatsapp.MessageResult{ID: "msg-123"}, nil
+	}
+
+	req := connect.NewRequest(&groupsv1.SendGroupImageRequest{
+		InstanceName: "test-instance",
+		GroupId:      "group@g.us",
+		Image:        "https://example.com/image.png",
+		Mimetype:     &mimetype,
+	})
+
+	_, err := handler.SendGroupImage(ctx, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, waProvider.CallCount("SendImage"))
+	assert.Equal(t, 0, waProvider.CallCount("SendVideo"))
+}
+
 func TestSendGroupImage_InstanceNotFound(t *testing.T) {
 	handler, _, instanceRepo, _ := createTestHandler(t)
 

@@ -477,7 +477,7 @@ func (m *Mapper) SendVideoToWaha(input *SendVideoInput) *wahaSendVideoRequest {
 		req.File = &wahaFile{URL: input.MediaURL}
 	} else if input.MediaBase64 != "" {
 		req.File = &wahaFile{
-			Data:     input.MediaBase64,
+			Data:     stripDataURIPrefix(input.MediaBase64),
 			Mimetype: input.MimeType,
 			Filename: input.Filename,
 		}
@@ -503,7 +503,7 @@ func (m *Mapper) SendDocumentToWaha(input *SendDocumentInput) *wahaSendFileReque
 		req.File = &wahaFile{URL: input.MediaURL}
 	} else if input.MediaBase64 != "" {
 		req.File = &wahaFile{
-			Data:     input.MediaBase64,
+			Data:     stripDataURIPrefix(input.MediaBase64),
 			Mimetype: input.MimeType,
 			Filename: input.Filename,
 		}

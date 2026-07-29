@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 
 	"automatiza-go/internal/adapters/whatsapp"
 	groupsv1 "automatiza-go/internal/gen/groups/v1"
@@ -995,14 +996,50 @@ func (h *GroupsHandler) SendGroupImage(
 		caption = req.Msg.GetCaption()
 	}
 
-	result, err := h.waProvider.SendImage(ctx, whatsapp.SendImageInput{
-		SessionName: req.Msg.GetInstanceName(),
-		ChatID:      req.Msg.GetGroupId(),
-		Caption:     caption,
-		ImageURL:    req.Msg.GetImage(),
-	})
-	if err != nil {
-		return nil, waError("failed to send image", err)
+	// A tela de grupos já deixa anexar vídeo e manda o mimetype junto, mas o
+	// conteúdo sempre vinha por esta RPC e saía como imagem. Roteia pelo
+	// mimetype: client antigo (sem mimetype ou com image/*) segue igual.
+	media := req.Msg.GetImage()
+	mimetype := req.Msg.GetMimetype()
+
+	var result *whatsapp.MessageResult
+
+	if strings.HasPrefix(mimetype, "video/") {
+		videoInput := whatsapp.SendVideoInput{
+			SessionName: req.Msg.GetInstanceName(),
+			ChatID:      req.Msg.GetGroupId(),
+			Caption:     caption,
+			MimeType:    mimetype,
+		}
+		// Exatamente uma fonte (SendVideoInput.Validate).
+		if strings.HasPrefix(media, "http") {
+			videoInput.MediaURL = media
+		} else {
+			videoInput.MediaBase64 = media
+		}
+
+		result, err = h.waProvider.SendVideo(ctx, videoInput)
+		if err != nil {
+			return nil, waError("failed to send video", err)
+		}
+	} else {
+		// Só repassa mimetype de imagem: qualquer outra coisa (ou vazio) mantém
+		// o default image/jpeg do mapper, exatamente como antes.
+		imageMimetype := mimetype
+		if !strings.HasPrefix(imageMimetype, "image/") {
+			imageMimetype = ""
+		}
+
+		result, err = h.waProvider.SendImage(ctx, whatsapp.SendImageInput{
+			SessionName: req.Msg.GetInstanceName(),
+			ChatID:      req.Msg.GetGroupId(),
+			Caption:     caption,
+			ImageURL:    media,
+			Mimetype:    imageMimetype,
+		})
+		if err != nil {
+			return nil, waError("failed to send image", err)
+		}
 	}
 
 	messageID := ""

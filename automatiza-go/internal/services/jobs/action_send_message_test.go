@@ -154,6 +154,7 @@ func TestExecuteSendMessage_WithVideo(t *testing.T) {
 		ActionType: models.JobActionSendMessage,
 		Payload: models.JobPayload{
 			Groups:    []string{"group1@g.us"},
+			Message:   "olha esse video",
 			Media:     "base64VideoData",
 			MediaType: "video",
 			MimeType:  "video/mp4",
@@ -164,7 +165,77 @@ func TestExecuteSendMessage_WithVideo(t *testing.T) {
 
 	require.Len(t, results, 1)
 	assert.True(t, results[0].Success)
+	assert.Equal(t, 1, provider.CallCount("SendVideo"))
+	assert.Equal(t, 0, provider.CallCount("SendVoice"))
+
+	call := provider.LastCall("SendVideo")
+	require.NotNil(t, call)
+	input := call.Args[0].(whatsapp.SendVideoInput)
+	assert.Equal(t, "base64VideoData", input.MediaBase64)
+	assert.Empty(t, input.MediaURL)
+	assert.Equal(t, "olha esse video", input.Caption)
+}
+
+func TestExecuteSendMessage_WithAudio(t *testing.T) {
+	ctx := context.Background()
+	provider := whatsapp.NewFakeAdapter()
+	logger := zaptest.NewLogger(t)
+
+	job := &models.StandaloneJob{
+		ActionType: models.JobActionSendMessage,
+		Payload: models.JobPayload{
+			Groups:    []string{"group1@g.us"},
+			Message:   "escuta esse audio",
+			Media:     "base64AudioData",
+			MediaType: "audio",
+			MimeType:  "audio/ogg; codecs=opus",
+		},
+	}
+
+	results := ExecuteSendMessage(ctx, provider, "session1", job, logger)
+
+	require.Len(t, results, 1)
+	assert.True(t, results[0].Success)
 	assert.Equal(t, 1, provider.CallCount("SendVoice"))
+	assert.Equal(t, 0, provider.CallCount("SendImage"))
+
+	call := provider.LastCall("SendVoice")
+	require.NotNil(t, call)
+	input := call.Args[0].(whatsapp.SendVoiceInput)
+	assert.Equal(t, "base64AudioData", input.AudioBase64)
+
+	// Voz não tem caption: o texto vai como mensagem separada logo depois.
+	assert.Equal(t, 1, provider.CallCount("SendText"))
+	textCall := provider.LastCall("SendText")
+	require.NotNil(t, textCall)
+	assert.Equal(t, "escuta esse audio", textCall.Args[0].(whatsapp.SendTextInput).Text)
+}
+
+func TestExecuteSendMessage_WithAudio_NoMessage_SkipsFollowUpText(t *testing.T) {
+	ctx := context.Background()
+	provider := whatsapp.NewFakeAdapter()
+	logger := zaptest.NewLogger(t)
+
+	job := &models.StandaloneJob{
+		ActionType: models.JobActionSendMessage,
+		Payload: models.JobPayload{
+			Groups:    []string{"group1@g.us"},
+			Media:     "base64AudioData",
+			MediaType: "audio",
+		},
+	}
+
+	results := ExecuteSendMessage(ctx, provider, "session1", job, logger)
+
+	require.Len(t, results, 1)
+	assert.True(t, results[0].Success)
+	assert.Equal(t, 1, provider.CallCount("SendVoice"))
+	assert.Equal(t, 0, provider.CallCount("SendText"))
+
+	// MimeType vazio cai no default do WAHA para voz.
+	call := provider.LastCall("SendVoice")
+	require.NotNil(t, call)
+	assert.Equal(t, defaultVoiceMimetype, call.Args[0].(whatsapp.SendVoiceInput).Mimetype)
 }
 
 func TestExecuteSendMessage_WithUnknownMediaType(t *testing.T) {
@@ -177,7 +248,7 @@ func TestExecuteSendMessage_WithUnknownMediaType(t *testing.T) {
 		Payload: models.JobPayload{
 			Groups:    []string{"group1@g.us"},
 			Media:     "data",
-			MediaType: "audio",
+			MediaType: "sticker",
 		},
 	}
 
@@ -268,7 +339,7 @@ func TestExecuteSendMessage_MediaError(t *testing.T) {
 	assert.Equal(t, "upload failed", results[0].Error)
 }
 
-func TestExecuteSendMessage_VideoURL_FallsBack(t *testing.T) {
+func TestExecuteSendMessage_VideoURL(t *testing.T) {
 	ctx := context.Background()
 	provider := whatsapp.NewFakeAdapter()
 	logger := zaptest.NewLogger(t)
@@ -286,7 +357,13 @@ func TestExecuteSendMessage_VideoURL_FallsBack(t *testing.T) {
 
 	require.Len(t, results, 1)
 	assert.True(t, results[0].Success)
-	assert.Equal(t, 1, provider.CallCount("SendVoice"))
+	assert.Equal(t, 1, provider.CallCount("SendVideo"))
+
+	call := provider.LastCall("SendVideo")
+	require.NotNil(t, call)
+	input := call.Args[0].(whatsapp.SendVideoInput)
+	assert.Equal(t, "https://example.com/video.mp4", input.MediaURL)
+	assert.Empty(t, input.MediaBase64)
 }
 
 func TestExecuteSendMessage_ContextCancelled(t *testing.T) {

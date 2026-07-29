@@ -34,6 +34,24 @@ const MAX_OCCURRENCES = 200;
 
 const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
+// Alguns celulares entregam o arquivo com `type` vazio; sem o fallback pela
+// extensão, um vídeo/áudio seria rotulado como imagem e sairia pelo endpoint
+// errado no worker (era o defeito antigo do agendamento de vídeo).
+const VIDEO_EXTENSIONS = ['mp4', 'mov', 'm4v', 'webm', '3gp', 'avi', 'mkv'];
+const AUDIO_EXTENSIONS = ['mp3', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'wav', 'amr'];
+
+const detectMediaType = (file: File): 'image' | 'video' | 'audio' => {
+  const mime = file.type || '';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  if (mime.startsWith('image/')) return 'image';
+
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  if (VIDEO_EXTENSIONS.includes(ext)) return 'video';
+  if (AUDIO_EXTENSIONS.includes(ext)) return 'audio';
+  return 'image';
+};
+
 /**
  * Materializa as ocorrências (data × horário) de um agendamento conforme a
  * recorrência. "Uma vez" usa a data escolhida como está (pode ser passado — o
@@ -438,12 +456,12 @@ export function useJobs(): UseJobsReturn {
       jobPayload.message = payload;
 
       if (mediaFile) {
-        const MAX_MEDIA_BYTES = 7 * 1024 * 1024;
-        if (mediaFile.size > MAX_MEDIA_BYTES) {
+        const MAX_MEDIA_MB = 16;
+        if (mediaFile.size > MAX_MEDIA_MB * 1024 * 1024) {
           toast({
             variant: 'destructive',
             title: t('pages.jobs.errors.fileTooLarge'),
-            description: t('pages.jobs.errors.fileTooLargeMessage'),
+            description: t('pages.jobs.errors.fileTooLargeMessage', { max: MAX_MEDIA_MB }),
           });
           return;
         }
@@ -457,7 +475,7 @@ export function useJobs(): UseJobsReturn {
           });
 
           jobPayload.media = mediaDataUrl;
-          jobPayload.mediaType = mediaFile.type?.startsWith('video/') ? 'video' : 'image';
+          jobPayload.mediaType = detectMediaType(mediaFile);
           jobPayload.fileName = mediaFile.name;
           jobPayload.mimeType = mediaFile.type || undefined;
         } catch (error: unknown) {
@@ -501,12 +519,12 @@ export function useJobs(): UseJobsReturn {
       // O input de foto usa mediaFile (novo arquivo). Ao editar sem trocar o
       // arquivo, handleEditJob deixa a imagem existente (base64) em `payload`.
       if (mediaFile) {
-        const MAX_MEDIA_BYTES = 7 * 1024 * 1024;
-        if (mediaFile.size > MAX_MEDIA_BYTES) {
+        const MAX_PHOTO_MB = 7;
+        if (mediaFile.size > MAX_PHOTO_MB * 1024 * 1024) {
           toast({
             variant: 'destructive',
             title: t('pages.jobs.errors.fileTooLarge'),
-            description: t('pages.jobs.errors.fileTooLargeMessage'),
+            description: t('pages.jobs.errors.fileTooLargeMessage', { max: MAX_PHOTO_MB }),
           });
           return;
         }

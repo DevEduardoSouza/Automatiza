@@ -128,7 +128,7 @@ export function MessageForm({
         <Input
           id="media"
           type="file"
-          accept="image/*,video/*"
+          accept="image/*,video/*,audio/*"
           onChange={(e) => onMediaFileChange(e.target.files?.[0] || null)}
           className="cursor-pointer"
         />

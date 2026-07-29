@@ -69,7 +69,7 @@ type JobPayload struct {
 	// send_message
 	Message   string `json:"message,omitempty"`
 	Media     string `json:"media,omitempty"`     // base64 or URL
-	MediaType string `json:"mediaType,omitempty"` // "image" | "video"
+	MediaType string `json:"mediaType,omitempty"` // "image" | "video" | "audio"
 	FileName  string `json:"fileName,omitempty"`
 	MimeType  string `json:"mimeType,omitempty"`
 

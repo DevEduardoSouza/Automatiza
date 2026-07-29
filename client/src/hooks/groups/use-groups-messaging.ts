@@ -123,13 +123,13 @@ export function useGroupsMessaging({
         return;
       }
 
-      // Validate file size: max 7MB
-      const maxBytes = 7 * 1024 * 1024;
-      if (file.size > maxBytes) {
+      // Validate file size: max 16MB (nginx aceita 50M; base64 infla ~33%)
+      const maxMb = 16;
+      if (file.size > maxMb * 1024 * 1024) {
         toast({
           variant: 'destructive',
           title: t('pages.groups.errors.fileTooLarge'),
-          description: t('pages.groups.errors.fileTooLargeMessage'),
+          description: t('pages.groups.errors.fileTooLargeMessage', { max: maxMb }),
         });
         e.target.value = '';
         setMediaFile(null);
