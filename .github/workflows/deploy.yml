@@ -518,6 +518,14 @@ jobs:
           # "id1,id2" = allowlist de user_ids (canário). Rollout sem novo deploy:
           # gh variable set COUPON_RULES_ROLLOUT_USERS --body <valor>.
           COUPON_RULES_ROLLOUT_USERS=${{ vars.COUPON_RULES_ROLLOUT_USERS }}
+          # Regras de cupom por categoria/nicho Shopee (migração 075, no ar desde
+          # 23/07). ""/ausente/"false" = matcher IGNORA as categorias do produto:
+          # toda regra com nicho fica INERTE (nunca casa) — era o estado até 29/07.
+          # "true" = o nicho passa a filtrar; regra sem nicho segue casando igual.
+          # Rollback sem deploy: gh variable set COUPON_CATEGORY_RULES_ENABLED
+          # --body false + bounce. NUNCA "corrigir" zerando product_category_ids:
+          # isso converte regra específica em genérica e ALARGA o alcance dela.
+          COUPON_CATEGORY_RULES_ENABLED=${{ vars.COUPON_CATEGORY_RULES_ENABLED }}
           # Lean-persist do consumer de webhooks (4→2 statements PG/evento).
           # ""/ausente/"false" = caminho clássico (default seguro). "true" =
           # caminho enxuto (MarkProcessedEnsure). Rollout/rollback sem deploy:
