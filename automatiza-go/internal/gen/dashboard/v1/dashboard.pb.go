@@ -79,11 +79,11 @@ func (Period) EnumDescriptor() ([]byte, []int) {
 // DashboardStats contains aggregated statistics for the user's dashboard.
 type DashboardStats struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Total number of groups where user is admin
+	// Number of groups that are connected (chip online) AND in use by an active automation
 	TotalGroups int32 `protobuf:"varint,1,opt,name=total_groups,json=totalGroups,proto3" json:"total_groups,omitempty"`
 	// Number of groups that are full
 	FullGroups int32 `protobuf:"varint,2,opt,name=full_groups,json=fullGroups,proto3" json:"full_groups,omitempty"`
-	// Total members across all admin groups
+	// Total members across all tracked groups (group_memberships), not just admin ones
 	TotalMembers int32 `protobuf:"varint,3,opt,name=total_members,json=totalMembers,proto3" json:"total_members,omitempty"`
 	// Number of active redirect links
 	ActiveLinks   int32 `protobuf:"varint,4,opt,name=active_links,json=activeLinks,proto3" json:"active_links,omitempty"`

@@ -12,13 +12,13 @@ option go_package = "github.com/automatiza/proto/dashboard/v1;dashboardv1";
  * DashboardStats contains aggregated statistics for the user's dashboard.
  */
 message DashboardStats {
-  // Total number of groups where user is admin
+  // Number of groups that are connected (chip online) AND in use by an active automation
   int32 total_groups = 1;
 
   // Number of groups that are full
   int32 full_groups = 2;
 
-  // Total members across all admin groups
+  // Total members across all tracked groups (group_memberships), not just admin ones
   int32 total_members = 3;
 
   // Number of active redirect links

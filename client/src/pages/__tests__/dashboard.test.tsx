@@ -35,6 +35,12 @@ vi.mock('recharts', () => ({
     <div data-testid="area-chart">{children}</div>
   ),
   Area: () => <div data-testid="area" />,
+  BarChart: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="bar-chart">{children}</div>
+  ),
+  Bar: () => <div data-testid="bar" />,
+  ReferenceLine: () => <div data-testid="reference-line" />,
+  Legend: () => <div data-testid="legend" />,
   CartesianGrid: () => <div data-testid="cartesian-grid" />,
   XAxis: () => <div data-testid="x-axis" />,
   YAxis: () => <div data-testid="y-axis" />,
@@ -90,9 +96,9 @@ vi.mock('@/hooks/use-dashboard', () => ({
 
 const defaultHistoryReturn = {
   data: [
-    { label: 'Seg', members: 100, groups: 5, newMembers: 10, newGroups: 1 },
-    { label: 'Ter', members: 120, groups: 6, newMembers: 20, newGroups: 1 },
-    { label: 'Qua', members: 150, groups: 7, newMembers: 30, newGroups: 1 },
+    { label: 'Seg', members: 100, groups: 5, newMembers: 10, newGroups: 1, joins: 10, leaves: 2 },
+    { label: 'Ter', members: 120, groups: 6, newMembers: 20, newGroups: 1, joins: 20, leaves: 5 },
+    { label: 'Qua', members: 150, groups: 7, newMembers: 30, newGroups: 1, joins: 30, leaves: 8 },
   ],
   isLoading: false,
   isError: false,
@@ -102,6 +108,12 @@ let historyReturn = { ...defaultHistoryReturn };
 
 vi.mock('@/hooks/use-dashboard-connect', () => ({
   useDashboardHistory: () => historyReturn,
+}));
+
+// PlanGroupUsageCard (dentro do dashboard) chama useProfilesConnect -> useAuth,
+// que exige o AuthProvider. Sem limite de plano o card renderiza null.
+vi.mock('@/hooks/use-profiles-connect', () => ({
+  useProfilesConnect: () => ({ limits: null, loading: false }),
 }));
 
 // ============================================================
@@ -151,9 +163,33 @@ describe('Dashboard Page', () => {
     };
     historyReturn = {
       data: [
-        { label: 'Seg', members: 100, groups: 5, newMembers: 10, newGroups: 1 },
-        { label: 'Ter', members: 120, groups: 6, newMembers: 20, newGroups: 1 },
-        { label: 'Qua', members: 150, groups: 7, newMembers: 30, newGroups: 1 },
+        {
+          label: 'Seg',
+          members: 100,
+          groups: 5,
+          newMembers: 10,
+          newGroups: 1,
+          joins: 10,
+          leaves: 2,
+        },
+        {
+          label: 'Ter',
+          members: 120,
+          groups: 6,
+          newMembers: 20,
+          newGroups: 1,
+          joins: 20,
+          leaves: 5,
+        },
+        {
+          label: 'Qua',
+          members: 150,
+          groups: 7,
+          newMembers: 30,
+          newGroups: 1,
+          joins: 30,
+          leaves: 8,
+        },
       ],
       isLoading: false,
       isError: false,
@@ -257,22 +293,29 @@ describe('Dashboard Page', () => {
   it('should render chart when data is available', () => {
     render(<Dashboard />);
 
-    expect(screen.getByTestId('responsive-container')).toBeDefined();
+    // Dois containers desde o f115b99: area (membros) + barras (entradas x saidas).
+    expect(screen.getAllByTestId('responsive-container')).toHaveLength(2);
     expect(screen.getByTestId('area-chart')).toBeDefined();
+    expect(screen.getByTestId('bar-chart')).toBeDefined();
   });
 
   it('should render chart footer stats', () => {
     render(<Dashboard />);
 
     expect(screen.getByText('pages.dashboard.chart.growthRate')).toBeDefined();
-    expect(screen.getByText('pages.dashboard.chart.peakMembers')).toBeDefined();
+    expect(screen.getByText('pages.dashboard.chart.joins')).toBeDefined();
+    expect(screen.getByText('pages.dashboard.chart.leaves')).toBeDefined();
     expect(screen.getByText('pages.dashboard.chart.activeGroups')).toBeDefined();
+
+    // Somas do periodo, nao o ultimo ponto: 10+20+30 entraram, 2+5+8 sairam.
+    expect(screen.getByText('60')).toBeDefined();
+    expect(screen.getByText('15')).toBeDefined();
   });
 
   it('should show growth rate 0% when first data point has zero members', () => {
     historyReturn.data = [
-      { label: 'Seg', members: 0, groups: 5, newMembers: 0, newGroups: 0 },
-      { label: 'Ter', members: 50, groups: 6, newMembers: 50, newGroups: 1 },
+      { label: 'Seg', members: 0, groups: 5, newMembers: 0, newGroups: 0, joins: 0, leaves: 0 },
+      { label: 'Ter', members: 50, groups: 6, newMembers: 50, newGroups: 1, joins: 50, leaves: 0 },
     ];
 
     render(<Dashboard />);
