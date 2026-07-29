@@ -440,12 +440,25 @@ func (s *Service) HandleCallback(ctx context.Context, code, state, providerError
 
 // logCallbackErr registra classe do erro, nunca o erro cru (que carrega URL com
 // access_token na query).
+//
+// Os números do MetaAPIError entram: ele guarda só status/code/subcode e a
+// categoria (nada de texto da Meta). Sem eles, toda recusa saía como um
+// "permanent" indistinguível e a correção do OAuth virava adivinhação.
 func (s *Service) logCallbackErr(step, userID string, err error) {
-	s.logger.Warn("instagram callback step failed",
+	fields := []zap.Field{
 		zap.String("operation", instagramCallbackOpName),
 		zap.String("step", step),
 		zap.String("userID", userID),
-		zap.String("class", errorClass(err)))
+		zap.String("class", errorClass(err)),
+	}
+	var apiErr *MetaAPIError
+	if errors.As(err, &apiErr) {
+		fields = append(fields,
+			zap.Int("http_status", apiErr.HTTPStatus),
+			zap.Int("meta_code", apiErr.Code),
+			zap.Int("meta_subcode", apiErr.Subcode))
+	}
+	s.logger.Warn("instagram callback step failed", fields...)
 }
 
 func errorClass(err error) string {
@@ -912,6 +925,13 @@ func (s *Service) SaveMetaApp(ctx context.Context, userID, appID, appSecret stri
 	appID = strings.TrimSpace(appID)
 	appSecret = strings.TrimSpace(appSecret)
 	if appID == "" || len(appID) > maxAppFieldLen || len(appSecret) > maxAppFieldLen {
+		return nil, ErrInstagramInvalidAppInput
+	}
+	// O App ID da Meta é só dígitos. Quase metade dos cadastros trazia e-mail ou
+	// @usuário aqui, e o erro só aparecia lá na frente, como um OAuth que falhava
+	// sem explicação. A regra é só "dígitos" de propósito: exigir comprimento
+	// mínimo arriscaria recusar um id legítimo.
+	if strings.IndexFunc(appID, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
 		return nil, ErrInstagramInvalidAppInput
 	}
 

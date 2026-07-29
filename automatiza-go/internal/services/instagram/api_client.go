@@ -255,11 +255,11 @@ func (c *APIClient) ExchangeLongLived(ctx context.Context, shortToken string) (t
 	q.Set("client_secret", c.appSecret)
 	q.Set("access_token", shortToken)
 
-	var body tokenResponse
-	if err := c.do(ctx, http.MethodGet, c.baseGraph+"/access_token?"+q.Encode(), nil, "exchange_long_lived", &body); err != nil {
+	var env dataEnvelope[tokenResponse]
+	if err := c.do(ctx, http.MethodGet, c.baseGraph+"/access_token?"+q.Encode(), nil, "exchange_long_lived", &env); err != nil {
 		return "", 0, err
 	}
-	return validateTokenResponse(body, "exchange_long_lived")
+	return c.validateTokenEnvelope(env, "exchange_long_lived")
 }
 
 // RefreshLongLived renova um long-lived token antes de expirar (mesmo shape da
@@ -269,18 +269,29 @@ func (c *APIClient) RefreshLongLived(ctx context.Context, token string) (newToke
 	q.Set("grant_type", "ig_refresh_token")
 	q.Set("access_token", token)
 
-	var body tokenResponse
-	if err := c.do(ctx, http.MethodGet, c.baseGraph+"/refresh_access_token?"+q.Encode(), nil, "refresh_long_lived", &body); err != nil {
+	var env dataEnvelope[tokenResponse]
+	if err := c.do(ctx, http.MethodGet, c.baseGraph+"/refresh_access_token?"+q.Encode(), nil, "refresh_long_lived", &env); err != nil {
 		return "", 0, err
 	}
-	return validateTokenResponse(body, "refresh_long_lived")
+	return c.validateTokenEnvelope(env, "refresh_long_lived")
 }
 
-// validateTokenResponse recusa token vazio e expires_in <= 0. Antes, expiry
+// validateTokenEnvelope aceita as DUAS formas do Meta (objeto plano no topo e
+// `{"data":[{...}]}`) e recusa token vazio ou expires_in <= 0. Antes, expiry
 // zerado era "corrigido" com 60 dias inventados — a credencial parecia válida
 // por dois meses e todo envio no meio do caminho falhava sem explicação.
-func validateTokenResponse(body tokenResponse, op string) (string, time.Duration, error) {
+//
+// A tolerância de forma chegou aqui depois: o fix do exchange_code (016b920)
+// parou nele e no /me, e a troca long-lived seguiu com parse rígido — resposta
+// wrapped virava "permanent" MUDO e derrubava a conexão do usuário sem rastro.
+func (c *APIClient) validateTokenEnvelope(env dataEnvelope[tokenResponse], op string) (string, time.Duration, error) {
+	body, err := oneOf(env, op)
+	if err != nil {
+		c.warnUnexpectedShape(op, len(env.Data), env.diagKeys)
+		return "", 0, err
+	}
 	if body.AccessToken == "" || body.ExpiresIn <= 0 {
+		c.warnUnexpectedShape(op, len(env.Data), env.diagKeys)
 		return "", 0, &MetaAPIError{Operation: op, SafeCategory: categoryPermanent}
 	}
 	return body.AccessToken, time.Duration(body.ExpiresIn) * time.Second, nil
@@ -403,8 +414,10 @@ func (c *APIClient) GetPublishingLimit(ctx context.Context, igUserID, token stri
 	return body.Data[0].QuotaUsage, nil
 }
 
-// tokenResponse é o shape comum das respostas de token long-lived e refresh
-// (estas SIM são objetos no topo, não envelope data[]).
+// tokenResponse é o shape comum das respostas de token long-lived e refresh.
+// Vai SEMPRE dentro de dataEnvelope: a doc mostra o objeto plano no topo, mas o
+// Meta também responde `{"data":[{...}]}` na prática — assumir só uma das formas
+// foi o que quebrou a conexão.
 type tokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`

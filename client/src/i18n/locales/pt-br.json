@@ -2375,7 +2375,7 @@
         "save": "Salvar aplicativo",
         "remove": "Remover aplicativo",
         "saved": "Aplicativo salvo",
-        "saveFailed": "Não foi possível salvar o aplicativo. Confira o ID e a chave secreta.",
+        "saveFailed": "Não foi possível salvar o aplicativo. O ID do aplicativo é só o número que aparece no painel da Meta (Configurações do app > Básico) — não use e-mail nem @usuário. Confira também a chave secreta.",
         "removed": "Aplicativo removido",
         "removeFailed": "Não foi possível remover o aplicativo",
         "copyFailed": "Não foi possível copiar. Selecione o texto e copie manualmente.",

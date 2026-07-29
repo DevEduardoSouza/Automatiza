@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -204,6 +205,28 @@ func TestTokenResponses_RejectNonPositiveExpiry(t *testing.T) {
 		}
 		if _, _, err := c.RefreshLongLived(context.Background(), "LONG"); err == nil {
 			t.Errorf("RefreshLongLived deveria recusar %s", body)
+		}
+	}
+}
+
+// A troca long-lived também responde nas DUAS formas (plana no topo e envelope
+// data[]). Aceitar só a plana derrubava a conexão no passo exchange_long_lived,
+// depois que o exchange_code já tinha sido consertado.
+func TestTokenResponses_AcceptBothShapes(t *testing.T) {
+	for _, body := range []string{
+		`{"access_token":"T","token_type":"bearer","expires_in":5183944}`,
+		`{"data":[{"access_token":"T","token_type":"bearer","expires_in":5183944}]}`,
+	} {
+		c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, body)
+		})
+		token, expires, err := c.ExchangeLongLived(context.Background(), "SHORT")
+		if err != nil || token != "T" || expires != 5183944*time.Second {
+			t.Errorf("ExchangeLongLived(%s) = %q, %v, %v", body, token, expires, err)
+		}
+		token, expires, err = c.RefreshLongLived(context.Background(), "LONG")
+		if err != nil || token != "T" || expires != 5183944*time.Second {
+			t.Errorf("RefreshLongLived(%s) = %q, %v, %v", body, token, expires, err)
 		}
 	}
 }
