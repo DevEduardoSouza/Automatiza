@@ -454,9 +454,13 @@ type wahaSendLinkPreviewRequest struct {
 
 // wahaSendLinkPreviewPreview represents the preview object inside a link preview request.
 type wahaSendLinkPreviewPreview struct {
-	URL         string    `json:"url"`
-	Title       string    `json:"title"`
-	Description string    `json:"description,omitempty"`
+	URL   string `json:"url"`
+	Title string `json:"title"`
+	// SEM omitempty: o DTO do WAHA tem default "Check this out, amazing!" para
+	// description (waha-plus-openapi.json, schema LinkPreviewData) e o aplica
+	// quando a chave está AUSENTE. Card sem descrição = mandar "" explícito.
+	// (Title já era assim, e por isso título vazio sempre foi respeitado.)
+	Description string    `json:"description"`
 	Image       *wahaFile `json:"image,omitempty"`
 }
 
