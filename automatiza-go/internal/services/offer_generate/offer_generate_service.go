@@ -618,10 +618,10 @@ func (s *offerGenerateService) processAutomationLeased(ctx, sendRoot context.Con
 	var couponResult *CouponResult
 	// Dados pro card de preview nativo (usado quando offer_generate_send_as_image
 	// está OFF). previewURL é o link de afiliado (também presente no texto), e
-	// title/desc alimentam o card. Preenchidos em cada branch (Shopee/ML).
+	// o título alimenta o card. Preenchidos em cada branch (Shopee/ML).
+	// O card NÃO leva descrição: o preço já sai no corpo da mensagem (28/07).
 	var previewURL string
 	var previewTitle string
-	var previewDesc string
 
 	if len(shopeeLinks) > 0 && s.shopeeService != nil {
 		link := shopeeLinks[0]
@@ -740,10 +740,6 @@ func (s *offerGenerateService) processAutomationLeased(ctx, sendRoot context.Con
 		// Card de preview nativo (caminho send_as_image OFF)
 		previewURL = affiliateURL
 		previewTitle = product.Name
-		previewDesc = text.FormatBRLSpaced(offerPrice)
-		if product.OriginalPrice > offerPrice {
-			previewDesc = fmt.Sprintf("De %s por %s", text.FormatBRLSpaced(product.OriginalPrice), text.FormatBRLSpaced(offerPrice))
-		}
 
 	} else if len(mlLinks) > 0 && s.mlService != nil {
 		link := mlLinks[0]
@@ -854,10 +850,6 @@ func (s *offerGenerateService) processAutomationLeased(ctx, sendRoot context.Con
 		// Card de preview nativo (caminho send_as_image OFF)
 		previewURL = affiliateURL
 		previewTitle = preview.Title
-		previewDesc = text.FormatBRLSpaced(offerPrice)
-		if originalPrice > offerPrice {
-			previewDesc = fmt.Sprintf("De %s por %s", text.FormatBRLSpaced(originalPrice), text.FormatBRLSpaced(offerPrice))
-		}
 	} else {
 		return nil
 	}
@@ -1087,7 +1079,7 @@ func (s *offerGenerateService) processAutomationLeased(ctx, sendRoot context.Con
 						Text:        perGroupMessage,
 						URL:         previewURL,
 						Title:       previewTitle,
-						Description: previewDesc,
+						Description: "", // card sem preço: o De/Por já sai no corpo
 						ImageURL:    imageURL,
 					})
 				default:

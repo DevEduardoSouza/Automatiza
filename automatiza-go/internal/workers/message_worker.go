@@ -196,7 +196,11 @@ func (w *MessageWorker) ProcessTask(ctx context.Context, task *asynq.Task) error
 			Text:        normalizedMessage,
 			URL:         data.LinkPreview.URL,
 			Title:       data.LinkPreview.Title,
-			Description: data.LinkPreview.Description,
+			// Card SEM preço (28/07): o corpo da mensagem já traz o De/Por, e a
+			// linha do card duplicava o preço pro cliente. Zerado aqui — e não só
+			// na origem — pra pegar também os jobs JÁ enfileirados, cujo JSON
+			// ainda carrega o Description antigo.
+			Description: "",
 			ImageURL:    data.LinkPreview.ImageURL,
 		}
 		_, sendErr = w.whatsappProvider.SendLinkCustomPreview(ctx, previewInput)

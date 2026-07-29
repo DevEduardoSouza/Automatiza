@@ -1298,11 +1298,13 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 			//     corpo). Nunca o título da origem — ele pode carregar o
 			//     CTA/cabeçalho de OUTRO afiliado e descasaria do corpo. Sem nome
 			//     resolvido, título vazio (WhatsApp monta do link afiliado).
+			// Descrição do card: SEMPRE vazia (28/07). Com template ela já era
+			// zerada pra não vazar o preview da origem; no repasse puro ela trazia
+			// a descrição/preço da OG da fonte — que duplicava o preço já presente
+			// no corpo. Card = nome + foto em todos os modos.
 			cardTitle := msg.LinkPreviewTitle
-			cardDescription := msg.LinkPreviewDescription
 			if usingTemplate {
 				cardTitle = dispatchCardTitle
-				cardDescription = ""
 			}
 			_, err = s.waProvider.SendLinkCustomPreview(sendCtx, whatsapp.SendLinkPreviewInput{
 				SessionName: senderSession,
@@ -1310,7 +1312,7 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				Text:        perGroupText,
 				URL:         firstAffiliateURL,
 				Title:       cardTitle,
-				Description: cardDescription,
+				Description: "",
 				ImageURL:    imageURL,
 				ImageBase64: imageBase64,
 				Mimetype:    imageMimetype,

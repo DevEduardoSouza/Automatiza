@@ -626,42 +626,28 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		var linkPreview *workers.LinkPreviewData
 		if !sendAsImage {
 			if isML && preview != nil && preview.Title != "" {
-				desc := fmt.Sprintf("R$ %.2f", preview.Price)
-				if preview.OriginalPrice != nil {
-					desc = fmt.Sprintf("De R$ %.2f por R$ %.2f", *preview.OriginalPrice, preview.Price)
-				}
-				if couponResult != nil && couponResult.Applied && couponResult.DiscountedPrice < preview.Price {
-					desc = fmt.Sprintf("De R$ %.2f por R$ %.2f com cupom", preview.Price, couponResult.DiscountedPrice)
-				}
 				imgURL := ""
 				if preview.Image != "" {
 					imgURL = strings.Replace(preview.Image, ".webp", ".jpg", 1)
 				}
+				// Sem Description: o card leva só nome + foto (o preço já está no
+				// corpo da mensagem; no card ele aparecia duplicado).
 				linkPreview = &workers.LinkPreviewData{
-					URL:         affiliateURL,
-					Title:       preview.Title,
-					Description: desc,
-					ImageURL:    imgURL,
+					URL:      affiliateURL,
+					Title:    preview.Title,
+					ImageURL: imgURL,
 				}
 				// Use link preview instead of image attachment
 				imageURL = nil
 			} else if isShopee && shopeeProduct != nil && shopeeProduct.Name != "" {
-				desc := fmt.Sprintf("R$ %.2f", shopeeProduct.Price)
-				if shopeeProduct.OriginalPrice > 0 && shopeeProduct.OriginalPrice > shopeeProduct.Price {
-					desc = fmt.Sprintf("De R$ %.2f por R$ %.2f", shopeeProduct.OriginalPrice, shopeeProduct.Price)
-				}
-				if couponResult != nil && couponResult.Applied && couponResult.DiscountedPrice < shopeeProduct.Price {
-					desc = fmt.Sprintf("De R$ %.2f por R$ %.2f com cupom", shopeeProduct.Price, couponResult.DiscountedPrice)
-				}
 				imgURL := shopeeImageURL
 				if imgURL == "" && shopeeProduct.Image != "" {
 					imgURL = shopeeProduct.Image
 				}
 				linkPreview = &workers.LinkPreviewData{
-					URL:         affiliateURL,
-					Title:       shopeeProduct.Name,
-					Description: desc,
-					ImageURL:    imgURL,
+					URL:      affiliateURL,
+					Title:    shopeeProduct.Name,
+					ImageURL: imgURL,
 				}
 				imageURL = nil
 			}
