@@ -18,8 +18,11 @@ export function StoresSelector({ formData, setFormData, activeStores }: StoresSe
   const { t } = useTranslation();
   const { toast } = useToast();
 
+  // Modo busca exige API que ACHE ofertas. ML e Shein nao tem: o cliente cola
+  // link pronto, entao as duas so fazem sentido em monitoramento.
+  const searchlessStores = ['ml', 'shein'];
   const visibleStores = STORES.filter(
-    (store) => !(formData.mode === 'search' && store.value === 'ml'),
+    (store) => !(formData.mode === 'search' && searchlessStores.includes(store.value))
   );
 
   return (
@@ -74,8 +77,11 @@ export function StoresSelector({ formData, setFormData, activeStores }: StoresSe
           {visibleStores.map((store) => {
             const isActive = activeStores.includes(store.value);
             const isMonitoring = formData.mode === 'monitor';
-            const isShopee = store.value === 'shopee';
-            const disabledByMode = isMonitoring && !isShopee;
+            // O espelho so sabe resolver Shopee (conversao via API) e Shein
+            // (troca pelo onelink fixo do dono). As demais seguem removidas do
+            // corpo, entao nem sao selecionaveis em monitoramento.
+            const isMirrorStore = store.value === 'shopee' || store.value === 'shein';
+            const disabledByMode = isMonitoring && !isMirrorStore;
             const isSelected = formData.stores?.includes(store.value) || false;
             const isLastSelectedStore = isSelected && (formData.stores?.length || 0) <= 1;
             return (

@@ -3,12 +3,14 @@ package connectrpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	affiliatesv1 "automatiza-go/internal/gen/affiliates/v1"
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/awin"
 	"automatiza-go/internal/services/shopee"
 
 	"connectrpc.com/connect"
@@ -21,6 +23,10 @@ type AffiliateCredentialsHandler struct {
 	// validateShopee testa App ID + Senha contra a API da Shopee antes de
 	// salvar (injetável para testes). Default: shopee.ValidateAffiliateCredentials.
 	validateShopee func(ctx context.Context, appID, appSecret string) error
+
+	// fetchAwinProgrammes lista os anunciantes aprovados do publisher
+	// (injetável para testes). Default: awin.FetchProgrammes.
+	fetchAwinProgrammes func(ctx context.Context, publisherID, token string) ([]awin.Programme, error)
 }
 
 // NewAffiliateCredentialsHandler creates a new affiliate credentials handler.
@@ -30,7 +36,38 @@ func NewAffiliateCredentialsHandler(credentialsRepo repository.AffiliateCredenti
 		validateShopee: func(ctx context.Context, appID, appSecret string) error {
 			return shopee.ValidateAffiliateCredentials(ctx, "", appID, appSecret)
 		},
+		fetchAwinProgrammes: func(ctx context.Context, publisherID, token string) ([]awin.Programme, error) {
+			return awin.FetchProgrammes(ctx, "", publisherID, token)
+		},
 	}
+}
+
+// programmeNames reduz os programas aos nomes exibidos no seletor de marcas.
+// Vai para o JSONB como chave NÃO-secreta e NÃO-interna, então chega ao
+// frontend junto com o resto da credencial — sem precisar de campo novo no
+// proto nem de bundle novo no navegador.
+func programmeNames(programmes []awin.Programme) []string {
+	out := make([]string, 0, len(programmes))
+	for _, p := range programmes {
+		if p.Name != "" {
+			out = append(out, p.Name)
+		}
+	}
+	return out
+}
+
+// awinCredentials extrai publisher ID e token de uma credencial Awin, aceitando
+// as duas grafias (formulário atual e legado do JSONB).
+func awinCredentials(c *models.AffiliateCredentials) (publisherID, token string) {
+	publisherID = strings.TrimSpace(c.GetCredential("awinId"))
+	if publisherID == "" {
+		publisherID = strings.TrimSpace(c.GetCredential("publisher_id"))
+	}
+	token = strings.TrimSpace(c.GetCredential("oauth2Token"))
+	if token == "" {
+		token = strings.TrimSpace(c.GetCredential("api_key"))
+	}
+	return publisherID, token
 }
 
 // ListCredentials returns all affiliate credentials for the authenticated user.
@@ -135,6 +172,17 @@ func (h *AffiliateCredentialsHandler) UpsertCredential(
 				}
 			}
 		}
+		// Chaves internas nunca saem para o navegador, então nunca voltam no
+		// payload: sem esta cópia, o SEGUNDO save do formulário apagaria o mapa
+		// de programas do Awin e a conversão pararia sem erro visível.
+		for _, key := range internalCredentialKeys {
+			if _, has := credentialsMap[key]; has {
+				continue
+			}
+			if old := existing.GetCredential(key); old != "" {
+				credentialsMap[key] = old
+			}
+		}
 	}
 
 	// Shopee: valida App ID + Senha AO VIVO antes de salvar. Um secret errado
@@ -153,6 +201,32 @@ func (h *AffiliateCredentialsHandler) UpsertCredential(
 		if err := h.validateShopee(ctx, appID, appSecret); err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
 				"credenciais Shopee invalidas: a Senha nao confere com o painel de afiliados da Shopee. Copie o App ID e a Senha novamente (sem espacos) e tente de novo"))
+		}
+	}
+
+	// Awin: a MESMA chamada faz dois trabalhos — valida o token e traz o mapa
+	// domínio→awinmid, sem o qual a conversão de link não sabe qual anunciante
+	// creditar. Mesmo contrato fail-open da Shopee: só 401/403 (determinístico)
+	// bloqueia o cadastro; timeout e 5xx deixam salvar.
+	if store == "awin" && h.fetchAwinProgrammes != nil {
+		publisherID, token := awinCredentials(data)
+		if publisherID != "" && token != "" {
+			programmes, err := h.fetchAwinProgrammes(ctx, publisherID, token)
+			switch {
+			case errors.Is(err, awin.ErrInvalidCredentials):
+				return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+					"credenciais Awin invalidas: a Awin recusou o token OAuth2. Gere um token novo em ui.awin.com/awin-api e confira se o Awin ID e o do seu perfil de publisher"))
+			case err != nil:
+				// Instabilidade da Awin não pode travar o cadastro; a lista de
+				// marcas é sincronizada de novo no botão Testar.
+			default:
+				if encoded, encErr := awin.EncodeDomainMap(awin.DomainMap(programmes)); encErr == nil {
+					data.SetCredential(awin.ProgrammesCredentialKey, encoded)
+				}
+				if names, nameErr := json.Marshal(programmeNames(programmes)); nameErr == nil {
+					data.SetCredential(awin.ProgrammeNamesCredentialKey, string(names))
+				}
+			}
 		}
 	}
 
@@ -278,7 +352,22 @@ func (h *AffiliateCredentialsHandler) ListActiveStores(
 // secretCredentialKeys são os campos de credencial que NUNCA saem em claro
 // para o cliente e que, quando chegam vazios/mascarados num save, preservam
 // o valor armazenado.
-var secretCredentialKeys = []string{"password", "app_secret", "secret", "apiToken", "api_token"}
+var secretCredentialKeys = []string{
+	"password", "app_secret", "secret", "apiToken", "api_token",
+	// Segredos das lojas que ganharam formulário depois: sem eles nesta lista,
+	// o GET devolvia o valor REAL ao navegador (e o autofill podia sobrescrevê-lo
+	// com lixo — o incidente 11/07 que criou a máscara).
+	"secretKey", "secret_key", // Amazon (Creators API)
+	"clientSecret",                // Amazon (Creators API)
+	"oauth2Token", "oauth2_token", // Awin
+	"appSecret", // AliExpress
+}
+
+// internalCredentialKeys são chaves que o servidor mantém no JSONB mas que
+// NUNCA vão para o navegador — não por sigilo, por volume e por não terem uso
+// na UI. Diferente dos segredos, elas são REMOVIDAS da resposta em vez de
+// mascaradas, e preservadas no save quando não vêm no payload.
+var internalCredentialKeys = []string{awin.ProgrammesCredentialKey}
 
 // secretMask é o placeholder devolvido no lugar de secrets. O formulário
 // exibe os pontinhos; se voltarem intactos num save, o Upsert mantém o valor
@@ -322,6 +411,12 @@ func credentialToProto(c *models.AffiliateCredentials) *affiliatesv1.AffiliateCr
 			if v, ok := masked[key]; ok && strings.TrimSpace(v) != "" {
 				masked[key] = secretMask
 			}
+		}
+		// Chave interna sai FORA (não mascarada): mascarar faria o mapa de
+		// programas voltar como "••••••••" e o save seguinte gravaria isso
+		// por cima do mapa real.
+		for _, key := range internalCredentialKeys {
+			delete(masked, key)
 		}
 		if data, err := json.Marshal(masked); err == nil {
 			credentialsJSON = string(data)
@@ -382,4 +477,86 @@ func protoStoreToModelAffiliate(store affiliatesv1.AffiliateStore) string {
 	default:
 		return ""
 	}
+}
+
+// ListAwinProgrammes lista os anunciantes Awin aprovados para o usuário.
+//
+// Serve a dois propósitos de propósito: alimenta o seletor de marcas do
+// formulário E é o teste real da credencial Awin (é a mesma chamada). O token
+// não viaja no request — o servidor lê a credencial já salva —, então apertar
+// "Testar" nunca persiste o conteúdo do formulário por cima de um segredo
+// válido (o vetor do incidente 11/07).
+func (h *AffiliateCredentialsHandler) ListAwinProgrammes(
+	ctx context.Context,
+	req *connect.Request[affiliatesv1.ListAwinProgrammesRequest],
+) (*connect.Response[affiliatesv1.ListAwinProgrammesResponse], error) {
+	user := GetUserFromContext(ctx)
+	if user == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if h.fetchAwinProgrammes == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("integracao Awin indisponivel"))
+	}
+
+	credential, err := h.credentialsRepo.GetByUserAndStore(ctx, user.ID, "awin")
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get credential: %w", err))
+	}
+	if credential == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"salve o Awin ID e o token OAuth2 antes de listar as marcas"))
+	}
+
+	publisherID, token := awinCredentials(credential)
+	if publisherID == "" || token == "" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"credencial Awin incompleta: preencha o Awin ID e o token OAuth2"))
+	}
+
+	programmes, err := h.fetchAwinProgrammes(ctx, publisherID, token)
+	switch {
+	case errors.Is(err, awin.ErrInvalidCredentials):
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+			"a Awin recusou o token OAuth2. Gere um token novo em ui.awin.com/awin-api e confira se o Awin ID e o do seu perfil de publisher"))
+	case err != nil:
+		// Instabilidade da Awin: o cliente mantém a lista que já tem em cache.
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf(
+			"a Awin nao respondeu agora. Tente de novo em alguns minutos"))
+	}
+
+	// Persiste o mapa domínio→awinmid: é ele que a conversão de link usa em
+	// runtime, e este é o único momento em que a lista chega fresca.
+	h.persistAwinProgrammes(ctx, user.ID, credential, programmes)
+
+	out := make([]*affiliatesv1.AwinProgramme, 0, len(programmes))
+	for _, p := range programmes {
+		out = append(out, &affiliatesv1.AwinProgramme{
+			Id:         p.ID,
+			Name:       p.Name,
+			DisplayUrl: p.DisplayURL,
+		})
+	}
+	return connect.NewResponse(&affiliatesv1.ListAwinProgrammesResponse{Programmes: out}), nil
+}
+
+// persistAwinProgrammes grava o mapa de programas na credencial. Best-effort:
+// falhar aqui não pode derrubar a listagem que o usuário pediu.
+func (h *AffiliateCredentialsHandler) persistAwinProgrammes(
+	ctx context.Context,
+	userID string,
+	credential *models.AffiliateCredentials,
+	programmes []awin.Programme,
+) {
+	if len(programmes) == 0 {
+		return
+	}
+	encoded, err := awin.EncodeDomainMap(awin.DomainMap(programmes))
+	if err != nil {
+		return
+	}
+	credential.SetCredential(awin.ProgrammesCredentialKey, encoded)
+	if names, nameErr := json.Marshal(programmeNames(programmes)); nameErr == nil {
+		credential.SetCredential(awin.ProgrammeNamesCredentialKey, string(names))
+	}
+	_ = h.credentialsRepo.Upsert(ctx, userID, "awin", credential)
 }

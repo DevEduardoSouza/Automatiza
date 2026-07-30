@@ -93,13 +93,24 @@ func TestStoreOfFronteiraDePonto(t *testing.T) {
 		"www.mercadolivre.com.br":        models.MonitorStoreMercadoLivr,
 		"produto.mercadolivre.com.br":    models.MonitorStoreMercadoLivr,
 		"meli.la":                        models.MonitorStoreMercadoLivr,
-		"amazon.com.br":                  models.MonitorStoreUnsupported,
+		"amazon.com.br":                  models.MonitorStoreAmazon,
+		"www.amazon.com.br":              models.MonitorStoreAmazon,
+		"amzn.to":                        models.MonitorStoreAmazon,
+		"pt.aliexpress.com":              models.MonitorStoreAliExpress,
+		"s.click.aliexpress.com":         models.MonitorStoreAliExpress,
+		"www.awin1.com":                  models.MonitorStoreAwin,
+		"netshoes.com.br":                models.MonitorStoreAwin,
+		"www.dafiti.com.br":              models.MonitorStoreAwin,
 		"magazinevoce.com.br":            models.MonitorStoreUnsupported,
+		"shein.com":                      models.MonitorStoreShein,
 		"xshopee.com.br":                 "",
 		"shopee.com.br.evil.test":        "",
 		"notmeli.la":                     "",
 		"instagram.com":                  "",
 		"mercadolivre.com.br.phish.test": "",
+		// Anunciante Awin fora de allCommerceHosts: host forjado NÃO vira
+		// loja, e continua sendo relayado como link comum (não security_block).
+		"netshoes.com.br.evil.test": "",
 	}
 	for host, want := range cases {
 		if got := StoreOf(host); got != want {
@@ -184,7 +195,16 @@ func TestClassifyLocalCampanhas(t *testing.T) {
 		{"https://shopee.com.br/flash_sale", models.URLClassCampaignOrCoupon},
 		{"https://shopee.com.br/algum-path", models.URLClassUnknown},
 		{"https://s.shopee.com.br/abc123", models.URLClassUnknown},
-		{"https://amazon.com.br/dp/B01", models.URLClassUnsupportedCommerce},
+		{"https://magazinevoce.com.br/loja/p/1", models.URLClassUnsupportedCommerce},
+		// ASIN tem 10 caracteres: "B01" não identifica produto, então não dá
+		// para reatribuir a comissão — unknown, nunca campanha.
+		{"https://amazon.com.br/dp/B01", models.URLClassUnknown},
+		{"https://www.amazon.com.br/Echo-Dot/dp/B09B8V1LZ3", models.URLClassProduct},
+		{"https://amzn.to/3xYzAbC", models.URLClassUnknown},
+		{"https://pt.aliexpress.com/item/1005006123456789.html", models.URLClassProduct},
+		{"https://s.click.aliexpress.com/e/_abc", models.URLClassUnknown},
+		{"https://www.netshoes.com.br/produto/tenis-123", models.URLClassProduct},
+		{"https://www.awin1.com/cread.php?awinmid=1&awinaffid=2&ued=x", models.URLClassUnknown},
 	}
 	for _, tc := range cases {
 		u := mustParse(t, tc.raw)
@@ -434,5 +454,61 @@ func TestTodosOsReasonCodesSaoValidos(t *testing.T) {
 	}
 	if models.IsValidReasonCode("inventado") {
 		t.Error("reason fora do enum foi aceito")
+	}
+}
+
+// TestAmazonASIN guarda o contrato do extrator: só path, ASIN de 10 chars.
+// Emitir link sem ASIN válido significaria mandar uma URL que não converte.
+func TestAmazonASIN(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want string
+	}{
+		{"https://www.amazon.com.br/Echo-Dot-5a-geracao/dp/B09B8V1LZ3/ref=sr_1_1?keywords=echo", "B09B8V1LZ3"},
+		{"https://www.amazon.com.br/dp/B09B8V1LZ3", "B09B8V1LZ3"},
+		{"https://www.amazon.com.br/gp/product/B09B8V1LZ3", "B09B8V1LZ3"},
+		{"https://www.amazon.com.br/gp/aw/d/B09B8V1LZ3", "B09B8V1LZ3"},
+		{"https://www.amazon.com.br/dp/b09b8v1lz3", "B09B8V1LZ3"},
+		{"https://amzn.to/3xYzAbC", ""},
+		{"https://www.amazon.com.br/s?k=echo+dot", ""},
+		{"https://www.amazon.com.br/stores/page/ABC", ""},
+		{"https://www.amazon.com.br/dp/TOO_SHORT", ""},
+		// ASIN em query não conta: só o path identifica produto.
+		{"https://www.amazon.com.br/qualquer?asin=B09B8V1LZ3", ""},
+	}
+	for _, tc := range cases {
+		u := mustParse(t, tc.raw)
+		got, ok := AmazonASIN(u.Parsed)
+		if tc.want == "" {
+			if ok {
+				t.Errorf("AmazonASIN(%q) = %q, queria falha", tc.raw, got)
+			}
+			continue
+		}
+		if !ok || got != tc.want {
+			t.Errorf("AmazonASIN(%q) = %q/%v, queria %q", tc.raw, got, ok, tc.want)
+		}
+	}
+}
+
+// TestAntiSpoofSegueValendoComLojasNovas prova que quebrar unsupportedHosts em
+// tabelas por loja não afrouxou a varredura de token — Amazon e AliExpress
+// continuam em allCommerceHosts.
+func TestAntiSpoofSegueValendoComLojasNovas(t *testing.T) {
+	blocked := []string{
+		"https://amazon.com.br.evil.test/dp/B09B8V1LZ3",
+		"https://evil.test/amazon.com.br/dp/B09B8V1LZ3",
+		"https://aliexpress.com.phish.test/item/1.html",
+		"https://shopee.com.br.evil.test/product/1/2",
+	}
+	for _, raw := range blocked {
+		if _, err := Parse(raw); err == nil {
+			t.Errorf("Parse(%q) passou, queria bloqueio de spoof", raw)
+		}
+	}
+	// Anunciante Awin fica FORA de allCommerceHosts de propósito: uma URL que
+	// só MENCIONA netshoes.com.br continua sendo relayada como link comum.
+	if _, err := Parse("https://www.google.com/url?q=https://netshoes.com.br/x"); err != nil {
+		t.Errorf("URL que menciona anunciante Awin foi bloqueada: %v", err)
 	}
 }

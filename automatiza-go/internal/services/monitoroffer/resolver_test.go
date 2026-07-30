@@ -134,7 +134,7 @@ func TestPreviewIncompletoNaoViraCampanha(t *testing.T) {
 // TestServicoAusenteNaoEmiteOriginal: sem serviço configurado, o link fica
 // pendente — nunca é repassado cru.
 func TestServicoAusenteNaoEmiteOriginal(t *testing.T) {
-	r := NewStoreResolver(nil, nil, nil)
+	r := NewStoreResolver(nil, nil, nil, nil)
 	for _, store := range []string{models.MonitorStoreShopee, models.MonitorStoreMercadoLivr} {
 		u := mustURL(t, "https://shopee.com.br/product/1/2")
 		u.Store = store
@@ -149,7 +149,7 @@ func TestServicoAusenteNaoEmiteOriginal(t *testing.T) {
 }
 
 func TestLojaSemConversorNaoChamaNinguem(t *testing.T) {
-	r := NewStoreResolver(nil, nil, nil)
+	r := NewStoreResolver(nil, nil, nil, nil)
 	u := mustURL(t, "https://amazon.com.br/dp/B01")
 	got := r.Resolve(context.Background(), ResolveRequest{URL: u})
 	if got.Class != models.URLClassUnsupportedCommerce || got.Reason != models.ReasonUnsupportedStore {

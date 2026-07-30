@@ -338,17 +338,26 @@ func IsMLLink(url string) bool {
 	return store == models.MonitorStoreMercadoLivr
 }
 
-// IsOtherStoreLink detects product links of stores the platform has no
-// affiliate conversion for (Amazon, Magalu, Shein, AliExpress). Shopee and
-// Mercado Livre are NOT covered here — they have their own detectors and
-// per-automation store config. Relaying one of these links as-is forwards
-// the SOURCE channel's affiliate commission, so the relay paths strip or
-// drop them. Deliberately does not match generic non-store content
-// (Instagram, sites, convites) — that must keep passing (lesson from the
-// reverted PR #216 whitelist).
+// IsOtherStoreLink detects product links of stores OTHER than Shopee and
+// Mercado Livre — the two that have their own detectors and per-automation
+// store config. Relaying one of these links as-is forwards the SOURCE
+// channel's affiliate commission, so the relay paths strip or drop them.
+//
+// O teste é NEGATIVO de propósito. Ele já foi `store == unsupported`, e nesse
+// formato uma loja nova em StoreOf (Amazon, AliExpress, Awin) deixava de ser
+// removida do corpo por OMISSÃO — todo link dessas lojas passaria cru com a
+// tag de quem postou, em toda a plataforma. Com o teste negativo, loja nova
+// nasce bloqueada; quem quiser convertê-la precisa dizer isso explicitamente
+// no caller (registry + stores habilitadas na automação).
+//
+// Deliberately does not match generic non-store content (Instagram, sites,
+// convites) — that must keep passing (lesson from the reverted PR #216
+// whitelist): StoreOf devolve "" para eles.
 func IsOtherStoreLink(url string) bool {
 	store, _ := LinkStore(url)
-	return store == models.MonitorStoreUnsupported
+	return store != "" &&
+		store != models.MonitorStoreShopee &&
+		store != models.MonitorStoreMercadoLivr
 }
 
 // ReplaceLinksInText replaces links in text with new links

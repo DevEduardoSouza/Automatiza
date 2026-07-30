@@ -193,7 +193,7 @@ func (s *monitoringService) ExecuteRetry(
 		return finish(out, models.MonitorItemBlocked, e.Class, e.Reason), nil
 	}
 
-	resolver := monitoroffer.NewStoreResolver(s.shopeeService, s.mlService, s.logger)
+	resolver := monitoroffer.NewStoreResolver(s.shopeeService, s.mlService, s.affiliateRegistry, s.logger)
 	res := resolver.Resolve(ctx, monitoroffer.ResolveRequest{
 		URL:    u,
 		Local:  commerceurl.ClassifyLocal(u),

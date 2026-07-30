@@ -28,6 +28,7 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/affiliatelink"
 	"automatiza-go/internal/services/failover"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/monitoroffer"
@@ -119,8 +120,12 @@ type monitoringService struct {
 
 	shopeeService shopee.Service
 	mlService     mercadolivre.Service
-	waProvider    whatsapp.WhatsAppProvider
-	couponHandler CouponApplier
+	// affiliateRegistry converte as lojas que não são Shopee/ML (Amazon,
+	// AliExpress, Awin). nil = nenhuma delas converte, e o espelho se comporta
+	// exatamente como antes da feature.
+	affiliateRegistry *affiliatelink.Registry
+	waProvider        whatsapp.WhatsAppProvider
+	couponHandler     CouponApplier
 
 	dispatchText dispatchTextGate
 
@@ -144,6 +149,11 @@ type monitoringService struct {
 	// feature ausente: nenhum caminho abaixo muda de comportamento.
 	cadenceRepo  repository.MonitorCadenceRepository
 	durableMedia whatsapp.DurableMediaFetcher
+
+	// affiliateCredRepo lê o link de afiliado fixo das lojas sem API de
+	// geração (hoje só Shein). nil = feature ausente: o link continua sendo
+	// removido do corpo, exatamente como antes.
+	affiliateCredRepo repository.AffiliateCredentialsRepository
 }
 
 // DispatchGate é a fatia do failover que este produtor consome. Definida aqui,
@@ -324,6 +334,21 @@ func WithOfferCoordinator(c *monitoroffer.Coordinator) Option {
 // "mensagem sem link" continua idêntico ao histórico.
 func WithMirrorContent(g usergate.Gate) Option {
 	return func(s *monitoringService) { s.mirrorContent = g }
+}
+
+// WithAffiliateCredentials liga a leitura do link de afiliado fixo das lojas
+// sem API de geração (Shein). Sem ele, o campo fica nil e essas lojas seguem
+// sendo removidas do corpo, como sempre foram.
+func WithAffiliateCredentials(r repository.AffiliateCredentialsRepository) Option {
+	return func(s *monitoringService) { s.affiliateCredRepo = r }
+}
+
+// WithAffiliateRegistry liga a conversão das lojas com conversor próprio
+// (Amazon, AliExpress, Awin). Sem ele o campo fica nil, Handles devolve false
+// em tudo e esses links continuam sendo removidos do corpo — o comportamento
+// histórico, byte a byte.
+func WithAffiliateRegistry(r *affiliatelink.Registry) Option {
+	return func(s *monitoringService) { s.affiliateRegistry = r }
 }
 
 // NewMonitoringService creates a new monitoring service.
@@ -617,22 +642,69 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		blockedStoreLinks = append(blockedStoreLinks, mlLinks...)
 		mlLinks = nil
 	}
-	// Stores without any affiliate conversion (Amazon, Magalu, Shein,
-	// AliExpress) are always blocked in monitor mode: a Shopee link keeps the
+	// Shein é resolvida por SUBSTITUIÇÃO, não por conversão: sem API de
+	// geração de link, o que existe é o onelink fixo que o dono cadastrou em
+	// /affiliate-programs. Tratada aqui, ANTES do laço de lojas bloqueadas,
+	// pelo mesmo motivo do ML: quem não optou continua tendo o link removido.
+	//
+	// Opt-in duplo — a automação precisa listar "shein" E o dono precisa ter a
+	// credencial ativa. Faltando qualquer um (ou sem repo wirado, ou com erro
+	// de leitura), cai no comportamento histórico: link bloqueado. Fail-open
+	// para o passado nunca derruba o envio.
+	sheinLinks := s.sheinLinksIn(links)
+	sheinResolved := make(map[string]string, len(sheinLinks))
+	if len(sheinLinks) > 0 && storeSet[models.MonitorStoreShein] && s.affiliateCredRepo != nil {
+		cred, err := s.affiliateCredRepo.GetByUserAndStore(ctx, automation.UserID, models.MonitorStoreShein)
+		if err != nil {
+			s.logger.Warn("Shein credential lookup failed, blocking links as before",
+				zap.String("automationID", automation.ID), zap.Error(err))
+		} else if affiliate := sheinAffiliateFor(cred, ""); affiliate != "" {
+			for _, link := range sheinLinks {
+				if link != affiliate {
+					sheinResolved[link] = affiliate
+				}
+			}
+		}
+	}
+
+	// Lojas com conversor próprio (Amazon, AliExpress, Awin). Opt-in DUPLO,
+	// igual ao da Shein: a automação precisa listar a loja E o registry precisa
+	// ter conversor para ela (gate AFFILIATE_STORES_V2 ligado). Faltando
+	// qualquer um dos dois, o link cai no laço de bloqueio abaixo e some do
+	// corpo, exatamente como sempre foi.
+	convertibleLinks := selectConvertibleLinks(links, storeSet, s.affiliateRegistry)
+	convertibleSet := make(map[string]bool, len(convertibleLinks))
+	for _, link := range convertibleLinks {
+		convertibleSet[link] = true
+	}
+
+	// Stores without any affiliate conversion (Magalu, e as demais sem
+	// conversor) are always blocked in monitor mode: a Shopee link keeps the
 	// relay alive and these ride along in the body carrying the SOURCE
 	// channel's commission. Pure posts of these stores never had a Shopee/ML
 	// link, so the store filter below already skips them.
+	//
+	// IsOtherStoreLink continua sendo o teste NEGATIVO (loja nova nasce
+	// bloqueada) — Shein e as lojas do registry só escapam dele quando já
+	// foram resolvidas/habilitadas acima.
 	for _, link := range links {
+		if _, ok := sheinResolved[link]; ok {
+			continue
+		}
+		if convertibleSet[link] {
+			continue
+		}
 		if text.IsOtherStoreLink(link) {
 			blockedStoreLinks = append(blockedStoreLinks, link)
 		}
 	}
 
-	if len(shopeeLinks) == 0 && len(mlLinks) == 0 {
+	if len(shopeeLinks) == 0 && len(mlLinks) == 0 && len(sheinResolved) == 0 && len(convertibleLinks) == 0 {
 		s.logger.Info("No links matching configured stores, skipping",
 			zap.String("automationID", automation.ID),
 			zap.Strings("stores", stores),
-			zap.Int("totalLinks", len(links)))
+			zap.Int("totalLinks", len(links)),
+			zap.Int("sheinLinks", len(sheinLinks)))
 		return nil
 	}
 
@@ -641,6 +713,18 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 	// Slice (não map): a ordem da fonte é significativa — decide a URL do card
 	// e a ordem de substituição no corpo.
 	var affiliateReplacements []affiliateLinkReplacement
+	// Shein entra primeiro e na ordem da fonte: já está resolvida (substituição
+	// sem rede), então não depende de nenhuma das conversões abaixo e não pode
+	// ser perdida por um erro delas. A ordem final de aplicação no corpo é do
+	// replaceAffiliateLinksLongestFirst, não desta lista.
+	for _, link := range sheinLinks {
+		if affiliate, ok := sheinResolved[link]; ok {
+			affiliateReplacements = append(affiliateReplacements, affiliateLinkReplacement{
+				Original:  link,
+				Affiliate: affiliate,
+			})
+		}
+	}
 	// Subconjunto: links Shopee convertidos SEM ItemID/ShopID (cupom, campanha,
 	// coleção, carteira de vouchers, busca, perfil). A API de afiliado não
 	// devolve tipo estruturado além dos IDs, então ausência de IDs é o único
@@ -752,44 +836,38 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		if s.mlService != nil {
 			aff, err := s.mlService.CreateAffiliateLink(ctx, link, automation.UserID)
 			if err != nil {
-				errStr := err.Error()
-				if strings.Contains(errStr, "Invalid Signature") ||
-					strings.Contains(errStr, "credentials incomplete") ||
-					strings.Contains(errStr, "credentials not configured") ||
-					strings.Contains(errStr, "invalid_token") {
-					s.logger.Warn("ML credential error, pausing automation",
+				if errors.Is(err, mercadolivre.ErrMLUnconvertibleURL) {
+					// Não há o que converter (cupom, campanha, /l/ sem MLB, ou
+					// URL que o próprio ML recusa). Mesma regra do ramo Shopee
+					// logo acima: reter aqui não protege comissão nenhuma — ela
+					// já ia para a fonte de qualquer jeito — e o único efeito
+					// seria o espelho engolir a mensagem em silêncio.
+					s.logger.Warn("ML link has nothing to convert — relaying original link",
 						zap.String("automationID", automation.ID),
 						zap.String("userID", automation.UserID),
+						zap.String("linkHash", commerceurl.Hash8(link)),
 						zap.Error(err))
-
-					ck := s.extractCanonicalKey(links)
-					st := s.detectStore(links)
-					s.logDispatch(ctx, automation, "", link,
-						"failed", "Credenciais Mercado Livre ausentes ou inválidas - configure suas credenciais",
-						ck, st)
-
-					now := time.Now().UTC().Format(time.RFC3339)
-					if upErr := s.automationRepo.UpdateAutomation(ctx, automation.ID, map[string]interface{}{
-						"status":        models.AutomationStatusPaused,
-						"last_error":    "Credenciais ML ausentes ou inválidas - automação pausada automaticamente",
-						"last_error_at": now,
-					}); upErr != nil {
-						s.logger.Error("Failed to pause automation after ML credential error",
-							zap.String("automationID", automation.ID), zap.Error(upErr))
-					}
-
-					return nil
+				} else {
+					// Todo o resto (sem credencial, sessão expirada, bloqueio,
+					// breaker aberto, banco fora do ar) RETÉM o repasse: o link
+					// do grupo-fonte carrega a comissão de OUTRO afiliado.
+					//
+					// A automação deliberadamente NÃO é mais pausada aqui.
+					// Antes, qualquer erro cujo TEXTO casasse "credentials not
+					// configured" pausava a automação inteira do cliente —
+					// inclusive a parte Shopee dela, que funcionava — e um
+					// timeout de Postgres produzia exatamente essa string
+					// (ml_service.go embrulhava toda falha de LoadCredentials
+					// nela). Quem precisa de ação do cliente é sinalizado pelo
+					// health check da sessão, não derrubando o que funciona.
+					s.logger.Warn("Failed to generate ML affiliate link, withholding relay",
+						zap.String("automationID", automation.ID),
+						zap.String("userID", automation.UserID),
+						zap.String("linkHash", commerceurl.Hash8(link)),
+						zap.Error(err))
+					unconvertedLink = link
+					unconvertedErr = err
 				}
-
-				// Mesma regra do ramo Shopee: link do grupo-fonte sem conversão
-				// carrega a comissão de OUTRO afiliado — retém o repasse.
-				s.logger.Warn("Failed to generate ML affiliate link, withholding relay",
-					zap.String("automationID", automation.ID),
-					zap.String("userID", automation.UserID),
-					zap.String("originalLink", link),
-					zap.Error(err))
-				unconvertedLink = link
-				unconvertedErr = err
 			} else if aff != nil && aff.AffiliateLink != "" {
 				affiliateReplacements = append(affiliateReplacements,
 					affiliateLinkReplacement{Original: link, Affiliate: aff.AffiliateLink})
@@ -799,6 +877,30 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 				}
 			}
 		}
+	}
+
+	// Lojas do registry (Amazon, AliExpress, Awin). Falha aqui NUNCA toca
+	// unconvertedLink/unconvertedErr: isso acionaria o gate de comissão abaixo
+	// e reteria a MENSAGEM INTEIRA por causa de uma loja secundária. O pior
+	// desfecho desta feature é o link sumir do corpo — que é exatamente o que
+	// acontecia com esses links antes dela existir.
+	for _, link := range convertibleLinks {
+		converted, ok, err := s.affiliateRegistry.Convert(ctx, link, automation.UserID)
+		if err != nil || !ok {
+			blockedStoreLinks = append(blockedStoreLinks, link)
+			if err != nil {
+				store, _ := text.LinkStore(link)
+				s.logger.Warn("Affiliate conversion failed — link stripped from relay",
+					zap.String("automationID", automation.ID),
+					zap.String("userID", automation.UserID),
+					zap.String("store", store),
+					zap.String("linkHash", commerceurl.Hash8(link)),
+					zap.Error(err))
+			}
+			continue
+		}
+		affiliateReplacements = append(affiliateReplacements,
+			affiliateLinkReplacement{Original: link, Affiliate: converted})
 	}
 
 	// Commission gate: at least one product link failed conversion, so the
@@ -1793,6 +1895,37 @@ func (s *monitoringService) categorizeLinks(links []string) (shopeeLinks, mlLink
 	return
 }
 
+// sheinLinksIn devolve, na ordem da fonte, os links Shein da mensagem.
+//
+// Usa text.LinkStore (que resolve por commerceurl) em vez dos regexes legados
+// de categorizeLinks: host novo entra numa lista só, e a fronteira de ponto
+// impede que "shein.com.evil.test" passe por loja.
+func (s *monitoringService) sheinLinksIn(links []string) []string {
+	var out []string
+	for _, link := range links {
+		if store, _ := text.LinkStore(link); store == models.MonitorStoreShein {
+			out = append(out, link)
+		}
+	}
+	return out
+}
+
+// sheinAffiliateFor devolve o link que substitui um link Shein da fonte.
+//
+// ponytail: a Shein não publica API de geração de link nem parâmetro de
+// afiliado anexável — o link do afiliado é um onelink.shein.com/<n>/<código>
+// opaco, gerado um a um no app. O teto conhecido é este: o clique cai na
+// campanha do dono, NÃO no produto que a fonte anunciou. Caminho de upgrade: se
+// a Shein passar a aceitar um parâmetro na URL de produto, a reescrita por
+// produto entra AQUI (sourceLink já é o argumento) sem tocar no pipeline.
+func sheinAffiliateFor(cred *models.AffiliateCredentials, sourceLink string) string {
+	_ = sourceLink
+	if cred == nil {
+		return ""
+	}
+	return strings.TrimSpace(cred.GetCredential("affiliateLink"))
+}
+
 // buildContentKey monta a chave de dedup de conteúdo por (scope, grupo,
 // body-hash). scope = userID do dono do chip que entregou (com fallback pro
 // instanceName): colapsa os N chips do MESMO dono numa chave só (dedup
@@ -2106,4 +2239,35 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return s[:max] + "..."
+}
+
+// selectConvertibleLinks devolve os links que as lojas com conversor próprio
+// (Amazon, AliExpress, Awin) podem reatribuir para o dono da automação.
+//
+// Opt-in DUPLO, e é essa a razão da função existir separada: a automação
+// precisa ter listado a loja em `stores` E o registry precisa ter conversor
+// para ela (gate AFFILIATE_STORES_V2 ligado). Faltando qualquer um dos dois, o
+// link não entra aqui — e o laço de bloqueio o remove do corpo, que é o
+// comportamento histórico para toda loja que não seja Shopee/ML.
+func selectConvertibleLinks(links []string, storeSet map[string]bool, registry *affiliatelink.Registry) []string {
+	if registry == nil || len(storeSet) == 0 {
+		return nil
+	}
+	var out []string
+	for _, link := range links {
+		store, _ := text.LinkStore(link)
+		// Shopee e ML NUNCA passam por aqui, mesmo que alguém as registre no
+		// registry: elas têm loop próprio logo abaixo, com política de falha
+		// própria (retenção da mensagem inteira para não vazar comissão).
+		// Sem esta guarda, um registro acidental converteria o link duas vezes
+		// e o segundo replace bateria numa string que já não existe no corpo.
+		if store == "" || store == models.MonitorStoreShopee || store == models.MonitorStoreMercadoLivr {
+			continue
+		}
+		if !storeSet[store] || !registry.Handles(store) {
+			continue
+		}
+		out = append(out, link)
+	}
+	return out
 }

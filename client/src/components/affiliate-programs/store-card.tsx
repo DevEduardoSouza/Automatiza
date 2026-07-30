@@ -96,6 +96,8 @@ export function StoreCard({
 
   return (
     <div
+      data-testid="store-card"
+      data-store={config.key}
       className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >
@@ -204,6 +206,11 @@ export function StoreCard({
                 {isShein && field.key === 'affiliateLink' && (
                   <p className="text-xs" style={{ color: colors.wineTextMuted }}>
                     {t('pages.affiliatePrograms.shein.linkHint')}
+                  </p>
+                )}
+                {field.hintKey && (
+                  <p className="text-xs" style={{ color: colors.wineTextMuted }}>
+                    {t(field.hintKey)}
                   </p>
                 )}
               </div>

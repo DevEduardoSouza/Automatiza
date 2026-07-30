@@ -9,6 +9,8 @@ import {
   type GetCredentialResponse,
   ListActiveStoresRequestSchema,
   type ListActiveStoresResponse,
+  ListAwinProgrammesRequestSchema,
+  type ListAwinProgrammesResponse,
   ListCredentialsRequestSchema,
   type ListCredentialsResponse,
   UpsertCredentialRequestSchema,
@@ -28,6 +30,13 @@ import { useToast } from './use-toast';
 // ============================================================
 // Local Types
 // ============================================================
+
+/** Anunciante Awin aprovado para o publisher. */
+export interface LocalAwinProgramme {
+  id: string;
+  name: string;
+  displayUrl: string;
+}
 
 export type LocalAffiliateStore =
   | 'shopee'
@@ -408,6 +417,25 @@ export function useAffiliateCredentialsConnect(): UseAffiliateCredentialsConnect
     return listActiveStoresMutation.mutateAsync();
   }, [listActiveStoresMutation]);
 
+  /**
+   * Lista os anunciantes Awin aprovados para o usuário.
+   *
+   * Usa a credencial JÁ SALVA no servidor — o token OAuth2 não trafega no
+   * request. É também o teste real da credencial Awin: é a mesma chamada que
+   * a Awin usa para autenticar o publisher.
+   */
+  const listAwinProgrammes = useCallback(async (): Promise<LocalAwinProgramme[]> => {
+    const client = createClient(AffiliateCredentialsService, transport);
+    const response: ListAwinProgrammesResponse = await client.listAwinProgrammes(
+      create(ListAwinProgrammesRequestSchema, {})
+    );
+    return response.programmes.map((p) => ({
+      id: p.id,
+      name: p.name,
+      displayUrl: p.displayUrl,
+    }));
+  }, [transport]);
+
   return {
     credentials,
     activeStores,
@@ -419,6 +447,7 @@ export function useAffiliateCredentialsConnect(): UseAffiliateCredentialsConnect
     upsertCredential,
     deleteCredential,
     listActiveStores,
+    listAwinProgrammes,
 
     isListingCredentials: listCredentialsMutation.isPending,
     isGettingCredential: getCredentialMutation.isPending,

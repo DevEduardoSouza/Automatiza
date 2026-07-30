@@ -127,12 +127,14 @@ func TestHasValidCredentials(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "amazon: missing secretKey",
+			// A tag basta: a conversão é reescrita de URL, e accessKey/secretKey
+			// eram credenciais da PA-API 5.0, desligada em 15/05/2026.
+			name: "amazon: so a tag ja e valida",
 			cred: AffiliateCredentials{
 				Store:       "amazon",
-				Credentials: map[string]string{"tag": "amz-tag", "accessKey": "AK123"},
+				Credentials: map[string]string{"tag": "amz-tag"},
 			},
-			expected: false,
+			expected: true,
 		},
 		{
 			name: "amazon: all empty",
@@ -207,10 +209,12 @@ func TestHasValidCredentials(t *testing.T) {
 
 		// AliExpress
 		{
-			name: "aliexpress: valid with trackingId + appKey",
+			// appSecret entrou com o conversor: sem ele não há como assinar a
+			// chamada da API, então a credencial não pode contar como ativa.
+			name: "aliexpress: valid with trackingId + appKey + appSecret",
 			cred: AffiliateCredentials{
 				Store:       "aliexpress",
-				Credentials: map[string]string{"trackingId": "track-123", "appKey": "app-key-456"},
+				Credentials: map[string]string{"trackingId": "track-123", "appKey": "app-key-456", "appSecret": "sec-789"},
 			},
 			expected: true,
 		},

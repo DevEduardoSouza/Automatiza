@@ -757,8 +757,8 @@ func TestProtoToAutomationUpdate_NullableUUIDClearing(t *testing.T) {
 // ["shopee"]. A monitoring automation with "mercadolivre" in stores relayed
 // the source channel's meli.la affiliate links raw (commission going to the
 // source), since the owner had no ML credentials to convert them.
-func TestProtoToAutomationCreate_MonitorStoresShopeeOnly(t *testing.T) {
-	t.Run("monitor mode coerces stores to shopee", func(t *testing.T) {
+func TestProtoToAutomationCreate_MonitorStoresConvertibleOnly(t *testing.T) {
+	t.Run("monitor mode keeps only stores the mirror can convert", func(t *testing.T) {
 		automation := protoToAutomationCreate(&automationsv1.CreateAutomationRequest{
 			Mode: automationsv1.AutomationMode_AUTOMATION_MODE_MONITOR,
 			Stores: []automationsv1.Store{
@@ -766,6 +766,28 @@ func TestProtoToAutomationCreate_MonitorStoresShopeeOnly(t *testing.T) {
 				automationsv1.Store_STORE_SHOPEE,
 				automationsv1.Store_STORE_AMAZON,
 			},
+		})
+
+		// ML não tem conversão no espelho; Shopee e Amazon têm. A ordem pedida
+		// pelo cliente é preservada.
+		assert.Equal(t, []string{"shopee", "amazon"}, automation.Stores)
+	})
+
+	t.Run("monitor mode without convertible stores falls back to shopee", func(t *testing.T) {
+		automation := protoToAutomationCreate(&automationsv1.CreateAutomationRequest{
+			Mode: automationsv1.AutomationMode_AUTOMATION_MODE_MONITOR,
+			Stores: []automationsv1.Store{
+				automationsv1.Store_STORE_MAGALU,
+				automationsv1.Store_STORE_MERCADO_LIVRE,
+			},
+		})
+
+		assert.Equal(t, []string{"shopee"}, automation.Stores)
+	})
+
+	t.Run("monitor mode without stores falls back to shopee", func(t *testing.T) {
+		automation := protoToAutomationCreate(&automationsv1.CreateAutomationRequest{
+			Mode: automationsv1.AutomationMode_AUTOMATION_MODE_MONITOR,
 		})
 
 		assert.Equal(t, []string{"shopee"}, automation.Stores)

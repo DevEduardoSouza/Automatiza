@@ -704,6 +704,152 @@ func (x *ListActiveStoresResponse) GetStores() []*ActiveStore {
 	return nil
 }
 
+// *
+// AwinProgramme is an advertiser the publisher has been approved for.
+type AwinProgramme struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Awin advertiser id (awinmid). Numeric on the wire at Awin, string here
+	// because it is an identifier, not a quantity.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Display name shown in the brand selector.
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// Advertiser site, used to match a product URL to the right programme.
+	DisplayUrl    string `protobuf:"bytes,3,opt,name=display_url,json=displayUrl,proto3" json:"display_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AwinProgramme) Reset() {
+	*x = AwinProgramme{}
+	mi := &file_affiliates_v1_credentials_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AwinProgramme) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AwinProgramme) ProtoMessage() {}
+
+func (x *AwinProgramme) ProtoReflect() protoreflect.Message {
+	mi := &file_affiliates_v1_credentials_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AwinProgramme.ProtoReflect.Descriptor instead.
+func (*AwinProgramme) Descriptor() ([]byte, []int) {
+	return file_affiliates_v1_credentials_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *AwinProgramme) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AwinProgramme) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AwinProgramme) GetDisplayUrl() string {
+	if x != nil {
+		return x.DisplayUrl
+	}
+	return ""
+}
+
+type ListAwinProgrammesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAwinProgrammesRequest) Reset() {
+	*x = ListAwinProgrammesRequest{}
+	mi := &file_affiliates_v1_credentials_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAwinProgrammesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAwinProgrammesRequest) ProtoMessage() {}
+
+func (x *ListAwinProgrammesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_affiliates_v1_credentials_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAwinProgrammesRequest.ProtoReflect.Descriptor instead.
+func (*ListAwinProgrammesRequest) Descriptor() ([]byte, []int) {
+	return file_affiliates_v1_credentials_proto_rawDescGZIP(), []int{13}
+}
+
+type ListAwinProgrammesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Programmes    []*AwinProgramme       `protobuf:"bytes,1,rep,name=programmes,proto3" json:"programmes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAwinProgrammesResponse) Reset() {
+	*x = ListAwinProgrammesResponse{}
+	mi := &file_affiliates_v1_credentials_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAwinProgrammesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAwinProgrammesResponse) ProtoMessage() {}
+
+func (x *ListAwinProgrammesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_affiliates_v1_credentials_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAwinProgrammesResponse.ProtoReflect.Descriptor instead.
+func (*ListAwinProgrammesResponse) Descriptor() ([]byte, []int) {
+	return file_affiliates_v1_credentials_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListAwinProgrammesResponse) GetProgrammes() []*AwinProgramme {
+	if x != nil {
+		return x.Programmes
+	}
+	return nil
+}
+
 var File_affiliates_v1_credentials_proto protoreflect.FileDescriptor
 
 const file_affiliates_v1_credentials_proto_rawDesc = "" +
@@ -751,7 +897,17 @@ const file_affiliates_v1_credentials_proto_rawDesc = "" +
 	"\x18DeleteCredentialResponse\"\x19\n" +
 	"\x17ListActiveStoresRequest\"N\n" +
 	"\x18ListActiveStoresResponse\x122\n" +
-	"\x06stores\x18\x01 \x03(\v2\x1a.affiliates.v1.ActiveStoreR\x06stores*\xfd\x01\n" +
+	"\x06stores\x18\x01 \x03(\v2\x1a.affiliates.v1.ActiveStoreR\x06stores\"T\n" +
+	"\rAwinProgramme\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
+	"\vdisplay_url\x18\x03 \x01(\tR\n" +
+	"displayUrl\"\x1b\n" +
+	"\x19ListAwinProgrammesRequest\"Z\n" +
+	"\x1aListAwinProgrammesResponse\x12<\n" +
+	"\n" +
+	"programmes\x18\x01 \x03(\v2\x1c.affiliates.v1.AwinProgrammeR\n" +
+	"programmes*\xfd\x01\n" +
 	"\x0eAffiliateStore\x12\x1f\n" +
 	"\x1bAFFILIATE_STORE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16AFFILIATE_STORE_SHOPEE\x10\x01\x12\x1a\n" +
@@ -760,13 +916,14 @@ const file_affiliates_v1_credentials_proto_rawDesc = "" +
 	"\x1dAFFILIATE_STORE_MERCADO_LIVRE\x10\x04\x12\x19\n" +
 	"\x15AFFILIATE_STORE_SHEIN\x10\x05\x12\x1e\n" +
 	"\x1aAFFILIATE_STORE_ALIEXPRESS\x10\x06\x12\x18\n" +
-	"\x14AFFILIATE_STORE_AWIN\x10\a2\x8a\x04\n" +
+	"\x14AFFILIATE_STORE_AWIN\x10\a2\xf5\x04\n" +
 	"\x1bAffiliateCredentialsService\x12`\n" +
 	"\x0fListCredentials\x12%.affiliates.v1.ListCredentialsRequest\x1a&.affiliates.v1.ListCredentialsResponse\x12Z\n" +
 	"\rGetCredential\x12#.affiliates.v1.GetCredentialRequest\x1a$.affiliates.v1.GetCredentialResponse\x12c\n" +
 	"\x10UpsertCredential\x12&.affiliates.v1.UpsertCredentialRequest\x1a'.affiliates.v1.UpsertCredentialResponse\x12c\n" +
 	"\x10DeleteCredential\x12&.affiliates.v1.DeleteCredentialRequest\x1a'.affiliates.v1.DeleteCredentialResponse\x12c\n" +
-	"\x10ListActiveStores\x12&.affiliates.v1.ListActiveStoresRequest\x1a'.affiliates.v1.ListActiveStoresResponseB\xb1\x01\n" +
+	"\x10ListActiveStores\x12&.affiliates.v1.ListActiveStoresRequest\x1a'.affiliates.v1.ListActiveStoresResponse\x12i\n" +
+	"\x12ListAwinProgrammes\x12(.affiliates.v1.ListAwinProgrammesRequest\x1a).affiliates.v1.ListAwinProgrammesResponseB\xb1\x01\n" +
 	"\x11com.affiliates.v1B\x10CredentialsProtoP\x01Z5automatiza-go/internal/gen/affiliates/v1;affiliatesv1\xa2\x02\x03AXX\xaa\x02\rAffiliates.V1\xca\x02\rAffiliates\\V1\xe2\x02\x19Affiliates\\V1\\GPBMetadata\xea\x02\x0eAffiliates::V1b\x06proto3"
 
 var (
@@ -782,21 +939,24 @@ func file_affiliates_v1_credentials_proto_rawDescGZIP() []byte {
 }
 
 var file_affiliates_v1_credentials_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_affiliates_v1_credentials_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_affiliates_v1_credentials_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_affiliates_v1_credentials_proto_goTypes = []any{
-	(AffiliateStore)(0),              // 0: affiliates.v1.AffiliateStore
-	(*AffiliateCredential)(nil),      // 1: affiliates.v1.AffiliateCredential
-	(*ActiveStore)(nil),              // 2: affiliates.v1.ActiveStore
-	(*ListCredentialsRequest)(nil),   // 3: affiliates.v1.ListCredentialsRequest
-	(*ListCredentialsResponse)(nil),  // 4: affiliates.v1.ListCredentialsResponse
-	(*GetCredentialRequest)(nil),     // 5: affiliates.v1.GetCredentialRequest
-	(*GetCredentialResponse)(nil),    // 6: affiliates.v1.GetCredentialResponse
-	(*UpsertCredentialRequest)(nil),  // 7: affiliates.v1.UpsertCredentialRequest
-	(*UpsertCredentialResponse)(nil), // 8: affiliates.v1.UpsertCredentialResponse
-	(*DeleteCredentialRequest)(nil),  // 9: affiliates.v1.DeleteCredentialRequest
-	(*DeleteCredentialResponse)(nil), // 10: affiliates.v1.DeleteCredentialResponse
-	(*ListActiveStoresRequest)(nil),  // 11: affiliates.v1.ListActiveStoresRequest
-	(*ListActiveStoresResponse)(nil), // 12: affiliates.v1.ListActiveStoresResponse
+	(AffiliateStore)(0),                // 0: affiliates.v1.AffiliateStore
+	(*AffiliateCredential)(nil),        // 1: affiliates.v1.AffiliateCredential
+	(*ActiveStore)(nil),                // 2: affiliates.v1.ActiveStore
+	(*ListCredentialsRequest)(nil),     // 3: affiliates.v1.ListCredentialsRequest
+	(*ListCredentialsResponse)(nil),    // 4: affiliates.v1.ListCredentialsResponse
+	(*GetCredentialRequest)(nil),       // 5: affiliates.v1.GetCredentialRequest
+	(*GetCredentialResponse)(nil),      // 6: affiliates.v1.GetCredentialResponse
+	(*UpsertCredentialRequest)(nil),    // 7: affiliates.v1.UpsertCredentialRequest
+	(*UpsertCredentialResponse)(nil),   // 8: affiliates.v1.UpsertCredentialResponse
+	(*DeleteCredentialRequest)(nil),    // 9: affiliates.v1.DeleteCredentialRequest
+	(*DeleteCredentialResponse)(nil),   // 10: affiliates.v1.DeleteCredentialResponse
+	(*ListActiveStoresRequest)(nil),    // 11: affiliates.v1.ListActiveStoresRequest
+	(*ListActiveStoresResponse)(nil),   // 12: affiliates.v1.ListActiveStoresResponse
+	(*AwinProgramme)(nil),              // 13: affiliates.v1.AwinProgramme
+	(*ListAwinProgrammesRequest)(nil),  // 14: affiliates.v1.ListAwinProgrammesRequest
+	(*ListAwinProgrammesResponse)(nil), // 15: affiliates.v1.ListAwinProgrammesResponse
 }
 var file_affiliates_v1_credentials_proto_depIdxs = []int32{
 	0,  // 0: affiliates.v1.AffiliateCredential.store:type_name -> affiliates.v1.AffiliateStore
@@ -808,21 +968,24 @@ var file_affiliates_v1_credentials_proto_depIdxs = []int32{
 	1,  // 6: affiliates.v1.UpsertCredentialResponse.credential:type_name -> affiliates.v1.AffiliateCredential
 	0,  // 7: affiliates.v1.DeleteCredentialRequest.store:type_name -> affiliates.v1.AffiliateStore
 	2,  // 8: affiliates.v1.ListActiveStoresResponse.stores:type_name -> affiliates.v1.ActiveStore
-	3,  // 9: affiliates.v1.AffiliateCredentialsService.ListCredentials:input_type -> affiliates.v1.ListCredentialsRequest
-	5,  // 10: affiliates.v1.AffiliateCredentialsService.GetCredential:input_type -> affiliates.v1.GetCredentialRequest
-	7,  // 11: affiliates.v1.AffiliateCredentialsService.UpsertCredential:input_type -> affiliates.v1.UpsertCredentialRequest
-	9,  // 12: affiliates.v1.AffiliateCredentialsService.DeleteCredential:input_type -> affiliates.v1.DeleteCredentialRequest
-	11, // 13: affiliates.v1.AffiliateCredentialsService.ListActiveStores:input_type -> affiliates.v1.ListActiveStoresRequest
-	4,  // 14: affiliates.v1.AffiliateCredentialsService.ListCredentials:output_type -> affiliates.v1.ListCredentialsResponse
-	6,  // 15: affiliates.v1.AffiliateCredentialsService.GetCredential:output_type -> affiliates.v1.GetCredentialResponse
-	8,  // 16: affiliates.v1.AffiliateCredentialsService.UpsertCredential:output_type -> affiliates.v1.UpsertCredentialResponse
-	10, // 17: affiliates.v1.AffiliateCredentialsService.DeleteCredential:output_type -> affiliates.v1.DeleteCredentialResponse
-	12, // 18: affiliates.v1.AffiliateCredentialsService.ListActiveStores:output_type -> affiliates.v1.ListActiveStoresResponse
-	14, // [14:19] is the sub-list for method output_type
-	9,  // [9:14] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	13, // 9: affiliates.v1.ListAwinProgrammesResponse.programmes:type_name -> affiliates.v1.AwinProgramme
+	3,  // 10: affiliates.v1.AffiliateCredentialsService.ListCredentials:input_type -> affiliates.v1.ListCredentialsRequest
+	5,  // 11: affiliates.v1.AffiliateCredentialsService.GetCredential:input_type -> affiliates.v1.GetCredentialRequest
+	7,  // 12: affiliates.v1.AffiliateCredentialsService.UpsertCredential:input_type -> affiliates.v1.UpsertCredentialRequest
+	9,  // 13: affiliates.v1.AffiliateCredentialsService.DeleteCredential:input_type -> affiliates.v1.DeleteCredentialRequest
+	11, // 14: affiliates.v1.AffiliateCredentialsService.ListActiveStores:input_type -> affiliates.v1.ListActiveStoresRequest
+	14, // 15: affiliates.v1.AffiliateCredentialsService.ListAwinProgrammes:input_type -> affiliates.v1.ListAwinProgrammesRequest
+	4,  // 16: affiliates.v1.AffiliateCredentialsService.ListCredentials:output_type -> affiliates.v1.ListCredentialsResponse
+	6,  // 17: affiliates.v1.AffiliateCredentialsService.GetCredential:output_type -> affiliates.v1.GetCredentialResponse
+	8,  // 18: affiliates.v1.AffiliateCredentialsService.UpsertCredential:output_type -> affiliates.v1.UpsertCredentialResponse
+	10, // 19: affiliates.v1.AffiliateCredentialsService.DeleteCredential:output_type -> affiliates.v1.DeleteCredentialResponse
+	12, // 20: affiliates.v1.AffiliateCredentialsService.ListActiveStores:output_type -> affiliates.v1.ListActiveStoresResponse
+	15, // 21: affiliates.v1.AffiliateCredentialsService.ListAwinProgrammes:output_type -> affiliates.v1.ListAwinProgrammesResponse
+	16, // [16:22] is the sub-list for method output_type
+	10, // [10:16] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_affiliates_v1_credentials_proto_init() }
@@ -838,7 +1001,7 @@ func file_affiliates_v1_credentials_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_affiliates_v1_credentials_proto_rawDesc), len(file_affiliates_v1_credentials_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

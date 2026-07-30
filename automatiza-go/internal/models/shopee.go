@@ -163,19 +163,17 @@ func (c *AffiliateCredentials) HasValidCredentials() bool {
 			c.GetCredential("access_token") != "" ||
 			c.GetCredential("tag") != ""
 	case "amazon":
+		// Só a tag. A conversão de link é reescrita determinística
+		// (/dp/<ASIN>?tag=), que não consome API nenhuma: a Product Advertising
+		// API 5.0 foi desligada em 15/05/2026 e a Creators API que a substituiu
+		// exige OAuth2 + 10 vendas aprovadas nos últimos 30 dias. Exigir
+		// accessKey/secretKey aqui (credenciais da API morta) deixava a loja
+		// permanentemente "incompleta" e nunca ativa.
 		tag := c.GetCredential("tag")
 		if tag == "" {
 			tag = c.GetCredential("partner_tag")
 		}
-		accessKey := c.GetCredential("accessKey")
-		if accessKey == "" {
-			accessKey = c.GetCredential("access_key")
-		}
-		secretKey := c.GetCredential("secretKey")
-		if secretKey == "" {
-			secretKey = c.GetCredential("secret_key")
-		}
-		return tag != "" && accessKey != "" && secretKey != ""
+		return tag != ""
 	case "awin":
 		awinID := c.GetCredential("awinId")
 		if awinID == "" {
@@ -191,7 +189,17 @@ func (c *AffiliateCredentials) HasValidCredentials() bool {
 	case "shein":
 		return c.GetCredential("affiliateLink") != ""
 	case "aliexpress":
-		return c.GetCredential("trackingId") != "" && c.GetCredential("appKey") != ""
+		// appSecret entrou junto com o conversor: sem ele não há como assinar
+		// a chamada de aliexpress.affiliate.link.generate, e a credencial seria
+		// "ativa" sem conseguir converter nada. Seguro apertar: produção não
+		// tem nenhuma linha desta loja (só shopee e mercado_livre).
+		appSecret := c.GetCredential("appSecret")
+		if appSecret == "" {
+			appSecret = c.GetCredential("app_secret")
+		}
+		return c.GetCredential("trackingId") != "" &&
+			c.GetCredential("appKey") != "" &&
+			appSecret != ""
 	default:
 		return false
 	}

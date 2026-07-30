@@ -246,16 +246,67 @@ var mlHosts = []string{
 	"meli.la",
 }
 
-var unsupportedHosts = []string{
+var amazonHosts = []string{
 	"amazon.com.br",
 	"amazon.com",
+	// Encurtadores: reconhecidos como loja para não vazarem cru no espelho,
+	// mas sem ASIN no path a conversão devolve ErrUnconvertible (o link some).
 	"amzn.to",
 	"amzn.com",
+	"a.co",
+}
+
+var aliexpressHosts = []string{
+	"aliexpress.com",
+	// s.click.aliexpress.com é o encurtador de afiliado; cai no domínio
+	// principal pela fronteira de ponto, mas fica explícito aqui.
+	"s.click.aliexpress.com",
+}
+
+// awinHosts é o domínio de redirect da própria rede Awin. Um link cread.php
+// que chega do grupo-fonte carrega o awinaffid de OUTRO afiliado — precisa ser
+// reconhecido como loja para ser reatribuído, não relayado.
+var awinHosts = []string{"awin1.com"}
+
+// awinAdvertiserHosts são as lojas atendidas via rede Awin. Deliberadamente
+// FORA de allCommerceHosts: são domínios de varejo comuníssimos, e incluí-los
+// faria mentionsCommerceHost bloquear URLs que hoje passam normalmente (um
+// "google.com/url?q=...netshoes.com.br..." viraria security_block). O
+// anti-spoof protege host que recebe credencial numa expansão de rede; a
+// conversão Awin é reescrita determinística, sem expansor a proteger.
+var awinAdvertiserHosts = []string{
+	"netshoes.com.br",
+	"centauro.com.br",
+	"dafiti.com.br",
+	"cea.com.br",
+	"belezanaweb.com.br",
+	"natura.com.br",
+	"boticario.com.br",
+	"eudora.com.br",
+	"amend.com.br",
+	"amaro.com",
+	"zattini.com.br",
+	"shop2gether.com.br",
+	"tricae.com.br",
+}
+
+// sheinHosts cobre o site (br.shein.com) e o encurtador do programa de
+// afiliados (onelink.shein.com) pela fronteira de ponto. A Shein não expõe API
+// de geração de link nem parâmetro de afiliado anexável — o link do afiliado é
+// um onelink.shein.com/<n>/<código> opaco, gerado um a um no app. Por isso a
+// "conversão" é substituição pelo link fixo do dono, e não reescrita da URL do
+// produto.
+//
+// shein.com.br fica FORA de propósito: o site brasileiro é br.shein.com, e o
+// host shein.com.br casaria hostSpoofsCommerce, virando security_block.
+var sheinHosts = []string{"shein.com"}
+
+// unsupportedHosts são as lojas SEM nenhuma conversão possível: o link é
+// removido do corpo em vez de repassado com a comissão da fonte.
+var unsupportedHosts = []string{
 	"magazineluiza.com.br",
 	"magazinevoce.com.br",
 	"magalu.com",
-	"shein.com",
-	"aliexpress.com",
 }
 
 // StoreOf classifica o host normalizado. Devolve "" quando não é loja.
@@ -273,6 +324,31 @@ func StoreOf(host string) string {
 			return models.MonitorStoreMercadoLivr
 		}
 	}
+	for _, d := range amazonHosts {
+		if hostMatches(host, d) {
+			return models.MonitorStoreAmazon
+		}
+	}
+	for _, d := range aliexpressHosts {
+		if hostMatches(host, d) {
+			return models.MonitorStoreAliExpress
+		}
+	}
+	for _, d := range awinHosts {
+		if hostMatches(host, d) {
+			return models.MonitorStoreAwin
+		}
+	}
+	for _, d := range awinAdvertiserHosts {
+		if hostMatches(host, d) {
+			return models.MonitorStoreAwin
+		}
+	}
+	for _, d := range sheinHosts {
+		if hostMatches(host, d) {
+			return models.MonitorStoreShein
+		}
+	}
 	for _, d := range unsupportedHosts {
 		if hostMatches(host, d) {
 			return models.MonitorStoreUnsupported
@@ -281,11 +357,18 @@ func StoreOf(host string) string {
 	return ""
 }
 
-// allCommerceHosts é a união usada na varredura de token.
+// allCommerceHosts é a união usada na varredura de token. awinAdvertiserHosts
+// fica de fora de propósito — ver o comentário na declaração.
 var allCommerceHosts = func() []string {
-	out := make([]string, 0, len(shopeeHosts)+len(mlHosts)+len(unsupportedHosts))
+	out := make([]string, 0,
+		len(shopeeHosts)+len(mlHosts)+len(amazonHosts)+
+			len(aliexpressHosts)+len(awinHosts)+len(sheinHosts)+len(unsupportedHosts))
 	out = append(out, shopeeHosts...)
 	out = append(out, mlHosts...)
+	out = append(out, amazonHosts...)
+	out = append(out, aliexpressHosts...)
+	out = append(out, awinHosts...)
+	out = append(out, sheinHosts...)
 	out = append(out, unsupportedHosts...)
 	return out
 }()

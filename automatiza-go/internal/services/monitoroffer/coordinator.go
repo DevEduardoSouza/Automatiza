@@ -153,12 +153,14 @@ func itemRow(it ItemResult, hasPayload bool) models.MonitorOfferItem {
 		ParagraphOrdinal: it.Slot.ParagraphOrdinal,
 		SourceLinkHash:   commerceurl.SourceHash(it.Slot.Raw),
 		Host:             it.Slot.URL.Host,
-		Store:            it.Slot.URL.Store,
-		URLClass:         it.Class,
-		ErrorClass:       it.ErrorClass,
-		ReasonCode:       it.Reason,
-		Outcome:          it.Outcome,
-		Status:           it.Status,
+		// Coagido: o CHECK da migração 079 só aceita shopee/mercadolivre/
+		// unsupported, e StoreOf hoje devolve também amazon/aliexpress/awin.
+		Store:      models.LedgerStore(it.Slot.URL.Store),
+		URLClass:   it.Class,
+		ErrorClass: it.ErrorClass,
+		ReasonCode: it.Reason,
+		Outcome:    it.Outcome,
+		Status:     it.Status,
 	}
 	if row.Host == "" {
 		// Bloqueio de segurança pode não ter host parseado; a coluna é NOT NULL

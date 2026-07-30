@@ -687,6 +687,10 @@ func TestIsOtherStoreLink(t *testing.T) {
 		{"magazinevoce (divulgador)", "https://www.magazinevoce.com.br/loja/produto/p/1", true},
 		{"shein", "https://br.shein.com/item-p-123.html", true},
 		{"aliexpress", "https://pt.aliexpress.com/item/100500.html", true},
+		// Awin: anunciante e deeplink da rede. Ambos precisam ser stripados
+		// por omissão — um cread.php da fonte carrega o awinaffid DELA.
+		{"awin advertiser", "https://www.netshoes.com.br/produto/tenis-1", true},
+		{"awin deeplink", "https://www.awin1.com/cread.php?awinmid=1&awinaffid=9&ued=x", true},
 		{"shopee NOT other store", "https://shopee.com.br/produto", false},
 		{"mercadolivre NOT other store", "https://meli.la/1PQkeS1", false},
 		{"instagram passes", "https://instagram.com/perfil", false},

@@ -363,6 +363,40 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 		affiliateURL := originURL
 
 		if isML {
+			// Conversão automática do link de afiliado (gate ML_AUTO_LINK).
+			//
+			// É o que tira o trabalho manual: até aqui o cliente gerava CADA
+			// link no linkbuilder do ML e colava na lista (2,43M itens, ~10k
+			// novos por dia). Agora ele cola a URL crua do produto e o backend
+			// gera o link DELE, com a etiqueta DELE.
+			//
+			// Três invariantes, nesta ordem de importância:
+			//
+			//  1. Link que já é meli.la//sec/ passa INTOCADO (mlNeedsAffiliation).
+			//     São os 2,43M de itens que já funcionam e cuja atribuição é do
+			//     próprio dono. Nenhuma chamada ao ML acontece por causa deles.
+			//  2. Fail-open ABSOLUTO: qualquer erro mantém affiliateURL =
+			//     originURL, que é exatamente o comportamento de hoje. O erro
+			//     NÃO cai no ramo de item degradado lá embaixo (que consome o
+			//     item) — falha de conversão nunca pode queimar item de lista.
+			//  3. Timeout próprio de 10s, para um ML pendurado não comer o
+			//     orçamento de contexto do scheduler serial e matar de fome as
+			//     outras automações.
+			if s.mlService != nil && mlAutoLinkEnabled(automation.UserID) && mlNeedsAffiliation(originURL) {
+				convCtx, cancelConv := context.WithTimeout(ctx, 10*time.Second)
+				aff, convErr := s.mlService.CreateAffiliateLink(convCtx, originURL, automation.UserID)
+				cancelConv()
+				switch {
+				case convErr != nil:
+					s.logger.Warn("ML auto-link falhou — disparando URL original",
+						zap.String("itemID", item.ID),
+						zap.String("userID", automation.UserID),
+						zap.Error(convErr))
+				case aff != nil && aff.AffiliateLink != "":
+					affiliateURL = aff.AffiliateLink
+				}
+			}
+
 			// ML: preferimos o preview FRESCO (mlService), pois ele traz preço
 			// atual + ORIGINAL + desconto + imagem — o metadata gravado no item
 			// só tem o preço atual (sem original), então o "De X por Y" sairia
@@ -491,6 +525,30 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 						}
 					}
 				}
+			}
+		} else if s.affiliateRegistry != nil {
+			// Lojas com conversor próprio (Amazon, AliExpress, Awin). Sem este
+			// ramo o item seguia com affiliateURL = originURL, isto é, o link
+			// CRU que o usuário colou — que numa lista montada a partir de posts
+			// de terceiros carrega a comissão de outro afiliado.
+			//
+			// Falha aqui NUNCA vira shopeeEnrichErr: aquela variável passa pelo
+			// isShopeeCredentialEnrichError e PAUSA a automação do cliente.
+			converted, ok, convErr := s.affiliateRegistry.Convert(ctx, originURL, automation.UserID)
+			switch {
+			case convErr == nil && ok:
+				affiliateURL = converted
+			case convErr != nil:
+				// Item consumido (não retentado) e nada é enviado: mandar o
+				// original entregaria a comissão à fonte.
+				s.logger.Warn("Affiliate conversion failed for list item — skipping",
+					zap.String("automationID", automation.ID),
+					zap.String("originURL", originURL),
+					zap.Error(convErr))
+				s.logDispatch(ctx, automation, "system", originURL, "skipped",
+					fmt.Sprintf("link de afiliado indisponivel (%v) - item pulado", convErr))
+				s.consumeListItem(ctx, item.ID, automation.ID, nil)
+				continue
 			}
 		}
 

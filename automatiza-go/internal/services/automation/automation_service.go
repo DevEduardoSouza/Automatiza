@@ -18,6 +18,7 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/affiliatelink"
 	"automatiza-go/internal/services/failover"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/shopee"
@@ -80,10 +81,13 @@ type automationService struct {
 	mlLinkListRepo     repository.MLLinkListRepository
 	ctaRepo            repository.CTARepository
 
-	shopeeService    shopee.Service
-	mlService        mercadolivre.Service
-	urlSafetyService urlSafetyEvaluator
-	backpressure     backpressureProvider
+	shopeeService shopee.Service
+	mlService     mercadolivre.Service
+	// affiliateRegistry converte lojas fora do par Shopee/ML. nil = nenhuma
+	// converte, e o modo LIST se comporta como antes da feature.
+	affiliateRegistry *affiliatelink.Registry
+	urlSafetyService  urlSafetyEvaluator
+	backpressure      backpressureProvider
 
 	couponHandler *CouponHandler
 	queueClient   *workers.QueueClient
@@ -1670,4 +1674,15 @@ func pickPreferredOrFirstConnected(preferredID *string, instances []models.Insta
 		}
 	}
 	return nil
+}
+
+// SetAffiliateRegistry liga a conversão de lojas com conversor próprio
+// (Amazon, AliExpress, Awin) no modo LIST.
+//
+// Setter em vez de parâmetro no construtor de propósito: NewAutomationService
+// já tem 20+ parâmetros posicionais e 9 call sites em teste; um parâmetro novo
+// obrigaria a tocar todos eles para adicionar um campo opcional. Nil (o valor
+// default) mantém o comportamento anterior à feature.
+func (s *automationService) SetAffiliateRegistry(r *affiliatelink.Registry) {
+	s.affiliateRegistry = r
 }

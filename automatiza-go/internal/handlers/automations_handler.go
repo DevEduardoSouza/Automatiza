@@ -107,9 +107,9 @@ func (h *AutomationsHandler) Create(c *gin.Context) {
 			one := 1
 			automation.DedupeHours = &one
 		}
-		// Monitor mode is Shopee-only: any other store makes the mirror relay
-		// the source channel's affiliate links.
-		automation.Stores = models.MonitoringStores()
+		// Monitor mode aceita só lojas com conversor: qualquer outra faz o
+		// espelho repassar os links de afiliado do canal-fonte.
+		automation.Stores = models.CoerceMonitoringStores(automation.Stores)
 	}
 
 	result, err := h.deps.AutomationRepo.CreateAutomation(c.Request.Context(), user.ID, automation)

@@ -27,6 +27,7 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
+	"automatiza-go/internal/services/affiliatelink"
 	"automatiza-go/internal/services/failover"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/shopee"
@@ -79,8 +80,11 @@ type offerGenerateService struct {
 	affiliateRepo   repository.AffiliateCredentialsRepository
 
 	shopeeService shopee.Service
-	mlService     mercadolivre.Service
-	waProvider    whatsapp.WhatsAppProvider
+	// affiliateRegistry converte lojas fora do par Shopee/ML nos relays de
+	// cupom. nil = comportamento anterior à feature.
+	affiliateRegistry *affiliatelink.Registry
+	mlService         mercadolivre.Service
+	waProvider        whatsapp.WhatsAppProvider
 
 	couponHandler CouponApplier
 
@@ -1611,6 +1615,10 @@ func (s *offerGenerateService) relayWithConvertedShopeeLinks(ctx, sendRoot conte
 	// (ProcessIncomingMessage itera as automações que assistem o grupo-fonte),
 	// então o body convertido não pode vazar do dono A pro B por mutação
 	// compartilhada — cada um repassa com o próprio link.
+	// Lojas com conversor próprio citadas junto do cupom (Amazon, AliExpress,
+	// Awin): reatribui antes de montar o relay.
+	body = s.convertRegistryLinks(ctx, auto, body)
+
 	relayMsg := *msg
 	relayMsg.Body = body
 	return s.processAutomationRelayLeased(ctx, sendRoot, auto, &relayMsg)
@@ -1665,6 +1673,10 @@ func (s *offerGenerateService) relayMLCouponNotice(ctx, sendRoot context.Context
 		}
 		body = strings.ReplaceAll(body, orig, aff.AffiliateLink)
 	}
+
+	// Lojas com conversor próprio citadas junto do cupom (Amazon, AliExpress,
+	// Awin): reatribui antes de montar o relay.
+	body = s.convertRegistryLinks(ctx, auto, body)
 
 	relayMsg := *msg
 	relayMsg.Body = text.RenderMLCouponNotice(body)
@@ -2201,4 +2213,56 @@ func firstProductStore(links []string) string {
 		}
 	}
 	return ""
+}
+
+// SetAffiliateRegistry liga a conversão de lojas com conversor próprio
+// (Amazon, AliExpress, Awin) nos relays de cupom. Setter pelo mesmo motivo do
+// automation service: o construtor já é posicional e enorme. nil (default)
+// mantém o comportamento anterior à feature.
+func (s *offerGenerateService) SetAffiliateRegistry(r *affiliatelink.Registry) {
+	s.affiliateRegistry = r
+}
+
+// convertRegistryLinks troca, no corpo do relay, os links de lojas com
+// conversor próprio pelo link de afiliado do dono.
+//
+// Só age em loja que a automação HABILITOU e que o registry sabe converter.
+// Sem opt-in, o corpo passa intacto — que é o comportamento atual (o relay de
+// cupom nunca aplicou o strip de IsOtherStoreLink). Com opt-in, falha na
+// conversão REMOVE o link: o usuário pediu para essa loja ser reatribuída, e
+// repassá-la crua entregaria a comissão a quem postou.
+func (s *offerGenerateService) convertRegistryLinks(
+	ctx context.Context,
+	auto *models.Automation,
+	body string,
+) string {
+	if s.affiliateRegistry == nil || body == "" {
+		return body
+	}
+
+	storeSet := make(map[string]bool, len(auto.Stores))
+	for _, st := range auto.Stores {
+		storeSet[st] = true
+	}
+	if len(storeSet) == 0 {
+		return body
+	}
+
+	for _, link := range text.ExtractLinks(body) {
+		store, _ := text.LinkStore(link)
+		if store == "" || !storeSet[store] || !s.affiliateRegistry.Handles(store) {
+			continue
+		}
+		converted, ok, err := s.affiliateRegistry.Convert(ctx, link, auto.UserID)
+		if err != nil || !ok {
+			s.logger.Warn("Affiliate conversion failed in coupon relay — link stripped",
+				zap.String("automationID", auto.ID),
+				zap.String("store", store),
+				zap.Error(err))
+			body = strings.ReplaceAll(body, link, "")
+			continue
+		}
+		body = strings.ReplaceAll(body, link, converted)
+	}
+	return body
 }

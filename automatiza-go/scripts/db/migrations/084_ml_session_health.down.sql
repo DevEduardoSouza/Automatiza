@@ -1,0 +1,25 @@
+-- DOWN DOCUMENTAL — saúde da sessão do Mercado Livre (084).
+--
+-- O runner de migrações do projeto NÃO executa down: o ledger
+-- `_deploy_migrations` só aplica o que é novo, e migração aqui não tem
+-- rollback. Este arquivo existe para documentar o que a 084 criou.
+--
+-- O ROLLBACK OPERACIONAL é desligar o health check:
+--
+--   ML_SESSION_HEALTH_ENABLED=false
+--
+-- Com ele desligado nada escreve nestas colunas; elas ficam inertes com o
+-- default ('unknown'/''/'manual') e o resto do sistema não as lê para decidir
+-- nada — a conversão de link continua governada por ML_AUTO_LINK.
+--
+-- Derrubar as colunas NÃO é necessário e apagaria o histórico de quando cada
+-- sessão foi verificada pela última vez, que é justamente o que se consulta
+-- para entender por que um cliente parou de gerar links.
+--
+-- Se algum dia for MESMO preciso remover (banco de teste, bootstrap zerado):
+--
+--   DROP INDEX IF EXISTS idx_ml_credentials_session_health;
+--   ALTER TABLE ml_credentials DROP COLUMN IF EXISTS source;
+--   ALTER TABLE ml_credentials DROP COLUMN IF EXISTS discovered_tag;
+--   ALTER TABLE ml_credentials DROP COLUMN IF EXISTS last_verified_at;
+--   ALTER TABLE ml_credentials DROP COLUMN IF EXISTS session_status;

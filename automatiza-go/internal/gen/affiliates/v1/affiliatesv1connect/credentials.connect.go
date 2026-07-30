@@ -49,6 +49,9 @@ const (
 	// AffiliateCredentialsServiceListActiveStoresProcedure is the fully-qualified name of the
 	// AffiliateCredentialsService's ListActiveStores RPC.
 	AffiliateCredentialsServiceListActiveStoresProcedure = "/affiliates.v1.AffiliateCredentialsService/ListActiveStores"
+	// AffiliateCredentialsServiceListAwinProgrammesProcedure is the fully-qualified name of the
+	// AffiliateCredentialsService's ListAwinProgrammes RPC.
+	AffiliateCredentialsServiceListAwinProgrammesProcedure = "/affiliates.v1.AffiliateCredentialsService/ListAwinProgrammes"
 )
 
 // AffiliateCredentialsServiceClient is a client for the affiliates.v1.AffiliateCredentialsService
@@ -64,6 +67,13 @@ type AffiliateCredentialsServiceClient interface {
 	DeleteCredential(context.Context, *connect.Request[v1.DeleteCredentialRequest]) (*connect.Response[v1.DeleteCredentialResponse], error)
 	// Lists all stores with active credentials.
 	ListActiveStores(context.Context, *connect.Request[v1.ListActiveStoresRequest]) (*connect.Response[v1.ListActiveStoresResponse], error)
+	// Lists the Awin advertisers the authenticated user is approved for.
+	//
+	// Uses the Awin credentials ALREADY SAVED for the user — nothing sensitive
+	// travels in the request, and the OAuth2 token never leaves the server.
+	// Doubles as the real "test credentials" action for Awin: it is the same
+	// call that validates the token.
+	ListAwinProgrammes(context.Context, *connect.Request[v1.ListAwinProgrammesRequest]) (*connect.Response[v1.ListAwinProgrammesResponse], error)
 }
 
 // NewAffiliateCredentialsServiceClient constructs a client for the
@@ -107,16 +117,23 @@ func NewAffiliateCredentialsServiceClient(httpClient connect.HTTPClient, baseURL
 			connect.WithSchema(affiliateCredentialsServiceMethods.ByName("ListActiveStores")),
 			connect.WithClientOptions(opts...),
 		),
+		listAwinProgrammes: connect.NewClient[v1.ListAwinProgrammesRequest, v1.ListAwinProgrammesResponse](
+			httpClient,
+			baseURL+AffiliateCredentialsServiceListAwinProgrammesProcedure,
+			connect.WithSchema(affiliateCredentialsServiceMethods.ByName("ListAwinProgrammes")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // affiliateCredentialsServiceClient implements AffiliateCredentialsServiceClient.
 type affiliateCredentialsServiceClient struct {
-	listCredentials  *connect.Client[v1.ListCredentialsRequest, v1.ListCredentialsResponse]
-	getCredential    *connect.Client[v1.GetCredentialRequest, v1.GetCredentialResponse]
-	upsertCredential *connect.Client[v1.UpsertCredentialRequest, v1.UpsertCredentialResponse]
-	deleteCredential *connect.Client[v1.DeleteCredentialRequest, v1.DeleteCredentialResponse]
-	listActiveStores *connect.Client[v1.ListActiveStoresRequest, v1.ListActiveStoresResponse]
+	listCredentials    *connect.Client[v1.ListCredentialsRequest, v1.ListCredentialsResponse]
+	getCredential      *connect.Client[v1.GetCredentialRequest, v1.GetCredentialResponse]
+	upsertCredential   *connect.Client[v1.UpsertCredentialRequest, v1.UpsertCredentialResponse]
+	deleteCredential   *connect.Client[v1.DeleteCredentialRequest, v1.DeleteCredentialResponse]
+	listActiveStores   *connect.Client[v1.ListActiveStoresRequest, v1.ListActiveStoresResponse]
+	listAwinProgrammes *connect.Client[v1.ListAwinProgrammesRequest, v1.ListAwinProgrammesResponse]
 }
 
 // ListCredentials calls affiliates.v1.AffiliateCredentialsService.ListCredentials.
@@ -144,6 +161,11 @@ func (c *affiliateCredentialsServiceClient) ListActiveStores(ctx context.Context
 	return c.listActiveStores.CallUnary(ctx, req)
 }
 
+// ListAwinProgrammes calls affiliates.v1.AffiliateCredentialsService.ListAwinProgrammes.
+func (c *affiliateCredentialsServiceClient) ListAwinProgrammes(ctx context.Context, req *connect.Request[v1.ListAwinProgrammesRequest]) (*connect.Response[v1.ListAwinProgrammesResponse], error) {
+	return c.listAwinProgrammes.CallUnary(ctx, req)
+}
+
 // AffiliateCredentialsServiceHandler is an implementation of the
 // affiliates.v1.AffiliateCredentialsService service.
 type AffiliateCredentialsServiceHandler interface {
@@ -157,6 +179,13 @@ type AffiliateCredentialsServiceHandler interface {
 	DeleteCredential(context.Context, *connect.Request[v1.DeleteCredentialRequest]) (*connect.Response[v1.DeleteCredentialResponse], error)
 	// Lists all stores with active credentials.
 	ListActiveStores(context.Context, *connect.Request[v1.ListActiveStoresRequest]) (*connect.Response[v1.ListActiveStoresResponse], error)
+	// Lists the Awin advertisers the authenticated user is approved for.
+	//
+	// Uses the Awin credentials ALREADY SAVED for the user — nothing sensitive
+	// travels in the request, and the OAuth2 token never leaves the server.
+	// Doubles as the real "test credentials" action for Awin: it is the same
+	// call that validates the token.
+	ListAwinProgrammes(context.Context, *connect.Request[v1.ListAwinProgrammesRequest]) (*connect.Response[v1.ListAwinProgrammesResponse], error)
 }
 
 // NewAffiliateCredentialsServiceHandler builds an HTTP handler from the service implementation. It
@@ -196,6 +225,12 @@ func NewAffiliateCredentialsServiceHandler(svc AffiliateCredentialsServiceHandle
 		connect.WithSchema(affiliateCredentialsServiceMethods.ByName("ListActiveStores")),
 		connect.WithHandlerOptions(opts...),
 	)
+	affiliateCredentialsServiceListAwinProgrammesHandler := connect.NewUnaryHandler(
+		AffiliateCredentialsServiceListAwinProgrammesProcedure,
+		svc.ListAwinProgrammes,
+		connect.WithSchema(affiliateCredentialsServiceMethods.ByName("ListAwinProgrammes")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/affiliates.v1.AffiliateCredentialsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AffiliateCredentialsServiceListCredentialsProcedure:
@@ -208,6 +243,8 @@ func NewAffiliateCredentialsServiceHandler(svc AffiliateCredentialsServiceHandle
 			affiliateCredentialsServiceDeleteCredentialHandler.ServeHTTP(w, r)
 		case AffiliateCredentialsServiceListActiveStoresProcedure:
 			affiliateCredentialsServiceListActiveStoresHandler.ServeHTTP(w, r)
+		case AffiliateCredentialsServiceListAwinProgrammesProcedure:
+			affiliateCredentialsServiceListAwinProgrammesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -235,4 +272,8 @@ func (UnimplementedAffiliateCredentialsServiceHandler) DeleteCredential(context.
 
 func (UnimplementedAffiliateCredentialsServiceHandler) ListActiveStores(context.Context, *connect.Request[v1.ListActiveStoresRequest]) (*connect.Response[v1.ListActiveStoresResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("affiliates.v1.AffiliateCredentialsService.ListActiveStores is not implemented"))
+}
+
+func (UnimplementedAffiliateCredentialsServiceHandler) ListAwinProgrammes(context.Context, *connect.Request[v1.ListAwinProgrammesRequest]) (*connect.Response[v1.ListAwinProgrammesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("affiliates.v1.AffiliateCredentialsService.ListAwinProgrammes is not implemented"))
 }

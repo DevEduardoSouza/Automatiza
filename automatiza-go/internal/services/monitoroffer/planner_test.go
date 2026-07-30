@@ -240,12 +240,14 @@ func TestLojaSemConversorSaiDoCorpoMasOEntornoFica(t *testing.T) {
 		return ResolveResult{}
 	}}
 
-	p := plan(t, "Olha essa oferta https://amazon.com.br/dp/B01 imperdível", r)
+	// Magalu segue sem conversor. Amazon/AliExpress/Awin saíram desta classe
+	// quando ganharam conversor próprio — ver TestLojaComConversorVaiAoResolver.
+	p := plan(t, "Olha essa oferta https://magazinevoce.com.br/loja/tv/p/1 imperdível", r)
 
 	if p.Relay == nil {
 		t.Fatal("o entorno textual deveria ser relayado")
 	}
-	if strings.Contains(p.Relay.Body, "amazon.com.br") {
+	if strings.Contains(p.Relay.Body, "magazinevoce.com.br") {
 		t.Errorf("URL da loja sem conversor sobreviveu:\n%s", p.Relay.Body)
 	}
 	if !strings.Contains(p.Relay.Body, "imperdível") {
@@ -476,5 +478,38 @@ func TestLiderDoAvisoEhOMenorOrdinal(t *testing.T) {
 				t.Errorf("não-líder ordinal %d com outcome %q, queria included", it.Slot.Ordinal, it.Outcome)
 			}
 		}
+	}
+}
+
+// TestLojaComConversorVaiAoResolver é o contra-teste do anterior: a partir do
+// momento em que Amazon/AliExpress/Awin ganharam conversor, o link precisa
+// CHEGAR ao resolvedor (é lá que a reatribuição acontece) em vez de ser
+// descartado localmente como loja sem conversor.
+func TestLojaComConversorVaiAoResolver(t *testing.T) {
+	cases := []struct {
+		name string
+		url  string
+	}{
+		{"amazon com ASIN", "https://www.amazon.com.br/Echo-Dot/dp/B09B8V1LZ3"},
+		{"aliexpress com item", "https://pt.aliexpress.com/item/1005006123456789.html"},
+		{"anunciante awin", "https://www.netshoes.com.br/produto/tenis-123"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &fakeResolver{fn: func(ResolveRequest) ResolveResult {
+				return produto("k", "https://link.do/TENANT")
+			}}
+
+			p := plan(t, "Olha essa oferta "+tc.url+" imperdível", r)
+
+			if atomic.LoadInt32(&r.calls) == 0 {
+				t.Fatal("loja com conversor precisa chegar ao resolvedor")
+			}
+			for _, o := range p.Outputs() {
+				if strings.Contains(o.Body, tc.url) {
+					t.Errorf("saída %s vazou a URL da fonte:\n%s", o.Kind, o.Body)
+				}
+			}
+		})
 	}
 }

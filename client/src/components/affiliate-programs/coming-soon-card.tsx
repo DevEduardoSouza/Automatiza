@@ -22,6 +22,7 @@ export function ComingSoonCard({ storeName }: ComingSoonCardProps) {
 
   return (
     <div
+      data-testid="coming-soon-card"
       className="rounded-xl xs:rounded-2xl lg:rounded-3xl border p-4 xs:p-5 sm:p-6 lg:p-8"
       style={{ backgroundColor: colors.wineBg, borderColor: colors.wineBorder }}
     >

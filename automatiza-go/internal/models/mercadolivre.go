@@ -89,6 +89,13 @@ type MLCredentialsDB struct {
 	EncryptedData string `json:"encrypted_data" db:"encrypted_data"`
 	CreatedAt     string `json:"created_at" db:"created_at"`
 	UpdatedAt     string `json:"updated_at" db:"updated_at"`
+
+	// Saúde da sessão (migração 084). Em claro ao lado do blob cifrado para o
+	// cron listar quem precisa de checagem sem decifrar nada, e para o painel
+	// exibir o estado. SessionStatus: unknown|live|expired|blocked.
+	SessionStatus  string `json:"session_status" db:"session_status"`
+	LastVerifiedAt string `json:"last_verified_at" db:"last_verified_at"`
+	DiscoveredTag  string `json:"discovered_tag" db:"discovered_tag"`
 }
 
 // MLCreateLinkRequest represents a request to create an ML affiliate link

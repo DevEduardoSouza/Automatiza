@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"automatiza-go/internal/lib/cache"
 	"automatiza-go/internal/lib/commerceurl"
@@ -43,6 +44,14 @@ func (m *mockMLCredsRepo) Save(ctx context.Context, userID, encryptedData string
 		return m.SaveFn(ctx, userID, encryptedData)
 	}
 	return fmt.Errorf("SaveFn not set")
+}
+
+func (m *mockMLCredsRepo) ListForHealthCheck(_ context.Context, _ time.Time, _ int) ([]models.MLCredentialsDB, error) {
+	return nil, nil
+}
+
+func (m *mockMLCredsRepo) UpdateSessionStatus(_ context.Context, _, _, _ string) error {
+	return nil
 }
 
 type mockMLLinkRepo struct {
@@ -277,7 +286,10 @@ func TestIsConnected(t *testing.T) {
 	})
 
 	t.Run("valid credentials returns true", func(t *testing.T) {
-		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf"}
+		// Tag é obrigatória numa credencial válida: sem ela o createLink sairia
+		// com "tag": "" e o ML devolveria link SEM atribuição (comissão perdida
+		// em silêncio). O guard vive em createShortLink; ver ml_errors_test.go.
+		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf", Tag: "test-tag"}
 		blob, err := crypto.EncryptJSONV1(creds, testEncryptionKey)
 		if err != nil {
 			t.Fatalf("failed to encrypt: %v", err)
@@ -395,7 +407,10 @@ func TestLoadCredentials(t *testing.T) {
 	})
 
 	t.Run("success", func(t *testing.T) {
-		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf"}
+		// Tag é obrigatória numa credencial válida: sem ela o createLink sairia
+		// com "tag": "" e o ML devolveria link SEM atribuição (comissão perdida
+		// em silêncio). O guard vive em createShortLink; ver ml_errors_test.go.
+		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf", Tag: "test-tag"}
 		blob, err := crypto.EncryptJSONV1(creds, testEncryptionKey)
 		if err != nil {
 			t.Fatalf("failed to encrypt: %v", err)
@@ -690,7 +705,10 @@ func TestCreateAffiliateLink(t *testing.T) {
 		defer server.Close()
 
 		// Encrypt valid credentials
-		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf"}
+		// Tag é obrigatória numa credencial válida: sem ela o createLink sairia
+		// com "tag": "" e o ML devolveria link SEM atribuição (comissão perdida
+		// em silêncio). O guard vive em createShortLink; ver ml_errors_test.go.
+		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf", Tag: "test-tag"}
 		blob, err := crypto.EncryptJSONV1(creds, testEncryptionKey)
 		if err != nil {
 			t.Fatalf("failed to encrypt: %v", err)
@@ -736,7 +754,10 @@ func TestCreateAffiliateLink(t *testing.T) {
 		}))
 		defer server.Close()
 
-		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf"}
+		// Tag é obrigatória numa credencial válida: sem ela o createLink sairia
+		// com "tag": "" e o ML devolveria link SEM atribuição (comissão perdida
+		// em silêncio). O guard vive em createShortLink; ver ml_errors_test.go.
+		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf", Tag: "test-tag"}
 		blob, err := crypto.EncryptJSONV1(creds, testEncryptionKey)
 		if err != nil {
 			t.Fatalf("failed to encrypt: %v", err)
@@ -765,7 +786,10 @@ func TestCreateAffiliateLink(t *testing.T) {
 		}))
 		defer server.Close()
 
-		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf"}
+		// Tag é obrigatória numa credencial válida: sem ela o createLink sairia
+		// com "tag": "" e o ML devolveria link SEM atribuição (comissão perdida
+		// em silêncio). O guard vive em createShortLink; ver ml_errors_test.go.
+		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf", Tag: "test-tag"}
 		blob, err := crypto.EncryptJSONV1(creds, testEncryptionKey)
 		if err != nil {
 			t.Fatalf("failed to encrypt: %v", err)
@@ -795,7 +819,10 @@ func TestCreateAffiliateLink(t *testing.T) {
 		}))
 		defer server.Close()
 
-		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf"}
+		// Tag é obrigatória numa credencial válida: sem ela o createLink sairia
+		// com "tag": "" e o ML devolveria link SEM atribuição (comissão perdida
+		// em silêncio). O guard vive em createShortLink; ver ml_errors_test.go.
+		creds := &models.MLCredentials{Cookie: "test-cookie", CSRF: "test-csrf", Tag: "test-tag"}
 		blob, err := crypto.EncryptJSONV1(creds, testEncryptionKey)
 		if err != nil {
 			t.Fatalf("failed to encrypt: %v", err)

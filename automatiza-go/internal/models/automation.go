@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"strings"
 )
 
 // Automation represents an automation configuration in the database
@@ -182,6 +183,24 @@ func MonitoringStores() []string {
 	return []string{"shopee"}
 }
 
+// MonitorConvertibleStores é o allowlist do que o espelho SABE resolver sem
+// entregar a comissão à fonte. MonitoringStores() continua sendo o DEFAULT
+// (Shopee): entrar nesta lista habilita a loja, não a liga sozinha.
+//
+// Duas famílias convivem aqui. Shopee/Amazon/Awin/AliExpress convertem o link
+// POR PRODUTO (API ou reescrita da URL). Shein não: sem API de geração de link
+// e sem parâmetro anexável, a resolução dela é trocar o link da fonte pelo
+// onelink fixo do dono — ver sheinAffiliateFor no monitoring_service.
+func MonitorConvertibleStores() []string {
+	return []string{
+		MonitorStoreShopee,
+		MonitorStoreAmazon,
+		MonitorStoreAwin,
+		MonitorStoreAliExpress,
+		MonitorStoreShein,
+	}
+}
+
 // CoerceMonitoringStoresUpdate enforces the Shopee-only rule for monitor mode
 // on an update map. It kicks in when the update touches "stores" or switches
 // "type" into monitoring; untouched automations are left alone (their stores
@@ -199,9 +218,60 @@ func CoerceMonitoringStoresUpdate(existingType *string, updates map[string]inter
 	}
 	_, storesTouched := updates["stores"]
 	_, typeTouched := updates["type"]
-	if storesTouched || typeTouched {
-		updates["stores"] = MonitoringStores()
+	if !storesTouched && !typeTouched {
+		return
 	}
+	// Intersecta com o allowlist em vez de sobrescrever: uma automação que
+	// pede ["shopee","amazon"] mantém as duas, e um frontend antigo pedindo
+	// ["shopee","shein"] continua virando ["shopee"], como antes. Interseção
+	// vazia cai no default para nunca deixar a automação sem loja.
+	updates["stores"] = CoerceMonitoringStores(updates["stores"])
+}
+
+// CoerceMonitoringStores filtra as lojas pedidas pelo allowlist de conversão
+// do espelho, preservando a ordem. Lista vazia (ou sem nenhuma loja
+// convertível) cai no default Shopee — automação de monitor nunca fica sem
+// loja. Aceita []string ou o []interface{} que vem de JSON/map de update.
+func CoerceMonitoringStores(requested interface{}) []string {
+	kept := intersectConvertibleStores(requested)
+	if len(kept) == 0 {
+		return MonitoringStores()
+	}
+	return kept
+}
+
+// intersectConvertibleStores filtra uma lista de lojas (em qualquer das formas
+// que chegam do JSON/proto) pelo allowlist de conversão, preservando a ordem.
+func intersectConvertibleStores(raw interface{}) []string {
+	allowed := make(map[string]bool, len(MonitorConvertibleStores()))
+	for _, s := range MonitorConvertibleStores() {
+		allowed[s] = true
+	}
+
+	var in []string
+	switch v := raw.(type) {
+	case []string:
+		in = v
+	case []interface{}:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				in = append(in, s)
+			}
+		}
+	default:
+		return nil
+	}
+
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if allowed[s] && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // IsActive returns true if the automation is active

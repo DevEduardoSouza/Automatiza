@@ -7,7 +7,7 @@ import {
 import { useMercadoLivreConnect } from '@/hooks/use-mercadolivre-connect';
 import { useToast } from '@/hooks/use-toast';
 import { captureHookError } from '@/lib/sentry';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 type StoreKey = LocalAffiliateStore;
@@ -28,6 +28,22 @@ interface StoreField {
   placeholder: string;
   /** Quando true, allFieldsFilled ignora este campo (não bloqueia "conectado"). */
   optional?: boolean;
+  /** Chave i18n de uma dica curta ("onde pegar essa credencial"). */
+  hintKey?: string;
+}
+
+/**
+ * hasRequiredFields diz se todos os campos OBRIGATÓRIOS estão preenchidos.
+ *
+ * Helper compartilhado porque a regra vivia duplicada em três lugares e um
+ * deles ignorava `optional` — o que travaria o botão Testar da Amazon para
+ * sempre, já que Client ID/Secret são opcionais.
+ */
+export function hasRequiredFields(
+  fields: StoreField[],
+  credentials?: Record<string, string>
+): boolean {
+  return fields.every((field) => Boolean(field.optional || credentials?.[field.key]?.trim()));
 }
 
 interface StoreConfig {
@@ -89,18 +105,33 @@ const STORE_CONFIGS: StoreConfig[] = [
     key: 'amazon',
     name: 'Amazon Associates',
     fields: [
-      { key: 'tag', label: 'Tag/ID', type: 'text', placeholder: 'seusite-20' },
+      // A tag é o que converte o link (a URL vira /dp/<ASIN>?tag=<tag>, sem
+      // chamar API nenhuma). Access Key / Secret Key saíram: eram credenciais
+      // da Product Advertising API 5.0, desligada em 15/05/2026. A Creators
+      // API que a substituiu usa OAuth2 e exige 10 vendas aprovadas nos
+      // últimos 30 dias — por isso é OPCIONAL: serve só para enriquecer
+      // preço/título nos modos Busca e Lista, nunca para gerar o link.
       {
-        key: 'accessKey',
-        label: 'Access Key',
+        key: 'tag',
+        label: 'Tag de afiliado',
         type: 'text',
-        placeholder: 'AKIAIOSFODNN7EXAMPLE',
+        placeholder: 'seusite-20',
+        hintKey: 'pages.affiliatePrograms.hints.amazonTag',
       },
       {
-        key: 'secretKey',
-        label: 'Secret Key',
+        key: 'clientId',
+        label: 'Client ID (opcional)',
+        type: 'text',
+        placeholder: 'amzn1.application-oa2-client...',
+        optional: true,
+        hintKey: 'pages.affiliatePrograms.hints.amazonCreators',
+      },
+      {
+        key: 'clientSecret',
+        label: 'Client Secret (opcional)',
         type: 'password',
-        placeholder: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+        placeholder: '••••••••',
+        optional: true,
       },
     ],
   },
@@ -137,8 +168,16 @@ const STORE_CONFIGS: StoreConfig[] = [
         label: 'Tracking ID',
         type: 'text',
         placeholder: 'default',
+        hintKey: 'pages.affiliatePrograms.hints.aliexpressKeys',
       },
       { key: 'appKey', label: 'App Key', type: 'text', placeholder: '12345' },
+      // Sem o App Secret não há como assinar a chamada que gera o link.
+      {
+        key: 'appSecret',
+        label: 'App Secret',
+        type: 'password',
+        placeholder: '••••••••',
+      },
     ],
   },
   {
@@ -150,20 +189,51 @@ const STORE_CONFIGS: StoreConfig[] = [
         label: 'Awin ID',
         type: 'text',
         placeholder: 'Exemplo: 123457',
+        hintKey: 'pages.affiliatePrograms.hints.awinId',
       },
       {
         key: 'oauth2Token',
         label: 'Awin OAuth2 Token',
         type: 'password',
         placeholder: 'Exemplo: a12b3c4-d5e6-f890-123a-b4c567890f12',
+        hintKey: 'pages.affiliatePrograms.hints.awinToken',
+      },
+    ],
+  },
+  {
+    key: 'ml',
+    name: 'Mercado Livre',
+    fields: [
+      {
+        key: 'connectionToken',
+        label: 'Token de conexao',
+        type: 'password',
+        placeholder: 'MLCRED_V1:...',
+      },
+      {
+        key: 'tag',
+        label: 'Etiqueta (opcional)',
+        type: 'text',
+        placeholder: 'detectada automaticamente',
       },
     ],
   },
 ];
 
-// ML removed from enabled stores: users now paste their pre-generated
-// affiliate links into LIST automations. No credential flow needed.
-const ENABLED_STORES: StoreKey[] = ['shopee'];
+// ML de volta: a conexao agora e VALIDADA no cadastro (o backend confere a
+// sessao no painel de afiliados antes de salvar e ja descobre a etiqueta), e a
+// saude da sessao passa a ser monitorada. Antes disso o cliente colava um
+// cookie que morria em silencio -- as credenciais existentes ficaram 111-144
+// dias mortas sem ninguem perceber. A conversao automatica nos disparos segue
+// atras do gate ML_AUTO_LINK; aqui so habilitamos conectar a conta.
+// Shein: a loja nao tem API de geracao de link (o afiliado copia um
+// onelink.shein.com pronto do app), entao o card so pede o link fixo. Quem
+// consome esse link e o espelho, trocando o link Shein da fonte pelo do cliente
+// em vez de apaga-lo -- e so em automacao que marcou a loja.
+// Amazon, AliExpress e Awin entraram junto com seus conversores no backend
+// (internal/services/{amazon,aliexpress,awin}). Magalu segue fora: o link de
+// divulgador dela é reescrita de URL e não precisa de credencial aqui.
+const ENABLED_STORES: StoreKey[] = ['shopee', 'ml', 'shein', 'amazon', 'aliexpress', 'awin'];
 
 function base64UrlDecode(input: string): string {
   const s = input.replace(/-/g, '+').replace(/_/g, '/');
@@ -248,6 +318,7 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
     loading: connectLoading,
     upsertCredential,
     refetch: refetchCredentials,
+    listAwinProgrammes,
   } = useAffiliateCredentialsConnect();
 
   const [credentials, setCredentials] = useState<Record<StoreKey, AffiliateCredential>>(
@@ -269,6 +340,29 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
     },
     [t]
   );
+
+  /**
+   * Marcas exibidas no seletor do Awin.
+   *
+   * Vêm do servidor (chave `programme_names`, gravada quando a credencial é
+   * salva ou testada): são os anunciantes em que o usuário REALMENTE foi
+   * aprovado. A lista fixa antiga só entra como fallback enquanto a primeira
+   * sincronização não aconteceu — marcar uma marca não aprovada gera clique
+   * sem comissão.
+   */
+  const awinBrands = useMemo<string[]>(() => {
+    const raw = credentials.awin?.credentials?.programme_names;
+    if (!raw) return AWIN_BRANDS;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((name): name is string => typeof name === 'string');
+      }
+    } catch (error: unknown) {
+      captureHookError(error, 'useAffiliatePrograms', 'parseAwinProgrammeNames');
+    }
+    return AWIN_BRANDS;
+  }, [credentials.awin?.credentials?.programme_names]);
 
   const getStoreDescription = useCallback(
     (storeKey: StoreKey): string => {
@@ -515,7 +609,11 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
 
         if (storeKey === 'shein' && cred.credentials?.affiliateLink) {
           const link = cred.credentials.affiliateLink.trim();
-          if (!link.startsWith('https://onelink.shein.com/')) {
+          // O onelink e opaco (/<n>/<codigo>): exigir algo DEPOIS do dominio,
+          // senao "https://onelink.shein.com/" salva uma credencial que o
+          // espelho usaria como link de afiliado e nao rastreia ninguem.
+          const prefix = 'https://onelink.shein.com/';
+          if (!link.startsWith(prefix) || link.slice(prefix.length).length === 0) {
             toast({
               title: t('pages.affiliatePrograms.shein.invalidLink'),
               description: t('pages.affiliatePrograms.shein.invalidLinkMessage'),
@@ -526,9 +624,7 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
           }
         }
 
-        const allFieldsFilled = config?.fields.every((field) =>
-          cred.credentials?.[field.key]?.trim()
-        );
+        const allFieldsFilled = hasRequiredFields(config?.fields ?? [], cred.credentials);
 
         const credentialsToSave = {
           ...cred.credentials,
@@ -571,7 +667,7 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
         const allFieldsFilled =
           storeKey === 'ml'
             ? Boolean(cred?.is_active)
-            : config?.fields.every((field) => cred.credentials[field.key]?.trim());
+            : hasRequiredFields(config?.fields ?? [], cred.credentials);
 
         if (!allFieldsFilled) {
           throw new Error(t('pages.affiliatePrograms.errors.fillAllFields'));
@@ -622,11 +718,28 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
           return;
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        if (storeKey === 'awin') {
+          // Teste REAL: a mesma chamada que a Awin usa para autenticar o
+          // publisher, e que traz as marcas aprovadas. O refetch abaixo puxa a
+          // lista atualizada que o servidor acabou de gravar na credencial.
+          const programmes = await listAwinProgrammes();
+          await refetchCredentials();
+          toast({
+            title: t('pages.affiliatePrograms.success.validated'),
+            description: t('pages.affiliatePrograms.awin.testSuccess', {
+              count: programmes.length,
+            }),
+          });
+          return;
+        }
 
+        // Demais lojas: não existe endpoint público de validação de credencial
+        // (a Amazon não valida tag, o AliExpress só responde numa geração real).
+        // O toast diz a verdade em vez de fingir que testou — a validação
+        // acontece no primeiro uso.
         toast({
-          title: t('pages.affiliatePrograms.success.validated'),
-          description: t('pages.affiliatePrograms.success.validatedMessage', {
+          title: t('pages.affiliatePrograms.success.formatOk'),
+          description: t('pages.affiliatePrograms.success.formatOkMessage', {
             store: config?.name,
           }),
         });
@@ -645,7 +758,7 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
         setTesting(null);
       }
     },
-    [credentials, toast, t, mlCreateLink, mlPreview]
+    [credentials, toast, t, mlCreateLink, mlPreview, listAwinProgrammes, refetchCredentials]
   );
 
   return {
@@ -656,7 +769,7 @@ export function useAffiliatePrograms(): UseAffiliateProgramsReturn {
     mlLastTest,
     storeConfigs: STORE_CONFIGS,
     enabledStores: ENABLED_STORES,
-    awinBrands: AWIN_BRANDS,
+    awinBrands,
     updateCredentialField,
     toggleAutoGenerate,
     toggleBrand,

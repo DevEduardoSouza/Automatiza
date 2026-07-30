@@ -88,6 +88,13 @@ type Config struct {
 	// ML Encryption
 	MLCredentialsEncryptionKey string `mapstructure:"ML_CREDENTIALS_ENCRYPTION_KEY"`
 
+	// MLSessionHealthEnabled liga a verificação periódica das sessões do
+	// Mercado Livre. Default DESLIGADO: o cron faz chamadas autenticadas ao
+	// painel de afiliados e, mal calibrado, vira ele próprio a causa do
+	// bloqueio que deveria detectar (ver ml_health.go). Ligar só depois de a
+	// migração 084 estar aplicada — sem as colunas, o SELECT do lote falha.
+	MLSessionHealthEnabled bool `mapstructure:"ML_SESSION_HEALTH_ENABLED"`
+
 	// Instagram (Stories via tag {story}). Vazio => feature desligada:
 	// APIClient.Enabled()==false, a UI mostra indisponível e o trigger vira
 	// no-op. O token dos usuários é cifrado com ML_CREDENTIALS_ENCRYPTION_KEY
@@ -212,6 +219,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("LOG_LEVEL", "info")
 	// Kill switch da publicação de Stories: desligado até alguém decidir ligar.
 	viper.SetDefault("INSTAGRAM_STORIES_ENABLED", false)
+	viper.SetDefault("ML_SESSION_HEALTH_ENABLED", false)
 	viper.SetDefault("INSTAGRAM_AI_REPLY_ENABLED", false)
 	viper.SetDefault("LINK_SAFETY_MODE", "off")
 	viper.SetDefault("TZ", "America/Sao_Paulo")

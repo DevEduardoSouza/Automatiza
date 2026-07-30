@@ -7,6 +7,7 @@ import (
 
 	"automatiza-go/internal/lib/commerceurl"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/services/affiliatelink"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/shopee"
 
@@ -22,15 +23,23 @@ import (
 // "retenta", "bloqueia" e "some do corpo". Sem essa camada, cada caminho
 // reinterpretaria os erros à sua maneira, que é como um timeout virava campanha.
 type StoreResolver struct {
-	shopee shopee.Service
-	ml     mercadolivre.Service
-	logger *zap.Logger
+	shopee   shopee.Service
+	ml       mercadolivre.Service
+	registry *affiliatelink.Registry
+	logger   *zap.Logger
 }
 
 // NewStoreResolver monta o resolvedor. Um serviço nil faz sua loja resolver
 // como transient — nunca como campanha, e nunca deixando a URL de origem sair.
-func NewStoreResolver(sh shopee.Service, ml mercadolivre.Service, logger *zap.Logger) *StoreResolver {
-	return &StoreResolver{shopee: sh, ml: ml, logger: logger}
+// registry nil (ou sem a loja) mantém o desfecho histórico: loja sem conversor
+// sai do corpo.
+func NewStoreResolver(
+	sh shopee.Service,
+	ml mercadolivre.Service,
+	registry *affiliatelink.Registry,
+	logger *zap.Logger,
+) *StoreResolver {
+	return &StoreResolver{shopee: sh, ml: ml, registry: registry, logger: logger}
 }
 
 // Resolve implementa LinkResolver.
@@ -41,10 +50,41 @@ func (r *StoreResolver) Resolve(ctx context.Context, in ResolveRequest) ResolveR
 	case models.MonitorStoreMercadoLivr:
 		return r.resolveML(ctx, in)
 	default:
+		return r.resolveRegistry(ctx, in)
+	}
+}
+
+// resolveRegistry atende as lojas com conversor próprio (Amazon, AliExpress,
+// Awin). Sem conversor, devolve o desfecho histórico: o link some do corpo.
+func (r *StoreResolver) resolveRegistry(ctx context.Context, in ResolveRequest) ResolveResult {
+	removed := ResolveResult{
+		Class: models.URLClassUnsupportedCommerce, ErrorClass: models.ErrorClassNone,
+		Reason: models.ReasonUnsupportedStore, Outcome: models.MonitorOutcomeRemoved,
+	}
+	if !r.registry.Handles(in.URL.Store) {
+		return removed
+	}
+
+	converted, ok, err := r.registry.Convert(ctx, in.URL.Raw, in.UserID)
+	switch {
+	case err == nil && ok:
 		return ResolveResult{
-			Class: models.URLClassUnsupportedCommerce, ErrorClass: models.ErrorClassNone,
-			Reason: models.ReasonUnsupportedStore, Outcome: models.MonitorOutcomeRemoved,
+			Class: models.URLClassProduct, ErrorClass: models.ErrorClassNone,
+			Reason:       models.ReasonNone,
+			ConvertedURL: converted,
+			Outcome:      models.MonitorOutcomeConverted,
+			Offer:        &OfferData{Store: in.URL.Store},
 		}
+	case errors.Is(err, affiliatelink.ErrUnavailable):
+		return transientResult(models.ReasonHTTP5xx)
+	case errors.Is(err, affiliatelink.ErrNoCredentials),
+		errors.Is(err, affiliatelink.ErrRejectedCredential):
+		// NÃO é permanent_config de propósito: PausesAutomation trata essa
+		// classe como "pausa a automação", e a automação principal do cliente é
+		// Shopee. Credencial ausente numa loja secundária não pode derrubá-la.
+		return blockedResult(models.ErrorClassPermanentConte, models.ReasonMissingCredentials)
+	default:
+		return blockedResult(models.ErrorClassPermanentConte, models.ReasonUnsupportedStore)
 	}
 }
 

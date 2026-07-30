@@ -345,7 +345,7 @@
         "newGroups": "Novos grupos",
         "growthRate": "Taxa de crescimento",
         "joins": "Entraram",
-        "leaves": "Sa\u00edram",
+        "leaves": "Saíram",
         "activeGroups": "Grupos no total",
         "period": {
           "weekly": "Semanal",
@@ -2470,16 +2470,16 @@
       },
       "descriptions": {
         "shopee": "Configure suas credenciais da API de Afiliados Shopee",
-        "amazon": "Configure suas credenciais da Amazon Product Advertising API",
+        "amazon": "Informe sua tag de afiliado — é ela que credita a venda. Client ID/Secret da Creators API são opcionais e só trazem preço e foto do produto.",
         "magalu": "Configure seu link de loja parceira Magazine Você",
         "ml": "Conecte com o token da extensão. O sistema salva a sessão criptografada no backend.",
         "shein": "Cole seu link de afiliado Shein (formato: https://onelink.shein.com/...)",
-        "aliexpress": "Configure suas credenciais do AliExpress Affiliate Program",
-        "awin": "Configure suas credenciais do Awin"
+        "aliexpress": "Configure Tracking ID, App Key e App Secret do AliExpress Affiliate Program",
+        "awin": "Configure seu Awin ID e token OAuth2 para gerar links das marcas em que você é aprovado"
       },
       "comingSoon": "Em breve",
       "comingSoonDesc": "Em breve você poderá conectar o {{store}} aqui.",
-      "comingSoonNote": "No momento Shopee e Mercado Livre estão disponíveis para geração automática de links de afiliado.",
+      "comingSoonNote": "Shopee, Amazon, AliExpress, Awin e Mercado Livre já estão disponíveis. A Shein não gera link automático: você cola seu link de afiliado e o espelho o usa no lugar do link da fonte.",
       "mlRedirect": {
         "title": "Mercado Livre",
         "subtitle": "Use seus próprios links afiliados",
@@ -2550,7 +2550,9 @@
       },
       "awin": {
         "selectBrands": "Selecione as marcas que deseja usar:",
-        "brandsSelected": "{{count}} marca(s) selecionada(s)"
+        "brandsSelected": "{{count}} marca(s) selecionada(s)",
+        "testSuccess": "{{count}} marca(s) aprovada(s) encontradas na sua conta Awin",
+        "noBrands": "Nenhuma marca aprovada encontrada nesta conta Awin."
       },
       "sections": {
         "storesTitle": "LOJAS DISPONÍVEIS",
@@ -2569,7 +2571,9 @@
         "saved": "Credenciais salvas com sucesso!",
         "validated": "Credenciais validadas",
         "validatedMessage": "As credenciais do {{store}} foram verificadas. A validação completa ocorrerá no primeiro uso.",
-        "deleted": "Credencial excluída"
+        "deleted": "Credencial excluída",
+        "formatOk": "Credenciais salvas",
+        "formatOkMessage": "Os dados do {{store}} estão no formato esperado. A validação com a loja acontece no primeiro disparo."
       },
       "errors": {
         "load": "Erro ao carregar credenciais",
@@ -2591,6 +2595,13 @@
         "testError": "Erro no teste",
         "testErrorMessage": "Verifique se as credenciais estão corretas.",
         "saveFailed": "Falha ao salvar credencial"
+      },
+      "hints": {
+        "amazonTag": "Pegue em Associados Amazon → Gerenciar rastreamento (formato: seusite-20).",
+        "amazonCreators": "Opcional: só para quem tem acesso à Creators API (exige 10 vendas aprovadas nos últimos 30 dias).",
+        "aliexpressKeys": "Crie o Tracking ID no AliExpress Portals e o App Key/Secret no console de desenvolvedor.",
+        "awinId": "É o seu Publisher ID, no topo do painel da Awin.",
+        "awinToken": "Gere em ui.awin.com/awin-api (o token fica visível uma única vez)."
       }
     },
     "offerAutomations": {

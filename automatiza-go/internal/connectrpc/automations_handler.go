@@ -1352,11 +1352,18 @@ func protoToAutomationCreate(msg *automationsv1.CreateAutomationRequest) *models
 		automation.EndDate = msg.EndDate
 	}
 
-	// Convert stores. Monitor mode is Shopee-only: the UI locks the other
-	// checkboxes, but the rule must hold server-side too — an ML store that
-	// slips in makes the mirror relay the source channel's affiliate links.
+	// Convert stores. Monitor mode aceita só o que o espelho sabe converter: a
+	// UI trava as demais caixas, mas a regra precisa valer no servidor também
+	// — uma loja sem conversor que escape faz o espelho repassar os links de
+	// afiliado do canal-fonte.
 	if mode == models.AutomationTypeMonitoring {
-		automation.Stores = models.MonitoringStores()
+		requested := make([]string, 0, len(msg.GetStores()))
+		for _, store := range msg.GetStores() {
+			if s := protoStoreToModel(store); s != "" {
+				requested = append(requested, s)
+			}
+		}
+		automation.Stores = models.CoerceMonitoringStores(requested)
 	} else {
 		for _, store := range msg.GetStores() {
 			if s := protoStoreToModel(store); s != "" {

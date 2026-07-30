@@ -408,6 +408,13 @@ type AffiliateCredentialsRepository interface {
 type MLCredentialsRepository interface {
 	Get(ctx context.Context, userID string) (*models.MLCredentialsDB, error)
 	Save(ctx context.Context, userID, encryptedData string) error
+	// ListForHealthCheck devolve as credenciais mais atrasadas em verificação
+	// (nunca verificadas primeiro), pulando as já sabidamente expiradas — quem
+	// já está expirado não melhora sozinho e só gastaria request contra o ML.
+	ListForHealthCheck(ctx context.Context, olderThan time.Time, limit int) ([]models.MLCredentialsDB, error)
+	// UpdateSessionStatus grava o resultado de uma verificação. Tag vazia não
+	// sobrescreve a tag já conhecida.
+	UpdateSessionStatus(ctx context.Context, userID, status, discoveredTag string) error
 }
 
 // ErrInstagramAccountAlreadyConnected indica que a conta profissional (ou o id

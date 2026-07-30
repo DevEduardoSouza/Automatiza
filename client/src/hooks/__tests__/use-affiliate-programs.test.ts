@@ -63,6 +63,7 @@ let mockConnectCredentials: Array<{
 
 const mockUpsertCredential = vi.fn();
 const mockRefetchCredentials = vi.fn();
+const mockListAwinProgrammes = vi.fn();
 
 vi.mock('@/hooks/use-affiliate-credentials-connect', () => ({
   useAffiliateCredentialsConnect: () => ({
@@ -70,6 +71,7 @@ vi.mock('@/hooks/use-affiliate-credentials-connect', () => ({
     loading: false,
     upsertCredential: mockUpsertCredential,
     refetch: mockRefetchCredentials,
+    listAwinProgrammes: mockListAwinProgrammes,
   }),
 }));
 
@@ -370,9 +372,16 @@ describe('use-affiliate-programs', () => {
       expect(result.current.storeConfigs).toHaveLength(7);
     });
 
-    it('should return enabledStores as shopee and ml', async () => {
+    it('should return enabledStores with every store that has a converter', async () => {
       const { result } = await renderAndWait();
-      expect(result.current.enabledStores).toEqual(['shopee', 'ml']);
+      expect(result.current.enabledStores).toEqual([
+        'shopee',
+        'ml',
+        'shein',
+        'amazon',
+        'aliexpress',
+        'awin',
+      ]);
     });
 
     it('should return 13 awinBrands', async () => {
@@ -1472,7 +1481,10 @@ describe('use-affiliate-programs', () => {
   // ── handleTest - non-ML ────────────────────────────────────
 
   describe('handleTest - non-ML', () => {
-    it('should wait 1500ms and show toast of success', async () => {
+    // O toast antigo dizia "credenciais validadas" depois de um setTimeout de
+    // 1500ms que não chamava ninguém — sucesso falso. Agora ele afirma só o que
+    // é verdade: o formato está certo, a loja valida no primeiro disparo.
+    it('should show a truthful format-only toast (no fake validation)', async () => {
       const { result } = await renderAndWait();
 
       act(() => {
@@ -1486,7 +1498,7 @@ describe('use-affiliate-programs', () => {
 
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'pages.affiliatePrograms.success.validated',
+          title: 'pages.affiliatePrograms.success.formatOk',
         })
       );
     });
@@ -1611,5 +1623,157 @@ describe('use-affiliate-programs', () => {
 
       expect(result.current.testing).toBeNull();
     });
+  });
+});
+
+// ============================================================
+// Lojas que ganharam formulário depois (Amazon, AliExpress, Awin)
+// ============================================================
+
+describe('useAffiliatePrograms - lojas com conversor proprio', () => {
+  beforeEach(() => {
+    mockConnectCredentials = [];
+    mockUpsertCredential.mockResolvedValue(undefined);
+    mockListAwinProgrammes.mockReset();
+  });
+
+  const fieldKeys = (config: { fields: Array<{ key: string }> } | undefined) =>
+    (config?.fields ?? []).map((f) => f.key);
+
+  it('amazon pede a tag e trata Client ID/Secret como opcionais', async () => {
+    const { result } = await renderAndWait();
+    const amazon = result.current.storeConfigs.find((c) => c.key === 'amazon');
+
+    // accessKey/secretKey eram da PA-API 5.0, desligada em 15/05/2026.
+    expect(fieldKeys(amazon)).toEqual(['tag', 'clientId', 'clientSecret']);
+    expect(amazon?.fields.find((f) => f.key === 'tag')?.optional).toBeFalsy();
+    expect(amazon?.fields.find((f) => f.key === 'clientId')?.optional).toBe(true);
+    expect(amazon?.fields.find((f) => f.key === 'clientSecret')?.optional).toBe(true);
+  });
+
+  // O teste que prova a correção do bug do `optional`: sem ele, a Amazon
+  // ficaria "Incompleto" para sempre porque os campos opcionais estão vazios.
+  it('amazon fica ATIVA salvando so a tag', async () => {
+    const { result } = await renderAndWait();
+
+    act(() => {
+      result.current.updateCredentialField('amazon', 'tag', 'cliente-20');
+    });
+    await act(async () => {
+      await result.current.handleSave('amazon');
+    });
+
+    expect(mockUpsertCredential).toHaveBeenCalledWith(
+      expect.objectContaining({ store: 'amazon', is_active: true })
+    );
+  });
+
+  it('amazon sem tag NAO fica ativa', async () => {
+    const { result } = await renderAndWait();
+
+    act(() => {
+      result.current.updateCredentialField('amazon', 'clientId', 'apenas-opcional');
+    });
+    await act(async () => {
+      await result.current.handleSave('amazon');
+    });
+
+    expect(mockUpsertCredential).toHaveBeenCalledWith(
+      expect.objectContaining({ store: 'amazon', is_active: false })
+    );
+  });
+
+  it('aliexpress exige o appSecret para ficar ativa', async () => {
+    const { result } = await renderAndWait();
+    const ali = result.current.storeConfigs.find((c) => c.key === 'aliexpress');
+    expect(fieldKeys(ali)).toContain('appSecret');
+
+    act(() => {
+      result.current.updateCredentialField('aliexpress', 'trackingId', 'default');
+      result.current.updateCredentialField('aliexpress', 'appKey', '12345');
+    });
+    await act(async () => {
+      await result.current.handleSave('aliexpress');
+    });
+    expect(mockUpsertCredential).toHaveBeenLastCalledWith(
+      expect.objectContaining({ store: 'aliexpress', is_active: false })
+    );
+
+    act(() => {
+      result.current.updateCredentialField('aliexpress', 'appSecret', 'segredo');
+    });
+    await act(async () => {
+      await result.current.handleSave('aliexpress');
+    });
+    expect(mockUpsertCredential).toHaveBeenLastCalledWith(
+      expect.objectContaining({ store: 'aliexpress', is_active: true })
+    );
+  });
+
+  // handleTest usava a mesma regra quebrada do save: com ela, o botão Testar
+  // da Amazon lançaria "preencha todos os campos" por causa dos opcionais.
+  it('handleTest da amazon nao exige os campos opcionais', async () => {
+    const { result } = await renderAndWait();
+
+    act(() => {
+      result.current.updateCredentialField('amazon', 'tag', 'cliente-20');
+    });
+    await act(async () => {
+      await result.current.handleTest('amazon');
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'pages.affiliatePrograms.success.formatOk' })
+    );
+  });
+
+  it('testar o awin chama a API e reporta as marcas aprovadas', async () => {
+    mockListAwinProgrammes.mockResolvedValue([
+      { id: '9988', name: 'Netshoes', displayUrl: 'netshoes.com.br' },
+      { id: '5544', name: 'Dafiti', displayUrl: 'dafiti.com.br' },
+    ]);
+    const { result } = await renderAndWait();
+
+    act(() => {
+      result.current.updateCredentialField('awin', 'awinId', '112233');
+      result.current.updateCredentialField('awin', 'oauth2Token', 'token');
+    });
+    await act(async () => {
+      await result.current.handleTest('awin');
+    });
+
+    expect(mockListAwinProgrammes).toHaveBeenCalled();
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: expect.stringContaining('2'),
+      })
+    );
+  });
+
+  // As marcas exibidas têm de ser as que o usuário REALMENTE tem aprovadas —
+  // marcar uma marca não aprovada gera clique sem comissão.
+  it('as marcas do awin vem do servidor quando ja sincronizadas', async () => {
+    mockConnectCredentials = [
+      {
+        id: 'c1',
+        user_id: 'user-123',
+        store: 'awin',
+        credentials: {
+          awinId: '112233',
+          programme_names: JSON.stringify(['Netshoes', 'Dafiti']),
+        },
+        auto_generate: true,
+        is_active: true,
+        created_at: '',
+        updated_at: '',
+      },
+    ];
+    const { result } = await renderAndWait();
+    expect(result.current.awinBrands).toEqual(['Netshoes', 'Dafiti']);
+  });
+
+  it('sem sincronizacao, cai na lista fixa', async () => {
+    const { result } = await renderAndWait();
+    expect(result.current.awinBrands).toHaveLength(13);
   });
 });

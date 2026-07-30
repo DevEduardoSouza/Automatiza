@@ -33,7 +33,19 @@ func ClassifyLocal(u URL) Classification {
 		return classifyShopee(u)
 	case models.MonitorStoreMercadoLivr:
 		return classifyML(u)
-	case models.MonitorStoreUnsupported:
+	case models.MonitorStoreAmazon:
+		return classifyAmazon(u)
+	case models.MonitorStoreAliExpress:
+		return classifyAliExpress(u)
+	case models.MonitorStoreAwin:
+		return classifyAwin(u)
+	case models.MonitorStoreShein, models.MonitorStoreUnsupported:
+		// Shein divide o ramo do unsupported de propósito: o link do afiliado é
+		// um onelink opaco, então não há ID de produto a extrair nem
+		// classificação por path a fazer. Quem decide o destino dela é o
+		// espelho (substituição pelo link do dono), não o classificador — mas
+		// ela PRECISA estar aqui: cair no default a marcaria NonCommerce, e um
+		// link de loja classificado como não-comércio passa cru.
 		return Classification{
 			Class:      models.URLClassUnsupportedCommerce,
 			ErrorClass: models.ErrorClassNone,
@@ -293,6 +305,156 @@ func classifyML(u URL) Classification {
 }
 
 // ---------------------------------------------------------------------------
+// Amazon
+// ---------------------------------------------------------------------------
+
+// asinRe casa o ASIN: 10 caracteres alfanuméricos MAIÚSCULOS. Amazon usa
+// ISBN-10 legado em livros, onde o último dígito pode ser 'X' — já coberto.
+var asinRe = regexp.MustCompile(`^[A-Z0-9]{10}$`)
+
+// amazonASINSegments são os segmentos que antecedem o ASIN no path.
+var amazonASINSegments = map[string]bool{
+	"dp":      true,
+	"product": true, // /gp/product/<ASIN>
+	"d":       true, // /gp/aw/d/<ASIN>
+	"asin":    true,
+}
+
+// AmazonASIN lê o ASIN do path já parseado. Só o path conta: ASIN em query
+// não identifica produto.
+//
+// Formas aceitas: /dp/<ASIN>, /<slug>/dp/<ASIN>, /gp/product/<ASIN>,
+// /gp/aw/d/<ASIN>. Encurtador (amzn.to/xxxx), busca (/s?k=) e storefront não
+// têm ASIN — devolvem false, e o conversor deixa o link ser removido em vez
+// de emitir uma URL que não converte.
+func AmazonASIN(u *url.URL) (string, bool) {
+	segs := PathSegments(u)
+	for i, seg := range segs {
+		if !amazonASINSegments[strings.ToLower(seg)] {
+			continue
+		}
+		if i+1 >= len(segs) {
+			continue
+		}
+		candidate := strings.ToUpper(segs[i+1])
+		if asinRe.MatchString(candidate) {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+// AmazonKey monta a canonical key de produto Amazon.
+func AmazonKey(asin string) string { return "amazon:" + strings.ToUpper(asin) }
+
+func classifyAmazon(u URL) Classification {
+	if asin, ok := AmazonASIN(u.Parsed); ok {
+		return Classification{
+			Class:        models.URLClassProduct,
+			ErrorClass:   models.ErrorClassNone,
+			Reason:       models.ReasonNone,
+			CanonicalKey: AmazonKey(asin),
+			CanonicalURL: cleanCanonicalNoQuery(u.Parsed),
+		}
+	}
+	// Sem ASIN não dá para reatribuir: encurtador precisaria de expansão,
+	// busca/storefront não são produto. Unknown NUNCA vira campanha.
+	return Classification{
+		Class:      models.URLClassUnknown,
+		ErrorClass: models.ErrorClassNone,
+		Reason:     models.ReasonNone,
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AliExpress
+// ---------------------------------------------------------------------------
+
+// aliexpressItemRe casa o ID no último segmento: /item/1005006123456789.html
+var aliexpressItemRe = regexp.MustCompile(`^(\d{6,})\.html$`)
+
+// AliExpressItemID lê o ID de produto do path já parseado.
+func AliExpressItemID(u *url.URL) (string, bool) {
+	segs := PathSegments(u)
+	if len(segs) == 0 {
+		return "", false
+	}
+	if m := aliexpressItemRe.FindStringSubmatch(segs[len(segs)-1]); m != nil {
+		return m[1], true
+	}
+	return "", false
+}
+
+// AliExpressKey monta a canonical key de produto AliExpress.
+func AliExpressKey(itemID string) string { return "aliexpress:" + itemID }
+
+func classifyAliExpress(u URL) Classification {
+	if id, ok := AliExpressItemID(u.Parsed); ok {
+		return Classification{
+			Class:        models.URLClassProduct,
+			ErrorClass:   models.ErrorClassNone,
+			Reason:       models.ReasonNone,
+			CanonicalKey: AliExpressKey(id),
+			CanonicalURL: cleanCanonicalNoQuery(u.Parsed),
+		}
+	}
+	// s.click.aliexpress.com e /gcp/ (campanhas) não trazem ID no path. A API
+	// de afiliado converte a URL inteira, então não é "impossível" — mas sem
+	// ID não há identidade para dedup: unknown.
+	return Classification{
+		Class:      models.URLClassUnknown,
+		ErrorClass: models.ErrorClassNone,
+		Reason:     models.ReasonNone,
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Awin
+// ---------------------------------------------------------------------------
+
+// AwinAdvertiserHost devolve o domínio de anunciante Awin que casa com o host.
+// Devolve o domínio CANÔNICO da tabela (não o host cheio), que é a chave do
+// mapa domínio→awinmid guardado na credencial do usuário.
+func AwinAdvertiserHost(host string) (string, bool) {
+	for _, d := range awinAdvertiserHosts {
+		if hostMatches(host, d) {
+			return d, true
+		}
+	}
+	return "", false
+}
+
+// IsAwinRedirect reporta se a URL já é um deeplink da rede Awin — nesse caso
+// ela carrega o awinaffid de OUTRO afiliado e precisa ser reatribuída.
+func IsAwinRedirect(u URL) bool {
+	for _, d := range awinHosts {
+		if hostMatches(u.Host, d) {
+			return true
+		}
+	}
+	return false
+}
+
+func classifyAwin(u URL) Classification {
+	// Deeplink da rede: o destino real está em ?ued=, ainda não resolvido aqui.
+	if IsAwinRedirect(u) {
+		return Classification{
+			Class:      models.URLClassUnknown,
+			ErrorClass: models.ErrorClassNone,
+			Reason:     models.ReasonNone,
+		}
+	}
+	// Loja de anunciante: qualquer URL do domínio é convertível, porque o
+	// deeplink embrulha a URL inteira (não precisa de ID de produto).
+	return Classification{
+		Class:        models.URLClassProduct,
+		ErrorClass:   models.ErrorClassNone,
+		Reason:       models.ReasonNone,
+		CanonicalURL: cleanCanonical(u.Parsed),
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Tracking
 // ---------------------------------------------------------------------------
 
@@ -312,7 +474,11 @@ var trackingParams = map[string]bool{
 // trackingPrefixes são prefixos removidos. `quantity`, `variation` e
 // desconhecidos NÃO entram: rotular parâmetro funcional como tracking quebra o
 // link do cliente, e o plano exige prova antes de remover.
-var trackingPrefixes = []string{"utm_", "af_", "matt_", "affiliate_"}
+// aff_ cobre o tracking de afiliado do AliExpress (aff_fcid, aff_platform,
+// aff_trace_key) — ele NÃO casa com "af_", que exige o underscore no terceiro
+// caractere. Sem ele, o identificador de quem postou no grupo-fonte viajava
+// dentro do link que emitimos.
+var trackingPrefixes = []string{"utm_", "af_", "aff_", "matt_", "affiliate_"}
 
 // StripTracking remove parâmetros de atribuição, userinfo e fragmento.
 // Devolve a URL limpa. Nunca devolve o original em erro — o chamador que

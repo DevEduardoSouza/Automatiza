@@ -2,6 +2,7 @@ package connectrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	affiliatesv1 "automatiza-go/internal/gen/affiliates/v1"
@@ -37,12 +38,33 @@ func (h *MercadoLivreHandler) Connect(
 	csrfToken := req.Msg.GetCsrfToken()
 	tag := req.Msg.GetTag()
 
-	// Validate required fields
-	if tag == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("tag is required"))
-	}
 	if cookie == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cookie is required"))
+	}
+
+	// Valida a sessão ANTES de salvar — e, de quebra, descobre a tag.
+	//
+	// Rejeitar cookie morto no cadastro corta o incidente na origem: as 7
+	// credenciais que existiam em produção morreram entre março e abril de 2026
+	// e ficaram 111-144 dias paradas, gerando ZERO links, sem que o cliente nem
+	// nós soubéssemos. Salvar um cookie já expirado só adia a descoberta.
+	check, valErr := mercadolivre.ValidateMLSession(ctx, nil, cookie)
+	if errors.Is(valErr, mercadolivre.ErrMLSessionExpired) {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("a sessão do Mercado Livre está expirada — entre em mercadolivre.com.br e copie o cookie de novo"))
+	}
+	// Qualquer outro erro (rede, WAF, 5xx) é INDETERMINADO: segue e salva.
+	// Bloquear o cadastro por instabilidade do ML seria pior que aceitar um
+	// cookie que talvez esteja bom — o health check pega depois.
+
+	// Tag informada tem precedência (retrocompatível com quem já manda). Só
+	// auto-preenche quando a conta tem EXATAMENTE uma: com várias, adivinhar
+	// credita a comissão na sub-tag errada em silêncio — o painel pergunta.
+	if tag == "" && check != nil && len(check.Tags) == 1 {
+		tag = check.Tags[0]
+	}
+	if tag == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("tag is required"))
 	}
 
 	// Save credentials using the ML service (CSRF token is optional, auto-refreshed)

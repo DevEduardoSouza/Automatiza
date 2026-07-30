@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	affiliatesv1 "automatiza-go/internal/gen/affiliates/v1"
 	"automatiza-go/internal/auth"
+	affiliatesv1 "automatiza-go/internal/gen/affiliates/v1"
 	"automatiza-go/internal/models"
+	"automatiza-go/internal/services/awin"
 
 	"connectrpc.com/connect"
 )
@@ -128,6 +129,198 @@ func TestUpsertCredential_ShopeeValidation(t *testing.T) {
 		}
 		if !strings.Contains(proto.Credentials, "18330220029") {
 			t.Error("appId must stay visible")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Lojas que ganharam formulário depois (Amazon, AliExpress, Awin)
+// ---------------------------------------------------------------------------
+
+func ctxUser() context.Context {
+	return context.WithValue(context.Background(), UserContextKey, &auth.User{ID: "user-1"})
+}
+
+// Os segredos novos não podem voltar em claro para o navegador — era assim que
+// o autofill sobrescrevia credencial válida (incidente 11/07).
+func TestCredentialToProto_MascaraSegredosNovos(t *testing.T) {
+	cases := []struct {
+		key    string
+		masked bool
+	}{
+		{"oauth2Token", true},
+		{"appSecret", true},
+		{"secretKey", true},
+		{"clientSecret", true},
+		// Identificadores NÃO são mascarados: o usuário precisa conferi-los.
+		{"awinId", false},
+		{"appKey", false},
+		{"tag", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.key, func(t *testing.T) {
+			out := credentialToProto(&models.AffiliateCredentials{
+				Store:       "awin",
+				Credentials: map[string]string{tc.key: "valor-real-secreto"},
+			})
+			if tc.masked && strings.Contains(out.GetCredentials(), "valor-real-secreto") {
+				t.Errorf("%s vazou em claro: %s", tc.key, out.GetCredentials())
+			}
+			if !tc.masked && !strings.Contains(out.GetCredentials(), "valor-real-secreto") {
+				t.Errorf("%s deveria continuar visível: %s", tc.key, out.GetCredentials())
+			}
+		})
+	}
+}
+
+// O mapa domínio→awinmid é interno: some da resposta em vez de ser mascarado
+// (mascarar faria o próximo save gravar "••••••••" por cima do mapa real).
+func TestCredentialToProto_RemoveChaveInterna(t *testing.T) {
+	out := credentialToProto(&models.AffiliateCredentials{
+		Store: "awin",
+		Credentials: map[string]string{
+			"awinId":     "112233",
+			"programmes": `{"netshoes.com.br":"9988"}`,
+		},
+	})
+	if strings.Contains(out.GetCredentials(), "programmes") {
+		t.Errorf("chave interna vazou: %s", out.GetCredentials())
+	}
+	if strings.Contains(out.GetCredentials(), secretMask) {
+		t.Errorf("chave interna foi mascarada em vez de removida: %s", out.GetCredentials())
+	}
+}
+
+// Bug que só apareceria no SEGUNDO save: a chave interna não volta do
+// formulário, e sem preservá-la o mapa de programas seria apagado.
+func TestUpsertCredential_PreservaMapaDeProgramas(t *testing.T) {
+	repo := &stubCredentialsRepo{upserted: &models.AffiliateCredentials{
+		Store: "awin",
+		Credentials: map[string]string{
+			"awinId":     "112233",
+			"programmes": `{"netshoes.com.br":"9988"}`,
+		},
+	}}
+	h := &AffiliateCredentialsHandler{credentialsRepo: repo}
+
+	_, err := h.UpsertCredential(ctxUser(), connect.NewRequest(&affiliatesv1.UpsertCredentialRequest{
+		Store:       affiliatesv1.AffiliateStore_AFFILIATE_STORE_AWIN,
+		Credentials: `{"awinId":"112233","oauth2Token":"tok"}`,
+	}))
+	if err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	if got := repo.upserted.GetCredential("programmes"); got != `{"netshoes.com.br":"9988"}` {
+		t.Errorf("mapa de programas = %q — foi apagado no segundo save", got)
+	}
+}
+
+// Awin: token recusado é determinístico e bloqueia o cadastro, com mensagem
+// acionável. Instabilidade da rede NÃO bloqueia (mesmo contrato da Shopee).
+func TestUpsertCredential_AwinValidation(t *testing.T) {
+	newReq := func() *connect.Request[affiliatesv1.UpsertCredentialRequest] {
+		return connect.NewRequest(&affiliatesv1.UpsertCredentialRequest{
+			Store:       affiliatesv1.AffiliateStore_AFFILIATE_STORE_AWIN,
+			Credentials: `{"awinId":"112233","oauth2Token":"tok"}`,
+		})
+	}
+
+	t.Run("token recusado → REJEITADO", func(t *testing.T) {
+		h := &AffiliateCredentialsHandler{
+			credentialsRepo: &stubCredentialsRepo{},
+			fetchAwinProgrammes: func(_ context.Context, _, _ string) ([]awin.Programme, error) {
+				return nil, awin.ErrInvalidCredentials
+			},
+		}
+		_, err := h.UpsertCredential(ctxUser(), newReq())
+		if err == nil || connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("erro = %v, queria InvalidArgument", err)
+		}
+	})
+
+	t.Run("Awin fora do ar → salva assim mesmo", func(t *testing.T) {
+		h := &AffiliateCredentialsHandler{
+			credentialsRepo: &stubCredentialsRepo{},
+			fetchAwinProgrammes: func(_ context.Context, _, _ string) ([]awin.Programme, error) {
+				return nil, fmt.Errorf("awin: HTTP 502")
+			},
+		}
+		if _, err := h.UpsertCredential(ctxUser(), newReq()); err != nil {
+			t.Fatalf("instabilidade não pode bloquear o cadastro: %v", err)
+		}
+	})
+
+	t.Run("sucesso → grava mapa e nomes na credencial", func(t *testing.T) {
+		repo := &stubCredentialsRepo{}
+		h := &AffiliateCredentialsHandler{
+			credentialsRepo: repo,
+			fetchAwinProgrammes: func(_ context.Context, _, _ string) ([]awin.Programme, error) {
+				return []awin.Programme{{ID: "9988", Name: "Netshoes", DisplayURL: "netshoes.com.br"}}, nil
+			},
+		}
+		if _, err := h.UpsertCredential(ctxUser(), newReq()); err != nil {
+			t.Fatalf("erro inesperado: %v", err)
+		}
+		if got := repo.upserted.GetCredential("programmes"); !strings.Contains(got, "9988") {
+			t.Errorf("mapa não foi gravado: %q", got)
+		}
+		if got := repo.upserted.GetCredential("programme_names"); !strings.Contains(got, "Netshoes") {
+			t.Errorf("nomes não foram gravados: %q", got)
+		}
+	})
+}
+
+func TestListAwinProgrammes(t *testing.T) {
+	t.Run("sem credencial salva → FailedPrecondition", func(t *testing.T) {
+		h := &AffiliateCredentialsHandler{
+			credentialsRepo:     &stubCredentialsRepo{},
+			fetchAwinProgrammes: func(_ context.Context, _, _ string) ([]awin.Programme, error) { return nil, nil },
+		}
+		_, err := h.ListAwinProgrammes(ctxUser(), connect.NewRequest(&affiliatesv1.ListAwinProgrammesRequest{}))
+		if err == nil || connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Fatalf("erro = %v, queria FailedPrecondition", err)
+		}
+	})
+
+	t.Run("token recusado → InvalidArgument", func(t *testing.T) {
+		h := &AffiliateCredentialsHandler{
+			credentialsRepo: &stubCredentialsRepo{upserted: &models.AffiliateCredentials{
+				Store:       "awin",
+				Credentials: map[string]string{"awinId": "112233", "oauth2Token": "ruim"},
+			}},
+			fetchAwinProgrammes: func(_ context.Context, _, _ string) ([]awin.Programme, error) {
+				return nil, awin.ErrInvalidCredentials
+			},
+		}
+		_, err := h.ListAwinProgrammes(ctxUser(), connect.NewRequest(&affiliatesv1.ListAwinProgrammesRequest{}))
+		if err == nil || connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("erro = %v, queria InvalidArgument", err)
+		}
+	})
+
+	t.Run("sucesso → lista e persiste o mapa", func(t *testing.T) {
+		repo := &stubCredentialsRepo{upserted: &models.AffiliateCredentials{
+			Store:       "awin",
+			Credentials: map[string]string{"awinId": "112233", "oauth2Token": "ok"},
+		}}
+		h := &AffiliateCredentialsHandler{
+			credentialsRepo: repo,
+			fetchAwinProgrammes: func(_ context.Context, _, _ string) ([]awin.Programme, error) {
+				return []awin.Programme{
+					{ID: "9988", Name: "Netshoes", DisplayURL: "netshoes.com.br"},
+					{ID: "5544", Name: "Dafiti", DisplayURL: "dafiti.com.br"},
+				}, nil
+			},
+		}
+		res, err := h.ListAwinProgrammes(ctxUser(), connect.NewRequest(&affiliatesv1.ListAwinProgrammesRequest{}))
+		if err != nil {
+			t.Fatalf("erro inesperado: %v", err)
+		}
+		if n := len(res.Msg.GetProgrammes()); n != 2 {
+			t.Fatalf("%d programas, queria 2", n)
+		}
+		if got := repo.upserted.GetCredential("programmes"); !strings.Contains(got, "9988") {
+			t.Errorf("o mapa não foi persistido: %q", got)
 		}
 	})
 }

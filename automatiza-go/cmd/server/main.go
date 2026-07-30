@@ -56,8 +56,12 @@ import (
 	"automatiza-go/internal/observability"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/repository/postgres"
+	"automatiza-go/internal/services/affiliatelink"
 	"automatiza-go/internal/services/ai"
+	"automatiza-go/internal/services/aliexpress"
+	"automatiza-go/internal/services/amazon"
 	"automatiza-go/internal/services/automation"
+	"automatiza-go/internal/services/awin"
 	"automatiza-go/internal/services/coupons"
 	"automatiza-go/internal/services/cron"
 	"automatiza-go/internal/services/ctas"
@@ -434,6 +438,18 @@ func main() {
 		config.NewModuleLogger(logger, "shopee"),
 	)
 
+	// Registry de conversão das lojas que não são Shopee/ML. Atrás do gate de
+	// processo AFFILIATE_STORES_V2: desligado (default), o registry é nil,
+	// Handles devolve false em tudo e os caminhos quentes se comportam
+	// exatamente como antes da feature — inclusive removendo esses links do
+	// corpo do espelho, que é o comportamento histórico.
+	affiliateRegistry := buildAffiliateRegistry(
+		os.Getenv("AFFILIATE_STORES_V2"),
+		affiliateRepo,
+		cacheClient,
+		logger,
+	)
+
 	mlService := mercadolivre.NewMLService(
 		cacheClient,
 		mlCredentialsRepo,
@@ -657,6 +673,15 @@ func main() {
 		config.NewModuleLogger(logger, "automation"),
 	)
 
+	// Conversão de Amazon/AliExpress/Awin no modo LIST. Setter em vez de
+	// parâmetro: o construtor acima já é posicional e tem 9 call sites em
+	// teste. nil (gate off) = comportamento anterior à feature.
+	if svc, ok := automationService.(interface {
+		SetAffiliateRegistry(*affiliatelink.Registry)
+	}); ok {
+		svc.SetAffiliateRegistry(affiliateRegistry)
+	}
+
 	// Create automation scheduler for cron-based execution
 	automationScheduler := automation.NewScheduler(
 		automationRepo,
@@ -749,6 +774,46 @@ func main() {
 	cronService.RegisterTask("instagram_retention_cleanup", 24*time.Hour, func(ctx context.Context) error {
 		return instagramService.CleanupExpired(ctx, time.Now().UTC())
 	})
+
+	// Saúde das sessões do Mercado Livre. Verifica em lotes pequenos e
+	// espaçados quem está há >12h sem checagem (detalhes de ritmo em
+	// ml_health.go). Existe porque as credenciais ML de produção morreram e
+	// ficaram 111-144 dias paradas, gerando ZERO links, sem que o cliente nem
+	// nós soubéssemos — não havia nenhuma verificação no sistema.
+	//
+	// Só registra com o gate ligado: o cron faz chamadas AUTENTICADAS ao painel
+	// do ML e depende das colunas da migração 084.
+	if cfg.MLSessionHealthEnabled {
+		mlHealthChecker := mercadolivre.NewHealthChecker(
+			mlCredentialsRepo,
+			cfg.MLCredentialsEncryptionKey,
+			config.NewModuleLogger(logger, "ml-health"),
+		)
+		// O aviso é a razão de ser do health check: sem ele o cliente só
+		// descobre que a sessão caiu quando estranha que parou de vender. As
+		// credenciais de produção ficaram 111-144 dias mortas exatamente por
+		// falta deste push.
+		//
+		// Avisa SÓ em 'expired' (401/403 determinístico). 'blocked' e 'unknown'
+		// são indeterminados — notificar neles mandaria o cliente reconectar à
+		// toa e queimaria a confiança no aviso, que é o ativo mais frágil aqui.
+		// O HealthChecker já só chama isto na TRANSIÇÃO de estado, então não há
+		// repetição enquanto a sessão seguir morta.
+		mlHealthChecker.OnStatusChange(func(ctx context.Context, userID, _, newStatus string) {
+			if newStatus != "expired" {
+				return
+			}
+			webpushSvc.NotifyUser(ctx, userID, webpush.Notification{
+				Title: "Mercado Livre desconectado",
+				Body:  "Sua sessão do Mercado Livre expirou e os links de afiliado pararam de ser gerados. Reconecte em Programas de Afiliados.",
+				URL:   "/affiliate-programs",
+			})
+		})
+
+		cronService.RegisterTask("ml_session_health", time.Hour, func(ctx context.Context) error {
+			return mlHealthChecker.Run(ctx)
+		})
+	}
 
 	// Reconciliador de 'queued' órfão (não-LIST-item): fecha o gap deixado pelo
 	// reconciliador de LIST. Um dispatch de search/monitoring/offer (ou de list
@@ -962,6 +1027,12 @@ func main() {
 		// DurableMediaFetcher; outro provider entra como nil e a admissão
 		// simplesmente não persiste mídia (cai no base64 inline do webhook).
 		monitoring.WithCadence(repos.MonitorCadence, durableMediaFetcher(wahaAdapter)),
+		// Lojas sem API de geração de link (Shein): o espelho troca o link da
+		// fonte pelo onelink fixo do dono em vez de apagá-lo. Só age em
+		// automação que listou a loja E tem credencial ativa.
+		monitoring.WithAffiliateCredentials(affiliateRepo),
+		// Conversão de Amazon/AliExpress/Awin. nil (gate off) = sem mudança.
+		monitoring.WithAffiliateRegistry(affiliateRegistry),
 	)
 
 	// Poller da cadência: SÓ no processo server (o worker retorna antes do
@@ -999,6 +1070,13 @@ func main() {
 		cacheClient,
 		config.NewModuleLogger(logger, "offer-generate"),
 	)
+
+	// Mesmo registry nos relays de cupom do offer_generate.
+	if svc, ok := offerGenerateService.(interface {
+		SetAffiliateRegistry(*affiliatelink.Registry)
+	}); ok {
+		svc.SetAffiliateRegistry(affiliateRegistry)
+	}
 
 	// =========================================================================
 	// Melhoria 5 — chip reserva e failover de instância.
@@ -2161,4 +2239,40 @@ func (a instagramAIAdapter) GenerateInstagramReply(ctx context.Context, req *ins
 		PromptTokens:     res.PromptTokens,
 		CompletionTokens: res.CompletionTokens,
 	}, nil
+}
+
+// parseAffiliateStoresGate lê AFFILIATE_STORES_V2, o gate de PROCESSO das
+// lojas com conversor próprio (Amazon, AliExpress, Awin). Só "1", "true", "on"
+// e "yes" ligam — ausente ou lixo é false.
+//
+// Rollback é desligar este gate: o registry vira nil e todo caminho novo some,
+// sem migração para desfazer e sem tocar em credencial salva.
+func parseAffiliateStoresGate(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "on", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+// buildAffiliateRegistry monta o registry de conversores. Gate desligado
+// devolve nil, e nil é o valor que faz todo caller manter o comportamento
+// anterior à feature.
+func buildAffiliateRegistry(
+	gateRaw string,
+	affiliateRepo repository.AffiliateCredentialsRepository,
+	cacheClient *cache.Cache,
+	logger *zap.Logger,
+) *affiliatelink.Registry {
+	if !parseAffiliateStoresGate(gateRaw) {
+		return nil
+	}
+	return affiliatelink.New(map[string]affiliatelink.Converter{
+		models.MonitorStoreAmazon: amazon.New(affiliateRepo, config.NewModuleLogger(logger, "amazon")),
+		models.MonitorStoreAwin:   awin.New(affiliateRepo, config.NewModuleLogger(logger, "awin")),
+		models.MonitorStoreAliExpress: aliexpress.New(
+			affiliateRepo, cacheClient, config.NewModuleLogger(logger, "aliexpress"), "",
+		),
+	})
 }

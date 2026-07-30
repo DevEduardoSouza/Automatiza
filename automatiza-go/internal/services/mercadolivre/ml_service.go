@@ -49,6 +49,11 @@ type mlService struct {
 	mlLinkRepo    repository.MLLinkRepository
 	encryptionKey string
 	logger        *zap.Logger
+	// breaker cobre falha de infra (rede/timeout/5xx); blockBreaker cobre
+	// recusa deliberada do ML (429/WAF) e fica aberto MUITO mais tempo —
+	// sondar um bloqueio a cada 30s é como se perde o IP de vez.
+	breaker      *circuitBreaker
+	blockBreaker *circuitBreaker
 }
 
 // NewMLService creates a new Mercado Livre service
@@ -61,7 +66,13 @@ func NewMLService(
 ) Service {
 	return &mlService{
 		httpClient: &http.Client{
-			Timeout:   30 * time.Second,
+			// 10s (era 30s): o createLink normalmente responde em <2s. Com 30s,
+			// cada chamada a um ML pendurado segura o scheduler serial de
+			// automações por 30s e, depois de ~10 chamadas, o tick inteiro
+			// estoura — matando de fome as outras automações. Mesma lição já
+			// escrita em shopee_service.go:151-158. Falha rápido e deixa o
+			// breaker assumir.
+			Timeout:   10 * time.Second,
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 		safe:          newSafeMLClients(commerceurl.ClientOptions{}),
@@ -70,7 +81,28 @@ func NewMLService(
 		mlLinkRepo:    mlLinkRepo,
 		encryptionKey: encryptionKey,
 		logger:        logger,
+		breaker:       newCircuitBreaker(5, 30*time.Second),
+		blockBreaker:  newCircuitBreaker(3, 15*time.Minute),
 	}
+}
+
+// inSessionDeadCooldown reporta se este usuário bateu em sessão expirada há
+// pouco e deve pular chamadas ao ML por ora. Fail-open (false) com cache nil ou
+// erro — o cooldown é proteção de reputação, não gate de correção.
+func (s *mlService) inSessionDeadCooldown(ctx context.Context, userID string) bool {
+	if s.cache == nil || userID == "" {
+		return false
+	}
+	val, err := s.cache.Get(ctx, sessionDeadKey(userID))
+	return err == nil && val != ""
+}
+
+// markSessionDead arma o cooldown do usuário (best-effort).
+func (s *mlService) markSessionDead(ctx context.Context, userID string) {
+	if s.cache == nil || userID == "" {
+		return
+	}
+	_, _ = s.cache.SetNX(ctx, sessionDeadKey(userID), "1", sessionDeadCooldown)
 }
 
 // Cache TTLs for ML (matching Node.js for parity)
@@ -126,10 +158,21 @@ func (s *mlService) CreateAffiliateLink(ctx context.Context, originURL, userID s
 		}, nil
 	}
 
+	// Sessão morta há pouco → nem tenta. Sem este guard, uma sessão expirada
+	// faz o worker bater no linkbuilder a cada item de cada lista do usuário,
+	// todas fadadas a 401 — é assim que se ganha um IP banido.
+	if s.inSessionDeadCooldown(ctx, userID) {
+		return nil, ErrMLSessionExpired
+	}
+
 	// Load credentials
 	creds, err := s.LoadCredentials(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("ML credentials not configured: %w", err)
+		// O erro JÁ vem tipado (ErrMLNoCredentials / ErrMLCredentialsUnreadable).
+		// Não re-embrulhar: era exatamente este wrap ("ML credentials not
+		// configured: %w") que fazia um timeout de Postgres casar o
+		// strings.Contains do espelho e PAUSAR a automação inteira do cliente.
+		return nil, err
 	}
 
 	// Create short link via ML API (with CSRF refresh on 401/403)
@@ -179,6 +222,20 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 	// ML affiliate link API (official endpoint)
 	const createLinkEndpoint = "https://www.mercadolivre.com.br/affiliate-program/api/v2/affiliates/createLink"
 	const referer = "https://www.mercadolivre.com.br/afiliados/linkbuilder"
+
+	// Tag vazia NÃO é erro do ML: o payload sairia com "tag": "" e o ML
+	// devolveria um link SEM atribuição — comissão perdida em silêncio, que é
+	// pior que falhar. O RPC já valida, mas a defesa pertence ao ponto de uso
+	// (o espelho e o offer_generate chamam por outro caminho).
+	if strings.TrimSpace(creds.Tag) == "" || creds.Cookie == "" {
+		return "", ErrMLNoCredentials
+	}
+
+	// Breaker aberto responde instantâneo, para que um ML fora do ar (ou nos
+	// bloqueando) não queime o orçamento de contexto do scheduler serial.
+	if !s.breaker.canRequest() || !s.blockBreaker.canRequest() {
+		return "", ErrMLUnavailable
+	}
 
 	csrf := creds.CSRF
 
@@ -263,18 +320,26 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 	// First attempt
 	resp, body, err := doRequest(csrf)
 	if err != nil {
+		s.breaker.recordFailure()
 		return "", err
 	}
 
-	// Auto-refresh CSRF on 401/403 and retry
-	if IsCSRFError(resp.StatusCode) {
+	// Auto-refresh do CSRF e retry — SÓ em 401/403.
+	//
+	// IsCSRFError trata 400 como erro de CSRF (csrf_refresh.go:111-113), mas o
+	// createLink devolve 400 por causa legítima (URL inválida, produto
+	// inexistente). Com 400 aqui, cada URL ruim disparava refresh + retry: o
+	// DOBRO de tráfego contra o endpoint mais sensível do ML, exatamente quando
+	// não há nada a corrigir. IsCSRFError segue intacta para os outros callers.
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		s.logger.Info("CSRF error, attempting refresh", zap.Int("status", resp.StatusCode))
 
 		refresher := NewCSRFRefresher(s.httpClient)
 		newCSRF, refreshErr := refresher.RefreshCSRFToken(ctx, creds.Cookie)
 		if refreshErr != nil {
 			s.logger.Warn("Failed to refresh CSRF token", zap.Error(refreshErr))
-			return "", fmt.Errorf("ML session expired (401/403) and CSRF refresh failed: %w", refreshErr)
+			s.markSessionDead(ctx, userID)
+			return "", ErrMLSessionExpired
 		}
 
 		csrf = newCSRF
@@ -294,23 +359,16 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 		// Retry with new CSRF
 		resp, body, err = doRequest(csrf)
 		if err != nil {
+			s.breaker.recordFailure()
 			return "", err
 		}
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		s.logger.Warn("ML createLink non-200",
-			zap.Int("status", resp.StatusCode),
-			zap.String("body", string(body[:min(len(body), 300)])))
-		bodySnippet := string(body[:min(len(body), 500)])
-		httpErr := fmt.Errorf("ML API error %d: %s", resp.StatusCode, bodySnippet)
-		observability.LogAndCapture(s.logger, sentry.LevelError, "ML createLink returned non-200 status", httpErr, map[string]string{
-			"external_service": "mercadolivre",
-			"endpoint":         "createLink",
-			"http_status":      fmt.Sprintf("%d", resp.StatusCode),
-		})
-		return "", httpErr
+		return "", s.classifyCreateLinkFailure(ctx, userID, resp.StatusCode, body)
 	}
+	s.breaker.recordSuccess()
+	s.blockBreaker.recordSuccess()
 
 	// Parse ML API response: { status: 200, urls: [{ original_url, long_url, short_url }] }
 	var result struct {
@@ -343,6 +401,56 @@ func (s *mlService) createShortLink(ctx context.Context, originURL string, creds
 	}
 
 	return "", fmt.Errorf("no affiliate link in response")
+}
+
+// classifyCreateLinkFailure traduz um non-200 do createLink em erro TIPADO e
+// alimenta o breaker certo. Antes tudo virava a mesma string ("ML API error
+// %d"), e quem chamava não conseguia distinguir "sessão morreu" (o cliente
+// precisa reconectar) de "ML fora do ar" (retentar depois) de "estamos sendo
+// bloqueados" (parar de bater JÁ).
+func (s *mlService) classifyCreateLinkFailure(ctx context.Context, userID string, status int, body []byte) error {
+	snippet := string(body[:min(len(body), 300)])
+
+	switch {
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		// Chegamos aqui só depois de o refresh de CSRF ter dado certo e o
+		// retry ter falhado igual: não é CSRF velho, é a sessão morta mesmo.
+		s.markSessionDead(ctx, userID)
+		s.logger.Warn("ML session expired on createLink",
+			zap.Int("status", status), zap.String("userID", userID))
+		// Fora do Sentry de propósito: uma sessão expirada gera milhares de
+		// eventos idênticos e a cota do backend é de 6/h (mesmo raciocínio já
+		// aplicado ao aviso da /social).
+		return ErrMLSessionExpired
+
+	case status == http.StatusTooManyRequests:
+		s.blockBreaker.recordFailure()
+		s.logger.Warn("ML rate-limited createLink", zap.Int("status", status))
+		return ErrMLBlocked
+
+	case status >= 500:
+		s.breaker.recordFailure()
+		return fmt.Errorf("ml API error %d: %s", status, snippet)
+
+	case !json.Valid(body):
+		// Corpo que não é JSON num endpoint que só fala JSON = página de
+		// desafio/bloqueio do WAF. NUNCA retentar: sondar bloqueio é como se
+		// perde o IP de vez.
+		s.blockBreaker.recordFailure()
+		observability.LogAndCapture(s.logger, sentry.LevelError, "ML createLink returned non-JSON body (WAF challenge?)", ErrMLBlocked, map[string]string{
+			"external_service": "mercadolivre",
+			"endpoint":         "createLink",
+			"http_status":      fmt.Sprintf("%d", status),
+		})
+		return ErrMLBlocked
+	}
+
+	// 4xx restante (tipicamente 400: URL inválida / produto inexistente). É
+	// estrutural para AQUELA URL, não uma falha do provedor — não conta para o
+	// breaker, senão uma lista com links podres abriria o circuito para todos.
+	s.logger.Warn("ML createLink non-200",
+		zap.Int("status", status), zap.String("body", snippet))
+	return fmt.Errorf("%w: status %d: %s", ErrMLUnconvertibleURL, status, snippet)
 }
 
 func (s *mlService) GetProductPreview(ctx context.Context, originURL, userID string) (*models.MLProductPreview, error) {
@@ -780,32 +888,30 @@ func (s *mlService) LoadCredentials(ctx context.Context, userID string) (*models
 			"external_service": "mercadolivre",
 			"endpoint":         "loadCredentials",
 		})
-		return nil, err
+		// TRANSITÓRIO, não "usuário sem credencial": isto aqui é timeout de
+		// Postgres ou ctx cancelado no shutdown do worker. Colapsar os dois
+		// fazia o espelho PAUSAR a automação inteira do cliente por causa de um
+		// soluço de banco (ver ml_errors.go).
+		return nil, fmt.Errorf("%w: %v", ErrMLCredentialsUnreadable, err)
 	}
 	if dbCreds == nil {
-		return nil, fmt.Errorf("no ML credentials found for user")
+		return nil, ErrMLNoCredentials
 	}
 
-	// Decrypt credentials
-	var creds models.MLCredentials
-	var blob crypto.EncryptedBlobV1
-	if err := json.Unmarshal([]byte(dbCreds.EncryptedData), &blob); err != nil {
-		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to unmarshal ML encrypted credentials blob", err, map[string]string{
-			"external_service": "mercadolivre",
-			"endpoint":         "loadCredentials",
-		})
-		return nil, fmt.Errorf("failed to parse encrypted credentials: %w", err)
-	}
-
-	if err := crypto.DecryptJSONV1(&blob, s.encryptionKey, &creds); err != nil {
+	// Falha de decifragem (chave trocada, blob corrompido) sai como
+	// ErrMLCredentialsUnreadable, NÃO como ErrMLNoCredentials: pedir "conecte
+	// sua conta" ao cliente não conserta chave errada no servidor, e pausar a
+	// automação dele por isso seria pior ainda.
+	creds, err := decryptMLCredentials(dbCreds.EncryptedData, s.encryptionKey)
+	if err != nil {
 		observability.LogAndCapture(s.logger, sentry.LevelError, "Failed to decrypt ML credentials", err, map[string]string{
 			"external_service": "mercadolivre",
 			"endpoint":         "loadCredentials",
 		})
-		return nil, fmt.Errorf("failed to decrypt credentials: %w", err)
+		return nil, err
 	}
 
-	return &creds, nil
+	return creds, nil
 }
 
 func (s *mlService) SaveCredentials(ctx context.Context, userID, cookie, csrf, tag string) error {

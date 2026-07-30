@@ -159,6 +159,32 @@ const (
 	MonitorStoreUnsupported = "unsupported"
 )
 
+// Lojas com conversão de link própria fora do par Shopee/ML. NÃO entram no
+// ledger: monitor_offer_items.store tem CHECK IN ('shopee','mercadolivre',
+// 'unsupported') desde a migração 079 — ver LedgerStore.
+const (
+	MonitorStoreAmazon     = "amazon"
+	MonitorStoreAliExpress = "aliexpress"
+	MonitorStoreAwin       = "awin"
+	// Shein não tem API de geração de link (o afiliado copia um
+	// onelink.shein.com pronto do app), então a "conversão" dela é a troca do
+	// link da fonte pelo link fixo do dono da automação — sem rede.
+	MonitorStoreShein = "shein"
+)
+
+// LedgerStore coage uma loja para o domínio aceito por
+// monitor_offer_items.store (CHECK da migração 079). Loja nova gravada crua
+// viola a constraint e derruba a escrita do ledger inteiro — o retry perde o
+// item em vez de reagendá-lo.
+func LedgerStore(store string) string {
+	switch store {
+	case MonitorStoreShopee, MonitorStoreMercadoLivr:
+		return store
+	default:
+		return MonitorStoreUnsupported
+	}
+}
+
 // Status do job.
 const (
 	MonitorJobActive     = "active"
