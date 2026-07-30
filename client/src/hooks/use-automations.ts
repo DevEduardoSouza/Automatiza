@@ -199,6 +199,9 @@ export function fromLocalAutomation(local: LocalAutomation): Automation {
     offer_generate_send_as_image: local.offerGenerateSendAsImage,
     search_send_as_image: local.searchSendAsImage,
     monitoring_send_as_image: local.monitoringSendAsImage,
+    monitor_interval_minutes: local.monitorIntervalMinutes,
+    monitor_pending_count: local.monitorPendingCount,
+    monitor_next_scheduled_at: local.monitorNextScheduledAt,
     instance_id: local.instanceId ?? null,
     instance_ids: local.instanceIds ?? [],
     chip_overrides: local.chipOverrides ?? {},
@@ -619,6 +622,13 @@ export function useAutomations(): UseAutomationsReturn {
 
       if (editingId) {
         // Update existing automation
+        // O intervalo do espelho so entra no payload quando MUDOU. Reenviar o
+        // valor ja salvo faria o update INTEIRO falhar se a cadencia fosse
+        // desligada como rollback (o backend recusa > 0 com a feature off),
+        // travando a edicao por um campo que o usuario nem tocou.
+        const savedMonitorInterval = automations.find(
+          (a) => a.id === editingId
+        )?.monitor_interval_minutes;
         const updateParams: UpdateAutomationParams = {
           id: editingId,
           name: formData.name,
@@ -648,6 +658,10 @@ export function useAutomations(): UseAutomationsReturn {
           ctaIds: isEventDriven ? [] : formData.cta_ids || [],
           status: formData.status,
           delaySeconds: isEventDriven ? formData.delay_seconds : undefined,
+          monitorIntervalMinutes:
+            isEventDriven && formData.monitor_interval_minutes !== savedMonitorInterval
+              ? formData.monitor_interval_minutes
+              : undefined,
           couponId: formData.coupon_id || undefined,
           mlLinkListId,
           listItemsPerRun:
@@ -714,6 +728,7 @@ export function useAutomations(): UseAutomationsReturn {
           ctaIds: isEventDriven ? [] : formData.cta_ids || [],
           status: formData.status || 'active',
           delaySeconds: isEventDriven ? formData.delay_seconds : undefined,
+          monitorIntervalMinutes: isEventDriven ? formData.monitor_interval_minutes : undefined,
           couponId: formData.coupon_id || undefined,
           mlLinkListId,
           listItemsPerRun:
@@ -776,7 +791,7 @@ export function useAutomations(): UseAutomationsReturn {
   }, [
     formData,
     editingId,
-    automations.length,
+    automations,
     maxAutomations,
     toast,
     t,
