@@ -5,10 +5,10 @@
     <style>
       body {
         font-family: system-ui, -apple-system, sans-serif;
-        width: 300px;
+        width: 320px;
         margin: 0;
         padding: 16px;
-        color: #1a1a1a;
+        color: #18181b;
       }
       h1 {
         font-size: 15px;
@@ -17,7 +17,7 @@
       p {
         font-size: 13px;
         line-height: 1.45;
-        color: #555;
+        color: #52525b;
         margin: 0 0 12px;
       }
       .status {
@@ -42,6 +42,29 @@
       .bad .dot {
         background: #dc2626;
       }
+      button {
+        width: 100%;
+        margin-top: 12px;
+        padding: 9px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        background: #2563eb;
+        border: 0;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      button:disabled {
+        background: #a1a1aa;
+        cursor: not-allowed;
+      }
+      ol {
+        font-size: 12px;
+        color: #52525b;
+        line-height: 1.5;
+        padding-left: 18px;
+        margin: 12px 0 0;
+      }
       a {
         color: #2563eb;
       }
@@ -50,19 +73,30 @@
   <body>
     <h1>Automatiza — Mercado Livre</h1>
     <p>
-      Esta extensão conecta sua conta do Mercado Livre ao Automatiza para gerar
-      seus links de afiliado automaticamente.
+      Gera o código de conexão da sua conta do Mercado Livre para colar no
+      Automatiza.
     </p>
+
     <div class="status" id="status">
       <span class="dot"></span><span id="text">Verificando…</span>
     </div>
-    <p style="margin-top: 12px; font-size: 12px">
-      Para conectar, abra
-      <a href="https://v2automatisagrupos.com/affiliate-programs" target="_blank"
-        >Programas de Afiliados</a
-      >
-      no Automatiza e clique em <b>Detectar automaticamente</b>.
-    </p>
+
+    <button id="copy" disabled>Copiar código de conexão</button>
+
+    <ol>
+      <li>Clique em <b>Copiar código de conexão</b>.</li>
+      <li>
+        Abra
+        <a
+          href="https://v2automatisagrupos.com/affiliate-programs"
+          target="_blank"
+          >Programas de Afiliados</a
+        >
+        no Automatiza.
+      </li>
+      <li>Cole no campo <b>Token de conexao</b> do Mercado Livre e salve.</li>
+    </ol>
+
     <script src="popup.js"></script>
   </body>
 </html>

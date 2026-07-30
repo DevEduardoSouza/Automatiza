@@ -2150,6 +2150,15 @@ func (s *monitoringService) detectStore(links []string) string {
 			return "mercadolivre"
 		}
 	}
+	// Lojas com conversor próprio: sem este segundo passe, um disparo 100%
+	// Amazon/AliExpress/Awin gravaria dispatch_logs.store vazio e sumiria dos
+	// filtros por loja do painel. Fica DEPOIS do par Shopee/ML de propósito —
+	// numa mensagem mista, a loja da oferta principal continua sendo a deles.
+	for _, link := range links {
+		if store, _ := text.LinkStore(link); store != "" && store != models.MonitorStoreUnsupported {
+			return store
+		}
+	}
 	return ""
 }
 

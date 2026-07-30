@@ -1,56 +1,63 @@
-// Status do popup: diz ao usuário, em uma linha, se a conexão está pronta.
+// Popup: mostra o estado da sessão e entrega o código de conexão.
 //
-// Não expõe nem loga o cookie: o popup só olha se EXISTE sessão e se o painel
-// de afiliados responde. O valor do cookie nunca sai da máquina a não ser
-// quando o próprio usuário clica em conectar no Automatiza.
-
-const ML_DOMAIN = 'mercadolivre.com.br';
-const TAGS_ENDPOINT = 'https://www.mercadolivre.com.br/affiliate-program/api/v2/stripe/user/tags';
+// O cookie NUNCA é exibido nem logado. Ele sai da máquina só dentro do código
+// que o próprio usuário copia e cola no Automatiza — um ato explícito dele.
+//
+// A montagem do token vive no service worker (background.js), não aqui: é o
+// mesmo caminho usado pelo painel via externally_connectable, então os dois
+// fluxos não podem divergir.
 
 function render(state, text) {
-  const el = document.getElementById('status');
-  el.className = `status ${state}`;
-  document.getElementById('text').textContent = text;
+	const el = document.getElementById("status");
+	el.className = `status ${state}`;
+	document.getElementById("text").textContent = text;
 }
 
-async function check() {
-  const cookies = await chrome.cookies.getAll({ domain: ML_DOMAIN });
-  if (!cookies || cookies.length === 0) {
-    render('bad', 'Você não está logado no Mercado Livre.');
-    return;
-  }
+let tokenCache = "";
 
-  try {
-    const resp = await fetch(TAGS_ENDPOINT, {
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    });
+async function refresh() {
+	const resp = await chrome.runtime.sendMessage({ action: "getMLToken" });
 
-    if (resp.status === 401 || resp.status === 403) {
-      render('bad', 'Sessão expirada — faça login de novo.');
-      return;
-    }
-    if (!resp.ok) {
-      // Não acusar o usuário por instabilidade do ML: "indeterminado" é a
-      // informação honesta aqui.
-      render('', 'Não deu para verificar agora. Tente mais tarde.');
-      return;
-    }
+	if (!resp?.ok) {
+		// Mensagens do background já são escritas para o usuário final: dizem o que
+		// fazer ("faça login"), não o que falhou tecnicamente.
+		render("bad", resp?.message || "Não foi possível ler sua sessão.");
+		return;
+	}
 
-    const data = await resp.json();
-    const items = Array.isArray(data) ? data : data?.tags || data?.data || [];
-    const n = items.length;
-    render(
-      'ok',
-      n === 1
-        ? 'Conectado ao Mercado Livre.'
-        : n > 1
-          ? `Conectado — ${n} etiquetas encontradas.`
-          : 'Conectado ao Mercado Livre.'
-    );
-  } catch (_e) {
-    render('', 'Não deu para verificar agora. Tente mais tarde.');
-  }
+	tokenCache = resp.token;
+	document.getElementById("copy").disabled = false;
+
+	if (resp.needsTagChoice) {
+		// Várias etiquetas: o Automatiza precisa perguntar qual usar. Escolher aqui
+		// creditaria comissão na etiqueta errada em silêncio.
+		render(
+			"ok",
+			`Conectado — ${resp.tags.length} etiquetas. Escolha qual usar no Automatiza.`,
+		);
+		return;
+	}
+
+	render(
+		"ok",
+		resp.tags?.length === 1
+			? `Conectado — etiqueta ${resp.tags[0]}.`
+			: "Conectado ao Mercado Livre.",
+	);
 }
 
-check();
+document.getElementById("copy").addEventListener("click", async () => {
+	if (!tokenCache) return;
+	const btn = document.getElementById("copy");
+	try {
+		await navigator.clipboard.writeText(tokenCache);
+		btn.textContent = "Código copiado!";
+	} catch (_e) {
+		btn.textContent = "Não deu para copiar";
+	}
+	setTimeout(() => {
+		btn.textContent = "Copiar código de conexão";
+	}, 2000);
+});
+
+refresh();

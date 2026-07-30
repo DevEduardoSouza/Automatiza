@@ -205,3 +205,70 @@ func TestFetchProgrammesInstabilidadeNaoEhCredencialRuim(t *testing.T) {
 		t.Error("5xx não pode ser tratado como credencial invalida")
 	}
 }
+
+// O seletor de marcas da UI precisa ter efeito: sem este filtro o usuário
+// desmarcaria uma marca e ela continuaria sendo convertida.
+func TestConvertRespeitaMarcasSelecionadas(t *testing.T) {
+	programmes := []Programme{
+		{ID: "9988", Name: "Netshoes", DisplayURL: "netshoes.com.br"},
+		{ID: "5544", Name: "Dafiti", DisplayURL: "dafiti.com.br"},
+	}
+	domains, _ := EncodeDomainMap(DomainMap(programmes))
+	brands, _ := EncodeBrandMap(BrandMap(programmes))
+
+	repoWithSelection := func(selected string) *fakeRepo {
+		creds := map[string]string{
+			"awinId":                "112233",
+			ProgrammesCredentialKey: domains,
+			BrandMapCredentialKey:   brands,
+		}
+		if selected != "" {
+			creds[SelectedBrandsCredentialKey] = selected
+		}
+		return &fakeRepo{creds: &models.AffiliateCredentials{Store: storeKey, Credentials: creds}}
+	}
+
+	t.Run("marca selecionada converte", func(t *testing.T) {
+		got, err := convert(t, repoWithSelection(`["Netshoes"]`), "https://www.netshoes.com.br/p/1")
+		if err != nil {
+			t.Fatalf("erro inesperado: %v", err)
+		}
+		if !strings.Contains(got, "awinmid=9988") {
+			t.Errorf("deeplink = %q", got)
+		}
+	})
+
+	t.Run("marca NÃO selecionada não converte", func(t *testing.T) {
+		_, err := convert(t, repoWithSelection(`["Netshoes"]`), "https://www.dafiti.com.br/p/1")
+		if !errors.Is(err, affiliatelink.ErrUnconvertible) {
+			t.Errorf("erro = %v, queria ErrUnconvertible", err)
+		}
+	})
+
+	t.Run("sem seleção vale tudo que foi aprovado", func(t *testing.T) {
+		for _, url := range []string{
+			"https://www.netshoes.com.br/p/1",
+			"https://www.dafiti.com.br/p/1",
+		} {
+			if _, err := convert(t, repoWithSelection(""), url); err != nil {
+				t.Errorf("Convert(%q): %v", url, err)
+			}
+		}
+	})
+
+	t.Run("credencial antiga sem mapa de marcas não bloqueia", func(t *testing.T) {
+		// Compatibilidade: quem salvou antes desta versão não tem
+		// programme_brand_ids. Bloquear tudo seria pior que não filtrar.
+		repo := &fakeRepo{creds: &models.AffiliateCredentials{
+			Store: storeKey,
+			Credentials: map[string]string{
+				"awinId":                    "112233",
+				ProgrammesCredentialKey:     domains,
+				SelectedBrandsCredentialKey: `["Netshoes"]`,
+			},
+		}}
+		if _, err := convert(t, repo, "https://www.dafiti.com.br/p/1"); err != nil {
+			t.Errorf("sem mapa nome→id o filtro tem de ser ignorado, veio %v", err)
+		}
+	})
+}
