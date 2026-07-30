@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Automatiza — Conector Mercado Livre",
+  "version": "1.0.0",
+  "description": "Conecta sua conta do Mercado Livre ao Automatiza para gerar seus links de afiliado automaticamente.",
+  "permissions": ["cookies"],
+  "host_permissions": [
+    "https://www.mercadolivre.com.br/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Automatiza — Conector Mercado Livre"
+  },
+  "externally_connectable": {
+    "matches": [
+      "https://v2automatisagrupos.com/*",
+      "http://localhost/*"
+    ]
+  }
+}

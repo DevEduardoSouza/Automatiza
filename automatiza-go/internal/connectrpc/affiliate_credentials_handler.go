@@ -223,6 +223,9 @@ func (h *AffiliateCredentialsHandler) UpsertCredential(
 				if encoded, encErr := awin.EncodeDomainMap(awin.DomainMap(programmes)); encErr == nil {
 					data.SetCredential(awin.ProgrammesCredentialKey, encoded)
 				}
+				if brands, brErr := awin.EncodeBrandMap(awin.BrandMap(programmes)); brErr == nil {
+					data.SetCredential(awin.BrandMapCredentialKey, brands)
+				}
 				if names, nameErr := json.Marshal(programmeNames(programmes)); nameErr == nil {
 					data.SetCredential(awin.ProgrammeNamesCredentialKey, string(names))
 				}
@@ -367,7 +370,7 @@ var secretCredentialKeys = []string{
 // NUNCA vão para o navegador — não por sigilo, por volume e por não terem uso
 // na UI. Diferente dos segredos, elas são REMOVIDAS da resposta em vez de
 // mascaradas, e preservadas no save quando não vêm no payload.
-var internalCredentialKeys = []string{awin.ProgrammesCredentialKey}
+var internalCredentialKeys = []string{awin.ProgrammesCredentialKey, awin.BrandMapCredentialKey}
 
 // secretMask é o placeholder devolvido no lugar de secrets. O formulário
 // exibe os pontinhos; se voltarem intactos num save, o Upsert mantém o valor
@@ -555,6 +558,9 @@ func (h *AffiliateCredentialsHandler) persistAwinProgrammes(
 		return
 	}
 	credential.SetCredential(awin.ProgrammesCredentialKey, encoded)
+	if brands, brErr := awin.EncodeBrandMap(awin.BrandMap(programmes)); brErr == nil {
+		credential.SetCredential(awin.BrandMapCredentialKey, brands)
+	}
 	if names, nameErr := json.Marshal(programmeNames(programmes)); nameErr == nil {
 		credential.SetCredential(awin.ProgrammeNamesCredentialKey, string(names))
 	}

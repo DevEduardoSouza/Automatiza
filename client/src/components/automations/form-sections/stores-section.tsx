@@ -77,10 +77,18 @@ export function StoresSelector({ formData, setFormData, activeStores }: StoresSe
           {visibleStores.map((store) => {
             const isActive = activeStores.includes(store.value);
             const isMonitoring = formData.mode === 'monitor';
-            // O espelho so sabe resolver Shopee (conversao via API) e Shein
-            // (troca pelo onelink fixo do dono). As demais seguem removidas do
-            // corpo, entao nem sao selecionaveis em monitoramento.
-            const isMirrorStore = store.value === 'shopee' || store.value === 'shein';
+            // Lojas que o espelho sabe resolver: Shopee (API), Shein (troca
+            // pelo onelink fixo do dono) e as tres com conversor proprio —
+            // Amazon (reescrita /dp/<ASIN>?tag=), AliExpress (API assinada) e
+            // Awin (deeplink cread.php). As demais seguem removidas do corpo,
+            // entao nem sao selecionaveis em monitoramento.
+            //
+            // Esta lista tem de acompanhar models.MonitorConvertibleStores() no
+            // backend: uma loja que o backend converte mas que fica desabilitada
+            // aqui deixa a integracao INERTE, porque automation.stores nunca
+            // recebe a loja e o opt-in duplo do espelho nunca abre.
+            const mirrorStores = ['shopee', 'shein', 'amazon', 'aliexpress', 'awin'];
+            const isMirrorStore = mirrorStores.includes(store.value);
             const disabledByMode = isMonitoring && !isMirrorStore;
             const isSelected = formData.stores?.includes(store.value) || false;
             const isLastSelectedStore = isSelected && (formData.stores?.length || 0) <= 1;

@@ -1,0 +1,16 @@
+-- DOWN DOCUMENTAL — índice da fila do health check do ML (085).
+--
+-- O runner de migrações do projeto NÃO executa down: o ledger
+-- `_deploy_migrations` só aplica o que é novo. Este arquivo documenta o que a
+-- 085 criou.
+--
+-- O ROLLBACK OPERACIONAL é desligar o health check:
+--
+--   ML_SESSION_HEALTH_ENABLED=false
+--
+-- Sem o cron, o índice fica apenas ocioso — não custa escrita relevante numa
+-- tabela que é atualizada só quando um cliente conecta a conta.
+--
+-- Se algum dia for MESMO preciso remover:
+--
+--   DROP INDEX CONCURRENTLY IF EXISTS idx_ml_credentials_session_health;

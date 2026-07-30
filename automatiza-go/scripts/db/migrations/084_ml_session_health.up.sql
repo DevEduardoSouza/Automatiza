@@ -49,8 +49,6 @@ ALTER TABLE ml_credentials
 ALTER TABLE ml_credentials
     ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
 
--- Fila do health check: "quem está há mais tempo sem verificação".
--- NULLS FIRST porque credencial nunca verificada tem prioridade máxima.
-CREATE INDEX IF NOT EXISTS idx_ml_credentials_session_health
-    ON ml_credentials (last_verified_at NULLS FIRST)
-    WHERE session_status <> 'expired';
+-- O índice da fila do health check vive na 085: o guardrail GOV-SQL-002 exige
+-- CREATE INDEX CONCURRENTLY, que não roda dentro de transação — e esta
+-- migração é transactional por causa dos ALTERs acima.

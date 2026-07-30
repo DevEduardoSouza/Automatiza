@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        width: 300px;
+        margin: 0;
+        padding: 16px;
+        color: #1a1a1a;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 0 0 4px;
+      }
+      p {
+        font-size: 13px;
+        line-height: 1.45;
+        color: #555;
+        margin: 0 0 12px;
+      }
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        padding: 10px;
+        border-radius: 8px;
+        background: #f4f4f5;
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        flex: none;
+        background: #a1a1aa;
+      }
+      .ok .dot {
+        background: #16a34a;
+      }
+      .bad .dot {
+        background: #dc2626;
+      }
+      a {
+        color: #2563eb;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Automatiza — Mercado Livre</h1>
+    <p>
+      Esta extensão conecta sua conta do Mercado Livre ao Automatiza para gerar
+      seus links de afiliado automaticamente.
+    </p>
+    <div class="status" id="status">
+      <span class="dot"></span><span id="text">Verificando…</span>
+    </div>
+    <p style="margin-top: 12px; font-size: 12px">
+      Para conectar, abra
+      <a href="https://v2automatisagrupos.com/affiliate-programs" target="_blank"
+        >Programas de Afiliados</a
+      >
+      no Automatiza e clique em <b>Detectar automaticamente</b>.
+    </p>
+    <script src="popup.js"></script>
+  </body>
+</html>

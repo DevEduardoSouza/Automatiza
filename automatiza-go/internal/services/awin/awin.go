@@ -23,6 +23,12 @@ const (
 	// ProgrammeNamesCredentialKey guarda os nomes das marcas aprovadas, que a
 	// UI usa para montar o seletor.
 	ProgrammeNamesCredentialKey = "programme_names"
+	// SelectedBrandsCredentialKey guarda as marcas que o usuário escolheu no
+	// seletor (array JSON de nomes). Vazio/ausente = todas as aprovadas.
+	SelectedBrandsCredentialKey = "selected_brands"
+	// BrandMapCredentialKey guarda nome→awinmid: é o que liga a seleção do
+	// formulário (nomes) ao anunciante real (id). Chave INTERNA.
+	BrandMapCredentialKey = "programme_brand_ids"
 	// redirectBase é o endpoint de redirect da rede.
 	redirectBase = "https://www.awin1.com/cread.php"
 	// clickRef identifica a plataforma no relatório da Awin, espelhando o
@@ -49,7 +55,7 @@ func New(affiliateRepo repository.AffiliateCredentialsRepository, logger *zap.Lo
 //     destino real é extraído de ued e reatribuído ao publisher do tenant.
 //     Sem isso, repassar o link recebido pagaria comissão a quem postou.
 func (c *Converter) Convert(ctx context.Context, u commerceurl.URL, userID string) (string, error) {
-	publisherID, domains, err := c.credentials(ctx, userID)
+	publisherID, domains, allowed, err := c.credentials(ctx, userID)
 	if err != nil {
 		return "", err
 	}
@@ -72,6 +78,12 @@ func (c *Converter) Convert(ctx context.Context, u commerceurl.URL, userID strin
 		// O usuário não está aprovado neste anunciante (ou nunca sincronizou a
 		// lista). Fail-closed: emitir deeplink com awinmid errado gera clique
 		// sem comissão e suja o relatório.
+		return "", affiliatelink.ErrUnconvertible
+	}
+	// Seleção de marcas do formulário. Sem ela, o seletor da UI seria decorativo
+	// (o usuário desmarca uma marca e ela continuaria sendo convertida).
+	// Seleção vazia = o usuário nunca escolheu, então valem todas as aprovadas.
+	if len(allowed) > 0 && !allowed[advertiserID] {
 		return "", affiliatelink.ErrUnconvertible
 	}
 
@@ -102,28 +114,93 @@ func innerTarget(u commerceurl.URL) (commerceurl.URL, bool) {
 	return inner, true
 }
 
-// credentials lê publisher ID e o mapa domínio→awinmid do usuário.
-func (c *Converter) credentials(ctx context.Context, userID string) (string, map[string]string, error) {
+// credentials lê publisher ID, o mapa domínio→awinmid e o conjunto de
+// advertiser IDs que o usuário selecionou no formulário.
+func (c *Converter) credentials(
+	ctx context.Context,
+	userID string,
+) (publisherID string, domains map[string]string, allowed map[string]bool, err error) {
 	creds, err := c.affiliateRepo.GetByUserAndStore(ctx, userID, storeKey)
 	if err != nil || creds == nil {
-		return "", nil, affiliatelink.ErrNoCredentials
+		return "", nil, nil, affiliatelink.ErrNoCredentials
 	}
 
-	publisherID := strings.TrimSpace(creds.GetCredential("awinId"))
+	publisherID = strings.TrimSpace(creds.GetCredential("awinId"))
 	if publisherID == "" {
 		publisherID = strings.TrimSpace(creds.GetCredential("publisher_id"))
 	}
 	if publisherID == "" {
-		return "", nil, affiliatelink.ErrNoCredentials
+		return "", nil, nil, affiliatelink.ErrNoCredentials
 	}
 
-	domains := ParseDomainMap(creds.GetCredential(ProgrammesCredentialKey))
+	domains = ParseDomainMap(creds.GetCredential(ProgrammesCredentialKey))
 	if len(domains) == 0 {
 		// Credencial salva mas lista de programas nunca sincronizada: não dá
 		// para saber o awinmid de nada.
-		return "", nil, affiliatelink.ErrNoCredentials
+		return "", nil, nil, affiliatelink.ErrNoCredentials
 	}
-	return publisherID, domains, nil
+
+	allowed = selectedAdvertisers(
+		creds.GetCredential(SelectedBrandsCredentialKey),
+		creds.GetCredential(BrandMapCredentialKey),
+	)
+	return publisherID, domains, allowed, nil
+}
+
+// selectedAdvertisers traduz a seleção do formulário (nomes de marca) para o
+// conjunto de advertiser IDs aceitos.
+//
+// O casamento nome→ID vem de BrandMapCredentialKey, gravado pelo handler a
+// partir da mesma resposta da Awin que produziu o mapa de domínios — nada de
+// adivinhar por ordem ou por rótulo parecido. Sem esse mapa (credencial salva
+// antes desta versão), devolve nil = sem filtro, que é o comportamento anterior.
+func selectedAdvertisers(selectedRaw, brandMapRaw string) map[string]bool {
+	if strings.TrimSpace(selectedRaw) == "" || strings.TrimSpace(brandMapRaw) == "" {
+		return nil
+	}
+	var selected []string
+	if err := json.Unmarshal([]byte(selectedRaw), &selected); err != nil || len(selected) == 0 {
+		return nil
+	}
+	var brandToID map[string]string
+	if err := json.Unmarshal([]byte(brandMapRaw), &brandToID); err != nil || len(brandToID) == 0 {
+		return nil
+	}
+
+	out := make(map[string]bool, len(selected))
+	for _, name := range selected {
+		if id := brandToID[strings.TrimSpace(name)]; id != "" {
+			out[id] = true
+		}
+	}
+	if len(out) == 0 {
+		// Nenhum nome selecionado casou com um programa conhecido: tratar como
+		// "sem filtro" em vez de bloquear tudo — o usuário não pediu para parar
+		// de converter, e a lista de nomes pode ter mudado do lado da Awin.
+		return nil
+	}
+	return out
+}
+
+// BrandMap reduz os programas ao mapa nome→awinmid usado pelo filtro de marcas.
+func BrandMap(programmes []Programme) map[string]string {
+	out := make(map[string]string, len(programmes))
+	for _, p := range programmes {
+		if p.Name == "" || p.ID == "" {
+			continue
+		}
+		out[strings.TrimSpace(p.Name)] = p.ID
+	}
+	return out
+}
+
+// EncodeBrandMap serializa o mapa nome→awinmid para gravação no JSONB.
+func EncodeBrandMap(brands map[string]string) (string, error) {
+	b, err := json.Marshal(brands)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // ParseDomainMap decodifica o mapa domínio→awinmid guardado no JSONB.

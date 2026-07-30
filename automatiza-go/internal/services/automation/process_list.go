@@ -527,28 +527,22 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 				}
 			}
 		} else if s.affiliateRegistry != nil {
-			// Lojas com conversor próprio (Amazon, AliExpress, Awin). Sem este
-			// ramo o item seguia com affiliateURL = originURL, isto é, o link
-			// CRU que o usuário colou — que numa lista montada a partir de posts
-			// de terceiros carrega a comissão de outro afiliado.
+			// Lojas com conversor próprio (Amazon, AliExpress, Awin).
 			//
-			// Falha aqui NUNCA vira shopeeEnrichErr: aquela variável passa pelo
-			// isShopeeCredentialEnrichError e PAUSA a automação do cliente.
-			converted, ok, convErr := s.affiliateRegistry.Convert(ctx, originURL, automation.UserID)
-			switch {
-			case convErr == nil && ok:
+			// FAIL-OPEN, ao contrário do espelho: o modo LIST é passthrough por
+			// projeto (ver o comentário de detecção de plataforma acima) — o
+			// usuário cola o PRÓPRIO link, já afiliado. Pular o item quando a
+			// conversão falha pararia de enviar listas que hoje funcionam, e
+			// como consumeListItem não retenta, o item seria queimado. Aqui a
+			// conversão é um bônus (reatribui link de terceiro colado por
+			// engano), nunca um requisito.
+			if converted, ok, convErr := s.affiliateRegistry.Convert(ctx, originURL, automation.UserID); ok && convErr == nil {
 				affiliateURL = converted
-			case convErr != nil:
-				// Item consumido (não retentado) e nada é enviado: mandar o
-				// original entregaria a comissão à fonte.
-				s.logger.Warn("Affiliate conversion failed for list item — skipping",
+			} else if convErr != nil {
+				s.logger.Debug("Affiliate conversion unavailable for list item — sending the pasted link",
 					zap.String("automationID", automation.ID),
 					zap.String("originURL", originURL),
 					zap.Error(convErr))
-				s.logDispatch(ctx, automation, "system", originURL, "skipped",
-					fmt.Sprintf("link de afiliado indisponivel (%v) - item pulado", convErr))
-				s.consumeListItem(ctx, item.ID, automation.ID, nil)
-				continue
 			}
 		}
 
