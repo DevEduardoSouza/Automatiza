@@ -381,6 +381,7 @@ describe('use-affiliate-programs', () => {
         'amazon',
         'aliexpress',
         'awin',
+        'magalu',
       ]);
     });
 
@@ -1680,6 +1681,42 @@ describe('useAffiliatePrograms - lojas com conversor proprio', () => {
 
     expect(mockUpsertCredential).toHaveBeenCalledWith(
       expect.objectContaining({ store: 'amazon', is_active: false })
+    );
+  });
+
+  it('magalu pede so a loja parceira', async () => {
+    const { result } = await renderAndWait();
+    const magalu = result.current.storeConfigs.find((c) => c.key === 'magalu');
+
+    // O Magalu nao tem API de afiliado: a Vitrine e a credencial inteira.
+    expect(fieldKeys(magalu)).toEqual(['partnerStore']);
+    expect(magalu?.fields.find((f) => f.key === 'partnerStore')?.optional).toBeFalsy();
+  });
+
+  it('magalu fica ATIVA salvando so a loja parceira', async () => {
+    const { result } = await renderAndWait();
+
+    act(() => {
+      result.current.updateCredentialField('magalu', 'partnerStore', 'minhaloja');
+    });
+    await act(async () => {
+      await result.current.handleSave('magalu');
+    });
+
+    expect(mockUpsertCredential).toHaveBeenCalledWith(
+      expect.objectContaining({ store: 'magalu', is_active: true })
+    );
+  });
+
+  it('magalu sem loja parceira NAO fica ativa', async () => {
+    const { result } = await renderAndWait();
+
+    await act(async () => {
+      await result.current.handleSave('magalu');
+    });
+
+    expect(mockUpsertCredential).toHaveBeenCalledWith(
+      expect.objectContaining({ store: 'magalu', is_active: false })
     );
   });
 

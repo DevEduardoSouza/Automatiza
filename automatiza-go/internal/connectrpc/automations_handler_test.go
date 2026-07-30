@@ -774,15 +774,28 @@ func TestProtoToAutomationCreate_MonitorStoresConvertibleOnly(t *testing.T) {
 	})
 
 	t.Run("monitor mode without convertible stores falls back to shopee", func(t *testing.T) {
+		// ML é a única loja que o espelho ainda não converte: o link dele exige
+		// a sessão do cliente, não uma reescrita. Se algum dia entrar em
+		// MonitorConvertibleStores, este caso precisa de outra loja.
 		automation := protoToAutomationCreate(&automationsv1.CreateAutomationRequest{
 			Mode: automationsv1.AutomationMode_AUTOMATION_MODE_MONITOR,
 			Stores: []automationsv1.Store{
-				automationsv1.Store_STORE_MAGALU,
 				automationsv1.Store_STORE_MERCADO_LIVRE,
 			},
 		})
 
 		assert.Equal(t, []string{"shopee"}, automation.Stores)
+	})
+
+	t.Run("monitor mode keeps magalu", func(t *testing.T) {
+		automation := protoToAutomationCreate(&automationsv1.CreateAutomationRequest{
+			Mode: automationsv1.AutomationMode_AUTOMATION_MODE_MONITOR,
+			Stores: []automationsv1.Store{
+				automationsv1.Store_STORE_MAGALU,
+			},
+		})
+
+		assert.Equal(t, []string{"magalu"}, automation.Stores)
 	})
 
 	t.Run("monitor mode without stores falls back to shopee", func(t *testing.T) {

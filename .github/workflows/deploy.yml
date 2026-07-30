@@ -526,7 +526,7 @@ jobs:
           # --body false + bounce. NUNCA "corrigir" zerando product_category_ids:
           # isso converte regra específica em genérica e ALARGA o alcance dela.
           COUPON_CATEGORY_RULES_ENABLED=${{ vars.COUPON_CATEGORY_RULES_ENABLED }}
-          # Lojas com conversor próprio (Amazon, AliExpress, Awin).
+          # Lojas com conversor próprio (Amazon, AliExpress, Awin, Magalu).
           # ""/ausente/"false" = registry nil: nenhum link dessas lojas é
           # convertido e o espelho continua REMOVENDO-os do corpo, como sempre
           # fez. "true" = converte, mas só em automação que listou a loja E cujo

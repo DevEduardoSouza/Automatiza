@@ -101,7 +101,9 @@ func TestStoreOfFronteiraDePonto(t *testing.T) {
 		"www.awin1.com":                  models.MonitorStoreAwin,
 		"netshoes.com.br":                models.MonitorStoreAwin,
 		"www.dafiti.com.br":              models.MonitorStoreAwin,
-		"magazinevoce.com.br":            models.MonitorStoreUnsupported,
+		"magazinevoce.com.br":            models.MonitorStoreMagalu,
+		"www.magazineluiza.com.br":       models.MonitorStoreMagalu,
+		"magalu.com":                     models.MonitorStoreMagalu,
 		"shein.com":                      models.MonitorStoreShein,
 		"xshopee.com.br":                 "",
 		"shopee.com.br.evil.test":        "",
@@ -195,7 +197,12 @@ func TestClassifyLocalCampanhas(t *testing.T) {
 		{"https://shopee.com.br/flash_sale", models.URLClassCampaignOrCoupon},
 		{"https://shopee.com.br/algum-path", models.URLClassUnknown},
 		{"https://s.shopee.com.br/abc123", models.URLClassUnknown},
-		{"https://magazinevoce.com.br/loja/p/1", models.URLClassUnsupportedCommerce},
+		// Magalu: "1" não é SKU (mínimo 4 alfanuméricos), então a URL não
+		// identifica produto — unknown, nunca campanha. Com SKU real, produto.
+		{"https://magazinevoce.com.br/loja/p/1", models.URLClassUnknown},
+		{"https://magazinevoce.com.br/loja/p/hbf8fjj15a/", models.URLClassProduct},
+		{"https://www.magazineluiza.com.br/geladeira-brastemp/p/hbf8fjj15a/ed/refr/", models.URLClassProduct},
+		{"https://www.magazineluiza.com.br/busca/geladeira/", models.URLClassUnknown},
 		// ASIN tem 10 caracteres: "B01" não identifica produto, então não dá
 		// para reatribuir a comissão — unknown, nunca campanha.
 		{"https://amazon.com.br/dp/B01", models.URLClassUnknown},

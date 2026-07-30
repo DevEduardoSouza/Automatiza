@@ -85,7 +85,7 @@ const hookReturn = {
   testing: null,
   mlLastTest: null,
   storeConfigs: STORE_CONFIGS,
-  enabledStores: ['shopee', 'amazon', 'aliexpress', 'awin'],
+  enabledStores: ['shopee', 'amazon', 'magalu', 'aliexpress', 'awin'],
   awinBrands: ['Netshoes'],
   updateCredentialField: vi.fn(),
   toggleAutoGenerate: vi.fn(),
@@ -108,15 +108,25 @@ describe('/affiliate-programs — o que o usuário vê', () => {
     vi.clearAllMocks();
   });
 
-  // A entrega pedida: Amazon, AliExpress e Awin deixam de exibir "Em breve" e
-  // passam a exibir formulário de credencial.
+  // A entrega pedida: Amazon, Magalu, AliExpress e Awin deixam de exibir
+  // "Em breve" e passam a exibir formulário de credencial.
   it('renderiza formulário para as lojas habilitadas', () => {
     render(<AffiliateProgramsPage />);
 
     const cards = screen.getAllByTestId('store-card');
     const stores = cards.map((c) => c.getAttribute('data-store'));
 
-    expect(stores).toEqual(['shopee', 'amazon', 'aliexpress', 'awin']);
+    expect(stores).toEqual(['shopee', 'amazon', 'magalu', 'aliexpress', 'awin']);
+  });
+
+  it('o card da Magalu pede só a loja parceira', () => {
+    render(<AffiliateProgramsPage />);
+
+    const magalu = screen
+      .getAllByTestId('store-card')
+      .find((c) => c.getAttribute('data-store') === 'magalu');
+    expect(magalu).toBeDefined();
+    expect(within(magalu as HTMLElement).getByLabelText('Loja Parceiro')).toBeDefined();
   });
 
   it('o card da Amazon pede a tag e NÃO pede mais Access Key / Secret Key', () => {
@@ -144,11 +154,11 @@ describe('/affiliate-programs — o que o usuário vê', () => {
     expect(within(ali as HTMLElement).getByLabelText('App Secret')).toBeDefined();
   });
 
-  it('só as lojas sem conversor continuam em "Em breve"', () => {
+  // Com a Magalu ligada, toda loja do catálogo tem conversor: nenhum card fica
+  // em "Em breve". O ComingSoonCard segue vivo para a próxima loja que entrar.
+  it('nenhuma loja continua em "Em breve"', () => {
     render(<AffiliateProgramsPage />);
 
-    const comingSoon = screen.getAllByTestId('coming-soon-card');
-    expect(comingSoon).toHaveLength(1);
-    expect(comingSoon[0].textContent).toContain('Magazine Luiza');
+    expect(screen.queryAllByTestId('coming-soon-card')).toHaveLength(0);
   });
 });

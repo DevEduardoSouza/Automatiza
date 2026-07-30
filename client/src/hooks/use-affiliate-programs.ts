@@ -144,6 +144,7 @@ const STORE_CONFIGS: StoreConfig[] = [
         label: 'Loja Parceiro',
         type: 'text',
         placeholder: 'magazinevoce.com.br/sualoja',
+        hintKey: 'pages.affiliatePrograms.hints.magaluStore',
       },
     ],
   },
@@ -230,10 +231,19 @@ const STORE_CONFIGS: StoreConfig[] = [
 // onelink.shein.com pronto do app), entao o card so pede o link fixo. Quem
 // consome esse link e o espelho, trocando o link Shein da fonte pelo do cliente
 // em vez de apaga-lo -- e so em automacao que marcou a loja.
-// Amazon, AliExpress e Awin entraram junto com seus conversores no backend
-// (internal/services/{amazon,aliexpress,awin}). Magalu segue fora: o link de
-// divulgador dela é reescrita de URL e não precisa de credencial aqui.
-const ENABLED_STORES: StoreKey[] = ['shopee', 'ml', 'shein', 'amazon', 'aliexpress', 'awin'];
+// Amazon, AliExpress, Awin e Magalu entraram junto com seus conversores no
+// backend (internal/services/{amazon,aliexpress,awin,magalu}). A Magalu nao tem
+// API de afiliado: o programa e loja-baseado (Vitrine "Magazine Voce"), entao a
+// credencial e so o identificador da loja e o link sai de uma reescrita de URL.
+const ENABLED_STORES: StoreKey[] = [
+  'shopee',
+  'ml',
+  'shein',
+  'amazon',
+  'aliexpress',
+  'awin',
+  'magalu',
+];
 
 function base64UrlDecode(input: string): string {
   const s = input.replace(/-/g, '+').replace(/_/g, '/');

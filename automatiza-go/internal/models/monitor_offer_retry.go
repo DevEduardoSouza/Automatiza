@@ -27,7 +27,8 @@ const (
 	URLClassCampaignOrCoupon = "campaign_or_coupon"
 	// URLClassNonCommerce: link comum; não gera I/O nem conta para o teto.
 	URLClassNonCommerce = "non_commerce"
-	// URLClassUnsupportedCommerce: loja sem conversor (Amazon/Magalu/...).
+	// URLClassUnsupportedCommerce: loja reconhecida sem conversão possível.
+	// Hoje só a Shein cai aqui (link de afiliado opaco, sem ID de produto).
 	URLClassUnsupportedCommerce = "unsupported_commerce"
 	// URLClassUnknown: ainda indeterminado. NUNCA equivale a campanha.
 	URLClassUnknown = "unknown"
@@ -170,6 +171,10 @@ const (
 	// onelink.shein.com pronto do app), então a "conversão" dela é a troca do
 	// link da fonte pelo link fixo do dono da automação — sem rede.
 	MonitorStoreShein = "shein"
+	// Magalu é loja-baseado (Vitrine "Magazine Você"), não tag na URL: o link
+	// do divulgador é a URL do produto sob magazinevoce.com.br/<loja>/. A
+	// conversão é reescrita determinística, também sem rede.
+	MonitorStoreMagalu = "magalu"
 )
 
 // LedgerStore coage uma loja para o domínio aceito por

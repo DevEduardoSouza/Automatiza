@@ -2479,7 +2479,7 @@
       },
       "comingSoon": "Em breve",
       "comingSoonDesc": "Em breve você poderá conectar o {{store}} aqui.",
-      "comingSoonNote": "Shopee, Amazon, AliExpress, Awin e Mercado Livre já estão disponíveis. A Shein não gera link automático: você cola seu link de afiliado e o espelho o usa no lugar do link da fonte.",
+      "comingSoonNote": "Shopee, Amazon, AliExpress, Awin, Magazine Luiza e Mercado Livre já estão disponíveis. Shein e Magazine Luiza não têm API de afiliado: na Shein você cola seu link e o espelho o usa no lugar do link da fonte; no Magazine Luiza basta informar sua Vitrine e o link do produto é reescrito para ela.",
       "mlRedirect": {
         "title": "Mercado Livre",
         "subtitle": "Use seus próprios links afiliados",
@@ -2601,7 +2601,8 @@
         "amazonCreators": "Opcional: só para quem tem acesso à Creators API (exige 10 vendas aprovadas nos últimos 30 dias).",
         "aliexpressKeys": "Crie o Tracking ID no AliExpress Portals e o App Key/Secret no console de desenvolvedor.",
         "awinId": "É o seu Publisher ID, no topo do painel da Awin.",
-        "awinToken": "Gere em ui.awin.com/awin-api (o token fica visível uma única vez)."
+        "awinToken": "Gere em ui.awin.com/awin-api (o token fica visível uma única vez).",
+        "magaluStore": "É a sua Vitrine do Parceiro Magalu. Pode colar o link inteiro (https://www.magazinevoce.com.br/minhaloja) ou só o identificador (minhaloja). Link do magazineluiza.com.br não serve: ele não contém a sua loja."
       }
     },
     "offerAutomations": {

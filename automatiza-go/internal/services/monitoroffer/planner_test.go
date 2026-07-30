@@ -240,14 +240,16 @@ func TestLojaSemConversorSaiDoCorpoMasOEntornoFica(t *testing.T) {
 		return ResolveResult{}
 	}}
 
-	// Magalu segue sem conversor. Amazon/AliExpress/Awin saíram desta classe
-	// quando ganharam conversor próprio — ver TestLojaComConversorVaiAoResolver.
-	p := plan(t, "Olha essa oferta https://magazinevoce.com.br/loja/tv/p/1 imperdível", r)
+	// A Shein é a última loja sem conversor: o link de afiliado dela é um
+	// onelink opaco, sem ID de produto para reatribuir. Amazon/AliExpress/Awin
+	// e Magalu saíram desta classe quando ganharam conversor próprio — ver
+	// TestLojaComConversorVaiAoResolver.
+	p := plan(t, "Olha essa oferta https://br.shein.com/produto-p-123.html imperdível", r)
 
 	if p.Relay == nil {
 		t.Fatal("o entorno textual deveria ser relayado")
 	}
-	if strings.Contains(p.Relay.Body, "magazinevoce.com.br") {
+	if strings.Contains(p.Relay.Body, "shein.com") {
 		t.Errorf("URL da loja sem conversor sobreviveu:\n%s", p.Relay.Body)
 	}
 	if !strings.Contains(p.Relay.Body, "imperdível") {
@@ -482,8 +484,8 @@ func TestLiderDoAvisoEhOMenorOrdinal(t *testing.T) {
 }
 
 // TestLojaComConversorVaiAoResolver é o contra-teste do anterior: a partir do
-// momento em que Amazon/AliExpress/Awin ganharam conversor, o link precisa
-// CHEGAR ao resolvedor (é lá que a reatribuição acontece) em vez de ser
+// momento em que Amazon/AliExpress/Awin/Magalu ganharam conversor, o link
+// precisa CHEGAR ao resolvedor (é lá que a reatribuição acontece) em vez de ser
 // descartado localmente como loja sem conversor.
 func TestLojaComConversorVaiAoResolver(t *testing.T) {
 	cases := []struct {
@@ -493,6 +495,10 @@ func TestLojaComConversorVaiAoResolver(t *testing.T) {
 		{"amazon com ASIN", "https://www.amazon.com.br/Echo-Dot/dp/B09B8V1LZ3"},
 		{"aliexpress com item", "https://pt.aliexpress.com/item/1005006123456789.html"},
 		{"anunciante awin", "https://www.netshoes.com.br/produto/tenis-123"},
+		{"magalu no catalogo", "https://www.magazineluiza.com.br/geladeira/p/hbf8fjj15a/ed/refr/"},
+		// Vitrine de OUTRO divulgador: é o caso em que NÃO chegar ao resolvedor
+		// significaria repassar o link com a comissão de quem postou.
+		{"magalu na vitrine de terceiro", "https://www.magazinevoce.com.br/lojadooutro/geladeira/p/hbf8fjj15a/"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

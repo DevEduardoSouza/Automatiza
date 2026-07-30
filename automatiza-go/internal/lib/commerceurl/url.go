@@ -301,13 +301,26 @@ var awinAdvertiserHosts = []string{
 // host shein.com.br casaria hostSpoofsCommerce, virando security_block.
 var sheinHosts = []string{"shein.com"}
 
-// unsupportedHosts são as lojas SEM nenhuma conversão possível: o link é
-// removido do corpo em vez de repassado com a comissão da fonte.
-var unsupportedHosts = []string{
+// magaluShowcaseHosts é a Vitrine do Magalu (programa Parceiro/Divulgador). O
+// PRIMEIRO segmento do path é a loja do divulgador — e num link que chega do
+// grupo-fonte essa loja é a de OUTRA pessoa. É a diferença que obriga
+// MagaluProductPath a ser host-aware.
+var magaluShowcaseHosts = []string{"magazinevoce.com.br"}
+
+// magaluHosts são os hosts de catálogo, onde o path já começa no produto.
+var magaluHosts = []string{
 	"magazineluiza.com.br",
-	"magazinevoce.com.br",
 	"magalu.com",
 }
+
+// unsupportedHosts são as lojas SEM nenhuma conversão possível: o link é
+// removido do corpo em vez de repassado com a comissão da fonte.
+//
+// Hoje vazia — o Magalu, seu único ocupante histórico, graduou para conversor
+// próprio. O ramo continua existindo porque é o destino da próxima loja que
+// entrar sem forma de reatribuir comissão: reconhecida (para não vazar crua),
+// mas sem conversão.
+var unsupportedHosts = []string{}
 
 // StoreOf classifica o host normalizado. Devolve "" quando não é loja.
 //
@@ -349,6 +362,16 @@ func StoreOf(host string) string {
 			return models.MonitorStoreShein
 		}
 	}
+	for _, d := range magaluShowcaseHosts {
+		if hostMatches(host, d) {
+			return models.MonitorStoreMagalu
+		}
+	}
+	for _, d := range magaluHosts {
+		if hostMatches(host, d) {
+			return models.MonitorStoreMagalu
+		}
+	}
 	for _, d := range unsupportedHosts {
 		if hostMatches(host, d) {
 			return models.MonitorStoreUnsupported
@@ -362,13 +385,16 @@ func StoreOf(host string) string {
 var allCommerceHosts = func() []string {
 	out := make([]string, 0,
 		len(shopeeHosts)+len(mlHosts)+len(amazonHosts)+
-			len(aliexpressHosts)+len(awinHosts)+len(sheinHosts)+len(unsupportedHosts))
+			len(aliexpressHosts)+len(awinHosts)+len(sheinHosts)+
+			len(magaluShowcaseHosts)+len(magaluHosts)+len(unsupportedHosts))
 	out = append(out, shopeeHosts...)
 	out = append(out, mlHosts...)
 	out = append(out, amazonHosts...)
 	out = append(out, aliexpressHosts...)
 	out = append(out, awinHosts...)
 	out = append(out, sheinHosts...)
+	out = append(out, magaluShowcaseHosts...)
+	out = append(out, magaluHosts...)
 	out = append(out, unsupportedHosts...)
 	return out
 }()

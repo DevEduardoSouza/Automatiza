@@ -678,8 +678,8 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 		convertibleSet[link] = true
 	}
 
-	// Stores without any affiliate conversion (Magalu, e as demais sem
-	// conversor) are always blocked in monitor mode: a Shopee link keeps the
+	// Stores without any affiliate conversion are always blocked in monitor
+	// mode: a Shopee link keeps the
 	// relay alive and these ride along in the body carrying the SOURCE
 	// channel's commission. Pure posts of these stores never had a Shopee/ML
 	// link, so the store filter below already skips them.
@@ -980,8 +980,9 @@ func (s *monitoringService) processAutomation(ctx context.Context, automation *m
 
 	default:
 		// Repasse histórico: regras do operador + troca de links por afiliado +
-		// remoção das lojas bloqueadas (ML desabilitado, Amazon/Magalu/Shein/
-		// AliExpress, que carregariam a comissão da fonte).
+		// remoção das lojas bloqueadas (ML desabilitado, ou loja com conversor
+		// que falhou/sem credencial — repassá-las carregaria a comissão da
+		// fonte).
 		processedText = buildMonitoringRelayBody(
 			msg.Body, automation.MonitoringTextRules, affiliateReplacements, blockedStoreLinks)
 	}

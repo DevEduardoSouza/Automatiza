@@ -187,9 +187,9 @@ func MonitoringStores() []string {
 // entregar a comissão à fonte. MonitoringStores() continua sendo o DEFAULT
 // (Shopee): entrar nesta lista habilita a loja, não a liga sozinha.
 //
-// Duas famílias convivem aqui. Shopee/Amazon/Awin/AliExpress convertem o link
-// POR PRODUTO (API ou reescrita da URL). Shein não: sem API de geração de link
-// e sem parâmetro anexável, a resolução dela é trocar o link da fonte pelo
+// Duas famílias convivem aqui. Shopee/Amazon/Awin/AliExpress/Magalu convertem o
+// link POR PRODUTO (API ou reescrita da URL). Shein não: sem API de geração de
+// link e sem parâmetro anexável, a resolução dela é trocar o link da fonte pelo
 // onelink fixo do dono — ver sheinAffiliateFor no monitoring_service.
 func MonitorConvertibleStores() []string {
 	return []string{
@@ -198,6 +198,7 @@ func MonitorConvertibleStores() []string {
 		MonitorStoreAwin,
 		MonitorStoreAliExpress,
 		MonitorStoreShein,
+		MonitorStoreMagalu,
 	}
 }
 

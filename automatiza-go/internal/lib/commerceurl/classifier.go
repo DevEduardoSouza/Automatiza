@@ -39,6 +39,8 @@ func ClassifyLocal(u URL) Classification {
 		return classifyAliExpress(u)
 	case models.MonitorStoreAwin:
 		return classifyAwin(u)
+	case models.MonitorStoreMagalu:
+		return classifyMagalu(u)
 	case models.MonitorStoreShein, models.MonitorStoreUnsupported:
 		// Shein divide o ramo do unsupported de propósito: o link do afiliado é
 		// um onelink opaco, então não há ID de produto a extrair nem
@@ -451,6 +453,94 @@ func classifyAwin(u URL) Classification {
 		ErrorClass:   models.ErrorClassNone,
 		Reason:       models.ReasonNone,
 		CanonicalURL: cleanCanonical(u.Parsed),
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Magalu
+// ---------------------------------------------------------------------------
+
+// magaluSKURe casa o código do produto que segue /p/ — alfanumérico minúsculo,
+// como "hbf8fjj15a" ou "235111500". Não é o slug: o slug é o texto legível que
+// vem ANTES de /p/.
+var magaluSKURe = regexp.MustCompile(`^[a-z0-9]{4,32}$`)
+
+// IsMagaluShowcase reporta se o host é a Vitrine (magazinevoce.com.br), onde o
+// primeiro segmento do path é a loja do divulgador.
+func IsMagaluShowcase(host string) bool {
+	for _, d := range magaluShowcaseHosts {
+		if hostMatches(host, d) {
+			return true
+		}
+	}
+	return false
+}
+
+// MagaluProductPath devolve os segmentos do PRODUTO (slug + "p" + sku + resto)
+// e o SKU. É a única fonte da forma da URL Magalu: classificador e conversor
+// leem daqui.
+//
+// Host-aware de propósito. Na Vitrine o primeiro segmento é a LOJA de quem
+// postou — descartá-lo é o que permite reatribuir ao tenant o link de outro
+// divulgador; mantê-lo transformaria a loja de terceiro no "slug do produto" e
+// emitiria uma URL quebrada:
+//
+//	magazineluiza.com.br/<slug>/p/<sku>/<cat>/<sub>/      → [slug p sku cat sub]
+//	magazinevoce.com.br/<OUTRA>/<slug>/p/<sku>/<cat>/     → [slug p sku cat]
+//	magazinevoce.com.br/<OUTRA>/p/<sku>/                  → [p sku]
+//
+// Busca, storefront, home e qualquer path sem /p/<sku> válido devolvem false —
+// o caller trata como não-convertível e o link é removido em vez de repassado.
+func MagaluProductPath(u URL) (segs []string, sku string, ok bool) {
+	if u.Parsed == nil {
+		return nil, "", false
+	}
+	path := PathSegments(u.Parsed)
+	if IsMagaluShowcase(u.Host) {
+		if len(path) == 0 {
+			return nil, "", false
+		}
+		path = path[1:]
+	}
+	for i, seg := range path {
+		if !strings.EqualFold(seg, "p") || i+1 >= len(path) {
+			continue
+		}
+		candidate := strings.ToLower(path[i+1])
+		if !magaluSKURe.MatchString(candidate) {
+			continue
+		}
+		start := i
+		if i > 0 {
+			// Preserva o slug legível do produto, que a Magalu espera na URL
+			// completa. A forma mínima (sem slug) também funciona — o servidor
+			// canonicaliza com 302 — mas emitir o que já temos evita o salto.
+			start = i - 1
+		}
+		return path[start:], candidate, true
+	}
+	return nil, "", false
+}
+
+// MagaluKey monta a canonical key de produto Magalu.
+func MagaluKey(sku string) string { return "magalu:" + strings.ToLower(sku) }
+
+func classifyMagalu(u URL) Classification {
+	if _, sku, ok := MagaluProductPath(u); ok {
+		return Classification{
+			Class:        models.URLClassProduct,
+			ErrorClass:   models.ErrorClassNone,
+			Reason:       models.ReasonNone,
+			CanonicalKey: MagaluKey(sku),
+			CanonicalURL: cleanCanonicalNoQuery(u.Parsed),
+		}
+	}
+	// Sem SKU não há produto a reatribuir (busca, storefront, home). Unknown
+	// NUNCA vira campanha.
+	return Classification{
+		Class:      models.URLClassUnknown,
+		ErrorClass: models.ErrorClassNone,
+		Reason:     models.ReasonNone,
 	}
 }
 

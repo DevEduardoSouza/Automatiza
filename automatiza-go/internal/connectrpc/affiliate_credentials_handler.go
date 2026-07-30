@@ -11,6 +11,7 @@ import (
 	"automatiza-go/internal/models"
 	"automatiza-go/internal/repository"
 	"automatiza-go/internal/services/awin"
+	"automatiza-go/internal/services/magalu"
 	"automatiza-go/internal/services/shopee"
 
 	"connectrpc.com/connect"
@@ -230,6 +231,27 @@ func (h *AffiliateCredentialsHandler) UpsertCredential(
 					data.SetCredential(awin.ProgrammeNamesCredentialKey, string(names))
 				}
 			}
+		}
+	}
+
+	// Magalu: normaliza a loja da Vitrine para o slug canônico ANTES de gravar.
+	// O cliente cola qualquer coisa (o slug puro, o domínio, a URL completa, um
+	// link de produto da própria vitrine) e o conversor precisa de um valor só.
+	// Guardar já normalizado evita re-derivar a cada envio e faz o painel
+	// mostrar o que de fato será usado. Sem rede: o Magalu devolve 403 para
+	// HTTP puro, então validar online seria falso-negativo.
+	if store == "magalu" {
+		raw := data.GetCredential("partnerStore")
+		if raw == "" {
+			raw = data.GetCredential("partner_store")
+		}
+		if raw != "" {
+			slug := magalu.NormalizeStoreSlug(raw)
+			if slug == "" {
+				return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+					"loja parceira Magalu invalida: informe o identificador da sua Vitrine (ex.: minhaloja) ou cole o link dela (https://www.magazinevoce.com.br/minhaloja). Link do magazineluiza.com.br nao serve: ele nao contem a sua loja"))
+			}
+			data.SetCredential("partnerStore", slug)
 		}
 	}
 

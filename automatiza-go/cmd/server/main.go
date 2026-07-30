@@ -73,6 +73,7 @@ import (
 	"automatiza-go/internal/services/jobs"
 	"automatiza-go/internal/services/kiwify"
 	"automatiza-go/internal/services/loadbalancer"
+	"automatiza-go/internal/services/magalu"
 	"automatiza-go/internal/services/mercadolivre"
 	"automatiza-go/internal/services/mllinklists"
 	"automatiza-go/internal/services/monitoring"
@@ -2242,8 +2243,8 @@ func (a instagramAIAdapter) GenerateInstagramReply(ctx context.Context, req *ins
 }
 
 // parseAffiliateStoresGate lê AFFILIATE_STORES_V2, o gate de PROCESSO das
-// lojas com conversor próprio (Amazon, AliExpress, Awin). Só "1", "true", "on"
-// e "yes" ligam — ausente ou lixo é false.
+// lojas com conversor próprio (Amazon, AliExpress, Awin, Magalu). Só "1",
+// "true", "on" e "yes" ligam — ausente ou lixo é false.
 //
 // Rollback é desligar este gate: o registry vira nil e todo caminho novo some,
 // sem migração para desfazer e sem tocar em credencial salva.
@@ -2271,6 +2272,7 @@ func buildAffiliateRegistry(
 	return affiliatelink.New(map[string]affiliatelink.Converter{
 		models.MonitorStoreAmazon: amazon.New(affiliateRepo, config.NewModuleLogger(logger, "amazon")),
 		models.MonitorStoreAwin:   awin.New(affiliateRepo, config.NewModuleLogger(logger, "awin")),
+		models.MonitorStoreMagalu: magalu.New(affiliateRepo, config.NewModuleLogger(logger, "magalu")),
 		models.MonitorStoreAliExpress: aliexpress.New(
 			affiliateRepo, cacheClient, config.NewModuleLogger(logger, "aliexpress"), "",
 		),
