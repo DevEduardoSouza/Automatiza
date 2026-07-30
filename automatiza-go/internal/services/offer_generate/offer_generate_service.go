@@ -213,6 +213,19 @@ func (s *offerGenerateService) processIncoming(ctx context.Context, msg *models.
 		return nil
 	}
 
+	// Sigla de repasse literal ({texto}/{imagem}/{video}) lida e removida do
+	// corpo pelo processador de mensagens: desliga a formulação da oferta NESTA
+	// mensagem. Vai direto ao relay, que escolhe imagem/vídeo/áudio/texto pela
+	// mídia REALMENTE anexada e herda dedup por destino, janela de horário,
+	// roteamento de chip e anti-ban. Nenhum link é convertido — o corpo sai
+	// exatamente como foi escrito, que é o ponto da sigla.
+	//
+	// Depois dos guards de eco (FromMe/IsPlatformSend) de propósito: uma mensagem
+	// disparada pela própria plataforma não pode reentrar por este caminho.
+	if msg.RelayVerbatim {
+		return s.processRelay(ctx, msg, fromReconcile)
+	}
+
 	// 2. Extract links from message body. info[...] and cta[...] must be
 	// stripped first so URLs embedded inside those tags (typically a coupon
 	// link) are not mistaken for a separate product link.
@@ -1437,6 +1450,9 @@ func (s *offerGenerateService) processRelay(ctx context.Context, msg *models.Inc
 	s.logger.Info("Processing incoming message for relay (no product link)",
 		zap.String("instance", msg.InstanceName),
 		zap.String("group", msg.RemoteJID),
+		// verbatim=true: chegou aqui por sigla ({texto}/{imagem}/{video}), não
+		// por ausência de link. É o que distingue os dois caminhos no log.
+		zap.Bool("verbatim", msg.RelayVerbatim),
 		zap.Bool("hasMedia", msg.HasMedia),
 		zap.String("mediaType", msg.MediaType),
 		zap.Int("bodyLen", len(msg.Body)),

@@ -23,6 +23,14 @@ type IncomingMessage struct {
 	LinkPreviewTitle       string         `json:"linkPreviewTitle,omitempty"`
 	LinkPreviewDescription string         `json:"linkPreviewDescription,omitempty"`
 	QuotedMsg              *QuotedMessage `json:"quotedMsg,omitempty"`
+
+	// RelayVerbatim marca que o corpo começava com uma sigla de repasse
+	// ({texto}/{imagem}/{video}) e que o offer_generate deve pular a formulação
+	// da oferta e repassar a mensagem como veio. Preenchido pelo processador de
+	// mensagens, que remove a sigla do Body ANTES do espelho rodar — os dois
+	// serviços leem o mesmo ponteiro, então a decisão precisa viajar num campo
+	// em vez de sobreviver no texto.
+	RelayVerbatim bool `json:"relayVerbatim,omitempty"`
 }
 
 // GetTimestamp returns the timestamp as time.Time

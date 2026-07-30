@@ -66,19 +66,28 @@ func NewStoryTrigger(
 // A dedupe NÃO mora mais no Redis: o índice único do ledger decide quem publica.
 // O claim antigo tinha TTL de 1h e falhava aberto, então redelivery tardio,
 // corrida entre chips ou Redis fora do ar publicavam o mesmo Story duas vezes.
-func (t *StoryTrigger) HandleStoryMessage(ctx context.Context, msg *models.IncomingMessage) {
+// O retorno é o contrato de supressão: true = o Story assumiu a mensagem e ela
+// NÃO deve sair no WhatsApp. Todo caminho que impede a publicação devolve false
+// para a mensagem seguir o fluxo normal — sem isso, cliente sem Instagram
+// conectado (a maioria hoje) postaria e nada sairia em lugar nenhum.
+func (t *StoryTrigger) HandleStoryMessage(ctx context.Context, msg *models.IncomingMessage) bool {
 	if !t.igService.FeatureEnabled() {
-		return
+		return false
 	}
 	// MessageID vazio não participa do índice único parcial — sem ele não há
 	// idempotência possível, então o evento simplesmente não é elegível.
 	if msg == nil || msg.RemoteJID == "" || msg.MessageID == "" {
-		return
+		return false
 	}
 
 	owners := t.connectedOwners(ctx, msg.RemoteJID)
 	if len(owners) == 0 {
-		return
+		// Caso MAIS provável em produção (poucas contas concluíram o OAuth do
+		// Instagram) e, até aqui, o único sem rastro nenhum: sem log, sem ledger.
+		// Com a supressão do WhatsApp em jogo, "meu {story} não saiu" precisa ter
+		// onde ser lido. Identificadores de grupo/mensagem ficam fora do log.
+		t.logger.Info("story trigger: nenhum dono do grupo com Instagram conectado, story ignorado")
+		return false
 	}
 
 	lower := strings.ToLower(msg.MediaType)
@@ -94,32 +103,32 @@ func (t *StoryTrigger) HandleStoryMessage(ctx context.Context, msg *models.Incom
 		// é userID, ledgerID, operação, classe/código e contagens.
 		t.logger.Info("story trigger: video not supported yet, skipping",
 			zap.Int("owners", len(owners)))
-		return
+		return false
 	case isImage:
 		data, _ := t.fetchImage(ctx, msg)
 		if len(data) == 0 {
 			t.logger.Warn("story trigger: could not fetch image, skipping story",
 				zap.Int("owners", len(owners)))
-			return
+			return false
 		}
 		// Converte para JPEG AQUI, uma vez para todos os donos: o store só
 		// aceita JPEG e a rota pública sempre serve image/jpeg.
 		jpegBytes, err := instagram.NormalizeJPEG(data)
 		if err != nil {
 			t.logger.Warn("story trigger: image rejected", zap.String("class", "media_invalid"))
-			return
+			return false
 		}
 		key, err := t.mediaStore.Put(ctx, jpegBytes, storyMediaTTL)
 		if err != nil {
 			t.capture("story media put failed", err, msg)
-			return
+			return false
 		}
 		mediaKey = key
 		mediaSource = models.InstagramMediaSourceImage
 	default:
 		text = strings.TrimSpace(msg.Body)
 		if text == "" {
-			return
+			return false
 		}
 		mediaSource = models.InstagramMediaSourceRenderedText
 	}
@@ -127,6 +136,10 @@ func (t *StoryTrigger) HandleStoryMessage(ctx context.Context, msg *models.Incom
 	for _, userID := range owners {
 		t.dispatchForOwner(ctx, userID, mediaKey, text, mediaSource, msg)
 	}
+	// A mídia foi preparada e há dono conectado: o evento é do Story. Falha de
+	// ledger/enqueue daqui pra frente já é registrada e reprocessável, então
+	// ainda conta como assumida — reenviar no WhatsApp duplicaria o post.
+	return true
 }
 
 // dispatchForOwner grava o evento no ledger e enfileira o job — só quando ESTA

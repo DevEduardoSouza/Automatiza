@@ -34,6 +34,17 @@ var ctaTagRegex = regexp.MustCompile(`cta\[([^\]]*)\]`)
 // the text is left untouched (it is not the opt-in and must not be mangled).
 var storyTagRegex = regexp.MustCompile(`(?i)^\s*\{story\}[ \t]*`)
 
+// verbatimTagRegex matches a leading relay marker — {texto}, {imagem}/{foto} or
+// {video}/{vídeo} — under the same rules as the story tag: case-insensitive,
+// anchored to the START of the body, trailing spaces consumed.
+//
+// One regex for all three words on purpose: they do the SAME thing — turn the
+// offer formulation OFF for that message and relay it exactly as posted. WHICH
+// media goes out is decided by what is actually attached (the mediaType switch
+// in sendRelayMessage), never by the word the user typed, so splitting this in
+// three would be three names for one behaviour.
+var verbatimTagRegex = regexp.MustCompile(`(?i)^\s*\{\s*(texto|imagem|foto|v[ií]deo)\s*\}[ \t]*`)
+
 // ParseInfoTag extracts the contents of an info[...] tag from the message
 // body and returns the trimmed text. Returns "" when no tag is present or
 // when the tag is empty.
@@ -94,6 +105,25 @@ func HasStoryTag(body string) bool {
 // a literal "{story}" appearing later in the text is left intact.
 func StripStoryTag(body string) string {
 	return strings.TrimSpace(storyTagRegex.ReplaceAllString(body, ""))
+}
+
+// HasVerbatimTag reports whether the message body begins with a relay marker
+// ({texto}, {imagem}/{foto}, {video}/{vídeo}). It is the opt-out from the offer
+// formulation in /offer-generate: with the marker, the message is relayed to the
+// destination groups exactly as posted — original photo/video, original caption,
+// link left RAW (no affiliate conversion). Without it, a store link in the body
+// still builds the usual offer card. A marker further into the text is not a
+// command (someone may just be writing the word).
+func HasVerbatimTag(body string) bool {
+	return verbatimTagRegex.MatchString(body)
+}
+
+// StripVerbatimTag removes a leading relay marker so it never reaches the
+// destination group. Only the leading one is removed — a second marker right
+// after it stays as ordinary text, which keeps "{texto}{imagem} oi" a single
+// deterministic command instead of a parsing puzzle.
+func StripVerbatimTag(body string) string {
+	return strings.TrimSpace(verbatimTagRegex.ReplaceAllString(body, ""))
 }
 
 // ParseDiscountTag extracts a discount tag from the message body.

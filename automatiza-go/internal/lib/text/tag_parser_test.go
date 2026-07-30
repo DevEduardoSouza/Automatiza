@@ -374,3 +374,60 @@ func TestStripStoryTag(t *testing.T) {
 		})
 	}
 }
+
+func TestHasVerbatimTag(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"texto", "{texto} bom dia https://loja.com/x", true},
+		{"imagem", "{imagem} aproveita", true},
+		{"foto sinônimo de imagem", "{foto} aproveita", true},
+		{"video", "{video}", true},
+		{"vídeo acentuado", "{vídeo} olha isso", true},
+		{"caixa mista", "{Imagem} promo", true},
+		{"maiúsculas", "{TEXTO} promo", true},
+		{"espaço antes", "  {texto} promo", true},
+		{"espaço dentro das chaves", "{ imagem } promo", true},
+		{"tag no meio não casa", "manda o {imagem} certo", false},
+		{"story não é sigla de repasse", "{story} promo", false},
+		{"sem tag", "https://s.shopee.com.br/abc", false},
+		{"corpo vazio", "", false},
+		{"palavra sem chaves", "texto do dia", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasVerbatimTag(tt.body); got != tt.want {
+				t.Errorf("HasVerbatimTag(%q) = %v, want %v", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripVerbatimTag(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"texto com link cru", "{texto} promo: https://loja.com/x", "promo: https://loja.com/x"},
+		{"imagem com legenda", "{imagem}   aproveita", "aproveita"},
+		{"foto", "{foto} legenda", "legenda"},
+		{"vídeo acentuado", "{vídeo} olha", "olha"},
+		{"só a sigla vira corpo vazio", "{imagem}", ""},
+		{"tag no meio preservada", "manda o {imagem} certo", "manda o {imagem} certo"},
+		{"sem tag intocado", "promoção normal", "promoção normal"},
+		{"multilinha", "{texto}\nlinha 1\nlinha 2", "linha 1\nlinha 2"},
+		// Determinismo da spec §4.3: só a PRIMEIRA sigla é comando; a segunda
+		// segue sendo texto comum, sem regra de precedência escondida.
+		{"sigla dupla consome só a primeira", "{texto}{imagem} oi", "{imagem} oi"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := StripVerbatimTag(tt.body); got != tt.want {
+				t.Errorf("StripVerbatimTag(%q) = %q, want %q", tt.body, got, tt.want)
+			}
+		})
+	}
+}

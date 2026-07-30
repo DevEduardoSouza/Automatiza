@@ -36,9 +36,15 @@ type MessageCheckpointRecorder interface {
 // StoryMessageTrigger dispara o efeito colateral de publicar um Story no
 // Instagram quando a mensagem-fonte começou com {story}. Implementado por
 // *StoryTrigger; opcional (nil = feature desligada). Roda dentro do fan-out,
-// fail-open — nunca afeta o espelho no WhatsApp.
+// protegido por recover.
+//
+// Devolve true quando o Story ASSUMIU a mensagem — só então ela deixa de sair
+// no WhatsApp ({story} publica só no Instagram). Qualquer motivo para o Story
+// não sair (feature desligada, nenhum dono com Instagram conectado, vídeo, mídia
+// que não baixou) devolve false e a mensagem segue o caminho normal: a decisão
+// de suprimir é fail-open, senão o post do cliente sumiria sem rastro nenhum.
 type StoryMessageTrigger interface {
-	HandleStoryMessage(ctx context.Context, msg *models.IncomingMessage)
+	HandleStoryMessage(ctx context.Context, msg *models.IncomingMessage) bool
 }
 
 // MonitoringMessageProcessor processes incoming WhatsApp messages for MONITOR mode automations.
@@ -199,6 +205,17 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 		msg.Body = text.StripStoryTag(msg.Body)
 	}
 
+	// Sigla de repasse literal ({texto}/{imagem}/{video}): desliga a formulação
+	// da oferta no offer_generate, que lê a marca lá embaixo. O strip é feito
+	// AQUI, junto com o do {story} e antes de qualquer hash de dedup, porque o
+	// espelho roda no mesmo ponteiro e primeiro — nos grupos que são fonte dos
+	// dois modos, deixar a sigla no corpo a faria aparecer no texto espelhado.
+	// O espelho em si não muda de comportamento: a sigla é vocabulário do
+	// gerador de ofertas.
+	if msg.RelayVerbatim = text.HasVerbatimTag(msg.Body); msg.RelayVerbatim {
+		msg.Body = text.StripVerbatimTag(msg.Body)
+	}
+
 	// Skip empty messages (nothing for either service to act on)
 	if msg.Body == "" && !msg.HasMedia {
 		p.logger.Debug("Skipping empty message",
@@ -269,6 +286,13 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 
 		// {story}: publica no Instagram ANTES do relay, isolado e fail-open. O
 		// recover próprio garante que um panic aqui nunca derruba o espelho.
+		//
+		// storyOwned=true significa que o Story ASSUMIU a mensagem: ela não sai
+		// no WhatsApp — nem espelho nem oferta ({story} publica só no Instagram).
+		// Panic ou qualquer recusa do trigger deixa false, e a mensagem segue o
+		// caminho de sempre; suprimir sem ter publicado apagaria o post do
+		// cliente sem deixar rastro.
+		storyOwned := false
 		if hasStory && p.storyTrigger != nil {
 			func() {
 				defer func() {
@@ -279,11 +303,16 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 							zap.Any("panic", r))
 					}
 				}()
-				p.storyTrigger.HandleStoryMessage(procCtx, msg)
+				storyOwned = p.storyTrigger.HandleStoryMessage(procCtx, msg)
 			}()
+			if storyOwned {
+				p.logger.Info("Story assumiu a mensagem — envio no WhatsApp suprimido",
+					zap.String("session", sessionName),
+					zap.String("messageID", msg.MessageID))
+			}
 		}
 
-		if !msg.FromMe {
+		if !storyOwned && !msg.FromMe {
 			// Automações assumidas pela cadência são puladas aqui: sair pelos
 			// dois caminhos duplicaria a oferta no grupo.
 			relay := func(c context.Context, m *models.IncomingMessage) error {
@@ -301,7 +330,7 @@ func (p *MonitoringMessageProcessor) ProcessMessage(
 		}
 		// Also process through the offer generate service (filters internally by
 		// automation type, and handles FromMe via its own loop-guard)
-		if p.offerGenerateService != nil {
+		if !storyOwned && p.offerGenerateService != nil {
 			if err := p.offerGenerateService.ProcessIncomingMessage(procCtx, msg); err != nil {
 				p.logger.Error("Failed to process message for offer generation",
 					zap.String("session", sessionName),

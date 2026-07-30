@@ -70,21 +70,30 @@ func (p *MirrorReplayProcessor) ProcessMessage(ctx context.Context, sessionName 
 		return nil
 	}
 
+	// Strip do {story} no re-espelho: a tag não pode vazar no texto espelhado.
+	// Replay é mensagem VELHA (reconciliação), então NÃO dispara story — só
+	// limpa o corpo. Incondicional é seguro (o regex só casa a tag no início).
+	body := text.StripStoryTag(msg.Body)
+	// Sigla de repasse literal: mesma leitura do caminho vivo. Sem isto, uma
+	// mensagem recuperada pelo backfill sairia FORMULADA — diferente da que o
+	// cliente postou e que a passagem original teria repassado como está.
+	verbatim := text.HasVerbatimTag(body)
+	if verbatim {
+		body = text.StripVerbatimTag(body)
+	}
+
 	im := &models.IncomingMessage{
-		InstanceName: sessionName,
-		MessageID:    msg.ID,
-		RemoteJID:    msg.ChatID,
-		FromMe:       msg.FromMe,
-		SenderJID:    msg.Sender,
-		// Strip do {story} no re-espelho: a tag não pode vazar no texto
-		// espelhado. Replay é mensagem VELHA (reconciliação), então NÃO dispara
-		// story — só limpa o corpo. Incondicional é seguro (o regex só casa a
-		// tag no início).
-		Body:      text.StripStoryTag(msg.Body),
-		Timestamp: msg.Timestamp.Unix(),
-		HasMedia:  msg.HasMedia,
-		MediaType: msg.MediaType,
-		MediaURL:  msg.MediaURL,
+		InstanceName:  sessionName,
+		MessageID:     msg.ID,
+		RemoteJID:     msg.ChatID,
+		FromMe:        msg.FromMe,
+		SenderJID:     msg.Sender,
+		Body:          body,
+		RelayVerbatim: verbatim,
+		Timestamp:     msg.Timestamp.Unix(),
+		HasMedia:      msg.HasMedia,
+		MediaType:     msg.MediaType,
+		MediaURL:      msg.MediaURL,
 	}
 
 	p.logger.Info("Replaying reconciled message through mirror pipeline",
