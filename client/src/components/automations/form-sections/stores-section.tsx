@@ -18,9 +18,11 @@ export function StoresSelector({ formData, setFormData, activeStores }: StoresSe
   const { t } = useTranslation();
   const { toast } = useToast();
 
-  // Modo busca exige API que ACHE ofertas. ML e Shein nao tem: o cliente cola
-  // link pronto, entao as duas so fazem sentido em monitoramento.
-  const searchlessStores = ['ml', 'shein'];
+  // Modo busca exige API que ACHE ofertas — hoje so a Shopee tem catalogo
+  // pesquisavel (automation_service.go so faz busca nela). As demais convertem
+  // link que ja existe, entao so fazem sentido em monitoramento/lista: deixa-las
+  // marcaveis aqui produziria automacao de Busca que nunca dispara nada.
+  const searchlessStores = ['ml', 'shein', 'amazon', 'aliexpress', 'awin', 'magalu'];
   const visibleStores = STORES.filter(
     (store) => !(formData.mode === 'search' && searchlessStores.includes(store.value))
   );
