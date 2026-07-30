@@ -236,34 +236,12 @@ export function AutomationFormDialog({
   };
 
   const closeAllRefinements = () => {
-    setRefinementOpen({
-      eletronicos: false,
-      eletrodomesticos: false,
-      homens: false,
-      esportes: false,
-      moda: false,
-      casa: false,
-      beleza: false,
-    });
+    setRefinementOpen({});
   };
 
-  const toggleRefinement = (key: keyof RefinementState) => {
-    setRefinementOpen((prev) => {
-      const isOpening = !prev[key];
-      if (isOpening) {
-        return {
-          eletronicos: false,
-          eletrodomesticos: false,
-          homens: false,
-          esportes: false,
-          moda: false,
-          casa: false,
-          beleza: false,
-          [key]: true,
-        };
-      }
-      return { ...prev, [key]: false };
-    });
+  const toggleRefinement = (key: string) => {
+    // Um painel aberto por vez: abrir uma categoria fecha as demais.
+    setRefinementOpen((prev) => (prev[key] ? { ...prev, [key]: false } : { [key]: true }));
   };
 
   return (

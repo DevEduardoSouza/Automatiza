@@ -146,7 +146,10 @@ const FALLBACK_REFINEMENT_DATA: Record<
  */
 function buildRefinementDataFromApi(category: LocalCategory) {
   // Group subcategories by groupName
-  const groupedSubs: Record<string, { key: string; i18nKey: string }[]> = {};
+  const groupedSubs: Record<
+    string,
+    { key: string; i18nKey: string; name: string; order: number }[]
+  > = {};
 
   for (const sub of category.subcategories) {
     const groupName = sub.groupName || 'Geral';
@@ -155,14 +158,18 @@ function buildRefinementDataFromApi(category: LocalCategory) {
     }
     groupedSubs[groupName].push({
       key: sub.displayKey,
-      i18nKey: `config.subcategories.dynamic.${sub.slug}`, // Fallback i18n key
+      i18nKey: `config.subcategories.dynamic.${sub.slug}`,
+      // Nome do banco: e o rotulo mostrado quando nao ha chave i18n cadastrada
+      // (nichos novos e os criados pelo painel de admin).
+      name: sub.name,
+      order: sub.displayOrder,
     });
   }
 
   const groups = Object.entries(groupedSubs).map(([name, items]) => ({
     name,
     i18nKey: `config.subcategoryGroups.${name.toLowerCase().replace(/\s+/g, '')}`,
-    items: items.sort((a, b) => a.key.localeCompare(b.key)),
+    items: items.sort((a, b) => a.order - b.order || a.key.localeCompare(b.key)),
   }));
 
   const allKeys = category.subcategories.map((s) => s.displayKey);
@@ -222,6 +229,10 @@ export function CategoriesSection({
     const apiCat = categoryByName.get(categoryName);
     if (apiCat && SLUG_TO_REFINEMENT_KEY[apiCat.slug]) {
       return SLUG_TO_REFINEMENT_KEY[apiCat.slug];
+    }
+    // Categoria cadastrada no banco fora das 7 legadas: o slug e a chave.
+    if (apiCat?.hasRefinements && apiCat.subcategories.length > 0) {
+      return apiCat.slug;
     }
     return null;
   };
@@ -351,49 +362,31 @@ export function CategoriesSection({
   // Build refinement sections based on available data
   const refinementSections = useMemo(() => {
     const sections: Array<{
-      key: keyof RefinementState;
+      key: string;
       parentCategory: string;
       label: string;
-      groups: Array<{ i18nKey: string; items: readonly { key: string; i18nKey: string }[] }>;
+      groups: Array<{
+        i18nKey: string;
+        name?: string;
+        items: readonly { key: string; i18nKey: string; name?: string }[];
+      }>;
       allKeys: string[];
       isSubcategoryKey: (c: string) => boolean;
     }> = [];
 
-    // For each refinement key, build section data
-    const refinementKeys: (keyof RefinementState)[] = [
-      'eletronicos',
-      'eletrodomesticos',
-      'esportes',
-      'homens',
-      'moda',
-      'casa',
-      'beleza',
-    ];
-
-    for (const key of refinementKeys) {
-      const fallback = FALLBACK_REFINEMENT_DATA[key];
-
-      // Check if we have API data for this category
-      const apiCat = apiCategories.find(
-        (c) => SLUG_TO_REFINEMENT_KEY[c.slug] === key || c.name === fallback.category
-      );
-
-      if (apiCat?.hasRefinements && apiCat.subcategories.length > 0 && !useFallback) {
-        // Use API data
-        const { groups, allKeys } = buildRefinementDataFromApi(apiCat);
-        sections.push({
-          key,
-          parentCategory: apiCat.name,
-          label: t(fallback.translationKey),
-          groups: groups.map((g) => ({
-            i18nKey: g.i18nKey,
-            items: g.items,
-          })),
-          allKeys,
-          isSubcategoryKey: (c: string) => allKeys.includes(c),
-        });
-      } else {
-        // Use fallback data
+    // API fora do ar ou carregando: cai nas 7 categorias fixas do bundle.
+    if (useFallback) {
+      const refinementKeys = [
+        'eletronicos',
+        'eletrodomesticos',
+        'esportes',
+        'homens',
+        'moda',
+        'casa',
+        'beleza',
+      ];
+      for (const key of refinementKeys) {
+        const fallback = FALLBACK_REFINEMENT_DATA[key];
         sections.push({
           key,
           parentCategory: fallback.category,
@@ -403,6 +396,27 @@ export function CategoriesSection({
           isSubcategoryKey: fallback.isSubcategoryKey,
         });
       }
+      return sections;
+    }
+
+    // Com dados da API, TODA categoria que declara refinamento ganha painel.
+    // As 7 legadas mantem a chave e o rotulo traduzido de antes; as demais usam
+    // o slug como chave e o nome do banco como rotulo.
+    for (const apiCat of apiCategories) {
+      if (!apiCat.isActive || !apiCat.hasRefinements || apiCat.subcategories.length === 0) {
+        continue;
+      }
+      const legacyKey = SLUG_TO_REFINEMENT_KEY[apiCat.slug] || NAME_TO_REFINEMENT_KEY[apiCat.name];
+      const fallback = legacyKey ? FALLBACK_REFINEMENT_DATA[legacyKey] : undefined;
+      const { groups, allKeys } = buildRefinementDataFromApi(apiCat);
+      sections.push({
+        key: legacyKey || apiCat.slug,
+        parentCategory: apiCat.name,
+        label: fallback ? t(fallback.translationKey) : apiCat.name,
+        groups,
+        allKeys,
+        isSubcategoryKey: (c: string) => allKeys.includes(c),
+      });
     }
 
     return sections;

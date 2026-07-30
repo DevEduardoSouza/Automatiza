@@ -9,10 +9,14 @@ import { useTranslation } from 'react-i18next';
 interface SubcategoryItem {
   key: string;
   i18nKey: string;
+  /** Nome vindo do banco, usado quando a chave i18n nao esta cadastrada */
+  name?: string;
 }
 
 interface SubcategoryGroup {
   i18nKey: string;
+  /** Nome do grupo vindo do banco, usado como fallback do i18n */
+  name?: string;
   items: readonly SubcategoryItem[];
 }
 
@@ -113,7 +117,7 @@ export function CategoryRefinementSection({
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 xl:gap-5">
             {subcategoryGroups.map((group) => (
               <div key={group.i18nKey} className="space-y-2">
-                <Label className="text-sm">{t(group.i18nKey)}</Label>
+                <Label className="text-sm">{t(group.i18nKey, { defaultValue: group.name })}</Label>
                 <div className="space-y-2">
                   {group.items.map((item) => (
                     <div key={item.key} className="flex items-center space-x-2">
@@ -123,7 +127,9 @@ export function CategoryRefinementSection({
                           handleSubcategoryChange(item.key, Boolean(checked))
                         }
                       />
-                      <Label className="cursor-pointer">{t(item.i18nKey)}</Label>
+                      <Label className="cursor-pointer">
+                        {t(item.i18nKey, { defaultValue: item.name })}
+                      </Label>
                     </div>
                   ))}
                 </div>

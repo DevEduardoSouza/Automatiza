@@ -530,6 +530,15 @@ func (s *shopeeService) resolveCategoryIDs(categories []string) []int {
 // productCatId (nichos/subnichos keyword-driven, ex. Confeitaria/Casamento/Bebê).
 // Categorias com catId (tratadas em resolveCategoryIDs) e os sentinelas broad
 // ("Ofertas gerais"/"Sex Shop") são ignorados aqui — não viram keyword.
+//
+// NÃO tente casar o termo com o productCatId da categoria-MÃE: medido em 30/07/2026
+// contra a API real, o productOfferV2 IGNORA productCatId quando há keyword.
+// Provas: (a) "Ração para cachorro" com e sem productCatId=100631 devolveu resultado
+// IDÊNTICO; (b) keyword "Acessórios" + productCatId=100631 (Animais Domésticos)
+// devolveu lupa de celular e carregador portátil; (c) productCatId=100631 SOZINHO
+// devolveu produtos de pet corretos. Ou seja: o termo entre parênteses do display_key
+// é o ÚNICO filtro que sobra, e por isso precisa ser uma consulta autossuficiente
+// ("Ração para cachorro", não "Ração"). Ver TestSeedKeywordsAreSelfSufficient.
 func (s *shopeeService) keywordCategories(categories []string) []string {
 	var terms []string
 	for _, cat := range categories {

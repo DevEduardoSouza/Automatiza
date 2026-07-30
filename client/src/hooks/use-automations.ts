@@ -76,15 +76,11 @@ const DEFAULT_FORM_DATA: Partial<Automation> = {
   monitoring_send_as_image: true,
 };
 
-export interface RefinementState {
-  eletronicos: boolean;
-  eletrodomesticos: boolean;
-  homens: boolean;
-  esportes: boolean;
-  moda: boolean;
-  casa: boolean;
-  beleza: boolean;
-}
+/**
+ * Paineis de refinamento abertos, indexados pela chave da categoria: a chave
+ * legada das 7 originais ou o slug da categoria vinda da API. Aberto = true.
+ */
+export type RefinementState = Record<string, boolean>;
 
 export interface UseAutomationsReturn {
   automations: Automation[];

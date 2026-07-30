@@ -30,10 +30,26 @@ func TestKeywordCategories(t *testing.T) {
 		want []string
 	}{
 		{"sentinela ofertas gerais", []string{"Ofertas gerais"}, nil},
-		{"sentinela sex shop", []string{"Sex Shop"}, nil},
+		{"sentinela sex shop (pai)", []string{"Sex Shop"}, nil},
 		{"nicho com catId", []string{"Eletrônicos"}, nil},
 		{"subnicho existente com catId", []string{"Eletrônicos - Celulares (Smartphones)"}, nil},
-		{"subnicho novo sem catId", []string{"Confeitaria e Doces - Ingredientes (Chocolates)"}, []string{"Chocolates"}},
+		{
+			"subnicho sem catId vira keyword",
+			[]string{"Confeitaria e Doces - Ingredientes (Chocolates)"},
+			[]string{"Chocolates"},
+		},
+		{
+			// A sentinela compara a string INTEIRA: subnicho de Sex Shop passa e vira
+			// keyword; só o pai é que continua busca ampla.
+			"subnicho de Sex Shop passa pela sentinela",
+			[]string{"Sex Shop - Acessórios (Massageadores)"},
+			[]string{"Massageadores"},
+		},
+		{
+			"termo autossuficiente do seed novo",
+			[]string{"Pets - Cães (Ração para cachorro)"},
+			[]string{"Ração para cachorro"},
+		},
 		{
 			"misto: catId + keyword + sentinela",
 			[]string{"Eletrônicos", "Confeitaria e Doces - Ingredientes (Chocolates)", "Ofertas gerais"},
