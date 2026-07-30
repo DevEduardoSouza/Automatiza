@@ -2024,6 +2024,68 @@ func TestProcessListMode_MLNoPrice_SkipsAndConsumes(t *testing.T) {
 	deps.mlLinkListItemRepo.AssertCalled(t, "MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything)
 }
 
+// listSvcWithMLPreview monta o serviço com um mlService que devolve exatamente
+// o preview degradado que a /social passou a produzir em 30/07/2026: título
+// presente (og:title sempre existe) e preço zerado.
+func listSvcWithMLPreview(t *testing.T, item *models.MlLinkListItem) (*automationService, *internalTestDeps) {
+	t.Helper()
+	svc, deps := newInternalTestService(t)
+
+	mlMock := new(mockMLService)
+	mlMock.On("GetProductPreview", mock.Anything, mock.Anything, mock.Anything).
+		Return(&models.MLProductPreview{Title: "Guarda Roupa Casal Bartira", Price: 0}, nil)
+	svc.mlService = mlMock
+
+	deps.instanceRepo.On("GetUserInstances", mock.Anything, "user-1").
+		Return([]models.Instance{{ID: 1, InstanceID: "inst-1", Status: "connected"}}, nil)
+	deps.mlLinkListItemRepo.On("GetNextUnconsumed", mock.Anything, "list-123", 10).
+		Return([]*models.MlLinkListItem{item}, nil)
+	deps.mlLinkListItemRepo.On("MarkAsConsumed", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	deps.dispatchLogRepo.On("Create", mock.Anything, mock.Anything).Return(&models.DispatchLog{}, nil).Maybe()
+	deps.dispatchLogRepo.On("GetRecentByCanonicalKey", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+
+	return svc, deps
+}
+
+func listAutomationML() *models.Automation {
+	listID := "list-123"
+	return &models.Automation{
+		ID: "auto-1", UserID: "user-1", Name: "List Test",
+		MlLinkListID: &listID, GroupIDs: []string{"group@g.us"},
+	}
+}
+
+// Regressão (30/07): o preço gravado no item precisa COMPLEMENTAR um preview
+// que veio sem preço. Antes, o fallback só rodava com preview == nil — e como a
+// /social sempre traz og:title, o preview nunca era nil e o preço do banco
+// ficava inalcançável: 2.073 itens pendentes com preço eram pulados à toa.
+func TestProcessListMode_MLPriceFromItemMetadata_Sends(t *testing.T) {
+	t.Parallel()
+	svc, _ := listSvcWithMLPreview(t, &models.MlLinkListItem{
+		ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-777", ListID: "list-123",
+		ProductPrice: float64Ptr(199.9),
+	})
+
+	result, err := svc.processListMode(context.Background(), listAutomationML())
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.MessagesSent, "preco salvo no item deve completar o preview sem preco")
+}
+
+// O outro lado: sem preço no item (ou com o 0 que o cadastro grava quando a
+// leitura falha), o guard continua valendo — nada de oferta sem preço no grupo.
+func TestProcessListMode_MLTitleOnlyNoPrice_SkipsAndConsumes(t *testing.T) {
+	t.Parallel()
+	svc, deps := listSvcWithMLPreview(t, &models.MlLinkListItem{
+		ID: "item-1", OriginURL: "https://www.mercadolivre.com.br/MLB-777", ListID: "list-123",
+		ProductPrice: float64Ptr(0),
+	})
+
+	result, err := svc.processListMode(context.Background(), listAutomationML())
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.MessagesSent, "product_price=0 nao pode vazar como preco valido")
+	deps.mlLinkListItemRepo.AssertCalled(t, "MarkAsConsumed", mock.Anything, []string{"item-1"}, "auto-1", mock.Anything)
+}
+
 func TestProcessListMode_NoGroups(t *testing.T) {
 	t.Parallel()
 	svc, deps := newInternalTestService(t)

@@ -393,6 +393,40 @@ func (s *automationService) processListMode(ctx context.Context, automation *mod
 					p.Image = *item.ProductImageURL
 				}
 				preview = p
+			} else if preview != nil && preview.Price <= 0 && item.ProductPrice != nil && *item.ProductPrice > 0 {
+				// COMPLEMENTA o preview, não substitui. O ramo acima nunca via
+				// um preview só-com-título porque a /social sempre traz
+				// og:title com HTTP 200 — então preview != nil e o preço
+				// gravado no item ficava inalcançável, com o guard lá embaixo
+				// queimando o item mesmo havendo preço no banco (2.073 itens
+				// pendentes nessa situação em 30/07).
+				//
+				// O `> 0` não é zelo: o preview do cadastro grava
+				// product_price = 0 (não NULL) quando a leitura falha, então
+				// sem ele a atribuição seria um no-op silencioso.
+				//
+				// ponytail: product_price é gravado no cadastro e NUNCA
+				// atualizado pelo enriquecimento (as únicas UPDATEs em
+				// ml_link_list_items são consumo/reset e edição manual). Nos
+				// itens pendentes de 30/07 a idade média era de 13 dias, com
+				// cauda até 96 — então este ramo pode anunciar um preço velho
+				// como atual. Aceito porque é exatamente a política que o
+				// fallback logo acima já aplica desde sempre no caminho de link
+				// direto, e porque ele só dispara quando a leitura ao vivo
+				// falhou. Upgrade: teto de idade (updated_at < N dias) ou
+				// regravar product_price a cada leitura bem-sucedida.
+				preview.Price = *item.ProductPrice
+				// Simetria com o ramo de cima: se a página degradou a ponto de
+				// perder a imagem, usa a do cadastro em vez de mandar sem card.
+				if preview.Image == "" && item.ProductImageURL != nil {
+					preview.Image = *item.ProductImageURL
+				}
+				// O original veio da página (agora) e o preço, do cadastro
+				// (antes): manter os dois renderiza um "De X por Y" que mistura
+				// duas datas.
+				preview.OriginalPrice = nil
+				preview.Discount = 0
+				preview.DiscountPercent = nil
 			}
 		} else if isShopee && s.shopeeService != nil {
 			// Shopee: generate affiliate link + fetch product details.

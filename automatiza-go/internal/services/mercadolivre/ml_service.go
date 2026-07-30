@@ -449,6 +449,12 @@ var (
 	affiliateBareValueRe = regexp.MustCompile(`"price":\{"value":([0-9.]+)`)
 )
 
+// affiliatePriceWindow é o teto de bytes lidos a partir da âncora do card. Os
+// 800 originais deixaram de bastar em 30/07/2026, quando o ML passou a
+// intercalar promoções/campanhas antes do componente de preço (medição em
+// produção: current_price ~1.1KB depois do bloco novo).
+const affiliatePriceWindow = 2000
+
 // isAffiliateURL detecta links de afiliado ML (meli.la/XXX, .../sec/XXX), que não
 // têm o MLB id na URL e precisam ser resolvidos pela página /social.
 //
@@ -485,7 +491,15 @@ func affiliateShortCode(rawURL string) string {
 // a página /social do afiliado (pública, sem o anti-bot das páginas de produto)
 // e extrai o produto-alvo do JSON embutido. Ver issue #158 e a memória do projeto.
 func (s *mlService) getAffiliateProductPreview(ctx context.Context, affiliateURL, userID string) (*models.MLProductPreview, error) {
-	cacheKey := "ml:preview:aff:v1:" + userID + ":" + affiliateShortCode(affiliateURL)
+	// shortCode é calculado ANTES do fetch: mais abaixo affiliateURL é
+	// reatribuído para a URL final resolvida (.../social/<apelido-do-afiliado>),
+	// e daí o "short code" viraria o apelido — inútil para reproduzir a página.
+	shortCode := affiliateShortCode(affiliateURL)
+
+	// v2 (30/07/2026): o bump invalida em massa os previews com Price=0 que a
+	// mudança de layout do ML gerou. Sem ele, o deploy do parser novo passa os
+	// primeiros 10min servindo zero do Redis e parece não ter funcionado.
+	cacheKey := "ml:preview:aff:v2:" + userID + ":" + shortCode
 	if s.cache != nil {
 		var cached models.MLProductPreview
 		if err := s.cache.GetJSON(ctx, cacheKey, &cached); err == nil {
@@ -519,9 +533,26 @@ func (s *mlService) getAffiliateProductPreview(ctx context.Context, affiliateURL
 		preview = &models.MLProductPreview{Permalink: affiliateURL, Currency: "BRL"}
 	}
 
+	// Título sem preço é o estado em que a rampa de 20→1210 skips/dia (27→30/07)
+	// passou 3 dias invisível: nenhum erro era gerado. Agora deixa rastro.
+	//
+	// Fica em log, NÃO no Sentry: link de cupom/campanha ML (que não é produto)
+	// vive legitimamente nesse estado — ver models/mercadolivre.go:62-67 e o
+	// caminho normal do espelho em monitoring_service.go:1649. Como o
+	// fingerprint do Sentry é a mensagem (constante) e o dedup é de 10min, este
+	// aviso sozinho consumiria os 6 eventos/h do orçamento do processo e
+	// afogaria erro real.
+	if preview.Title != "" && preview.Price <= 0 {
+		s.logger.Warn("ML /social sem preço (cupom/campanha, anti-bot ou formato mudou)",
+			zap.String("short_code", shortCode))
+	}
+
 	if s.cache != nil {
 		ttl := previewCacheTTLEmpty
-		if preview.Title != "" || preview.Price > 0 {
+		// Só Price>0 conta como útil (10min). Título sem preço é o estado
+		// quebrado acima — cachear por 10min congelaria a falha; com 30s a
+		// próxima janela re-tenta.
+		if preview.Price > 0 {
 			ttl = previewCacheTTLUseful
 		}
 		if cacheErr := s.cache.SetJSON(ctx, cacheKey, preview, ttl); cacheErr != nil {
@@ -536,8 +567,9 @@ func (s *mlService) getAffiliateProductPreview(ctx context.Context, affiliateURL
 
 // parseAffiliateSocialHTML extrai título, preço, preço original e imagem do
 // produto-alvo a partir do HTML da página /social do afiliado. O alvo é sempre
-// o 1º card (produto que o link de afiliado destaca), então pegamos o 1º objeto
-// "price" do documento — evitando casar título (que quebra com acentos no JSON).
+// o 1º card (produto que o link de afiliado destaca), cujo componente de preço
+// é isolado por affiliatePriceSegment — evitando casar título (que quebra com
+// acentos no JSON).
 // Falha graciosamente: sem og:title retorna nil; sem preço retorna o que tiver.
 // upgradeMLImageURL troca a variante de baixa resolução do mlstatic
 // (D_NQ_NP_...) pela 2X (retina), dobrando a resolução. O og:image vem pequeno
@@ -554,6 +586,48 @@ func upgradeMLImageURL(u string) string {
 	return u
 }
 
+// affiliatePriceSegment devolve o trecho de JSON que descreve o preço do
+// PRIMEIRO card (produto-alvo) da página /social.
+//
+// Ancorar no 1º `"price":{` deixou de funcionar em 30/07/2026: o ML passou a
+// emitir, ANTES do card, um bloco de promoções
+// (`"price":{"promotions":[...],"price":1395.39}`) que capturava o índice e
+// empurrava o current_price real para fora da janela — Price=0 e item pulado
+// (1210 skips/dia em 30/07). A âncora agora é o COMPONENTE de card,
+// `{"type":"price"`, conferido em 14/14 páginas de produção.
+//
+// A aspa final da âncora é OBRIGATÓRIA: sem ela, `{"type":"price_decrement"`
+// (o objeto de promoção) casaria e o bug voltaria por outra porta.
+func affiliatePriceSegment(html string) string {
+	window := affiliatePriceWindow
+	start := strings.Index(html, `{"type":"price"`)
+	if start < 0 {
+		// Página sem componentes tipados: cai no comportamento histórico —
+		// âncora E janela originais. Alargar a janela AQUI seria perigoso: sem
+		// componente tipado não há como cortar no card seguinte (o corte abaixo
+		// procura a mesma âncora que acabou de não existir), então 2000 bytes
+		// atravessariam de um blob de tracking até o card de outro produto e
+		// sairia preço plausível do item errado — pior que o Price=0 de hoje.
+		start = strings.Index(html, `"price":{`)
+		window = 800
+	}
+	if start < 0 {
+		return ""
+	}
+
+	end := start + window
+	if end > len(html) {
+		end = len(html)
+	}
+	// NUNCA invade o card seguinte. Com a janela maior isto deixou de ser zelo
+	// e virou requisito: sem o corte, um card sem previous_price herdaria o do
+	// card vizinho e inventaria um "De X por Y" que não existe.
+	if next := strings.Index(html[start+1:], `{"type":"price"`); next >= 0 && start+1+next < end {
+		end = start + 1 + next
+	}
+	return html[start:end]
+}
+
 func parseAffiliateSocialHTML(html, finalURL string) *models.MLProductPreview {
 	title := extractMeta(html, "og:title")
 	if title == "" {
@@ -566,16 +640,9 @@ func parseAffiliateSocialHTML(html, finalURL string) *models.MLProductPreview {
 		Image:     upgradeMLImageURL(extractMeta(html, "og:image")),
 	}
 
-	// Escopa ao 1º objeto "price" (produto-alvo = 1º card). Janela de ~800 chars
-	// cobre um price object (previous/current/discount/installments) sem invadir
-	// o card seguinte.
-	if i := strings.Index(html, `"price":{`); i >= 0 {
-		end := i + 800
-		if end > len(html) {
-			end = len(html)
-		}
-		seg := html[i:end]
-
+	// Escopa ao componente de preço do 1º card (produto-alvo). Ver
+	// affiliatePriceSegment para por que a âncora não é mais o 1º `"price":{`.
+	if seg := affiliatePriceSegment(html); seg != "" {
 		// Preço atual: current_price.value; fallback p/ "price":{"value":N} (sem desconto).
 		if m := affiliateCurrentPriceRe.FindStringSubmatch(seg); m != nil {
 			if v, err := strconv.ParseFloat(m[1], 64); err == nil {
