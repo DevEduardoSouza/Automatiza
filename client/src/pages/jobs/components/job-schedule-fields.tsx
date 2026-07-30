@@ -249,6 +249,8 @@ function TimePickerContent({ onAdd }: { onAdd: (time: string) => void }) {
   const col = {
     maxHeight: 130,
     overflowY: 'auto' as const,
+    overscrollBehavior: 'contain' as const,
+    touchAction: 'pan-y' as const,
     border: `1px solid ${T.divider}`,
     borderRadius: 10,
   };
@@ -519,7 +521,10 @@ export function JobScheduleFields({
                 </button>
               </span>
             ))}
+            {/* modal: o Dialog cancela o touchmove de tudo fora dele (react-remove-scroll),
+                o que travava a rolagem das colunas de hora/minuto no celular. */}
             <Popover
+              modal
               open={openPicker === 'time'}
               onOpenChange={(o) => setOpenPicker(o ? 'time' : null)}
             >

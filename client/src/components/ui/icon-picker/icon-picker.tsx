@@ -62,8 +62,10 @@ export function IconPicker({ value, onChange, placeholder, disabled }: IconPicke
 
   const hasResults = Object.keys(filteredCategories).length > 0;
 
+  // `modal`: sem isso o scroll-lock do Dialog em volta bloqueia a rolagem por toque
+  // da lista de icones (o portal do popover fica fora do container do Dialog).
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
