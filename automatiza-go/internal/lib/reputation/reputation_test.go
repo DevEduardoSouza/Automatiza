@@ -24,65 +24,67 @@ func newTestStore(t *testing.T, threshold int, ttl time.Duration) (*Store, *mini
 	return NewStore(rdb, threshold, ttl, zap.NewNop()), mr, rdb
 }
 
-func TestPenalizeCrossesThresholdAndClear(t *testing.T) {
+// Supressão DESLIGADA (05/08/2026): Penalize continua acumulando a pontuação no
+// Redis — o sinal segue sendo coletado — mas IsSuppressed nunca bloqueia envio,
+// nem acima do limiar. Clear continua zerando a chave.
+func TestPenalizeStillScoresButNeverSuppresses(t *testing.T) {
 	ctx := context.Background()
-	s, _, _ := newTestStore(t, 3, time.Hour)
+	s, mr, _ := newTestStore(t, 3, time.Hour)
 	const session, group = "sess-a", "group-1"
 
-	// Abaixo do limiar: não suprimido.
 	s.Penalize(ctx, session, group, 1)
 	s.Penalize(ctx, session, group, 1)
 	if s.IsSuppressed(ctx, session, group) {
-		t.Fatalf("score 2 < threshold 3 should not be suppressed")
+		t.Fatalf("suppression is disabled: score 2 must not suppress")
 	}
 
-	// Cruza o limiar (2 + 1 = 3 >= 3): suprimido.
+	// Cruza o limiar (2 + 1 = 3 >= 3) e AINDA ASSIM não suprime.
 	s.Penalize(ctx, session, group, 1)
-	if !s.IsSuppressed(ctx, session, group) {
-		t.Fatalf("score 3 >= threshold 3 should be suppressed")
+	if got, err := mr.Get(key(session, group)); err != nil || got != "3" {
+		t.Fatalf("expected the score to still be recorded as 3, got %q (err=%v)", got, err)
+	}
+	if s.IsSuppressed(ctx, session, group) {
+		t.Fatalf("suppression is disabled: score 3 >= threshold 3 must NOT suppress")
 	}
 
-	// Clear devolve o grupo à rotação.
+	// Clear segue zerando a pontuação acumulada.
 	s.Clear(ctx, session, group)
-	if s.IsSuppressed(ctx, session, group) {
-		t.Fatalf("after Clear the group should not be suppressed")
+	if _, err := mr.Get(key(session, group)); err == nil {
+		t.Fatalf("Clear must delete the score key")
 	}
 }
 
-func TestWeightedPenalizeRemoval(t *testing.T) {
-	ctx := context.Background()
-	s, _, _ := newTestStore(t, 5, time.Hour)
-	const session, group = "sess-b", "group-2"
-
-	// Peso de remoção (bot expulso) = 3. Uma remoção sozinha não cruza 5.
-	s.Penalize(ctx, session, group, 3)
-	if s.IsSuppressed(ctx, session, group) {
-		t.Fatalf("score 3 < threshold 5 should not be suppressed")
-	}
-
-	// Duas remoções (3 + 3 = 6 >= 5) cruzam o limiar.
-	s.Penalize(ctx, session, group, 3)
-	if !s.IsSuppressed(ctx, session, group) {
-		t.Fatalf("score 6 >= threshold 5 should be suppressed")
-	}
-}
-
-// R3: em modo strict, um ERRO de Redis suprime o envio (fail-closed).
-func TestIsSuppressedStrictFailClosedOnRedisError(t *testing.T) {
+func TestWeightedPenalizeRemovalNeverSuppresses(t *testing.T) {
 	ctx := context.Background()
 	s, mr, _ := newTestStore(t, 5, time.Hour)
-	s.strict = true // fixa o strict (o default vem do env)
+	const session, group = "sess-b", "group-2"
+
+	// Peso de remoção (bot expulso) = 3; duas remoções somam 6 >= 5.
+	s.Penalize(ctx, session, group, 3)
+	s.Penalize(ctx, session, group, 3)
+	if got, err := mr.Get(key(session, group)); err != nil || got != "6" {
+		t.Fatalf("expected accumulated score 6, got %q (err=%v)", got, err)
+	}
+	if s.IsSuppressed(ctx, session, group) {
+		t.Fatalf("suppression is disabled: score 6 >= threshold 5 must NOT suppress")
+	}
+}
+
+// Com a supressão desligada, nem o modo strict bloqueia envio num erro de Redis:
+// o fail-closed do ANTIBAN_STRICT deixou de ter efeito.
+func TestStrictNoLongerFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	s, mr, _ := newTestStore(t, 5, time.Hour)
+	s.strict = true
 	const session, group = "sess-x", "group-x"
 
-	// Redis saudável + grupo limpo: chave ausente devolve "0" -> não suprime.
 	if s.IsSuppressed(ctx, session, group) {
 		t.Fatalf("healthy Redis with a clean group must not be suppressed")
 	}
 
-	// Redis indisponível (miniredis fechado): a chamada erra.
-	mr.Close()
-	if !s.IsSuppressed(ctx, session, group) {
-		t.Fatalf("strict mode must SUPPRESS on a Redis error (fail-closed)")
+	mr.Close() // Redis indisponível
+	if s.IsSuppressed(ctx, session, group) {
+		t.Fatalf("suppression is disabled: strict mode must NOT suppress anymore")
 	}
 }
 
@@ -133,22 +135,22 @@ func TestEmptyArgsAreNoOp(t *testing.T) {
 	}
 }
 
-func TestFailOpenWhenRedisDown(t *testing.T) {
+func TestNeverSuppressesWithRedisDown(t *testing.T) {
 	ctx := context.Background()
 	s, mr, _ := newTestStore(t, 1, time.Hour)
-	s.strict = false // fail-open agora é o caminho do kill-switch (ANTIBAN_STRICT=false)
+	s.strict = false
 	const session, group = "sess-c", "group-3"
 
-	// Suprimido enquanto o Redis está vivo.
+	// Mesmo bem acima do limiar, com o Redis vivo: não suprime.
 	s.Penalize(ctx, session, group, 5)
-	if !s.IsSuppressed(ctx, session, group) {
-		t.Fatalf("expected suppressed before Redis goes down")
+	if s.IsSuppressed(ctx, session, group) {
+		t.Fatalf("suppression is disabled: must not suppress with Redis up")
 	}
 
-	// Redis cai + strict off: fail-open — não suprime e não entra em pânico.
+	// Redis cai: segue sem suprimir e sem entrar em pânico.
 	mr.Close()
 	if s.IsSuppressed(ctx, session, group) {
-		t.Fatalf("with Redis down and strict off, IsSuppressed must fail open to false")
+		t.Fatalf("suppression is disabled: must not suppress with Redis down")
 	}
 	// Penalize/Clear com Redis morto também não podem entrar em pânico.
 	s.Penalize(ctx, session, group, 3)

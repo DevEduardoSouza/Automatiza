@@ -12,7 +12,6 @@ package reputation
 import (
 	"context"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -98,41 +97,23 @@ func (s *Store) Penalize(ctx context.Context, session, group string, weight int)
 	}
 }
 
-// IsSuppressed informa se a pontuação de (sessão, grupo) atingiu o limiar
-// (score >= threshold). Fail-open: devolve false em store/rdb nil, argumentos
-// vazios ou qualquer erro de Redis — nunca suprime por causa de falha.
+// IsSuppressed SEMPRE devolve false desde 05/08/2026: a supressão por reputação
+// foi DESLIGADA por decisão de produto e nenhum envio é mais bloqueado por ela.
+//
+// Os 5 chamadores (offer_generate ×2, process_list, automation_service,
+// monitoring) passam a enviar para o grupo mesmo depois de o chip ter sido
+// removido dele. O desligamento mora aqui, e não nos chamadores, porque um único
+// ponto cobre os cinco caminhos de envio e a reversão é um `git revert` deste
+// commit — a implementação original (GET no Redis, limiar, modo fail-closed do
+// ANTIBAN_STRICT) está no histórico.
+//
+// Penalize/Clear continuam gravando a pontuação (chaves com TTL de 24h), então o
+// sinal segue sendo coletado e a proteção pode voltar sem perder histórico.
+//
+// Risco assumido: insistir em grupo que expulsou o chip é o sinal mais forte de
+// bloqueio/denúncia para o WhatsApp — era exatamente o que esta trava evitava.
 func (s *Store) IsSuppressed(ctx context.Context, session, group string) bool {
-	if s == nil || s.rdb == nil || session == "" || group == "" {
-		return false
-	}
-	// redis.Scripter não expõe GET; go-redis o resolve via EvalSha/Eval, mas aqui
-	// basta um GET simples via script para manter a mesma interface injetável.
-	res, err := getScript.Run(ctx, s.rdb, []string{key(session, group)}).Text()
-	if err != nil {
-		// R3: só chega aqui em ERRO REAL de Redis — chave ausente devolve "0"
-		// pelo script (grupo saudável), nunca erro. Em modo strict, um Redis
-		// indisponível significa que TODO o anti-ban cairia junto, então
-		// SUPRIMIMOS o envio (fail-closed) em vez de disparar sem proteção.
-		if s.strict {
-			s.logger.Warn("reputation lookup failed — SUPPRESSING send (fail-closed, ANTIBAN_STRICT)",
-				zap.String("session", session), zap.String("group", group), zap.Error(err))
-			return true
-		}
-		s.logger.Warn("reputation lookup failed, not suppressing (fail-open)",
-			zap.String("session", session), zap.String("group", group), zap.Error(err))
-		return false
-	}
-	if res == "" {
-		return false
-	}
-	score, err := strconv.Atoi(res)
-	if err != nil {
-		s.logger.Warn("reputation score parse failed, not suppressing",
-			zap.String("session", session), zap.String("group", group),
-			zap.String("raw", res), zap.Error(err))
-		return false
-	}
-	return score >= s.threshold
+	return false
 }
 
 // getScript lê a pontuação via GET. Usar um script mantém tudo sobre a interface
