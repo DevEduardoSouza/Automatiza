@@ -48,7 +48,18 @@ var (
 	sessCount = map[string]int{}
 
 	httpc = &http.Client{Timeout: 15 * time.Second}
+
+	// Um refresh custa GET /api/sessions?all=true em TODOS os shards (>1200
+	// sessões por resposta). ownerOf() dispara um a cada sessão desconhecida, e
+	// um shard doente deixa todas as sessões dele desconhecidas — em 06/08 isso
+	// virou ~4 refreshes/s e afogou até o shard que estava são. Estas duas
+	// variáveis limitam o refresh sob demanda a um por vez, no máximo a cada
+	// refreshMinInterval. O refresh periódico do loop principal não é afetado.
+	lastRefreshUnix atomic.Int64
+	refreshGate     sync.Mutex
 )
+
+const refreshMinInterval = 5 * time.Second
 
 // /api/sessions/{session}[/...] — session-management endpoints (name in path segment 3).
 var reSessionPath = regexp.MustCompile(`^/api/sessions/([^/?]+)`)
@@ -274,6 +285,22 @@ func refresh() {
 	stats := map[string]ShardHealth{}
 	now := time.Now()
 	rates := requestRates(now)
+	lastRefreshUnix.Store(now.UnixNano())
+
+	// Snapshot do mapeamento atual. Se um shard não responder NESTA rodada, as
+	// sessões dele são reaproveitadas de prev (ver keepPrevious): descartá-las
+	// as tornaria órfãs, e ownerOf() passaria a mandar o tráfego delas para
+	// primary() — que num apagão é justamente o shard doente.
+	mu.RLock()
+	prev := make(map[string]string, len(sessOwner))
+	for n, o := range sessOwner {
+		prev[n] = o
+	}
+	prevCount := make(map[string]int, len(sessCount))
+	for n, c := range sessCount {
+		prevCount[n] = c
+	}
+	mu.RUnlock()
 
 	for _, up := range upstreams {
 		h := ShardHealth{Name: up.Name, RequestRPS: rates[up.Name]}
@@ -287,6 +314,7 @@ func refresh() {
 			log.Printf("refresh %s failed: %v", up.Name, err)
 			h.Available = false
 			stats[up.Name] = h
+			keepPrevious(owner, count, prev, prevCount, up.Name)
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
@@ -295,6 +323,7 @@ func refresh() {
 		if json.Unmarshal(body, &arr) != nil {
 			h.Available = false
 			stats[up.Name] = h
+			keepPrevious(owner, count, prev, prevCount, up.Name)
 			continue
 		}
 		h.Available = true
@@ -335,6 +364,36 @@ func refresh() {
 	mu.Unlock()
 }
 
+// keepPrevious reaproveita o mapeamento já conhecido de um shard que falhou na
+// rodada de refresh corrente, para que suas sessões não virem órfãs.
+func keepPrevious(owner map[string]string, count map[string]int, prev map[string]string, prevCount map[string]int, name string) {
+	for n, o := range prev {
+		if o == name {
+			owner[n] = o
+		}
+	}
+	if c, ok := prevCount[name]; ok {
+		count[name] = c
+	}
+}
+
+// refreshOnce roda um refresh sob demanda respeitando o intervalo mínimo e
+// deixando apenas UM em voo: sem isso, um shard doente faz cada request órfão
+// pagar um refresh completo (que ainda espera o timeout do shard doente).
+func refreshOnce() {
+	if time.Since(time.Unix(0, lastRefreshUnix.Load())) < refreshMinInterval {
+		return
+	}
+	if !refreshGate.TryLock() {
+		return
+	}
+	defer refreshGate.Unlock()
+	if time.Since(time.Unix(0, lastRefreshUnix.Load())) < refreshMinInterval {
+		return
+	}
+	refresh()
+}
+
 func ownerOf(name string) *Upstream {
 	mu.RLock()
 	n, ok := sessOwner[name]
@@ -344,7 +403,7 @@ func ownerOf(name string) *Upstream {
 			return up
 		}
 	}
-	refresh()
+	refreshOnce()
 	mu.RLock()
 	n, ok = sessOwner[name]
 	mu.RUnlock()
